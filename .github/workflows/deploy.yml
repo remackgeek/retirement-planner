@@ -13,6 +13,7 @@ jobs:
         with:
           node-version: '20'
       - run: npm install
+      - run: npm test
       - run: npm run build
       - uses: peaceiris/actions-gh-pages@v4
         with:
