@@ -1,25 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useRef } from 'react';
 import { Menubar } from 'primereact/menubar';
 import type { MenuItem } from 'primereact/menuitem';
-import { Dialog } from 'primereact/dialog';
 import { Menu } from 'primereact/menu';
 import { Button } from 'primereact/button';
 
 const MenuComponent: React.FC = () => {
-  const [aboutVisible, setAboutVisible] = useState(false);
   const personMenuRef = useRef<Menu>(null);
-
-  const items: MenuItem[] = [
-    {
-      label: 'Help',
-      items: [
-        {
-          label: 'About',
-          command: () => setAboutVisible(true),
-        },
-      ],
-    },
-  ];
 
   const personMenuItems: MenuItem[] = [
     {
@@ -48,31 +34,22 @@ const MenuComponent: React.FC = () => {
 
   return (
     <>
-      <Menubar 
-        model={items} 
+      <Menubar
         end={
-          <Button 
-            icon="pi pi-user" 
+          <Button
+            icon="pi pi-user"
             onClick={showPersonMenu}
             text
             rounded
           />
         }
       />
-      <Menu 
-        ref={personMenuRef} 
-        model={personMenuItems} 
+      <Menu
+        ref={personMenuRef}
+        model={personMenuItems}
         popup
         popupAlignment="right"
       />
-      <Dialog
-        header="About"
-        visible={aboutVisible}
-        onHide={() => setAboutVisible(false)}
-        modal
-      >
-        <p>About This Application</p>
-      </Dialog>
     </>
   );
 };
