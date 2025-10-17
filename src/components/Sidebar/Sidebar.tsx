@@ -1,6 +1,9 @@
 import { useState, useContext } from 'react';
 import styled from 'styled-components';
 import { RetirementContext } from '../../context/RetirementContext';
+import { Button } from 'primereact/button';
+import ScenarioDialog from '../../dialogs/ScenarioDialog';
+import type { Scenario } from '../../types/Scenario';
 
 interface SidebarContainerProps {
   $isCollapsed: boolean;
@@ -63,12 +66,18 @@ const ScenarioSummary = styled.dl`
 
 const Sidebar: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [dialogVisible, setDialogVisible] = useState(false);
   const context = useContext(RetirementContext);
   if (!context) return null;
-  const { scenarios, activeScenario, setActiveScenario } = context;
+  const { scenarios, activeScenario, setActiveScenario, addScenario } = context;
 
   const toggleSidebar = () => {
     setIsCollapsed(!isCollapsed);
+  };
+
+  const handleSave = (scenario: Scenario) => {
+    addScenario(scenario);
+    setDialogVisible(false);
   };
 
   return (
@@ -112,6 +121,14 @@ const Sidebar: React.FC = () => {
             </ScenarioSummary>
           </>
         )}
+        <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
+          <Button label="New Scenario" onClick={() => setDialogVisible(true)} style={{ width: '100%' }} />
+        </div>
+        <ScenarioDialog
+          visible={dialogVisible}
+          onHide={() => setDialogVisible(false)}
+          onSave={handleSave}
+        />
       </SidebarContent>
     </SidebarContainer>
   );
