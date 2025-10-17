@@ -1,0 +1,109 @@
+import { useState } from 'react';
+import styled from 'styled-components';
+import { InputNumber } from 'primereact/inputnumber';
+import { InputText } from 'primereact/inputtext';
+import { Dropdown } from 'primereact/dropdown';
+import { Button } from 'primereact/button';
+import { Dialog } from 'primereact/dialog';
+import type { Scenario } from '../types/Scenario';
+
+const FormGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+`;
+
+interface ScenarioDialogProps {
+  visible: boolean;
+  onHide: () => void;
+  onSave: (scenario: Scenario) => void;
+}
+
+const ScenarioDialog: React.FC<ScenarioDialogProps> = ({ visible, onHide, onSave }) => {
+  const [tempData, setTempData] = useState({
+    id: '',
+    name: '',
+    currentAge: 40,
+    retirementAge: 65,
+    lifeExpectancy: 92,
+    currentSavings: 100000,
+    annualSavings: 20000,
+    monthlyRetirementSpending: 5000,
+    ssAmount: 30000,
+    riskLevel: 'moderate' as 'conservative' | 'moderate' | 'high',
+  });
+
+  const riskOptions = [
+    { label: 'Conservative', value: 'conservative' },
+    { label: 'Moderate', value: 'moderate' },
+    { label: 'High', value: 'high' },
+  ];
+
+  const handleChange = (field: keyof typeof tempData, value: any) => {
+    setTempData({ ...tempData, [field]: value });
+  };
+
+  const handleSave = () => {
+    const scenario = { ...tempData, id: crypto.randomUUID() };
+    onSave(scenario);
+    onHide();
+  };
+
+  const dialogFooter = (
+    <div>
+      <Button label="Cancel" icon="pi pi-times" onClick={onHide} className="p-button-text" />
+      <Button label="Save" icon="pi pi-check" onClick={handleSave} />
+    </div>
+  );
+
+  return (
+    <Dialog 
+      header="New Scenario" 
+      visible={visible} 
+      style={{ width: '50vw' }} 
+      onHide={onHide} 
+      footer={dialogFooter}
+    >
+      <FormGrid>
+        <div>
+          <label>Scenario Name</label>
+          <InputText value={tempData.name} onChange={(e) => handleChange('name', e.target.value)} />
+        </div>
+        <div>
+          <label>Current Age</label>
+          <InputNumber value={tempData.currentAge} onValueChange={(e) => handleChange('currentAge', e.value)} mode="decimal" />
+        </div>
+        <div>
+          <label>Retirement Age</label>
+          <InputNumber value={tempData.retirementAge} onValueChange={(e) => handleChange('retirementAge', e.value)} mode="decimal" />
+        </div>
+        <div>
+          <label>Life Expectancy</label>
+          <InputNumber value={tempData.lifeExpectancy} onValueChange={(e) => handleChange('lifeExpectancy', e.value)} mode="decimal" />
+        </div>
+        <div>
+          <label>Current Savings</label>
+          <InputNumber value={tempData.currentSavings} onValueChange={(e) => handleChange('currentSavings', e.value)} mode="currency" currency="USD" />
+        </div>
+        <div>
+          <label>Annual Savings</label>
+          <InputNumber value={tempData.annualSavings} onValueChange={(e) => handleChange('annualSavings', e.value)} mode="currency" currency="USD" />
+        </div>
+        <div>
+          <label>Monthly Retirement Spending</label>
+          <InputNumber value={tempData.monthlyRetirementSpending} onValueChange={(e) => handleChange('monthlyRetirementSpending', e.value)} mode="currency" currency="USD" />
+        </div>
+        <div>
+          <label>Annual Social Security</label>
+          <InputNumber value={tempData.ssAmount} onValueChange={(e) => handleChange('ssAmount', e.value)} mode="currency" currency="USD" />
+        </div>
+        <div>
+          <label>Risk Level</label>
+          <Dropdown value={tempData.riskLevel} options={riskOptions} onChange={(e) => handleChange('riskLevel', e.value)} />
+        </div>
+      </FormGrid>
+    </Dialog>
+  );
+};
+
+export default ScenarioDialog;

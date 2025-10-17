@@ -1,7 +1,6 @@
 import { useState, useContext } from 'react';
 import styled from 'styled-components';
 import { RetirementContext } from '../../context/RetirementContext';
-import { Button } from 'primereact/button';
 
 interface SidebarContainerProps {
   $isCollapsed: boolean;

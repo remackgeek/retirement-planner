@@ -35,6 +35,7 @@ const MenuComponent: React.FC = () => {
   return (
     <>
       <Menubar
+        start={<div style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>Retirement Planner MVP</div>}
         end={
           <Button
             icon="pi pi-user"
