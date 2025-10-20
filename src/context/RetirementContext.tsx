@@ -9,12 +9,15 @@ export const RetirementContext = createContext<{
   scenarios: Scenario[];
   activeScenario: Scenario | null;
   addScenario: (data: Scenario) => Promise<void>;
+  updateScenario: (data: Scenario) => Promise<void>;
   setActiveScenario: (id: string) => Promise<void>;
 } | null>(null);
 
 export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [activeScenario, setActiveScenarioState] = useState<Scenario | null>(null);
+  const [activeScenario, setActiveScenarioState] = useState<Scenario | null>(
+    null
+  );
 
   useEffect(() => {
     const initDB = async () => {
@@ -50,7 +53,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
               taxStatus: 'before_tax',
               colaType: 'inflation_adjusted',
               syncWithEstimate: true,
-            }
+            },
           ],
           portfolioAssumptions: {
             riskLevel: 'moderate',
@@ -75,6 +78,17 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     setActiveScenarioState(data);
   };
 
+  const updateScenario = async (data: Scenario) => {
+    const db = await openDB(dbName, 1);
+    await db.put(storeName, data, data.id);
+    setScenarios(
+      scenarios.map((scenario) => (scenario.id === data.id ? data : scenario))
+    );
+    if (activeScenario?.id === data.id) {
+      setActiveScenarioState(data);
+    }
+  };
+
   const setActiveScenario = async (id: string) => {
     const db = await openDB(dbName, 1);
     const scenario = await db.get(storeName, id);
@@ -84,7 +98,15 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <RetirementContext.Provider value={{ scenarios, activeScenario, addScenario, setActiveScenario }}>
+    <RetirementContext.Provider
+      value={{
+        scenarios,
+        activeScenario,
+        addScenario,
+        updateScenario,
+        setActiveScenario,
+      }}
+    >
       {children}
     </RetirementContext.Provider>
   );

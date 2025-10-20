@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
@@ -17,10 +17,16 @@ interface ScenarioDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (scenario: Scenario) => void;
+  scenario?: Scenario;
 }
 
-const ScenarioDialog: React.FC<ScenarioDialogProps> = ({ visible, onHide, onSave }) => {
-  const [tempData, setTempData] = useState({
+const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
+  visible,
+  onHide,
+  onSave,
+  scenario,
+}) => {
+  const [tempData, setTempData] = useState<Scenario>(() => ({
     id: '',
     name: '',
     currentAge: 40,
@@ -42,7 +48,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({ visible, onHide, onSave
         taxStatus: 'before_tax' as const,
         colaType: 'inflation_adjusted' as const,
         syncWithEstimate: true,
-      }
+      },
     ],
     portfolioAssumptions: {
       riskLevel: 'moderate' as const,
@@ -50,8 +56,60 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({ visible, onHide, onSave
     // Legacy fields for backward compatibility
     monthlyRetirementSpending: 5000,
     ssAmount: 30000,
-    riskLevel: 'moderate' as 'conservative' | 'moderate' | 'high',
-  });
+    riskLevel: 'moderate' as const,
+  }));
+
+  // Update tempData when scenario prop changes (for editing)
+  useEffect(() => {
+    if (scenario) {
+      setTempData({
+        ...scenario,
+        // Ensure legacy fields are set
+        monthlyRetirementSpending: scenario.retirementSpending.monthlyAmount,
+        ssAmount:
+          scenario.incomeEvents.find((e) => e.type === 'social_security')
+            ?.amount || 30000,
+        riskLevel: scenario.portfolioAssumptions.riskLevel as
+          | 'conservative'
+          | 'moderate'
+          | 'high',
+      });
+    } else {
+      // Reset to defaults when no scenario (for new scenario creation)
+      setTempData({
+        id: '',
+        name: '',
+        currentAge: 40,
+        retirementAge: 65,
+        lifeExpectancy: 92,
+        currentSavings: 100000,
+        annualSavings: 20000,
+        retirementSpending: {
+          monthlyAmount: 5000,
+          startAge: 65,
+        },
+        spendingGoals: [],
+        incomeEvents: [
+          {
+            id: crypto.randomUUID(),
+            type: 'social_security' as const,
+            amount: 30000,
+            startAge: 65,
+            taxStatus: 'before_tax' as const,
+            colaType: 'inflation_adjusted' as const,
+            syncWithEstimate: true,
+          },
+        ],
+        portfolioAssumptions: {
+          riskLevel: 'moderate' as const,
+        },
+        // Legacy fields for backward compatibility
+        monthlyRetirementSpending: 5000,
+        ssAmount: 30000,
+        riskLevel: 'moderate' as const,
+      });
+    }
+  }, [scenario]);
 
   const riskOptions = [
     { label: 'Conservative', value: 'conservative' },
@@ -68,62 +126,117 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({ visible, onHide, onSave
   };
 
   const handleSave = () => {
-    const scenario = { ...tempData, id: crypto.randomUUID() };
-    onSave(scenario);
+    const scenarioData = scenario
+      ? { ...tempData, id: scenario.id } // Keep existing ID for edits
+      : { ...tempData, id: crypto.randomUUID() }; // Generate new ID for creates
+    onSave(scenarioData);
     onHide();
   };
 
   const dialogFooter = (
     <div>
-      <Button label="Cancel" icon="pi pi-times" onClick={onHide} className="p-button-text" />
-      <Button label="Save" icon="pi pi-check" onClick={handleSave} />
+      <Button
+        label='Cancel'
+        icon='pi pi-times'
+        onClick={onHide}
+        className='p-button-text'
+      />
+      <Button label='Save' icon='pi pi-check' onClick={handleSave} />
     </div>
   );
 
   return (
-    <Dialog 
-      header="New Scenario" 
-      visible={visible} 
-      style={{ width: '50vw' }} 
-      onHide={onHide} 
+    <Dialog
+      header={scenario ? 'Edit Scenario' : 'New Scenario'}
+      visible={visible}
+      style={{ width: '50vw' }}
+      onHide={onHide}
       footer={dialogFooter}
     >
       <FormGrid>
         <div>
           <label>Scenario Name</label>
-          <InputText value={tempData.name} onChange={(e) => handleChange('name', e.target.value)} />
+          <InputText
+            value={tempData.name}
+            onChange={(e) => handleChange('name', e.target.value)}
+          />
         </div>
         <div>
           <label>Current Age</label>
-          <InputNumber value={tempData.currentAge} onValueChange={(e) => handleChange('currentAge', e.value)} mode="decimal" />
+          <InputNumber
+            value={tempData.currentAge}
+            onValueChange={(e) => handleChange('currentAge', e.value)}
+            mode='decimal'
+          />
         </div>
         <div>
           <label>Retirement Age</label>
-          <InputNumber value={tempData.retirementAge} onValueChange={(e) => handleChange('retirementAge', e.value)} mode="decimal" />
+          <InputNumber
+            value={tempData.retirementAge}
+            onValueChange={(e) => handleChange('retirementAge', e.value)}
+            mode='decimal'
+          />
         </div>
         <div>
           <label>Life Expectancy</label>
-          <InputNumber value={tempData.lifeExpectancy} onValueChange={(e) => handleChange('lifeExpectancy', e.value)} mode="decimal" />
+          <InputNumber
+            value={tempData.lifeExpectancy}
+            onValueChange={(e) => handleChange('lifeExpectancy', e.value)}
+            mode='decimal'
+          />
         </div>
         <div>
           <label>Current Savings</label>
-          <InputNumber value={tempData.currentSavings} onValueChange={(e) => handleChange('currentSavings', e.value)} mode="currency" currency="USD" />
+          <InputNumber
+            value={tempData.currentSavings}
+            onValueChange={(e) => handleChange('currentSavings', e.value)}
+            mode='currency'
+            currency='USD'
+          />
         </div>
         <div>
           <label>Annual Savings</label>
-          <InputNumber value={tempData.annualSavings} onValueChange={(e) => handleChange('annualSavings', e.value)} mode="currency" currency="USD" />
+          <InputNumber
+            value={tempData.annualSavings}
+            onValueChange={(e) => handleChange('annualSavings', e.value)}
+            mode='currency'
+            currency='USD'
+          />
         </div>
         <div>
           <label>Monthly Retirement Spending</label>
-          <InputNumber value={tempData.retirementSpending.monthlyAmount} onValueChange={(e) => handleChange('retirementSpending', { ...tempData.retirementSpending, monthlyAmount: e.value })} mode="currency" currency="USD" />
+          <InputNumber
+            value={tempData.retirementSpending.monthlyAmount}
+            onValueChange={(e) =>
+              handleChange('retirementSpending', {
+                ...tempData.retirementSpending,
+                monthlyAmount: e.value,
+              })
+            }
+            mode='currency'
+            currency='USD'
+          />
         </div>
         <div>
           <label>Retirement Spending Start Age</label>
-          <InputNumber value={tempData.retirementSpending.startAge} onValueChange={(e) => handleChange('retirementSpending', { ...tempData.retirementSpending, startAge: e.value })} mode="decimal" />
+          <InputNumber
+            value={tempData.retirementSpending.startAge}
+            onValueChange={(e) =>
+              handleChange('retirementSpending', {
+                ...tempData.retirementSpending,
+                startAge: e.value,
+              })
+            }
+            mode='decimal'
+          />
         </div>
         <div>
           <label>Risk Level</label>
-          <Dropdown value={tempData.riskLevel} options={riskOptions} onChange={(e) => handleChange('riskLevel', e.value)} />
+          <Dropdown
+            value={tempData.riskLevel}
+            options={riskOptions}
+            onChange={(e) => handleChange('riskLevel', e.value)}
+          />
         </div>
       </FormGrid>
     </Dialog>

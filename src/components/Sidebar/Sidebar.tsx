@@ -10,7 +10,7 @@ interface SidebarContainerProps {
 }
 
 const SidebarContainer = styled.aside<SidebarContainerProps>`
-  width: ${props => props.$isCollapsed ? '50px' : '300px'};
+  width: ${(props) => (props.$isCollapsed ? '50px' : '300px')};
   background-color: #f5f5f5;
   border-right: 1px solid #ddd;
   transition: width 0.3s ease;
@@ -34,8 +34,8 @@ const ToggleButton = styled.button`
 `;
 
 const SidebarContent = styled.div<SidebarContainerProps>`
-  padding: ${props => props.$isCollapsed ? '0' : '1rem'};
-  opacity: ${props => props.$isCollapsed ? '0' : '1'};
+  padding: ${(props) => (props.$isCollapsed ? '0' : '1rem')};
+  opacity: ${(props) => (props.$isCollapsed ? '0' : '1')};
   transition: opacity 0.3s ease;
   overflow-y: auto;
 `;
@@ -49,7 +49,7 @@ const ScenarioList = styled.ul`
 const ScenarioItem = styled.li<{ $isActive: boolean }>`
   padding: 0.5rem;
   cursor: pointer;
-  background-color: ${props => props.$isActive ? '#e0e0e0' : 'transparent'};
+  background-color: ${(props) => (props.$isActive ? '#e0e0e0' : 'transparent')};
   &:hover {
     background-color: #d0d0d0;
   }
@@ -67,17 +67,36 @@ const ScenarioSummary = styled.dl`
 const Sidebar: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [dialogVisible, setDialogVisible] = useState(false);
+  const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const context = useContext(RetirementContext);
   if (!context) return null;
-  const { scenarios, activeScenario, setActiveScenario, addScenario } = context;
+  const {
+    scenarios,
+    activeScenario,
+    setActiveScenario,
+    addScenario,
+    updateScenario,
+  } = context;
 
   const toggleSidebar = () => {
     setIsCollapsed(!isCollapsed);
   };
 
   const handleSave = (scenario: Scenario) => {
-    addScenario(scenario);
+    if (editingScenario) {
+      // Editing existing scenario
+      updateScenario(scenario);
+    } else {
+      // Creating new scenario
+      addScenario(scenario);
+    }
     setDialogVisible(false);
+    setEditingScenario(null);
+  };
+
+  const handleDialogHide = () => {
+    setDialogVisible(false);
+    setEditingScenario(null);
   };
 
   return (
@@ -88,7 +107,7 @@ const Sidebar: React.FC = () => {
       <SidebarContent $isCollapsed={isCollapsed}>
         <h3>Scenarios</h3>
         <ScenarioList>
-          {scenarios.map(scenario => (
+          {scenarios.map((scenario) => (
             <ScenarioItem
               key={scenario.id}
               $isActive={activeScenario?.id === scenario.id}
@@ -101,6 +120,16 @@ const Sidebar: React.FC = () => {
         {activeScenario && (
           <>
             <h3>Active Scenario: {activeScenario.name}</h3>
+            <div style={{ marginBottom: '1rem' }}>
+              <Button
+                label='Edit Scenario'
+                onClick={() => {
+                  setEditingScenario(activeScenario);
+                  setDialogVisible(true);
+                }}
+                style={{ width: '100%' }}
+              />
+            </div>
             <ScenarioSummary>
               <dt>Current Age:</dt>
               <dd>{activeScenario.currentAge}</dd>
@@ -113,7 +142,10 @@ const Sidebar: React.FC = () => {
               <dt>Annual Savings:</dt>
               <dd>${activeScenario.annualSavings.toLocaleString()}</dd>
               <dt>Monthly Retirement Spending:</dt>
-              <dd>${activeScenario.retirementSpending.monthlyAmount.toLocaleString()}</dd>
+              <dd>
+                $
+                {activeScenario.retirementSpending.monthlyAmount.toLocaleString()}
+              </dd>
               <dt>Spending Goals:</dt>
               <dd>{activeScenario.spendingGoals.length}</dd>
               <dt>Income Events:</dt>
@@ -124,12 +156,17 @@ const Sidebar: React.FC = () => {
           </>
         )}
         <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
-          <Button label="New Scenario" onClick={() => setDialogVisible(true)} style={{ width: '100%' }} />
+          <Button
+            label='New Scenario'
+            onClick={() => setDialogVisible(true)}
+            style={{ width: '100%' }}
+          />
         </div>
         <ScenarioDialog
           visible={dialogVisible}
-          onHide={() => setDialogVisible(false)}
+          onHide={handleDialogHide}
           onSave={handleSave}
+          scenario={editingScenario || undefined}
         />
       </SidebarContent>
     </SidebarContainer>

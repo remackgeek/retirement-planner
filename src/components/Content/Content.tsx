@@ -27,7 +27,7 @@ const ManagerSection = styled.div`
 const Content: React.FC = () => {
   const context = useContext(RetirementContext);
   if (!context) return null;
-  const { activeScenario, addScenario } = context;
+  const { activeScenario, updateScenario } = context;
   const [results, setResults] = useState<any>(null);
 
   useEffect(() => {
@@ -43,7 +43,7 @@ const Content: React.FC = () => {
       ...activeScenario,
       spendingGoals: [...activeScenario.spendingGoals, newGoal],
     };
-    addScenario(updatedScenario);
+    updateScenario(updatedScenario);
   };
 
   const handleUpdateSpendingGoal = (
@@ -55,7 +55,7 @@ const Content: React.FC = () => {
       goal.id === id ? { ...goal, ...updates } : goal
     );
     const updatedScenario = { ...activeScenario, spendingGoals: updatedGoals };
-    addScenario(updatedScenario);
+    updateScenario(updatedScenario);
   };
 
   const handleDeleteSpendingGoal = (id: string) => {
@@ -64,7 +64,7 @@ const Content: React.FC = () => {
       (goal) => goal.id !== id
     );
     const updatedScenario = { ...activeScenario, spendingGoals: updatedGoals };
-    addScenario(updatedScenario);
+    updateScenario(updatedScenario);
   };
 
   const handleAddIncomeEvent = (event: Omit<IncomeEvent, 'id'>) => {
@@ -74,7 +74,7 @@ const Content: React.FC = () => {
       ...activeScenario,
       incomeEvents: [...activeScenario.incomeEvents, newEvent],
     };
-    addScenario(updatedScenario);
+    updateScenario(updatedScenario);
   };
 
   const handleUpdateIncomeEvent = (
@@ -86,7 +86,7 @@ const Content: React.FC = () => {
       event.id === id ? { ...event, ...updates } : event
     );
     const updatedScenario = { ...activeScenario, incomeEvents: updatedEvents };
-    addScenario(updatedScenario);
+    updateScenario(updatedScenario);
   };
 
   const handleDeleteIncomeEvent = (id: string) => {
@@ -95,7 +95,7 @@ const Content: React.FC = () => {
       (event) => event.id !== id
     );
     const updatedScenario = { ...activeScenario, incomeEvents: updatedEvents };
-    addScenario(updatedScenario);
+    updateScenario(updatedScenario);
   };
 
   return (
