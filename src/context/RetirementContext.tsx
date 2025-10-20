@@ -36,6 +36,26 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           lifeExpectancy: 92,
           currentSavings: 100000,
           annualSavings: 20000,
+          retirementSpending: {
+            monthlyAmount: 5000,
+            startAge: 65,
+          },
+          spendingGoals: [],
+          incomeEvents: [
+            {
+              id: crypto.randomUUID(),
+              type: 'social_security',
+              amount: 30000,
+              startAge: 65,
+              taxStatus: 'before_tax',
+              colaType: 'inflation_adjusted',
+              syncWithEstimate: true,
+            }
+          ],
+          portfolioAssumptions: {
+            riskLevel: 'moderate',
+          },
+          // Legacy fields
           monthlyRetirementSpending: 5000,
           ssAmount: 30000,
           riskLevel: 'moderate',

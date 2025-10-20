@@ -28,6 +28,26 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({ visible, onHide, onSave
     lifeExpectancy: 92,
     currentSavings: 100000,
     annualSavings: 20000,
+    retirementSpending: {
+      monthlyAmount: 5000,
+      startAge: 65,
+    },
+    spendingGoals: [],
+    incomeEvents: [
+      {
+        id: crypto.randomUUID(),
+        type: 'social_security' as const,
+        amount: 30000,
+        startAge: 65,
+        taxStatus: 'before_tax' as const,
+        colaType: 'inflation_adjusted' as const,
+        syncWithEstimate: true,
+      }
+    ],
+    portfolioAssumptions: {
+      riskLevel: 'moderate' as const,
+    },
+    // Legacy fields for backward compatibility
     monthlyRetirementSpending: 5000,
     ssAmount: 30000,
     riskLevel: 'moderate' as 'conservative' | 'moderate' | 'high',
@@ -40,7 +60,11 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({ visible, onHide, onSave
   ];
 
   const handleChange = (field: keyof typeof tempData, value: any) => {
-    setTempData({ ...tempData, [field]: value });
+    if (field === 'retirementSpending') {
+      setTempData({ ...tempData, retirementSpending: value });
+    } else {
+      setTempData({ ...tempData, [field]: value });
+    }
   };
 
   const handleSave = () => {
@@ -91,11 +115,11 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({ visible, onHide, onSave
         </div>
         <div>
           <label>Monthly Retirement Spending</label>
-          <InputNumber value={tempData.monthlyRetirementSpending} onValueChange={(e) => handleChange('monthlyRetirementSpending', e.value)} mode="currency" currency="USD" />
+          <InputNumber value={tempData.retirementSpending.monthlyAmount} onValueChange={(e) => handleChange('retirementSpending', { ...tempData.retirementSpending, monthlyAmount: e.value })} mode="currency" currency="USD" />
         </div>
         <div>
-          <label>Annual Social Security</label>
-          <InputNumber value={tempData.ssAmount} onValueChange={(e) => handleChange('ssAmount', e.value)} mode="currency" currency="USD" />
+          <label>Retirement Spending Start Age</label>
+          <InputNumber value={tempData.retirementSpending.startAge} onValueChange={(e) => handleChange('retirementSpending', { ...tempData.retirementSpending, startAge: e.value })} mode="decimal" />
         </div>
         <div>
           <label>Risk Level</label>

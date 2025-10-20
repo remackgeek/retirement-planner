@@ -113,11 +113,13 @@ const Sidebar: React.FC = () => {
               <dt>Annual Savings:</dt>
               <dd>${activeScenario.annualSavings.toLocaleString()}</dd>
               <dt>Monthly Retirement Spending:</dt>
-              <dd>${activeScenario.monthlyRetirementSpending.toLocaleString()}</dd>
-              <dt>Annual Social Security:</dt>
-              <dd>${activeScenario.ssAmount.toLocaleString()}</dd>
+              <dd>${activeScenario.retirementSpending.monthlyAmount.toLocaleString()}</dd>
+              <dt>Spending Goals:</dt>
+              <dd>{activeScenario.spendingGoals.length}</dd>
+              <dt>Income Events:</dt>
+              <dd>{activeScenario.incomeEvents.length}</dd>
               <dt>Risk Level:</dt>
-              <dd>{activeScenario.riskLevel}</dd>
+              <dd>{activeScenario.portfolioAssumptions.riskLevel}</dd>
             </ScenarioSummary>
           </>
         )}

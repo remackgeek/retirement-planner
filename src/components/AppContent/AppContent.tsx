@@ -1,19 +1,20 @@
-import styled from 'styled-components'
-import Menu from '../Menu/Menu'
-import Content from '../Content/Content'
-import Sidebar from '../Sidebar/Sidebar'
+import styled from 'styled-components';
+import Menu from '../Menu/Menu';
+import Content from '../Content/Content';
+import Sidebar from '../Sidebar/Sidebar';
+import Footer from '../Footer';
 
 const AppContentContainer = styled.div`
   display: flex;
   flex-direction: column;
   height: 100%;
-`
+`;
 
 const ContentArea = styled.div`
   display: flex;
   flex: 1;
   overflow: hidden;
-`
+`;
 
 const AppContent: React.FC = () => {
   return (
@@ -23,8 +24,9 @@ const AppContent: React.FC = () => {
         <Sidebar />
         <Content />
       </ContentArea>
+      <Footer />
     </AppContentContainer>
-  )
-}
+  );
+};
 
-export default AppContent
+export default AppContent;

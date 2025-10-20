@@ -7,15 +7,90 @@ function gaussianRandom(): number {
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
+function getPortfolioReturns(assumptions: UserData['portfolioAssumptions']): { mean: number, sigma: number } {
+  if (assumptions.riskLevel === 'custom' && assumptions.expectedReturn && assumptions.standardDeviation) {
+    return { mean: assumptions.expectedReturn, sigma: assumptions.standardDeviation };
+  }
+  const realReturns: Record<string, number> = { conservative: 0.03, moderate: 0.045, high: 0.06 };
+  const vols: Record<string, number> = { conservative: 0.05, moderate: 0.10, high: 0.15 };
+  const riskLevel = assumptions.riskLevel === 'custom' ? 'moderate' : assumptions.riskLevel; // fallback
+  return { mean: realReturns[riskLevel], sigma: vols[riskLevel] };
+}
+
+export function calculateAnnualSpending(userData: UserData, year: number, inflationRate: number = 0.03): number {
+  let totalSpending = 0;
+
+  // Retirement spending with optional decrease
+  const retirementSpending = userData.retirementSpending;
+  const retirementStartYear = new Date().getFullYear() + (retirementSpending.startAge - userData.currentAge);
+  if (year >= retirementStartYear) {
+    let annualAmount = retirementSpending.monthlyAmount * 12;
+    if (retirementSpending.yearlyDecreasePercent) {
+      const yearsSinceStart = year - retirementStartYear;
+      annualAmount *= Math.pow(1 - retirementSpending.yearlyDecreasePercent / 100, yearsSinceStart);
+    }
+    totalSpending += annualAmount;
+  }
+
+  // Spending goals
+  userData.spendingGoals.forEach(goal => {
+    let shouldInclude = false;
+    if (goal.isOneTime) {
+      // One-time goals only occur in the start year
+      shouldInclude = year === goal.startYear;
+    } else {
+      // Ongoing goals occur from start to end year
+      shouldInclude = year >= goal.startYear && (!goal.endYear || year <= goal.endYear);
+    }
+
+    if (shouldInclude) {
+      let amount = goal.amount;
+      if (goal.inflationAdjusted) {
+        const yearsFromNow = year - new Date().getFullYear();
+        amount *= Math.pow(1 + inflationRate, yearsFromNow);
+      }
+      totalSpending += amount;
+    }
+  });
+
+  return totalSpending;
+}
+
+export function calculateAnnualIncome(userData: UserData, year: number, inflationRate: number = 0.03): number {
+  let totalIncome = 0;
+
+  userData.incomeEvents.forEach(event => {
+    const startYear = new Date().getFullYear() + (event.startAge - userData.currentAge);
+    const endYear = event.endAge ? new Date().getFullYear() + (event.endAge - userData.currentAge) : userData.lifeExpectancy + new Date().getFullYear() - userData.currentAge;
+
+    let shouldInclude = false;
+    if (event.isOneTime) {
+      // One-time events only occur in the start year
+      shouldInclude = year === startYear;
+    } else {
+      // Ongoing events occur from start to end year
+      shouldInclude = year >= startYear && year <= endYear;
+    }
+
+    if (shouldInclude) {
+      let amount = event.amount;
+      if (event.colaType === 'inflation_adjusted') {
+        const yearsFromNow = year - new Date().getFullYear();
+        amount *= Math.pow(1 + inflationRate, yearsFromNow);
+      }
+      totalIncome += amount;
+    }
+  });
+
+  return totalIncome;
+}
+
 export function runSimulation(userData: UserData): {probability: number, median: number[], downside: number[], years: number[]} {
   const currentYear = new Date().getFullYear()
   const yearsToRetire = userData.retirementAge - userData.currentAge
   const retirementYear = currentYear + yearsToRetire
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1
-  const realReturns: Record<string, number> = {conservative: 0.03, moderate: 0.045, high: 0.06}
-  const vols: Record<string, number> = {conservative: 0.05, moderate: 0.10, high: 0.15}
-  const mean = realReturns[userData.riskLevel]
-  const sigma = vols[userData.riskLevel]
+  const { mean, sigma } = getPortfolioReturns(userData.portfolioAssumptions);
   const numSims = 5000
   let successCount = 0
   const portfolioPaths: number[][] = []
@@ -27,15 +102,21 @@ export function runSimulation(userData: UserData): {probability: number, median:
       const year = currentYear + i
       const r = mean + sigma * gaussianRandom()
       balance *= (1 + r)
+      // Calculate spending for this year (includes retirement spending + spending goals)
+      const spending = calculateAnnualSpending(userData, year);
+
+      // Calculate income for this year (includes income events + annual savings if pre-retirement)
+      let income = calculateAnnualIncome(userData, year);
       if(year < retirementYear){
-        balance += userData.annualSavings
-      }else{
-        const netOutflow = userData.monthlyRetirementSpending * 12 - userData.ssAmount
-        if(balance < netOutflow){
-          failed = true
-        }
-        balance -= netOutflow
-        if(balance < 0) balance = 0
+        income += userData.annualSavings;  // Add annual savings pre-retirement
+      }
+
+      // Apply net cash flow
+      const netFlow = income - spending; // Positive = surplus, negative = deficit
+      balance += netFlow;
+      if(balance < 0){
+        failed = true;
+        balance = 0;
       }
       path.push(balance)
     }
