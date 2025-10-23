@@ -15,8 +15,8 @@ const TypeButton = styled.button`
   font-size: 1rem;
   white-space: normal;
   text-align: center;
-  color: green;
-  border: 1px solid green;
+  color: #d2691e;
+  border: 1px solid #d2691e;
   background: white;
   border-radius: 4px;
   cursor: pointer;
@@ -27,8 +27,8 @@ const TypeButton = styled.button`
 
   &:hover {
     color: white;
-    background-color: green;
-    border-color: green;
+    background-color: #d2691e;
+    border-color: #d2691e;
   }
 
   &:hover .icon-circle {
@@ -37,8 +37,8 @@ const TypeButton = styled.button`
 `;
 
 const IconCircle = styled.span`
-  color: green;
-  background-color: rgba(0, 128, 0, 0.1);
+  color: #d2691e;
+  background-color: rgba(210, 105, 30, 0.1);
   border-radius: 50%;
   padding: 0.25rem;
   font-size: 0.9rem;

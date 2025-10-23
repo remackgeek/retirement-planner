@@ -315,8 +315,8 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                   <span
                     style={{
                       marginRight: '0.5rem',
-                      color: 'green',
-                      backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                      color: '#d2691e',
+                      backgroundColor: 'rgba(210, 105, 30, 0.1)',
                       borderRadius: '50%',
                       padding: '0.25rem',
                       fontSize: '0.9rem',
