@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
+import SpendingGoalTypeSelectionDialog from '../dialogs/SpendingGoalTypeSelectionDialog';
+import AddSpendingGoalDialog from '../dialogs/AddSpendingGoalDialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
 
 const Container = styled.div`
@@ -97,7 +99,11 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
   onUpdate,
   onDelete,
 }) => {
-  const [isAdding, setIsAdding] = useState(false);
+  const [selectionDialogVisible, setSelectionDialogVisible] = useState(false);
+  const [addDialogVisible, setAddDialogVisible] = useState(false);
+  const [selectedType, setSelectedType] = useState<SpendingGoal['type'] | null>(
+    null
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     type: 'charity' as SpendingGoal['type'],
@@ -109,14 +115,22 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
     inflationAdjusted: true,
   });
 
+  const handleTypeSelect = (type: SpendingGoal['type']) => {
+    setSelectedType(type);
+    setAddDialogVisible(true);
+  };
+
+  const handleAddGoal = (goal: Omit<SpendingGoal, 'id'>) => {
+    onAdd(goal);
+    setAddDialogVisible(false);
+    setSelectedType(null);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingId) {
       onUpdate(editingId, formData);
       setEditingId(null);
-    } else {
-      onAdd(formData);
-      setIsAdding(false);
     }
     setFormData({
       type: 'charity',
@@ -156,16 +170,32 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
     other: 'Other Expense',
   };
 
+  const goalTypeSymbols: Record<SpendingGoal['type'], string> = {
+    monthly_retirement: '$',
+    charity: '♡',
+    dependent_support: '&',
+    healthcare: '⚕',
+    home_purchase: '⌂',
+    education: '∇',
+    renovation: '⚒',
+    vacation: '✈',
+    vehicle: 'V',
+    wedding: '⚭',
+    other: '●',
+  };
+
   return (
     <Container>
       <Header>
         <h3>Spending Goals</h3>
-        {!isAdding && !editingId && (
-          <LargeButton onClick={() => setIsAdding(true)}>Add Goal</LargeButton>
+        {!editingId && (
+          <LargeButton onClick={() => setSelectionDialogVisible(true)}>
+            Add Goal
+          </LargeButton>
         )}
       </Header>
 
-      {(isAdding || editingId) && (
+      {editingId && (
         <Form onSubmit={handleSubmit}>
           <Select
             value={formData.type}
@@ -257,7 +287,6 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
             <Button
               type='button'
               onClick={() => {
-                setIsAdding(false);
                 setEditingId(null);
                 setFormData({
                   type: 'charity',
@@ -281,11 +310,31 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
         .map((goal) => (
           <GoalItem key={goal.id}>
             <GoalInfo>
-              <strong>
-                {goalTypeLabels[goal.type]}
-                {goal.name && ` - ${goal.name}`}
-              </strong>
-              <br />${goal.amount.toLocaleString()}
+              <div style={{ marginBottom: '0.5rem' }}>
+                <strong>
+                  <span
+                    style={{
+                      marginRight: '0.5rem',
+                      color: 'green',
+                      backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                      borderRadius: '50%',
+                      padding: '0.25rem',
+                      fontSize: '0.9rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '1.5rem',
+                      height: '1.5rem',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    {goalTypeSymbols[goal.type]}
+                  </span>
+                  {goalTypeLabels[goal.type]}
+                  {goal.name && ` - ${goal.name}`}
+                </strong>
+              </div>
+              ${goal.amount.toLocaleString()}
               {goal.isOneTime ? ' one-time in ' : ' annually from '}
               {goal.startYear}
               {goal.endYear && !goal.isOneTime && ` to ${goal.endYear}`}
@@ -300,6 +349,22 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
             </Actions>
           </GoalItem>
         ))}
+
+      <SpendingGoalTypeSelectionDialog
+        visible={selectionDialogVisible}
+        onHide={() => setSelectionDialogVisible(false)}
+        onSelectType={handleTypeSelect}
+      />
+
+      <AddSpendingGoalDialog
+        visible={addDialogVisible}
+        onHide={() => {
+          setAddDialogVisible(false);
+          setSelectedType(null);
+        }}
+        onSave={handleAddGoal}
+        initialType={selectedType || undefined}
+      />
     </Container>
   );
 };
