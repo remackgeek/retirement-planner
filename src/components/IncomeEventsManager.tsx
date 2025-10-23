@@ -92,6 +92,7 @@ const Checkbox = styled.input`
 
 interface IncomeEventsManagerProps {
   events: IncomeEvent[];
+  userData: any;
   onAdd: (event: Omit<IncomeEvent, 'id'>) => void;
   onUpdate: (id: string, event: Partial<IncomeEvent>) => void;
   onDelete: (id: string) => void;
@@ -99,6 +100,7 @@ interface IncomeEventsManagerProps {
 
 export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
   events,
+  userData,
   onAdd,
   onUpdate,
   onDelete,
@@ -363,41 +365,63 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
         </Form>
       )}
 
-      {events.map((event) => (
-        <EventItem key={event.id}>
-          <EventInfo>
-            <div style={{ marginBottom: '0.5rem' }}>
-              <strong>
-                <i
-                  className={eventTypeIcons[event.type]}
-                  style={{ marginRight: '0.5rem' }}
-                ></i>
-                {eventTypeLabels[event.type]}
-                {event.name && ` - ${event.name}`}
-              </strong>
-            </div>
-            ${event.amount.toLocaleString()}
-            {event.isOneTime
-              ? ' one-time at age '
-              : ' annually starting at age '}
-            {event.startAge}
-            {event.endAge && !event.isOneTime && ` until age ${event.endAge}`}
-            {event.isOneTime && ' (one-time event)'}
-            <br />
-            {event.taxStatus === 'before_tax'
-              ? 'Before tax'
-              : 'After tax'} •{' '}
-            {event.colaType === 'fixed' ? 'Fixed amount' : 'Inflation adjusted'}
-            {event.syncWithEstimate && ' • Synced with estimate'}
-          </EventInfo>
-          <Actions>
-            <DeleteButton onClick={() => onDelete(event.id)}>
-              Delete
-            </DeleteButton>
-            <Button onClick={() => startEdit(event)}>Edit</Button>
-          </Actions>
-        </EventItem>
-      ))}
+      {[...events]
+        .sort((a, b) => {
+          const aStartYear =
+            new Date().getFullYear() + (a.startAge - userData.currentAge);
+          const bStartYear =
+            new Date().getFullYear() + (b.startAge - userData.currentAge);
+          return aStartYear - bStartYear;
+        })
+        .map((event) => (
+          <EventItem key={event.id}>
+            <EventInfo>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <strong>
+                  <i
+                    className={eventTypeIcons[event.type]}
+                    style={{
+                      marginRight: '0.5rem',
+                      color: 'green',
+                      backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                      borderRadius: '50%',
+                      padding: '0.3125rem 0.25rem 0.25rem 0.25rem',
+                      fontSize: '0.8rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '1.5rem',
+                      height: '1.5rem',
+                    }}
+                  ></i>
+                  {eventTypeLabels[event.type]}
+                  {event.name && ` - ${event.name}`}
+                </strong>
+              </div>
+              ${event.amount.toLocaleString()}
+              {event.isOneTime
+                ? ' one-time at age '
+                : ' annually starting at age '}
+              {event.startAge}
+              {event.endAge && !event.isOneTime && ` until age ${event.endAge}`}
+              {event.isOneTime && ' (one-time event)'}
+              <br />
+              {event.taxStatus === 'before_tax'
+                ? 'Before tax'
+                : 'After tax'} •{' '}
+              {event.colaType === 'fixed'
+                ? 'Fixed amount'
+                : 'Inflation adjusted'}
+              {event.syncWithEstimate && ' • Synced with estimate'}
+            </EventInfo>
+            <Actions>
+              <DeleteButton onClick={() => onDelete(event.id)}>
+                Delete
+              </DeleteButton>
+              <Button onClick={() => startEdit(event)}>Edit</Button>
+            </Actions>
+          </EventItem>
+        ))}
 
       <EventTypeSelectionDialog
         visible={selectionDialogVisible}

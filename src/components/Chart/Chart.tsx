@@ -25,17 +25,6 @@ ChartJS.register(
   Legend
 );
 
-const eventTypeLabels: Record<string, string> = {
-  social_security: 'Social Security',
-  annuity_income: 'Annuity Income',
-  inheritance: 'Inheritance',
-  pension_income: 'Pension Income',
-  rental_income: 'Rental Income',
-  sale_of_property: 'Sale of Property/Downsize',
-  work_during_retirement: 'Work During Retirement',
-  other_income: 'Other Income',
-};
-
 const eventTypeIcons: Record<string, string> = {
   social_security: 'pi pi-shield',
   annuity_income: 'pi pi-money-bill',

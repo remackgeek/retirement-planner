@@ -276,28 +276,30 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
         </Form>
       )}
 
-      {goals.map((goal) => (
-        <GoalItem key={goal.id}>
-          <GoalInfo>
-            <strong>
-              {goalTypeLabels[goal.type]}
-              {goal.name && ` - ${goal.name}`}
-            </strong>
-            <br />${goal.amount.toLocaleString()}
-            {goal.isOneTime ? ' one-time in ' : ' annually from '}
-            {goal.startYear}
-            {goal.endYear && !goal.isOneTime && ` to ${goal.endYear}`}
-            {goal.isOneTime && ' (one-time event)'}
-            {goal.inflationAdjusted && ' (inflation adjusted)'}
-          </GoalInfo>
-          <Actions>
-            <Button onClick={() => startEdit(goal)}>Edit</Button>
-            <DeleteButton onClick={() => onDelete(goal.id)}>
-              Delete
-            </DeleteButton>
-          </Actions>
-        </GoalItem>
-      ))}
+      {[...goals]
+        .sort((a, b) => a.startYear - b.startYear)
+        .map((goal) => (
+          <GoalItem key={goal.id}>
+            <GoalInfo>
+              <strong>
+                {goalTypeLabels[goal.type]}
+                {goal.name && ` - ${goal.name}`}
+              </strong>
+              <br />${goal.amount.toLocaleString()}
+              {goal.isOneTime ? ' one-time in ' : ' annually from '}
+              {goal.startYear}
+              {goal.endYear && !goal.isOneTime && ` to ${goal.endYear}`}
+              {goal.isOneTime && ' (one-time event)'}
+              {goal.inflationAdjusted && ' (inflation adjusted)'}
+            </GoalInfo>
+            <Actions>
+              <Button onClick={() => startEdit(goal)}>Edit</Button>
+              <DeleteButton onClick={() => onDelete(goal.id)}>
+                Delete
+              </DeleteButton>
+            </Actions>
+          </GoalItem>
+        ))}
     </Container>
   );
 };

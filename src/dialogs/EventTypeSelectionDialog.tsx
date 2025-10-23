@@ -16,6 +16,32 @@ const TypeButton = styled(Button)`
   font-size: 1rem;
   white-space: normal;
   text-align: center;
+  color: green !important;
+  border-color: green !important;
+
+  &:hover {
+    color: white !important;
+    background-color: green !important;
+    border-color: green !important;
+  }
+
+  .p-button-icon {
+    color: green !important;
+    background-color: rgba(0, 128, 0, 0.1) !important;
+    border-radius: 50% !important;
+    padding: 0.3125rem !important;
+    font-size: 0.8rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+    margin-right: 0.5rem !important;
+  }
+
+  .p-button-icon-only {
+    margin: 0 !important;
+  }
 `;
 
 interface EventTypeSelectionDialogProps {

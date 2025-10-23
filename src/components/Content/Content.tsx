@@ -114,6 +114,7 @@ const Content: React.FC = () => {
           <ManagerSection>
             <IncomeEventsManager
               events={activeScenario.incomeEvents}
+              userData={activeScenario}
               onAdd={handleAddIncomeEvent}
               onUpdate={handleUpdateIncomeEvent}
               onDelete={handleDeleteIncomeEvent}
