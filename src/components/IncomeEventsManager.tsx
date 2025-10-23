@@ -179,15 +179,15 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
     other_income: 'Other Income',
   };
 
-  const eventTypeIcons: Record<IncomeEventType, string> = {
-    social_security: 'pi pi-shield',
-    annuity_income: 'pi pi-money-bill',
-    inheritance: 'pi pi-gift',
-    pension_income: 'pi pi-briefcase',
-    rental_income: 'pi pi-home',
-    sale_of_property: 'pi pi-arrow-right-arrow-left',
-    work_during_retirement: 'pi pi-cog',
-    other_income: 'pi pi-ellipsis-h',
+  const eventTypeSymbols: Record<IncomeEventType, string> = {
+    social_security: '🛡',
+    annuity_income: '$',
+    inheritance: '⬇',
+    pension_income: '⚒',
+    rental_income: '⌂',
+    sale_of_property: '⇄',
+    work_during_retirement: '⚙',
+    other_income: '●',
   };
 
   const getDefaultCOLA = (
@@ -378,22 +378,24 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
             <EventInfo>
               <div style={{ marginBottom: '0.5rem' }}>
                 <strong>
-                  <i
-                    className={eventTypeIcons[event.type]}
+                  <span
                     style={{
                       marginRight: '0.5rem',
                       color: 'green',
                       backgroundColor: 'rgba(0, 128, 0, 0.1)',
                       borderRadius: '50%',
-                      padding: '0.3125rem 0.25rem 0.25rem 0.25rem',
-                      fontSize: '0.8rem',
+                      padding: '0.25rem',
+                      fontSize: '0.9rem',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       width: '1.5rem',
                       height: '1.5rem',
+                      fontWeight: 'bold',
                     }}
-                  ></i>
+                  >
+                    {eventTypeSymbols[event.type]}
+                  </span>
                   {eventTypeLabels[event.type]}
                   {event.name && ` - ${event.name}`}
                 </strong>

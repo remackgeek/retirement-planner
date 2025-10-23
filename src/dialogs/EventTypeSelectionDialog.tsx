@@ -11,37 +11,44 @@ const GridContainer = styled.div`
   padding: 1rem 0;
 `;
 
-const TypeButton = styled(Button)`
+const TypeButton = styled.button`
   padding: 1rem;
   font-size: 1rem;
   white-space: normal;
   text-align: center;
-  color: green !important;
-  border-color: green !important;
+  color: green;
+  border: 1px solid green;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 
   &:hover {
-    color: white !important;
-    background-color: green !important;
-    border-color: green !important;
+    color: white;
+    background-color: green;
+    border-color: green;
   }
 
-  .p-button-icon {
-    color: green !important;
-    background-color: rgba(0, 128, 0, 0.1) !important;
-    border-radius: 50% !important;
-    padding: 0.3125rem !important;
-    font-size: 0.8rem !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 1.5rem !important;
-    height: 1.5rem !important;
-    margin-right: 0.5rem !important;
+  &:hover .icon-circle {
+    background-color: rgba(255, 255, 255, 0.2);
   }
+`;
 
-  .p-button-icon-only {
-    margin: 0 !important;
-  }
+const IconCircle = styled.span`
+  color: green;
+  background-color: rgba(0, 128, 0, 0.1);
+  border-radius: 50%;
+  padding: 0.25rem;
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-weight: bold;
 `;
 
 interface EventTypeSelectionDialogProps {
@@ -61,15 +68,15 @@ const eventTypeLabels: Record<IncomeEventType, string> = {
   other_income: 'Other Income',
 };
 
-const eventTypeIcons: Record<IncomeEventType, string> = {
-  social_security: 'pi pi-shield',
-  annuity_income: 'pi pi-money-bill',
-  inheritance: 'pi pi-gift',
-  pension_income: 'pi pi-briefcase',
-  rental_income: 'pi pi-home',
-  sale_of_property: 'pi pi-arrow-right-arrow-left',
-  work_during_retirement: 'pi pi-cog',
-  other_income: 'pi pi-ellipsis-h',
+const eventTypeSymbols: Record<IncomeEventType, string> = {
+  social_security: '🛡',
+  annuity_income: '$',
+  inheritance: '⬇',
+  pension_income: '⚒',
+  rental_income: '⌂',
+  sale_of_property: '⇄',
+  work_during_retirement: '⚙',
+  other_income: '●',
 };
 
 const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
@@ -94,11 +101,13 @@ const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
         {Object.entries(eventTypeLabels).map(([type, label]) => (
           <TypeButton
             key={type}
-            label={`Add ${label}`}
-            icon={eventTypeIcons[type as IncomeEventType]}
             onClick={() => handleTypeSelect(type as IncomeEventType)}
-            className='p-button-outlined'
-          />
+          >
+            <IconCircle className='icon-circle'>
+              {eventTypeSymbols[type as IncomeEventType]}
+            </IconCircle>
+            Add {label}
+          </TypeButton>
         ))}
       </GridContainer>
     </Dialog>

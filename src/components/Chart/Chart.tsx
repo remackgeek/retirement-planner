@@ -14,6 +14,7 @@ import {
   calculateAnnualSpending,
   calculateAnnualIncome,
 } from '../../services/SimulationService';
+import annotationPlugin from 'chartjs-plugin-annotation';
 
 ChartJS.register(
   CategoryScale,
@@ -22,7 +23,8 @@ ChartJS.register(
   LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  annotationPlugin
 );
 
 const eventTypeIcons: Record<string, string> = {
@@ -34,6 +36,18 @@ const eventTypeIcons: Record<string, string> = {
   sale_of_property: 'pi pi-arrow-right-arrow-left',
   work_during_retirement: 'pi pi-cog',
   other_income: 'pi pi-ellipsis-h',
+};
+
+// Unicode symbols for chart annotations and table
+const eventTypeSymbols: Record<string, string> = {
+  social_security: '🛡',
+  annuity_income: '$',
+  inheritance: '⬇',
+  pension_income: '⚒',
+  rental_income: '⌂',
+  sale_of_property: '⇄',
+  work_during_retirement: '⚙',
+  other_income: '●',
 };
 
 const Projections = ({
@@ -66,6 +80,45 @@ const Projections = ({
       },
     ],
   };
+
+  // Generate annotations for income events
+  const annotations: any = {};
+  years.forEach((year: number, index: number) => {
+    const startingEvents = userData.incomeEvents.filter((event: any) => {
+      const startYear =
+        new Date().getFullYear() + (event.startAge - userData.currentAge);
+      return startYear === year;
+    });
+
+    if (startingEvents.length > 0) {
+      // Create emoji stack for the label
+      const emojiStack = startingEvents
+        .map((event: any) => eventTypeSymbols[event.type])
+        .join(' ');
+
+      annotations[`event_${year}`] = {
+        type: 'label',
+        xValue: index,
+        yValue: 0,
+        content: emojiStack,
+        backgroundColor: 'rgba(0, 128, 0, 0.1)',
+        borderColor: 'green',
+        borderWidth: 1,
+        borderRadius: 12,
+        color: 'green',
+        font: {
+          size: 9,
+        },
+        padding: 3,
+        position: 'center',
+        yAdjust: -18,
+        callout: {
+          enabled: false,
+        },
+      };
+    }
+  });
+
   const options = {
     responsive: true,
     plugins: {
@@ -73,6 +126,9 @@ const Projections = ({
       title: {
         display: true,
         text: "Projected Portfolio Value (Today's Dollars)",
+      },
+      annotation: {
+        annotations,
       },
     },
   };
@@ -270,23 +326,25 @@ const Projections = ({
                             }}
                           >
                             {startingEvents.map((event: any) => (
-                              <i
+                              <span
                                 key={event.id}
-                                className={eventTypeIcons[event.type]}
                                 style={{
                                   marginRight: '0.25rem',
                                   color: 'green',
                                   backgroundColor: 'rgba(0, 128, 0, 0.1)',
                                   borderRadius: '50%',
-                                  padding: '0.3125rem 0.25rem 0.25rem 0.25rem',
-                                  fontSize: '0.8rem',
+                                  padding: '0.25rem',
+                                  fontSize: '0.9rem',
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   width: '1.5rem',
                                   height: '1.5rem',
+                                  fontWeight: 'bold',
                                 }}
-                              ></i>
+                              >
+                                {eventTypeSymbols[event.type]}
+                              </span>
                             ))}
                           </div>
                         )}
