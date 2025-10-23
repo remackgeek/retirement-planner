@@ -144,7 +144,9 @@ const Sidebar: React.FC = () => {
               <dt>Monthly Retirement Spending:</dt>
               <dd>
                 $
-                {activeScenario.retirementSpending.monthlyAmount.toLocaleString()}
+                {(
+                  activeScenario.retirementSpending?.monthlyAmount || 0
+                ).toLocaleString()}
               </dd>
               <dt>Spending Goals:</dt>
               <dd>{activeScenario.spendingGoals.length}</dd>

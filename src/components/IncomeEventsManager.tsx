@@ -6,6 +6,13 @@ const Container = styled.div`
   margin: 1rem 0;
 `;
 
+const Header = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+`;
+
 const EventItem = styled.div`
   display: flex;
   justify-content: space-between;
@@ -36,6 +43,11 @@ const Button = styled.button`
   &:hover {
     background: #0056b3;
   }
+`;
+
+const LargeButton = styled(Button)`
+  padding: 0.5rem 1rem;
+  font-size: 1.1rem;
 `;
 
 const DeleteButton = styled(Button)`
@@ -147,11 +159,20 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
     other_income: 'Other Income',
   };
 
-  const getDefaultCOLA = (type: IncomeEventType): 'fixed' | 'inflation_adjusted' => {
+  const getDefaultCOLA = (
+    type: IncomeEventType
+  ): 'fixed' | 'inflation_adjusted' => {
     const inflationAdjustedTypes: IncomeEventType[] = [
-      'social_security', 'inheritance', 'rental_income', 'sale_of_property', 'work_during_retirement', 'other_income'
+      'social_security',
+      'inheritance',
+      'rental_income',
+      'sale_of_property',
+      'work_during_retirement',
+      'other_income',
     ];
-    return inflationAdjustedTypes.includes(type) ? 'inflation_adjusted' : 'fixed';
+    return inflationAdjustedTypes.includes(type)
+      ? 'inflation_adjusted'
+      : 'fixed';
   };
 
   const handleTypeChange = (type: IncomeEventType) => {
@@ -165,60 +186,79 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
 
   return (
     <Container>
-      <h3>Income Events</h3>
-      {!isAdding && !editingId && (
-        <Button onClick={() => setIsAdding(true)}>Add Income Event</Button>
-      )}
+      <Header>
+        <h3>Income Events</h3>
+        {!isAdding && !editingId && (
+          <LargeButton onClick={() => setIsAdding(true)}>Add Event</LargeButton>
+        )}
+      </Header>
 
       {(isAdding || editingId) && (
         <Form onSubmit={handleSubmit}>
           <Select
             value={formData.type}
-            onChange={(e) => handleTypeChange(e.target.value as IncomeEventType)}
+            onChange={(e) =>
+              handleTypeChange(e.target.value as IncomeEventType)
+            }
           >
             {Object.entries(eventTypeLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+              <option key={value} value={value}>
+                {label}
+              </option>
             ))}
           </Select>
 
-          {(formData.type === 'other_income') && (
+          {formData.type === 'other_income' && (
             <Input
-              type="text"
-              placeholder="Event name"
+              type='text'
+              placeholder='Event name'
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
               required
             />
           )}
 
           <Input
-            type="number"
-            placeholder="Annual amount"
+            type='number'
+            placeholder='Annual amount'
             value={formData.amount}
-            onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })}
+            onChange={(e) =>
+              setFormData({ ...formData, amount: Number(e.target.value) })
+            }
             required
           />
 
           <Input
-            type="number"
-            placeholder="Start age"
+            type='number'
+            placeholder='Start age'
             value={formData.startAge}
-            onChange={(e) => setFormData({ ...formData, startAge: Number(e.target.value) })}
+            onChange={(e) =>
+              setFormData({ ...formData, startAge: Number(e.target.value) })
+            }
             required
           />
 
           <Input
-            type="number"
-            placeholder="End age (optional)"
+            type='number'
+            placeholder='End age (optional)'
             value={formData.endAge || ''}
-            onChange={(e) => setFormData({ ...formData, endAge: e.target.value ? Number(e.target.value) : undefined })}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                endAge: e.target.value ? Number(e.target.value) : undefined,
+              })
+            }
           />
 
           <label>
             <Checkbox
-              type="checkbox"
+              type='checkbox'
               checked={formData.isOneTime}
-              onChange={(e) => setFormData({ ...formData, isOneTime: e.target.checked })}
+              onChange={(e) =>
+                setFormData({ ...formData, isOneTime: e.target.checked })
+              }
             />
             One-time event (occurs only in start year)
           </label>
@@ -226,49 +266,67 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           {formData.type !== 'social_security' && (
             <Select
               value={formData.taxStatus}
-              onChange={(e) => setFormData({ ...formData, taxStatus: e.target.value as 'before_tax' | 'after_tax' })}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  taxStatus: e.target.value as 'before_tax' | 'after_tax',
+                })
+              }
             >
-              <option value="before_tax">Before Tax</option>
-              <option value="after_tax">After Tax</option>
+              <option value='before_tax'>Before Tax</option>
+              <option value='after_tax'>After Tax</option>
             </Select>
           )}
 
           <Select
             value={formData.colaType}
-            onChange={(e) => setFormData({ ...formData, colaType: e.target.value as 'fixed' | 'inflation_adjusted' })}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                colaType: e.target.value as 'fixed' | 'inflation_adjusted',
+              })
+            }
           >
-            <option value="fixed">Fixed Amount</option>
-            <option value="inflation_adjusted">Inflation Adjusted</option>
+            <option value='fixed'>Fixed Amount</option>
+            <option value='inflation_adjusted'>Inflation Adjusted</option>
           </Select>
 
           {formData.type === 'social_security' && (
             <label>
               <Checkbox
-                type="checkbox"
+                type='checkbox'
                 checked={formData.syncWithEstimate}
-                onChange={(e) => setFormData({ ...formData, syncWithEstimate: e.target.checked })}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    syncWithEstimate: e.target.checked,
+                  })
+                }
               />
               Sync with SSA estimate
             </label>
           )}
 
           <div>
-            <Button type="submit">{editingId ? 'Update' : 'Add'} Event</Button>
-            <Button type="button" onClick={() => {
-              setIsAdding(false);
-              setEditingId(null);
-              setFormData({
-                type: 'social_security',
-                name: '',
-                amount: 0,
-                startAge: 65,
-                endAge: undefined,
-                isOneTime: false,
-                taxStatus: 'before_tax',
-                colaType: 'inflation_adjusted',
-                syncWithEstimate: false,
-              });
-            }}>
+            <Button type='submit'>{editingId ? 'Update' : 'Add'} Event</Button>
+            <Button
+              type='button'
+              onClick={() => {
+                setIsAdding(false);
+                setEditingId(null);
+                setFormData({
+                  type: 'social_security',
+                  name: '',
+                  amount: 0,
+                  startAge: 65,
+                  endAge: undefined,
+                  isOneTime: false,
+                  taxStatus: 'before_tax',
+                  colaType: 'inflation_adjusted',
+                  syncWithEstimate: false,
+                });
+              }}
+            >
               Cancel
             </Button>
           </div>
@@ -278,18 +336,29 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
       {events.map((event) => (
         <EventItem key={event.id}>
           <EventInfo>
-            <strong>{eventTypeLabels[event.type]}{event.name && ` - ${event.name}`}</strong>
-            <br />
-            ${event.amount.toLocaleString()}{event.isOneTime ? ' one-time at age ' : ' annually starting at age '}{event.startAge}
+            <strong>
+              {eventTypeLabels[event.type]}
+              {event.name && ` - ${event.name}`}
+            </strong>
+            <br />${event.amount.toLocaleString()}
+            {event.isOneTime
+              ? ' one-time at age '
+              : ' annually starting at age '}
+            {event.startAge}
             {event.endAge && !event.isOneTime && ` until age ${event.endAge}`}
             {event.isOneTime && ' (one-time event)'}
             <br />
-            {event.taxStatus === 'before_tax' ? 'Before tax' : 'After tax'} • {event.colaType === 'fixed' ? 'Fixed amount' : 'Inflation adjusted'}
+            {event.taxStatus === 'before_tax'
+              ? 'Before tax'
+              : 'After tax'} •{' '}
+            {event.colaType === 'fixed' ? 'Fixed amount' : 'Inflation adjusted'}
             {event.syncWithEstimate && ' • Synced with estimate'}
           </EventInfo>
           <Actions>
             <Button onClick={() => startEdit(event)}>Edit</Button>
-            <DeleteButton onClick={() => onDelete(event.id)}>Delete</DeleteButton>
+            <DeleteButton onClick={() => onDelete(event.id)}>
+              Delete
+            </DeleteButton>
           </Actions>
         </EventItem>
       ))}

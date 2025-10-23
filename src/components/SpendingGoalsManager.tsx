@@ -6,6 +6,13 @@ const Container = styled.div`
   margin: 1rem 0;
 `;
 
+const Header = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+`;
+
 const GoalItem = styled.div`
   display: flex;
   justify-content: space-between;
@@ -36,6 +43,11 @@ const Button = styled.button`
   &:hover {
     background: #0056b3;
   }
+`;
+
+const LargeButton = styled(Button)`
+  padding: 0.5rem 1rem;
+  font-size: 1.1rem;
 `;
 
 const DeleteButton = styled(Button)`
@@ -146,88 +158,118 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
 
   return (
     <Container>
-      <h3>Spending Goals</h3>
-      {!isAdding && !editingId && (
-        <Button onClick={() => setIsAdding(true)}>Add Spending Goal</Button>
-      )}
+      <Header>
+        <h3>Spending Goals</h3>
+        {!isAdding && !editingId && (
+          <LargeButton onClick={() => setIsAdding(true)}>Add Goal</LargeButton>
+        )}
+      </Header>
 
       {(isAdding || editingId) && (
         <Form onSubmit={handleSubmit}>
           <Select
             value={formData.type}
-            onChange={(e) => setFormData({ ...formData, type: e.target.value as SpendingGoal['type'] })}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                type: e.target.value as SpendingGoal['type'],
+              })
+            }
           >
             {Object.entries(goalTypeLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+              <option key={value} value={value}>
+                {label}
+              </option>
             ))}
           </Select>
 
           {formData.type === 'other' && (
             <Input
-              type="text"
-              placeholder="Goal name"
+              type='text'
+              placeholder='Goal name'
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
               required
             />
           )}
 
           <Input
-            type="number"
-            placeholder="Annual amount"
+            type='number'
+            placeholder='Annual amount'
             value={formData.amount}
-            onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })}
+            onChange={(e) =>
+              setFormData({ ...formData, amount: Number(e.target.value) })
+            }
             required
           />
 
           <Input
-            type="number"
-            placeholder="Start year"
+            type='number'
+            placeholder='Start year'
             value={formData.startYear}
-            onChange={(e) => setFormData({ ...formData, startYear: Number(e.target.value) })}
+            onChange={(e) =>
+              setFormData({ ...formData, startYear: Number(e.target.value) })
+            }
             required
           />
 
           <Input
-            type="number"
-            placeholder="End year (optional)"
+            type='number'
+            placeholder='End year (optional)'
             value={formData.endYear || ''}
-            onChange={(e) => setFormData({ ...formData, endYear: e.target.value ? Number(e.target.value) : undefined })}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                endYear: e.target.value ? Number(e.target.value) : undefined,
+              })
+            }
           />
 
           <label>
             <Checkbox
-              type="checkbox"
+              type='checkbox'
               checked={formData.isOneTime}
-              onChange={(e) => setFormData({ ...formData, isOneTime: e.target.checked })}
+              onChange={(e) =>
+                setFormData({ ...formData, isOneTime: e.target.checked })
+              }
             />
             One-time event (occurs only in start year)
           </label>
 
           <label>
             <Checkbox
-              type="checkbox"
+              type='checkbox'
               checked={formData.inflationAdjusted}
-              onChange={(e) => setFormData({ ...formData, inflationAdjusted: e.target.checked })}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  inflationAdjusted: e.target.checked,
+                })
+              }
             />
             Inflation adjusted
           </label>
 
           <div>
-            <Button type="submit">{editingId ? 'Update' : 'Add'} Goal</Button>
-            <Button type="button" onClick={() => {
-              setIsAdding(false);
-              setEditingId(null);
-              setFormData({
-                type: 'charity',
-                name: '',
-                amount: 0,
-                startYear: new Date().getFullYear(),
-                endYear: undefined,
-                isOneTime: false,
-                inflationAdjusted: true,
-              });
-            }}>
+            <Button type='submit'>{editingId ? 'Update' : 'Add'} Goal</Button>
+            <Button
+              type='button'
+              onClick={() => {
+                setIsAdding(false);
+                setEditingId(null);
+                setFormData({
+                  type: 'charity',
+                  name: '',
+                  amount: 0,
+                  startYear: new Date().getFullYear(),
+                  endYear: undefined,
+                  isOneTime: false,
+                  inflationAdjusted: true,
+                });
+              }}
+            >
               Cancel
             </Button>
           </div>
@@ -237,16 +279,22 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
       {goals.map((goal) => (
         <GoalItem key={goal.id}>
           <GoalInfo>
-            <strong>{goalTypeLabels[goal.type]}{goal.name && ` - ${goal.name}`}</strong>
-            <br />
-            ${goal.amount.toLocaleString()}{goal.isOneTime ? ' one-time in ' : ' annually from '}{goal.startYear}
+            <strong>
+              {goalTypeLabels[goal.type]}
+              {goal.name && ` - ${goal.name}`}
+            </strong>
+            <br />${goal.amount.toLocaleString()}
+            {goal.isOneTime ? ' one-time in ' : ' annually from '}
+            {goal.startYear}
             {goal.endYear && !goal.isOneTime && ` to ${goal.endYear}`}
             {goal.isOneTime && ' (one-time event)'}
             {goal.inflationAdjusted && ' (inflation adjusted)'}
           </GoalInfo>
           <Actions>
             <Button onClick={() => startEdit(goal)}>Edit</Button>
-            <DeleteButton onClick={() => onDelete(goal.id)}>Delete</DeleteButton>
+            <DeleteButton onClick={() => onDelete(goal.id)}>
+              Delete
+            </DeleteButton>
           </Actions>
         </GoalItem>
       ))}
