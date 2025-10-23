@@ -25,6 +25,28 @@ ChartJS.register(
   Legend
 );
 
+const eventTypeLabels: Record<string, string> = {
+  social_security: 'Social Security',
+  annuity_income: 'Annuity Income',
+  inheritance: 'Inheritance',
+  pension_income: 'Pension Income',
+  rental_income: 'Rental Income',
+  sale_of_property: 'Sale of Property/Downsize',
+  work_during_retirement: 'Work During Retirement',
+  other_income: 'Other Income',
+};
+
+const eventTypeIcons: Record<string, string> = {
+  social_security: 'pi pi-shield',
+  annuity_income: 'pi pi-money-bill',
+  inheritance: 'pi pi-gift',
+  pension_income: 'pi pi-briefcase',
+  rental_income: 'pi pi-home',
+  sale_of_property: 'pi pi-arrow-right-arrow-left',
+  work_during_retirement: 'pi pi-cog',
+  other_income: 'pi pi-ellipsis-h',
+};
+
 const Projections = ({
   results,
   userData,
@@ -171,15 +193,19 @@ const Projections = ({
                     totalSpending - basicSpending
                   );
 
-                  // Other income events = total income minus basic SS and annual savings
-                  const basicIncome = isRetirement
-                    ? userData.incomeEvents.find(
-                        (e: any) => e.type === 'social_security'
-                      )?.amount || 0
-                    : userData.annualSavings;
-                  const otherIncomeEvents = Math.max(
-                    0,
-                    totalIncome - basicIncome
+                  // Other income events = all income events
+                  const otherIncomeEvents = calculateAnnualIncome(
+                    userData,
+                    year
+                  );
+
+                  const startingEvents = userData.incomeEvents.filter(
+                    (event: any) => {
+                      const startYear =
+                        new Date().getFullYear() +
+                        (event.startAge - userData.currentAge);
+                      return startYear === year;
+                    }
                   );
 
                   // Cash flow = income - spending for this year
@@ -190,6 +216,13 @@ const Projections = ({
                       <td
                         style={{ padding: '0.5rem', border: '1px solid #ddd' }}
                       >
+                        {startingEvents.map((event: any) => (
+                          <i
+                            key={event.id}
+                            className={eventTypeIcons[event.type]}
+                            style={{ marginRight: '0.5rem' }}
+                          ></i>
+                        ))}
                         {age} ({year})
                       </td>
                       <td

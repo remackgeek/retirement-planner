@@ -18,11 +18,12 @@ const Header = styled.div`
 const EventItem = styled.div`
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: 0.5rem;
   border: 1px solid #ddd;
   margin-bottom: 0.5rem;
   border-radius: 4px;
+  position: relative;
 `;
 
 const EventInfo = styled.div`
@@ -32,6 +33,9 @@ const EventInfo = styled.div`
 const Actions = styled.div`
   display: flex;
   gap: 0.5rem;
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.5rem;
 `;
 
 const Button = styled.button`
@@ -171,6 +175,17 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
     sale_of_property: 'Sale of Property/Downsize',
     work_during_retirement: 'Work During Retirement',
     other_income: 'Other Income',
+  };
+
+  const eventTypeIcons: Record<IncomeEventType, string> = {
+    social_security: 'pi pi-shield',
+    annuity_income: 'pi pi-money-bill',
+    inheritance: 'pi pi-gift',
+    pension_income: 'pi pi-briefcase',
+    rental_income: 'pi pi-home',
+    sale_of_property: 'pi pi-arrow-right-arrow-left',
+    work_during_retirement: 'pi pi-cog',
+    other_income: 'pi pi-ellipsis-h',
   };
 
   const getDefaultCOLA = (
@@ -351,11 +366,17 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
       {events.map((event) => (
         <EventItem key={event.id}>
           <EventInfo>
-            <strong>
-              {eventTypeLabels[event.type]}
-              {event.name && ` - ${event.name}`}
-            </strong>
-            <br />${event.amount.toLocaleString()}
+            <div style={{ marginBottom: '0.5rem' }}>
+              <strong>
+                <i
+                  className={eventTypeIcons[event.type]}
+                  style={{ marginRight: '0.5rem' }}
+                ></i>
+                {eventTypeLabels[event.type]}
+                {event.name && ` - ${event.name}`}
+              </strong>
+            </div>
+            ${event.amount.toLocaleString()}
             {event.isOneTime
               ? ' one-time at age '
               : ' annually starting at age '}
@@ -370,10 +391,10 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
             {event.syncWithEstimate && ' • Synced with estimate'}
           </EventInfo>
           <Actions>
-            <Button onClick={() => startEdit(event)}>Edit</Button>
             <DeleteButton onClick={() => onDelete(event.id)}>
               Delete
             </DeleteButton>
+            <Button onClick={() => startEdit(event)}>Edit</Button>
           </Actions>
         </EventItem>
       ))}

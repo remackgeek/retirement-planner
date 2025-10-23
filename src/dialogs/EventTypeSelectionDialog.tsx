@@ -35,6 +35,17 @@ const eventTypeLabels: Record<IncomeEventType, string> = {
   other_income: 'Other Income',
 };
 
+const eventTypeIcons: Record<IncomeEventType, string> = {
+  social_security: 'pi pi-shield',
+  annuity_income: 'pi pi-money-bill',
+  inheritance: 'pi pi-gift',
+  pension_income: 'pi pi-briefcase',
+  rental_income: 'pi pi-home',
+  sale_of_property: 'pi pi-arrow-right-arrow-left',
+  work_during_retirement: 'pi pi-cog',
+  other_income: 'pi pi-ellipsis-h',
+};
+
 const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
   visible,
   onHide,
@@ -58,6 +69,7 @@ const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
           <TypeButton
             key={type}
             label={`Add ${label}`}
+            icon={eventTypeIcons[type as IncomeEventType]}
             onClick={() => handleTypeSelect(type as IncomeEventType)}
             className='p-button-outlined'
           />
