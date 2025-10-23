@@ -216,13 +216,6 @@ const Projections = ({
                       <td
                         style={{ padding: '0.5rem', border: '1px solid #ddd' }}
                       >
-                        {startingEvents.map((event: any) => (
-                          <i
-                            key={event.id}
-                            className={eventTypeIcons[event.type]}
-                            style={{ marginRight: '0.5rem' }}
-                          ></i>
-                        ))}
                         {age} ({year})
                       </td>
                       <td
@@ -280,6 +273,34 @@ const Projections = ({
                           textAlign: 'right',
                         }}
                       >
+                        {startingEvents.length > 0 && (
+                          <div
+                            style={{
+                              marginBottom: '0.25rem',
+                              textAlign: 'left',
+                            }}
+                          >
+                            {startingEvents.map((event: any) => (
+                              <i
+                                key={event.id}
+                                className={eventTypeIcons[event.type]}
+                                style={{
+                                  marginRight: '0.25rem',
+                                  color: 'green',
+                                  backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                                  borderRadius: '50%',
+                                  padding: '0.3125rem 0.25rem 0.25rem 0.25rem',
+                                  fontSize: '0.8rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '1.5rem',
+                                  height: '1.5rem',
+                                }}
+                              ></i>
+                            ))}
+                          </div>
+                        )}
                         {otherIncomeEvents.toLocaleString(undefined, {
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
