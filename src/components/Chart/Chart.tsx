@@ -34,8 +34,12 @@ const Projections = ({
 }) => {
   if (!results) return null;
   const { probability, median, downside, years } = results;
+  const labels = years.map(
+    (_: number, index: number) =>
+      `${userData.currentAge + index} (${years[index]})`
+  );
   const data = {
-    labels: years,
+    labels,
     datasets: [
       {
         label: 'Median',
