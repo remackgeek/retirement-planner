@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
+import EventTypeSelectionDialog from '../dialogs/EventTypeSelectionDialog';
+import AddIncomeEventDialog from '../dialogs/AddIncomeEventDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 
 const Container = styled.div`
@@ -97,7 +99,11 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
   onUpdate,
   onDelete,
 }) => {
-  const [isAdding, setIsAdding] = useState(false);
+  const [selectionDialogVisible, setSelectionDialogVisible] = useState(false);
+  const [addDialogVisible, setAddDialogVisible] = useState(false);
+  const [selectedType, setSelectedType] = useState<IncomeEventType | null>(
+    null
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     type: 'social_security' as IncomeEventType,
@@ -111,14 +117,22 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
     syncWithEstimate: false,
   });
 
+  const handleTypeSelect = (type: IncomeEventType) => {
+    setSelectedType(type);
+    setAddDialogVisible(true);
+  };
+
+  const handleAddEvent = (event: Omit<IncomeEvent, 'id'>) => {
+    onAdd(event);
+    setAddDialogVisible(false);
+    setSelectedType(null);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingId) {
       onUpdate(editingId, formData);
       setEditingId(null);
-    } else {
-      onAdd(formData);
-      setIsAdding(false);
     }
     setFormData({
       type: 'social_security',
@@ -188,12 +202,14 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
     <Container>
       <Header>
         <h3>Income Events</h3>
-        {!isAdding && !editingId && (
-          <LargeButton onClick={() => setIsAdding(true)}>Add Event</LargeButton>
+        {!editingId && (
+          <LargeButton onClick={() => setSelectionDialogVisible(true)}>
+            Add Event
+          </LargeButton>
         )}
       </Header>
 
-      {(isAdding || editingId) && (
+      {editingId && (
         <Form onSubmit={handleSubmit}>
           <Select
             value={formData.type}
@@ -308,11 +324,10 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           )}
 
           <div>
-            <Button type='submit'>{editingId ? 'Update' : 'Add'} Event</Button>
+            <Button type='submit'>Update Event</Button>
             <Button
               type='button'
               onClick={() => {
-                setIsAdding(false);
                 setEditingId(null);
                 setFormData({
                   type: 'social_security',
@@ -362,6 +377,22 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           </Actions>
         </EventItem>
       ))}
+
+      <EventTypeSelectionDialog
+        visible={selectionDialogVisible}
+        onHide={() => setSelectionDialogVisible(false)}
+        onSelectType={handleTypeSelect}
+      />
+
+      <AddIncomeEventDialog
+        visible={addDialogVisible}
+        onHide={() => {
+          setAddDialogVisible(false);
+          setSelectedType(null);
+        }}
+        onSave={handleAddEvent}
+        initialType={selectedType || undefined}
+      />
     </Container>
   );
 };
