@@ -50,6 +50,20 @@ const eventTypeSymbols: Record<string, string> = {
   other_income: '●',
 };
 
+const goalTypeSymbols: Record<string, string> = {
+  monthly_retirement: '$',
+  charity: '♡',
+  dependent_support: '&',
+  healthcare: '⚕',
+  home_purchase: '⌂',
+  education: '∇',
+  renovation: '⚒',
+  vacation: '✈',
+  vehicle: 'V',
+  wedding: '⚭',
+  other: '●',
+};
+
 const Projections = ({
   results,
   userData,
@@ -81,7 +95,7 @@ const Projections = ({
     ],
   };
 
-  // Generate annotations for income events
+  // Generate annotations for income events and spending goals
   const annotations: any = {};
   years.forEach((year: number, index: number) => {
     const startingEvents = userData.incomeEvents.filter((event: any) => {
@@ -90,33 +104,50 @@ const Projections = ({
       return startYear === year;
     });
 
-    if (startingEvents.length > 0) {
-      // Create emoji stack for the label
-      const emojiStack = startingEvents
-        .map((event: any) => eventTypeSymbols[event.type])
-        .join(' ');
+    const startingGoals = userData.spendingGoals.filter(
+      (goal: any) => goal.startYear === year
+    );
 
-      annotations[`event_${year}`] = {
+    // Combine income events and spending goals into a single array for stacking
+    const allItems = [
+      ...startingEvents.map((event: any) => ({
+        type: 'income',
+        symbol: eventTypeSymbols[event.type],
+        id: event.id,
+      })),
+      ...startingGoals.map((goal: any) => ({
+        type: 'spending',
+        symbol: goalTypeSymbols[goal.type],
+        id: goal.id,
+      })),
+    ];
+
+    // Create individual annotations for each item, stacking them vertically
+    allItems.forEach((item, itemIndex) => {
+      const isIncome = item.type === 'income';
+      annotations[`${item.type}_${item.id}_${year}`] = {
         type: 'label',
         xValue: index,
         yValue: 0,
-        content: emojiStack,
-        backgroundColor: 'rgba(0, 128, 0, 0.1)',
-        borderColor: 'green',
+        content: item.symbol,
+        backgroundColor: isIncome
+          ? 'rgba(0, 128, 0, 0.1)'
+          : 'rgba(210, 105, 30, 0.1)',
+        borderColor: isIncome ? 'green' : '#d2691e',
         borderWidth: 1,
         borderRadius: 12,
-        color: 'green',
+        color: isIncome ? 'green' : '#d2691e',
         font: {
           size: 9,
         },
         padding: 3,
         position: 'center',
-        yAdjust: -18,
+        yAdjust: -10 - 21 * itemIndex,
         callout: {
           enabled: false,
         },
       };
-    }
+    });
   });
 
   const options = {
@@ -253,6 +284,10 @@ const Projections = ({
                     }
                   );
 
+                  const startingGoals = userData.spendingGoals.filter(
+                    (goal: any) => goal.startYear === year
+                  );
+
                   // Cash flow = income - spending for this year
                   const cashFlow = totalIncome - totalSpending;
 
@@ -306,6 +341,36 @@ const Projections = ({
                           textAlign: 'right',
                         }}
                       >
+                        {startingGoals.length > 0 && (
+                          <div
+                            style={{
+                              marginBottom: '0.25rem',
+                              textAlign: 'left',
+                            }}
+                          >
+                            {startingGoals.map((goal: any) => (
+                              <span
+                                key={goal.id}
+                                style={{
+                                  marginRight: '0.25rem',
+                                  color: '#d2691e',
+                                  backgroundColor: 'rgba(210, 105, 30, 0.1)',
+                                  borderRadius: '50%',
+                                  padding: '0.25rem',
+                                  fontSize: '0.9rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '1.5rem',
+                                  height: '1.5rem',
+                                  fontWeight: 'bold',
+                                }}
+                              >
+                                {goalTypeSymbols[goal.type]}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         {otherSpendingGoals.toLocaleString(undefined, {
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
