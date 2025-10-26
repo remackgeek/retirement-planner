@@ -170,18 +170,18 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
     other: 'Other Expense',
   };
 
-  const goalTypeSymbols: Record<SpendingGoal['type'], string> = {
-    monthly_retirement: '$',
-    charity: '♡',
-    dependent_support: '&',
-    healthcare: '⚕',
-    home_purchase: '⌂',
-    education: '∇',
-    renovation: '⚒',
-    vacation: '✈',
-    vehicle: 'V',
-    wedding: '⚭',
-    other: '●',
+  const goalTypeIcons: Record<SpendingGoal['type'], string> = {
+    monthly_retirement: 'pi pi-dollar',
+    charity: 'pi pi-heart',
+    dependent_support: 'pi pi-users',
+    healthcare: 'pi pi-heart-fill',
+    home_purchase: 'pi pi-home',
+    education: 'pi pi-book',
+    renovation: 'pi pi-wrench',
+    vacation: 'pi pi-plane',
+    vehicle: 'pi pi-car',
+    wedding: 'pi pi-heart',
+    other: 'pi pi-circle',
   };
 
   return (
@@ -328,7 +328,7 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                       fontWeight: 'bold',
                     }}
                   >
-                    {goalTypeSymbols[goal.type]}
+                    <i className={goalTypeIcons[goal.type]} />
                   </span>
                   {goalTypeLabels[goal.type]}
                   {goal.name && ` - ${goal.name}`}

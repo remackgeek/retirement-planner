@@ -70,18 +70,18 @@ const goalTypeLabels: Record<SpendingGoal['type'], string> = {
   other: 'Other Expense',
 };
 
-const goalTypeSymbols: Record<SpendingGoal['type'], string> = {
-  monthly_retirement: '$',
-  charity: '♡',
-  dependent_support: '&',
-  healthcare: '⚕',
-  home_purchase: '⌂',
-  education: '∇',
-  renovation: '⚒',
-  vacation: '✈',
-  vehicle: 'V',
-  wedding: '⚭',
-  other: '●',
+const goalTypeIcons: Record<SpendingGoal['type'], string> = {
+  monthly_retirement: 'pi pi-dollar',
+  charity: 'pi pi-heart',
+  dependent_support: 'pi pi-users',
+  healthcare: 'pi pi-heart-fill',
+  home_purchase: 'pi pi-home',
+  education: 'pi pi-book',
+  renovation: 'pi pi-wrench',
+  vacation: 'pi pi-plane',
+  vehicle: 'pi pi-car',
+  wedding: 'pi pi-heart',
+  other: 'pi pi-circle',
 };
 
 const SpendingGoalTypeSelectionDialog: React.FC<
@@ -101,7 +101,7 @@ const SpendingGoalTypeSelectionDialog: React.FC<
             onClick={() => onSelectType(type as SpendingGoal['type'])}
           >
             <IconCircle className='icon-circle'>
-              {goalTypeSymbols[type as SpendingGoal['type']]}
+              <i className={goalTypeIcons[type as SpendingGoal['type']]} />
             </IconCircle>
             Add {label}
           </TypeButton>

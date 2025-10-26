@@ -29,6 +29,7 @@ ChartJS.register(
   htmlAnnotationsPlugin
 );
 
+// PrimeReact icons for chart annotations and table
 const eventTypeIcons: Record<string, string> = {
   social_security: 'pi pi-shield',
   annuity_income: 'pi pi-money-bill',
@@ -40,30 +41,18 @@ const eventTypeIcons: Record<string, string> = {
   other_income: 'pi pi-ellipsis-h',
 };
 
-// Unicode symbols for chart annotations and table
-const eventTypeSymbols: Record<string, string> = {
-  social_security: '🛡',
-  annuity_income: '$',
-  inheritance: '⬇',
-  pension_income: '⚒',
-  rental_income: '⌂',
-  sale_of_property: '⇄',
-  work_during_retirement: '⚙',
-  other_income: '●',
-};
-
-const goalTypeSymbols: Record<string, string> = {
-  monthly_retirement: '$',
-  charity: '♡',
-  dependent_support: '&',
-  healthcare: '⚕',
-  home_purchase: '⌂',
-  education: '∇',
-  renovation: '⚒',
-  vacation: '✈',
-  vehicle: 'V',
-  wedding: '⚭',
-  other: '●',
+const goalTypeIcons: Record<string, string> = {
+  monthly_retirement: 'pi pi-dollar',
+  charity: 'pi pi-heart',
+  dependent_support: 'pi pi-users',
+  healthcare: 'pi pi-heart-fill',
+  home_purchase: 'pi pi-home',
+  education: 'pi pi-book',
+  renovation: 'pi pi-wrench',
+  vacation: 'pi pi-plane',
+  vehicle: 'pi pi-car',
+  wedding: 'pi pi-heart',
+  other: 'pi pi-circle',
 };
 
 const Projections = ({
@@ -361,7 +350,7 @@ const Projections = ({
                                   fontWeight: 'bold',
                                 }}
                               >
-                                {goalTypeSymbols[goal.type]}
+                                <i className={goalTypeIcons[goal.type]} />
                               </span>
                             ))}
                           </div>
@@ -403,7 +392,7 @@ const Projections = ({
                                   fontWeight: 'bold',
                                 }}
                               >
-                                {eventTypeSymbols[event.type]}
+                                <i className={eventTypeIcons[event.type]} />
                               </span>
                             ))}
                           </div>
