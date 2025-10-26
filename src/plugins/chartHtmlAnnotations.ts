@@ -60,9 +60,15 @@ function updateIconPositions(chart: Chart, annotations: AnnotationConfig[]) {
     if (!element) return;
 
     const xScale = chart.scales.x;
-    const x = xScale.getPixelForValue(annotation.xValue);
-    const chartBottom = chart.chartArea.bottom;
-    const y = chartBottom - (2 + 28 * annotation.stackIndex);
+    const yScale = chart.scales.y;
+    // Round xValue to ensure it aligns with category (integer index)
+    const xValue = Math.round(annotation.xValue);
+    const x = xScale.getPixelForValue(xValue);
+    // Get pixel position of y-axis value 0 (the baseline)
+    const baseline = yScale.getPixelForValue(0);
+    // Position icon so its bottom edge is 2px above the 0 baseline
+    // Icon is 24px tall, transform centers it, so center = baseline - 14px
+    const y = baseline - 14 - 28 * annotation.stackIndex;
 
     element.style.left = `${x}px`;
     element.style.top = `${y}px`;
@@ -149,18 +155,20 @@ const htmlAnnotationsPlugin: Plugin = {
   id: 'htmlAnnotations',
 
   beforeInit(chart: Chart) {
-    // Create overlay container
+    // Create overlay container positioned to match the canvas exactly
     const container = document.createElement('div');
     container.className = 'chart-html-annotations';
+    const canvas = chart.canvas;
+
+    // Position container to overlay the canvas precisely
     container.style.position = 'absolute';
-    container.style.top = '0';
-    container.style.left = '0';
-    container.style.width = '100%';
-    container.style.height = '100%';
+    container.style.top = `${canvas.offsetTop}px`;
+    container.style.left = `${canvas.offsetLeft}px`;
+    container.style.width = `${canvas.offsetWidth}px`;
+    container.style.height = `${canvas.offsetHeight}px`;
     container.style.pointerEvents = 'none';
     container.style.zIndex = '10';
 
-    const canvas = chart.canvas;
     const parent = canvas.parentElement;
     if (parent) {
       parent.style.position = 'relative';
@@ -203,11 +211,15 @@ const htmlAnnotationsPlugin: Plugin = {
     // Create and position icons
     options.annotations.forEach((annotation) => {
       const xScale = chart.scales.x;
-
-      const x = xScale.getPixelForValue(annotation.xValue);
-      // Position icons just above the chart baseline (x-axis)
-      const chartBottom = chart.chartArea.bottom;
-      const y = chartBottom - (2 + 28 * annotation.stackIndex); // Stack vertically upward from baseline
+      // Round xValue to ensure it aligns with category (integer index)
+      const xValue = Math.round(annotation.xValue);
+      const x = xScale.getPixelForValue(xValue);
+      // Get pixel position of y-axis value 0 (the baseline)
+      const yScale = chart.scales.y;
+      const baseline = yScale.getPixelForValue(0);
+      // Position icon so its bottom edge is 2px above the 0 baseline
+      // Icon is 24px tall, transform centers it, so center = baseline - 14px
+      const y = baseline - 14 - 28 * annotation.stackIndex;
 
       const iconElement = createIconElement(
         annotation,
