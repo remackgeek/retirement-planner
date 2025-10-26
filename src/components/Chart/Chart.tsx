@@ -14,7 +14,9 @@ import {
   calculateAnnualSpending,
   calculateAnnualIncome,
 } from '../../services/SimulationService';
-import annotationPlugin from 'chartjs-plugin-annotation';
+import htmlAnnotationsPlugin, {
+  type AnnotationConfig,
+} from '../../plugins/chartHtmlAnnotations';
 
 ChartJS.register(
   CategoryScale,
@@ -24,7 +26,7 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  annotationPlugin
+  htmlAnnotationsPlugin
 );
 
 const eventTypeIcons: Record<string, string> = {
@@ -95,8 +97,8 @@ const Projections = ({
     ],
   };
 
-  // Generate annotations for income events and spending goals
-  const annotations: any = {};
+  // Generate HTML annotations for income events and spending goals
+  const htmlAnnotations: AnnotationConfig[] = [];
   years.forEach((year: number, index: number) => {
     const startingEvents = userData.incomeEvents.filter((event: any) => {
       const startYear =
@@ -108,45 +110,30 @@ const Projections = ({
       (goal: any) => goal.startYear === year
     );
 
-    // Combine income events and spending goals into a single array for stacking
-    const allItems = [
-      ...startingEvents.map((event: any) => ({
-        type: 'income',
-        symbol: eventTypeSymbols[event.type],
-        id: event.id,
-      })),
-      ...startingGoals.map((goal: any) => ({
-        type: 'spending',
-        symbol: goalTypeSymbols[goal.type],
-        id: goal.id,
-      })),
-    ];
-
-    // Create individual annotations for each item, stacking them vertically
-    allItems.forEach((item, itemIndex) => {
-      const isIncome = item.type === 'income';
-      annotations[`${item.type}_${item.id}_${year}`] = {
-        type: 'label',
+    // Add income events
+    startingEvents.forEach((event: any, eventIndex: number) => {
+      htmlAnnotations.push({
+        id: `income_${event.id}_${year}`,
+        type: 'income' as const,
+        eventType: event.type,
         xValue: index,
         yValue: 0,
-        content: item.symbol,
-        backgroundColor: isIncome
-          ? 'rgba(0, 128, 0, 0.1)'
-          : 'rgba(210, 105, 30, 0.1)',
-        borderColor: isIncome ? 'green' : '#d2691e',
-        borderWidth: 1,
-        borderRadius: 12,
-        color: isIncome ? 'green' : '#d2691e',
-        font: {
-          size: 9,
-        },
-        padding: 3,
-        position: 'center',
-        yAdjust: -10 - 21 * itemIndex,
-        callout: {
-          enabled: false,
-        },
-      };
+        stackIndex: eventIndex,
+        data: event,
+      });
+    });
+
+    // Add spending goals (stack after income events)
+    startingGoals.forEach((goal: any, goalIndex: number) => {
+      htmlAnnotations.push({
+        id: `spending_${goal.id}_${year}`,
+        type: 'spending' as const,
+        eventType: goal.type,
+        xValue: index,
+        yValue: 0,
+        stackIndex: startingEvents.length + goalIndex,
+        data: goal,
+      });
     });
   });
 
@@ -158,8 +145,16 @@ const Projections = ({
         display: true,
         text: "Projected Portfolio Value (Today's Dollars)",
       },
-      annotation: {
-        annotations,
+      htmlAnnotations: {
+        annotations: htmlAnnotations,
+        onIconClick: (annotation: AnnotationConfig) => {
+          console.log('Clicked annotation:', annotation);
+          // TODO: Could implement navigation to table row, edit dialog, etc.
+        },
+        onIconHover: (annotation: AnnotationConfig | null) => {
+          console.log('Hovered annotation:', annotation);
+          // TODO: Could implement table row highlighting
+        },
       },
     },
   };
