@@ -69,14 +69,14 @@ const eventTypeLabels: Record<IncomeEventType, string> = {
 };
 
 const eventTypeSymbols: Record<IncomeEventType, string> = {
-  social_security: '🛡',
-  annuity_income: '$',
-  inheritance: '⬇',
-  pension_income: '⚒',
-  rental_income: '⌂',
-  sale_of_property: '⇄',
-  work_during_retirement: '⚙',
-  other_income: '●',
+  social_security: 'pi pi-shield',
+  annuity_income: 'pi pi-money-bill',
+  inheritance: 'pi pi-gift',
+  pension_income: 'pi pi-briefcase',
+  rental_income: 'pi pi-home',
+  sale_of_property: 'pi pi-arrow-right-arrow-left',
+  work_during_retirement: 'pi pi-cog',
+  other_income: 'pi pi-ellipsis-h',
 };
 
 const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
@@ -104,7 +104,7 @@ const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
             onClick={() => handleTypeSelect(type as IncomeEventType)}
           >
             <IconCircle className='icon-circle'>
-              {eventTypeSymbols[type as IncomeEventType]}
+              <i className={eventTypeSymbols[type as IncomeEventType]} />
             </IconCircle>
             Add {label}
           </TypeButton>

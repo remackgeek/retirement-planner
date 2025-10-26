@@ -87,6 +87,11 @@ const goalTypeIcons: Record<SpendingGoal['type'], string> = {
 const SpendingGoalTypeSelectionDialog: React.FC<
   SpendingGoalTypeSelectionDialogProps
 > = ({ visible, onHide, onSelectType }) => {
+  const handleTypeSelect = (type: SpendingGoal['type']) => {
+    onSelectType(type);
+    onHide();
+  };
+
   return (
     <Dialog
       header='Select Spending Goal Type'
@@ -98,7 +103,7 @@ const SpendingGoalTypeSelectionDialog: React.FC<
         {Object.entries(goalTypeLabels).map(([type, label]) => (
           <TypeButton
             key={type}
-            onClick={() => onSelectType(type as SpendingGoal['type'])}
+            onClick={() => handleTypeSelect(type as SpendingGoal['type'])}
           >
             <IconCircle className='icon-circle'>
               <i className={goalTypeIcons[type as SpendingGoal['type']]} />
