@@ -47,7 +47,7 @@ export function calculateAnnualSpending(
   // Retirement spending with optional decrease
   const retirementSpending = userData.retirementSpending;
   const retirementStartYear =
-    new Date().getFullYear() +
+    userData.referenceYear +
     (retirementSpending.startAge - userData.currentAge);
   if (year >= retirementStartYear) {
     let annualAmount = retirementSpending.monthlyAmount * 12;
@@ -64,12 +64,10 @@ export function calculateAnnualSpending(
   // Spending goals
   userData.spendingGoals.forEach((goal) => {
     const startYear =
-      new Date().getFullYear() + (goal.startAge - userData.currentAge);
+      userData.referenceYear + (goal.startAge - userData.currentAge);
     const endYear = goal.endAge
-      ? new Date().getFullYear() + (goal.endAge - userData.currentAge)
-      : userData.lifeExpectancy +
-        new Date().getFullYear() -
-        userData.currentAge;
+      ? userData.referenceYear + (goal.endAge - userData.currentAge)
+      : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
 
     let shouldInclude = false;
     if (goal.isOneTime) {
@@ -83,8 +81,8 @@ export function calculateAnnualSpending(
     if (shouldInclude) {
       let amount = goal.amount;
       if (goal.inflationAdjusted) {
-        const yearsFromNow = year - new Date().getFullYear();
-        amount *= Math.pow(1 + inflationRate, yearsFromNow);
+        const yearsFromReference = year - userData.referenceYear;
+        amount *= Math.pow(1 + inflationRate, yearsFromReference);
       }
       totalSpending += amount;
     }
@@ -102,12 +100,10 @@ export function calculateAnnualIncome(
 
   userData.incomeEvents.forEach((event) => {
     const startYear =
-      new Date().getFullYear() + (event.startAge - userData.currentAge);
+      userData.referenceYear + (event.startAge - userData.currentAge);
     const endYear = event.endAge
-      ? new Date().getFullYear() + (event.endAge - userData.currentAge)
-      : userData.lifeExpectancy +
-        new Date().getFullYear() -
-        userData.currentAge;
+      ? userData.referenceYear + (event.endAge - userData.currentAge)
+      : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
 
     let shouldInclude = false;
     if (event.isOneTime) {
@@ -121,8 +117,8 @@ export function calculateAnnualIncome(
     if (shouldInclude) {
       let amount = event.amount;
       if (event.colaType === 'inflation_adjusted') {
-        const yearsFromNow = year - new Date().getFullYear();
-        amount *= Math.pow(1 + inflationRate, yearsFromNow);
+        const yearsFromReference = year - userData.referenceYear;
+        amount *= Math.pow(1 + inflationRate, yearsFromReference);
       }
       totalIncome += amount;
     }
@@ -137,7 +133,7 @@ export function runSimulation(userData: UserData): {
   downside: number[];
   years: number[];
 } {
-  const currentYear = new Date().getFullYear();
+  const currentYear = userData.referenceYear;
   const yearsToRetire = userData.retirementAge - userData.currentAge;
   const retirementYear = currentYear + yearsToRetire;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;

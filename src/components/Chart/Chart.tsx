@@ -91,13 +91,13 @@ const Projections = ({
   years.forEach((year: number, index: number) => {
     const startingEvents = userData.incomeEvents.filter((event: any) => {
       const startYear =
-        new Date().getFullYear() + (event.startAge - userData.currentAge);
+        userData.referenceYear + (event.startAge - userData.currentAge);
       return startYear === year;
     });
 
     const startingGoals = userData.spendingGoals.filter((goal: any) => {
       const startYear =
-        new Date().getFullYear() + (goal.startAge - userData.currentAge);
+        userData.referenceYear + (goal.startAge - userData.currentAge);
       return startYear === year;
     });
 
@@ -150,7 +150,7 @@ const Projections = ({
     },
   };
 
-  const currentYear = new Date().getFullYear();
+  const currentYear = userData.referenceYear;
   const yearsToRetire = userData.retirementAge - userData.currentAge;
   const retirementYear = currentYear + yearsToRetire;
 
@@ -264,7 +264,7 @@ const Projections = ({
                   const startingEvents = userData.incomeEvents.filter(
                     (event: any) => {
                       const startYear =
-                        new Date().getFullYear() +
+                        userData.referenceYear +
                         (event.startAge - userData.currentAge);
                       return startYear === year;
                     }
@@ -273,7 +273,7 @@ const Projections = ({
                   const startingGoals = userData.spendingGoals.filter(
                     (goal: any) => {
                       const startYear =
-                        new Date().getFullYear() +
+                        userData.referenceYear +
                         (goal.startAge - userData.currentAge);
                       return startYear === year;
                     }

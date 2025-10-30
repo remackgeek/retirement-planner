@@ -368,9 +368,9 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
       {[...events]
         .sort((a, b) => {
           const aStartYear =
-            new Date().getFullYear() + (a.startAge - userData.currentAge);
+            userData.referenceYear + (a.startAge - userData.currentAge);
           const bStartYear =
-            new Date().getFullYear() + (b.startAge - userData.currentAge);
+            userData.referenceYear + (b.startAge - userData.currentAge);
           return aStartYear - bStartYear;
         })
         .map((event) => (

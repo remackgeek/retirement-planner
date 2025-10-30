@@ -58,6 +58,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           portfolioAssumptions: {
             riskLevel: 'moderate',
           },
+          referenceYear: new Date().getFullYear(),
           // Legacy fields
           monthlyRetirementSpending: 5000,
           ssAmount: 30000,

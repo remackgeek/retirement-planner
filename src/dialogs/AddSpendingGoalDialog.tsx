@@ -153,9 +153,9 @@ const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
         <InputGroup>
           <label>End Age (optional)</label>
           <InputNumber
-            value={formData.endAge}
+            value={formData.endAge ?? null}
             onValueChange={(e) =>
-              setFormData({ ...formData, endAge: e.value || undefined })
+              setFormData({ ...formData, endAge: e.value ?? undefined })
             }
           />
         </InputGroup>

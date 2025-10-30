@@ -11,6 +11,7 @@ export interface UserData {
   spendingGoals: SpendingGoal[];
   incomeEvents: IncomeEvent[];
   portfolioAssumptions: PortfolioAssumptions;
+  referenceYear: number;
   // Legacy fields for backward compatibility
   monthlyRetirementSpending?: number;
   ssAmount?: number;

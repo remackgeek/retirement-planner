@@ -53,6 +53,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     portfolioAssumptions: {
       riskLevel: 'moderate' as const,
     },
+    referenceYear: new Date().getFullYear(),
     // Legacy fields for backward compatibility
     monthlyRetirementSpending: 5000,
     ssAmount: 30000,
@@ -103,6 +104,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         portfolioAssumptions: {
           riskLevel: 'moderate' as const,
         },
+        referenceYear: new Date().getFullYear(),
         // Legacy fields for backward compatibility
         monthlyRetirementSpending: 5000,
         ssAmount: 30000,

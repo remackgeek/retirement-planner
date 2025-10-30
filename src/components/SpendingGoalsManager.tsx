@@ -248,7 +248,7 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
           <Input
             type='number'
             placeholder='End age (optional)'
-            value={formData.endAge || ''}
+            value={formData.endAge ?? ''}
             onChange={(e) =>
               setFormData({
                 ...formData,
