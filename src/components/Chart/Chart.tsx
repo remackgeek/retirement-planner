@@ -95,9 +95,11 @@ const Projections = ({
       return startYear === year;
     });
 
-    const startingGoals = userData.spendingGoals.filter(
-      (goal: any) => goal.startYear === year
-    );
+    const startingGoals = userData.spendingGoals.filter((goal: any) => {
+      const startYear =
+        new Date().getFullYear() + (goal.startAge - userData.currentAge);
+      return startYear === year;
+    });
 
     // Add income events
     startingEvents.forEach((event: any, eventIndex: number) => {
@@ -269,7 +271,12 @@ const Projections = ({
                   );
 
                   const startingGoals = userData.spendingGoals.filter(
-                    (goal: any) => goal.startYear === year
+                    (goal: any) => {
+                      const startYear =
+                        new Date().getFullYear() +
+                        (goal.startAge - userData.currentAge);
+                      return startYear === year;
+                    }
                   );
 
                   // Cash flow = income - spending for this year

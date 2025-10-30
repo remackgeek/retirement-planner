@@ -109,8 +109,8 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
     type: 'charity' as SpendingGoal['type'],
     name: '',
     amount: 0,
-    startYear: new Date().getFullYear(),
-    endYear: undefined as number | undefined,
+    startAge: 65,
+    endAge: undefined as number | undefined,
     isOneTime: false,
     inflationAdjusted: true,
   });
@@ -136,8 +136,8 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
       type: 'charity',
       name: '',
       amount: 0,
-      startYear: new Date().getFullYear(),
-      endYear: undefined,
+      startAge: 65,
+      endAge: undefined,
       isOneTime: false,
       inflationAdjusted: true,
     });
@@ -149,8 +149,8 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
       type: goal.type,
       name: goal.name || '',
       amount: goal.amount,
-      startYear: goal.startYear,
-      endYear: goal.endYear,
+      startAge: goal.startAge,
+      endAge: goal.endAge,
       isOneTime: goal.isOneTime || false,
       inflationAdjusted: goal.inflationAdjusted,
     });
@@ -237,22 +237,22 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
 
           <Input
             type='number'
-            placeholder='Start year'
-            value={formData.startYear}
+            placeholder='Start age'
+            value={formData.startAge}
             onChange={(e) =>
-              setFormData({ ...formData, startYear: Number(e.target.value) })
+              setFormData({ ...formData, startAge: Number(e.target.value) })
             }
             required
           />
 
           <Input
             type='number'
-            placeholder='End year (optional)'
-            value={formData.endYear || ''}
+            placeholder='End age (optional)'
+            value={formData.endAge || ''}
             onChange={(e) =>
               setFormData({
                 ...formData,
-                endYear: e.target.value ? Number(e.target.value) : undefined,
+                endAge: e.target.value ? Number(e.target.value) : undefined,
               })
             }
           />
@@ -292,8 +292,8 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                   type: 'charity',
                   name: '',
                   amount: 0,
-                  startYear: new Date().getFullYear(),
-                  endYear: undefined,
+                  startAge: 65,
+                  endAge: undefined,
                   isOneTime: false,
                   inflationAdjusted: true,
                 });
@@ -306,7 +306,7 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
       )}
 
       {[...goals]
-        .sort((a, b) => a.startYear - b.startYear)
+        .sort((a, b) => a.startAge - b.startAge)
         .map((goal) => (
           <GoalItem key={goal.id}>
             <GoalInfo>
@@ -335,9 +335,11 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                 </strong>
               </div>
               ${goal.amount.toLocaleString()}
-              {goal.isOneTime ? ' one-time in ' : ' annually from '}
-              {goal.startYear}
-              {goal.endYear && !goal.isOneTime && ` to ${goal.endYear}`}
+              {goal.isOneTime
+                ? ' one-time at age '
+                : ' annually starting at age '}
+              {goal.startAge}
+              {goal.endAge && !goal.isOneTime && ` until age ${goal.endAge}`}
               {goal.isOneTime && ' (one-time event)'}
               {goal.inflationAdjusted && ' (inflation adjusted)'}
             </GoalInfo>

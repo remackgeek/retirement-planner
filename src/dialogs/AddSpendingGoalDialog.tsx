@@ -57,8 +57,8 @@ const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
     type: 'charity' as SpendingGoal['type'],
     name: '',
     amount: 0,
-    startYear: new Date().getFullYear(),
-    endYear: undefined as number | undefined,
+    startAge: 65,
+    endAge: undefined as number | undefined,
     isOneTime: false,
     inflationAdjusted: true,
   });
@@ -70,8 +70,8 @@ const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
         type: initialType,
         name: '',
         amount: 0,
-        startYear: new Date().getFullYear(),
-        endYear: undefined,
+        startAge: 65,
+        endAge: undefined,
         isOneTime: false,
         inflationAdjusted: true,
       });
@@ -137,13 +137,13 @@ const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
         </InputGroup>
 
         <InputGroup>
-          <label>Start Year</label>
+          <label>Start Age</label>
           <InputNumber
-            value={formData.startYear}
+            value={formData.startAge}
             onValueChange={(e) =>
               setFormData({
                 ...formData,
-                startYear: e.value || new Date().getFullYear(),
+                startAge: e.value || 65,
               })
             }
             required
@@ -151,11 +151,11 @@ const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
         </InputGroup>
 
         <InputGroup>
-          <label>End Year (optional)</label>
+          <label>End Age (optional)</label>
           <InputNumber
-            value={formData.endYear}
+            value={formData.endAge}
             onValueChange={(e) =>
-              setFormData({ ...formData, endYear: e.value || undefined })
+              setFormData({ ...formData, endAge: e.value || undefined })
             }
           />
         </InputGroup>
