@@ -10,13 +10,11 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { Accordion, AccordionTab } from 'primereact/accordion';
-import {
-  calculateAnnualSpending,
-  calculateAnnualIncome,
-} from '../../services/SimulationService';
 import htmlAnnotationsPlugin, {
   type AnnotationConfig,
 } from '../../plugins/chartHtmlAnnotations';
+import type { SpendingGoal } from '../../types/SpendingGoal';
+import type { IncomeEvent } from '../../types/IncomeEvent';
 
 ChartJS.register(
   CategoryScale,
@@ -234,32 +232,73 @@ const Projections = ({
                   const age = userData.currentAge + index;
                   const isRetirement = year >= retirementYear;
 
-                  // Calculate total spending and income for this year
-                  const totalSpending = calculateAnnualSpending(userData, year);
-                  let totalIncome = calculateAnnualIncome(userData, year);
-                  if (!isRetirement) {
-                    totalIncome += userData.annualSavings; // Add annual savings pre-retirement
-                  }
-
                   // Basic amount = annual savings (pre-retirement) or retirement spending (post-retirement)
                   const basicAmount = isRetirement
                     ? userData.retirementSpending.monthlyAmount * 12
                     : userData.annualSavings;
 
-                  // Other spending goals = total spending minus basic retirement spending (or 0 for pre-retirement)
-                  const basicSpending = isRetirement
-                    ? userData.retirementSpending.monthlyAmount * 12
-                    : 0;
+                  // Calculate total spending and income in today's dollars
+                  let totalSpendingBase = 0;
+                  if (isRetirement) {
+                    totalSpendingBase +=
+                      userData.retirementSpending.monthlyAmount * 12;
+                  }
+                  userData.spendingGoals.forEach((goal: SpendingGoal) => {
+                    const startYear =
+                      userData.referenceYear +
+                      (goal.startAge - userData.currentAge);
+                    const endYear = goal.endAge
+                      ? userData.referenceYear +
+                        (goal.endAge - userData.currentAge)
+                      : userData.lifeExpectancy +
+                        userData.referenceYear -
+                        userData.currentAge;
+                    let shouldInclude = false;
+                    if (goal.isOneTime) {
+                      shouldInclude = year === startYear;
+                    } else {
+                      shouldInclude = year >= startYear && year <= endYear;
+                    }
+                    if (shouldInclude) {
+                      totalSpendingBase += goal.amount;
+                    }
+                  });
+
+                  let totalIncomeBase = 0;
+                  userData.incomeEvents.forEach((event: IncomeEvent) => {
+                    const startYear =
+                      userData.referenceYear +
+                      (event.startAge - userData.currentAge);
+                    const endYear = event.endAge
+                      ? userData.referenceYear +
+                        (event.endAge - userData.currentAge)
+                      : userData.lifeExpectancy +
+                        userData.referenceYear -
+                        userData.currentAge;
+                    let shouldInclude = false;
+                    if (event.isOneTime) {
+                      shouldInclude = year === startYear;
+                    } else {
+                      shouldInclude = year >= startYear && year <= endYear;
+                    }
+                    if (shouldInclude) {
+                      totalIncomeBase += event.amount;
+                    }
+                  });
+                  if (!isRetirement) {
+                    totalIncomeBase += userData.annualSavings;
+                  }
+
+                  // Other spending goals = total spending base minus basic
                   const otherSpendingGoals = Math.max(
                     0,
-                    totalSpending - basicSpending
+                    totalSpendingBase - basicAmount
                   );
 
-                  // Other income events = all income events
-                  const otherIncomeEvents = calculateAnnualIncome(
-                    userData,
-                    year
-                  );
+                  // Other income events = total income base minus annual savings if pre-retirement
+                  const otherIncomeEvents =
+                    totalIncomeBase -
+                    (isRetirement ? 0 : userData.annualSavings);
 
                   const startingEvents = userData.incomeEvents.filter(
                     (event: any) => {
@@ -279,8 +318,8 @@ const Projections = ({
                     }
                   );
 
-                  // Cash flow = income - spending for this year
-                  const cashFlow = totalIncome - totalSpending;
+                  // Cash flow = income - spending in today's dollars
+                  const cashFlow = totalIncomeBase - totalSpendingBase;
 
                   return (
                     <tr key={year}>

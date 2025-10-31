@@ -138,6 +138,7 @@ export function runSimulation(userData: UserData): {
   const retirementYear = currentYear + yearsToRetire;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const { mean, sigma } = getPortfolioReturns(userData.portfolioAssumptions);
+  const inflationRate = 0.03; // Assuming 3% inflation rate
   const numSims = 5000;
   let successCount = 0;
   const portfolioPaths: number[][] = [];
@@ -165,7 +166,9 @@ export function runSimulation(userData: UserData): {
         failed = true;
         balance = 0;
       }
-      path.push(balance);
+      // Store balance in today's dollars (deflated by cumulative inflation)
+      const inflationFactor = Math.pow(1 + inflationRate, i);
+      path.push(balance / inflationFactor);
     }
     portfolioPaths.push(path);
     if (!failed) successCount++;
