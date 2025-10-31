@@ -30,44 +30,8 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       if (savedScenarios.length > 0) {
         setScenarios(savedScenarios);
         setActiveScenarioState(savedScenarios[0]); // Set first scenario as active
-      } else {
-        const defaultScenario: Scenario = {
-          id: crypto.randomUUID(),
-          name: 'Default Scenario',
-          currentAge: 40,
-          retirementAge: 65,
-          lifeExpectancy: 92,
-          currentSavings: 100000,
-          annualSavings: 20000,
-          retirementSpending: {
-            monthlyAmount: 5000,
-            startAge: 65,
-          },
-          spendingGoals: [],
-          incomeEvents: [
-            {
-              id: crypto.randomUUID(),
-              type: 'social_security',
-              amount: 30000,
-              startAge: 65,
-              taxStatus: 'before_tax',
-              colaType: 'inflation_adjusted',
-              syncWithEstimate: true,
-            },
-          ],
-          portfolioAssumptions: {
-            riskLevel: 'moderate',
-          },
-          referenceYear: new Date().getFullYear(),
-          // Legacy fields
-          monthlyRetirementSpending: 5000,
-          ssAmount: 30000,
-          riskLevel: 'moderate',
-        };
-        await db.put(storeName, defaultScenario, defaultScenario.id);
-        setScenarios([defaultScenario]);
-        setActiveScenarioState(defaultScenario);
       }
+      // If no scenarios exist, leave scenarios empty and activeScenario null
     };
     initDB();
   }, []);

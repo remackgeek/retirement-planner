@@ -95,8 +95,11 @@ const Sidebar: React.FC = () => {
   };
 
   const handleDialogHide = () => {
-    setDialogVisible(false);
-    setEditingScenario(null);
+    if (scenarios.length > 0) {
+      setDialogVisible(false);
+      setEditingScenario(null);
+    }
+    // If no scenarios exist, don't allow hiding the dialog
   };
 
   return (
@@ -165,7 +168,7 @@ const Sidebar: React.FC = () => {
           />
         </div>
         <ScenarioDialog
-          visible={dialogVisible}
+          visible={dialogVisible || scenarios.length === 0}
           onHide={handleDialogHide}
           onSave={handleSave}
           scenario={editingScenario || undefined}

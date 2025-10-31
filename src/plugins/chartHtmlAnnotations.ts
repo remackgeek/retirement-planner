@@ -60,13 +60,12 @@ function updateIconPositions(chart: Chart, annotations: AnnotationConfig[]) {
     if (!element) return;
 
     const xScale = chart.scales.x;
-    const yScale = chart.scales.y;
     // Round xValue to ensure it aligns with category (integer index)
     const xValue = Math.round(annotation.xValue);
     const x = xScale.getPixelForValue(xValue);
-    // Get pixel position of y-axis value 0 (the baseline)
-    const baseline = yScale.getPixelForValue(0);
-    // Position icon so its bottom edge is 2px above the 0 baseline
+    // Get bottom of chart area as baseline (just above x-axis)
+    const baseline = chart.chartArea.bottom;
+    // Position icon so its bottom edge is 2px above the chart bottom
     // Icon is 24px tall, transform centers it, so center = baseline - 14px
     const y = baseline - 14 - 28 * annotation.stackIndex;
 
@@ -214,10 +213,9 @@ const htmlAnnotationsPlugin: Plugin = {
       // Round xValue to ensure it aligns with category (integer index)
       const xValue = Math.round(annotation.xValue);
       const x = xScale.getPixelForValue(xValue);
-      // Get pixel position of y-axis value 0 (the baseline)
-      const yScale = chart.scales.y;
-      const baseline = yScale.getPixelForValue(0);
-      // Position icon so its bottom edge is 2px above the 0 baseline
+      // Get bottom of chart area as baseline (just above x-axis)
+      const baseline = chart.chartArea.bottom;
+      // Position icon so its bottom edge is 2px above the chart bottom
       // Icon is 24px tall, transform centers it, so center = baseline - 14px
       const y = baseline - 14 - 28 * annotation.stackIndex;
 
