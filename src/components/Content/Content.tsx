@@ -33,6 +33,8 @@ const Content: React.FC = () => {
   useEffect(() => {
     if (activeScenario) {
       setResults(runSimulation(activeScenario));
+    } else {
+      setResults(null);
     }
   }, [activeScenario]);
 

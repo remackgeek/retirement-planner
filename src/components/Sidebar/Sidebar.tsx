@@ -2,8 +2,10 @@ import { useState, useContext } from 'react';
 import styled from 'styled-components';
 import { RetirementContext } from '../../context/RetirementContext';
 import { Button } from 'primereact/button';
+import { ConfirmDialog } from 'primereact/confirmdialog';
 import ScenarioDialog from '../../dialogs/ScenarioDialog';
 import type { Scenario } from '../../types/Scenario';
+import { confirmDialog } from 'primereact/confirmdialog';
 
 interface SidebarContainerProps {
   $isCollapsed: boolean;
@@ -50,9 +52,21 @@ const ScenarioItem = styled.li<{ $isActive: boolean }>`
   padding: 0.5rem;
   cursor: pointer;
   background-color: ${(props) => (props.$isActive ? '#e0e0e0' : 'transparent')};
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   &:hover {
     background-color: #d0d0d0;
   }
+`;
+
+const ScenarioName = styled.span`
+  flex: 1;
+`;
+
+const ScenarioActions = styled.div`
+  display: flex;
+  gap: 0;
 `;
 
 const ScenarioSummary = styled.dl`
@@ -77,6 +91,8 @@ const Sidebar: React.FC = () => {
     setActiveScenario,
     addScenario,
     updateScenario,
+    deleteScenario,
+    exportScenario,
   } = context;
 
   const toggleSidebar = () => {
@@ -115,25 +131,84 @@ const Sidebar: React.FC = () => {
             <ScenarioItem
               key={scenario.id}
               $isActive={activeScenario?.id === scenario.id}
-              onClick={() => setActiveScenario(scenario.id)}
             >
-              {scenario.name}
+              <ScenarioName onClick={() => setActiveScenario(scenario.id)}>
+                {scenario.name}
+              </ScenarioName>
+              <ScenarioActions>
+                <Button
+                  icon='pi pi-trash'
+                  className='p-button-text p-button-danger'
+                  style={{
+                    padding: '0.1rem 0.15rem',
+                    fontSize: '0.6rem',
+                    width: '1.6rem',
+                    minWidth: '1.6rem',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (scenarios.length === 1) {
+                      confirmDialog({
+                        message:
+                          'Cannot delete the last scenario. Please create a new scenario first.',
+                        header: 'Cannot Delete',
+                        icon: 'pi pi-exclamation-triangle',
+                        acceptLabel: 'OK',
+                        rejectClassName: 'p-button-text',
+                        reject: undefined,
+                      });
+                    } else {
+                      confirmDialog({
+                        message: `Are you sure you want to delete "${scenario.name}"?`,
+                        header: 'Delete Scenario',
+                        icon: 'pi pi-exclamation-triangle',
+                        accept: () => deleteScenario(scenario.id),
+                      });
+                    }
+                  }}
+                  tooltip='Delete'
+                  tooltipOptions={{ position: 'top' }}
+                />
+                <Button
+                  icon='pi pi-download'
+                  className='p-button-text'
+                  style={{
+                    padding: '0.1rem 0.15rem',
+                    fontSize: '0.6rem',
+                    width: '1.6rem',
+                    minWidth: '1.6rem',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    exportScenario(scenario.id);
+                  }}
+                  tooltip='Export'
+                  tooltipOptions={{ position: 'top' }}
+                />
+                <Button
+                  icon='pi pi-pencil'
+                  className='p-button-text'
+                  style={{
+                    padding: '0.1rem 0.15rem',
+                    fontSize: '0.6rem',
+                    width: '1.6rem',
+                    minWidth: '1.6rem',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingScenario(scenario);
+                    setDialogVisible(true);
+                  }}
+                  tooltip='Edit'
+                  tooltipOptions={{ position: 'top' }}
+                />
+              </ScenarioActions>
             </ScenarioItem>
           ))}
         </ScenarioList>
         {activeScenario && (
           <>
             <h3>Active Scenario: {activeScenario.name}</h3>
-            <div style={{ marginBottom: '1rem' }}>
-              <Button
-                label='Edit Scenario'
-                onClick={() => {
-                  setEditingScenario(activeScenario);
-                  setDialogVisible(true);
-                }}
-                style={{ width: '100%' }}
-              />
-            </div>
             <ScenarioSummary>
               <dt>Current Age:</dt>
               <dd>{activeScenario.currentAge}</dd>
@@ -174,6 +249,7 @@ const Sidebar: React.FC = () => {
           onSave={handleSave}
           scenario={editingScenario || undefined}
         />
+        <ConfirmDialog />
       </SidebarContent>
     </SidebarContainer>
   );

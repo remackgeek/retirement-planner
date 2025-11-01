@@ -11,6 +11,8 @@ export const RetirementContext = createContext<{
   loading: boolean;
   addScenario: (data: Scenario) => Promise<void>;
   updateScenario: (data: Scenario) => Promise<void>;
+  deleteScenario: (id: string) => Promise<void>;
+  exportScenario: (id: string) => void;
   setActiveScenario: (id: string) => Promise<void>;
 } | null>(null);
 
@@ -57,6 +59,34 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const deleteScenario = async (id: string) => {
+    const db = await openDB(dbName, 1);
+    await db.delete(storeName, id);
+    const updatedScenarios = scenarios.filter((scenario) => scenario.id !== id);
+    setScenarios(updatedScenarios);
+    if (activeScenario?.id === id) {
+      setActiveScenarioState(
+        updatedScenarios.length > 0 ? updatedScenarios[0] : null
+      );
+    }
+  };
+
+  const exportScenario = (id: string) => {
+    const scenario = scenarios.find((s) => s.id === id);
+    if (scenario) {
+      const dataStr = JSON.stringify(scenario, null, 2);
+      const dataUri =
+        'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+      const exportFileDefaultName = `${scenario.name
+        .replace(/[^a-z0-9]/gi, '_')
+        .toLowerCase()}_scenario.json`;
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+    }
+  };
+
   const setActiveScenario = async (id: string) => {
     const db = await openDB(dbName, 1);
     const scenario = await db.get(storeName, id);
@@ -73,6 +103,8 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         loading,
         addScenario,
         updateScenario,
+        deleteScenario,
+        exportScenario,
         setActiveScenario,
       }}
     >
