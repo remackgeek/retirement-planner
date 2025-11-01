@@ -1,5 +1,5 @@
 import styled from 'styled-components';
-import Menu from '../Menu/Menu';
+import AppHeader from '../AppHeader/AppHeader';
 import Content from '../Content/Content';
 import Sidebar from '../Sidebar/Sidebar';
 import Footer from '../Footer';
@@ -19,7 +19,7 @@ const ContentArea = styled.div`
 const AppContent: React.FC = () => {
   return (
     <AppContentContainer>
-      <Menu />
+      <AppHeader />
       <ContentArea>
         <Sidebar />
         <Content />
