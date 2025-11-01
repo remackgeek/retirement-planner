@@ -8,6 +8,7 @@ const storeName = 'scenarios';
 export const RetirementContext = createContext<{
   scenarios: Scenario[];
   activeScenario: Scenario | null;
+  loading: boolean;
   addScenario: (data: Scenario) => Promise<void>;
   updateScenario: (data: Scenario) => Promise<void>;
   setActiveScenario: (id: string) => Promise<void>;
@@ -18,6 +19,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   const [activeScenario, setActiveScenarioState] = useState<Scenario | null>(
     null
   );
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const initDB = async () => {
@@ -32,6 +34,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         setActiveScenarioState(savedScenarios[0]); // Set first scenario as active
       }
       // If no scenarios exist, leave scenarios empty and activeScenario null
+      setLoading(false);
     };
     initDB();
   }, []);
@@ -67,6 +70,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       value={{
         scenarios,
         activeScenario,
+        loading,
         addScenario,
         updateScenario,
         setActiveScenario,

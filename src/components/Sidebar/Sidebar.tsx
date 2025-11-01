@@ -73,6 +73,7 @@ const Sidebar: React.FC = () => {
   const {
     scenarios,
     activeScenario,
+    loading,
     setActiveScenario,
     addScenario,
     updateScenario,
@@ -168,7 +169,7 @@ const Sidebar: React.FC = () => {
           />
         </div>
         <ScenarioDialog
-          visible={dialogVisible || scenarios.length === 0}
+          visible={dialogVisible || (scenarios.length === 0 && !loading)}
           onHide={handleDialogHide}
           onSave={handleSave}
           scenario={editingScenario || undefined}
