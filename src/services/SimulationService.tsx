@@ -44,13 +44,19 @@ export function calculateAnnualSpending(
 ): number {
   let totalSpending = 0;
 
-  // Retirement spending with optional decrease
+  // Retirement spending with inflation adjustment and optional decrease
   const retirementSpending = userData.retirementSpending;
   const retirementStartYear =
     userData.referenceYear +
     (retirementSpending.startAge - userData.currentAge);
   if (year >= retirementStartYear) {
     let annualAmount = retirementSpending.monthlyAmount * 12;
+
+    // Apply inflation adjustment first (retirement spending should keep up with inflation)
+    const yearsFromReference = year - userData.referenceYear;
+    annualAmount *= Math.pow(1 + inflationRate, yearsFromReference);
+
+    // Then apply optional yearly decrease after inflation
     if (retirementSpending.yearlyDecreasePercent) {
       const yearsSinceStart = year - retirementStartYear;
       annualAmount *= Math.pow(

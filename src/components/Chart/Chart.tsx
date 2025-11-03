@@ -238,6 +238,7 @@ const Projections = ({
                     : userData.annualSavings;
 
                   // Calculate total spending and income in today's dollars
+                  const inflationRate = 0.03; // Assuming 3% inflation rate
                   let totalSpendingBase = 0;
                   if (isRetirement) {
                     totalSpendingBase +=
@@ -260,7 +261,17 @@ const Projections = ({
                       shouldInclude = year >= startYear && year <= endYear;
                     }
                     if (shouldInclude) {
-                      totalSpendingBase += goal.amount;
+                      let amount = goal.amount;
+                      if (!goal.inflationAdjusted) {
+                        // Fixed spending: deflate by inflation to show in today's dollars
+                        const yearsFromReference =
+                          year - userData.referenceYear;
+                        amount =
+                          goal.amount /
+                          Math.pow(1 + inflationRate, yearsFromReference);
+                      }
+                      // Inflation-adjusted spending: amount stays constant (real value preserved)
+                      totalSpendingBase += amount;
                     }
                   });
 
@@ -282,7 +293,17 @@ const Projections = ({
                       shouldInclude = year >= startYear && year <= endYear;
                     }
                     if (shouldInclude) {
-                      totalIncomeBase += event.amount;
+                      let amount = event.amount;
+                      if (event.colaType === 'fixed') {
+                        // Fixed income: deflate by inflation to show in today's dollars
+                        const yearsFromReference =
+                          year - userData.referenceYear;
+                        amount =
+                          event.amount /
+                          Math.pow(1 + inflationRate, yearsFromReference);
+                      }
+                      // Inflation-adjusted income: amount stays constant (real value preserved)
+                      totalIncomeBase += amount;
                     }
                   });
                   if (!isRetirement) {
