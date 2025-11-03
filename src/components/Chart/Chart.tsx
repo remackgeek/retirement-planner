@@ -422,10 +422,15 @@ const Projections = ({
                             ))}
                           </div>
                         )}
-                        {otherSpendingGoals.toLocaleString(undefined, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        })}
+                        {otherSpendingGoals > 0
+                          ? `-${otherSpendingGoals.toLocaleString(undefined, {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            })}`
+                          : otherSpendingGoals.toLocaleString(undefined, {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            })}
                       </td>
                       <td
                         style={{
