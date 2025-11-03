@@ -126,6 +126,12 @@ export function calculateAnnualIncome(
         const yearsFromReference = year - userData.referenceYear;
         amount *= Math.pow(1 + inflationRate, yearsFromReference);
       }
+
+      // Apply Social Security shortfall reduction starting in 2034
+      if (event.type === 'social_security' && year >= 2034) {
+        amount *= 0.77; // 23% reduction (77% of scheduled benefits)
+      }
+
       totalIncome += amount;
     }
   });
@@ -144,7 +150,7 @@ export function runSimulation(userData: UserData): {
   const retirementYear = currentYear + yearsToRetire;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const { mean, sigma } = getPortfolioReturns(userData.portfolioAssumptions);
-  const inflationRate = 0.03; // Assuming 3% inflation rate
+  const inflationRate = userData.inflationRate;
   const numSims = 5000;
   let successCount = 0;
   const portfolioPaths: number[][] = [];

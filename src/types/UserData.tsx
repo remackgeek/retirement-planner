@@ -12,6 +12,7 @@ export interface UserData {
   incomeEvents: IncomeEvent[];
   portfolioAssumptions: PortfolioAssumptions;
   referenceYear: number;
+  inflationRate: number;
   // Legacy fields for backward compatibility
   monthlyRetirementSpending?: number;
   ssAmount?: number;

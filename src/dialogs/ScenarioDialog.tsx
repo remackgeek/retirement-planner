@@ -54,6 +54,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
       riskLevel: 'moderate' as const,
     },
     referenceYear: new Date().getFullYear(),
+    inflationRate: 0.035,
     // Legacy fields for backward compatibility
     monthlyRetirementSpending: 5000,
     ssAmount: 30000,
@@ -105,6 +106,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
           riskLevel: 'moderate' as const,
         },
         referenceYear: new Date().getFullYear(),
+        inflationRate: 0.035,
         // Legacy fields for backward compatibility
         monthlyRetirementSpending: 5000,
         ssAmount: 30000,
@@ -238,6 +240,19 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
             value={tempData.riskLevel}
             options={riskOptions}
             onChange={(e) => handleChange('riskLevel', e.value)}
+          />
+        </div>
+        <div>
+          <label>Inflation Rate (%)</label>
+          <InputNumber
+            value={tempData.inflationRate * 100}
+            onValueChange={(e) =>
+              handleChange('inflationRate', (e.value || 0) / 100)
+            }
+            mode='decimal'
+            min={0}
+            max={20}
+            suffix='%'
           />
         </div>
       </FormGrid>

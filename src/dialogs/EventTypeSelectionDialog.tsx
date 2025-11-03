@@ -1,7 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
-import { Button } from 'primereact/button';
 import type { IncomeEventType } from '../types/IncomeEvent';
 
 const GridContainer = styled.div`

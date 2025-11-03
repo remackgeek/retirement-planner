@@ -233,6 +233,8 @@ const Sidebar: React.FC = () => {
               <dd>{activeScenario.incomeEvents.length}</dd>
               <dt>Risk Level:</dt>
               <dd>{activeScenario.portfolioAssumptions.riskLevel}</dd>
+              <dt>Inflation Rate:</dt>
+              <dd>{(activeScenario.inflationRate * 100).toFixed(1)}%</dd>
             </ScenarioSummary>
           </>
         )}
