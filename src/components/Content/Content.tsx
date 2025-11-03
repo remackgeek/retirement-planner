@@ -106,20 +106,20 @@ const Content: React.FC = () => {
       {activeScenario && (
         <ManagersContainer>
           <ManagerSection>
-            <SpendingGoalsManager
-              goals={activeScenario.spendingGoals}
-              onAdd={handleAddSpendingGoal}
-              onUpdate={handleUpdateSpendingGoal}
-              onDelete={handleDeleteSpendingGoal}
-            />
-          </ManagerSection>
-          <ManagerSection>
             <IncomeEventsManager
               events={activeScenario.incomeEvents}
               userData={activeScenario}
               onAdd={handleAddIncomeEvent}
               onUpdate={handleUpdateIncomeEvent}
               onDelete={handleDeleteIncomeEvent}
+            />
+          </ManagerSection>
+          <ManagerSection>
+            <SpendingGoalsManager
+              goals={activeScenario.spendingGoals}
+              onAdd={handleAddSpendingGoal}
+              onUpdate={handleUpdateSpendingGoal}
+              onDelete={handleDeleteSpendingGoal}
             />
           </ManagerSection>
         </ManagersContainer>
