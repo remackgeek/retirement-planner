@@ -275,8 +275,11 @@ export function runSimulation(userData: UserData): {
     let failed = false;
     for (let i = 0; i < totalYears; i++) {
       const year = currentYear + i;
-      const r = mean + sigma * gaussianRandom();
-      balance *= 1 + r;
+
+      // Store starting balance for this year (before any changes)
+      const inflationFactor = Math.pow(1 + inflationRate, i);
+      path.push(balance / inflationFactor);
+
       // Calculate spending for this year (includes retirement spending + spending goals)
       const spending = calculateAnnualSpending(userData, year);
 
@@ -293,9 +296,10 @@ export function runSimulation(userData: UserData): {
         failed = true;
         balance = 0;
       }
-      // Store balance in today's dollars (deflated by cumulative inflation)
-      const inflationFactor = Math.pow(1 + inflationRate, i);
-      path.push(balance / inflationFactor);
+
+      // Apply portfolio returns at the END of the year
+      const r = mean + sigma * gaussianRandom();
+      balance *= 1 + r;
     }
     portfolioPaths.push(path);
     if (!failed) successCount++;
