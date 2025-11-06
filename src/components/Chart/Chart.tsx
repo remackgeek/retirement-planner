@@ -17,6 +17,7 @@ import {
   calculateAnnualIncome,
   calculateAnnualSpending,
 } from '../../services/SimulationService';
+import { useMemo } from 'react';
 import type { SpendingGoal } from '../../types/SpendingGoal';
 import type { IncomeEvent } from '../../types/IncomeEvent';
 
@@ -66,6 +67,15 @@ const Projections = ({
 }) => {
   if (!results) return null;
   const { probability, median, downside, years } = results;
+
+  // Pre-calculate annual spending and income for all years to avoid redundant calculations
+  const annualCalculations = useMemo(() => {
+    return years.map((year: number) => ({
+      year,
+      totalSpending: calculateAnnualSpending(userData, year),
+      totalIncome: calculateAnnualIncome(userData, year),
+    }));
+  }, [years, userData]);
   const labels = years.map(
     (_: number, index: number) =>
       `${userData.currentAge + index} (${years[index]})`
@@ -241,9 +251,9 @@ const Projections = ({
                     ? userData.retirementSpending.monthlyAmount * 12
                     : userData.annualSavings;
 
-                  // Use tax-adjusted calculations from SimulationService
-                  const totalSpending = calculateAnnualSpending(userData, year);
-                  const totalIncome = calculateAnnualIncome(userData, year);
+                  // Use pre-calculated tax-adjusted values
+                  const { totalSpending, totalIncome } =
+                    annualCalculations[index];
                   if (!isRetirement) {
                     // Add annual savings for pre-retirement years (not included in calculateAnnualIncome)
                     // Note: annual savings are not taxed in this model

@@ -255,6 +255,31 @@ function calculateFederalTax(
   return tax;
 }
 
+// Memoization cache for tax calculations
+const taxCalculationCache = new Map<string, number>();
+
+function getCacheKey(
+  netIncome: number,
+  stateTaxRate: number,
+  filingStatus: FilingStatus,
+  age: number,
+  taxYear: number,
+  spouseAge: number | null
+): string {
+  return `${netIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}`;
+}
+
+function getNetCacheKey(
+  grossIncome: number,
+  stateTaxRate: number,
+  filingStatus: FilingStatus,
+  age: number,
+  taxYear: number,
+  spouseAge: number | null
+): string {
+  return `net_${grossIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}`;
+}
+
 export function calculateGrossIncomeNeeded(
   netIncome: number,
   stateTaxRate: number,
@@ -263,6 +288,18 @@ export function calculateGrossIncomeNeeded(
   taxYear: number,
   spouseAge: number | null = null
 ): number {
+  const cacheKey = getCacheKey(
+    netIncome,
+    stateTaxRate,
+    filingStatus,
+    age,
+    taxYear,
+    spouseAge
+  );
+  if (taxCalculationCache.has(cacheKey)) {
+    return taxCalculationCache.get(cacheKey)!;
+  }
+
   if (netIncome < 0 || stateTaxRate < 0 || stateTaxRate >= 1) {
     throw new Error('Invalid input values');
   }
@@ -315,7 +352,9 @@ export function calculateGrossIncomeNeeded(
     console.warn('Max iterations reached; result may not be precise.');
   }
 
-  return Math.round(low * 100) / 100; // Round to nearest cent
+  const result = Math.round(low * 100) / 100; // Round to nearest cent
+  taxCalculationCache.set(cacheKey, result);
+  return result;
 }
 
 export function calculateNetFromGross(
@@ -326,6 +365,18 @@ export function calculateNetFromGross(
   taxYear: number,
   spouseAge: number | null = null
 ): number {
+  const cacheKey = getNetCacheKey(
+    grossIncome,
+    stateTaxRate,
+    filingStatus,
+    age,
+    taxYear,
+    spouseAge
+  );
+  if (taxCalculationCache.has(cacheKey)) {
+    return taxCalculationCache.get(cacheKey)!;
+  }
+
   if (grossIncome < 0 || stateTaxRate < 0 || stateTaxRate >= 1) {
     throw new Error('Invalid input values');
   }
@@ -351,7 +402,14 @@ export function calculateNetFromGross(
   const taxable = Math.max(0, grossIncome - deduction);
   const federalTax = calculateFederalTax(taxable, filingStatus, taxYear);
   const stateTax = grossIncome * stateTaxRate;
-  return grossIncome - federalTax - stateTax;
+  const result = grossIncome - federalTax - stateTax;
+  taxCalculationCache.set(cacheKey, result);
+  return result;
+}
+
+// Function to clear cache when user data changes
+export function clearTaxCalculationCache(): void {
+  taxCalculationCache.clear();
 }
 
 // Optional: Export a hook for React usage if you want to memoize or handle async (though sync here)

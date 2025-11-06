@@ -2,6 +2,7 @@ import { useContext, useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { RetirementContext } from '../../context/RetirementContext';
 import { runSimulation } from '../../services/SimulationService';
+import { clearTaxCalculationCache } from '../../services/TaxCalculator';
 import Projections from '../Chart/Chart';
 import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
@@ -32,6 +33,8 @@ const Content: React.FC = () => {
 
   useEffect(() => {
     if (activeScenario) {
+      // Clear tax calculation cache when scenario changes to avoid stale results
+      clearTaxCalculationCache();
       setResults(runSimulation(activeScenario));
     } else {
       setResults(null);
