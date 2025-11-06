@@ -1,4 +1,63 @@
 import type { UserData } from '../types/UserData';
+import {
+  calculateNetFromGross,
+  calculateGrossIncomeNeeded,
+} from './TaxCalculator';
+
+// State tax rates (from user's table, converted to decimal)
+export const STATE_TAX_RATES: Record<string, number> = {
+  Alabama: 0.05,
+  Alaska: 0.0,
+  Arizona: 0.025,
+  Arkansas: 0.039,
+  California: 0.08,
+  Colorado: 0.044,
+  Connecticut: 0.06,
+  Delaware: 0.066,
+  Florida: 0.0,
+  Georgia: 0.0539,
+  Hawaii: 0.079,
+  Idaho: 0.057,
+  Illinois: 0.0495,
+  Indiana: 0.03,
+  Iowa: 0.038,
+  Kansas: 0.0558,
+  Kentucky: 0.04,
+  Louisiana: 0.03,
+  Maine: 0.0675,
+  Maryland: 0.05,
+  Massachusetts: 0.05,
+  Michigan: 0.0425,
+  Minnesota: 0.068,
+  Mississippi: 0.044,
+  Missouri: 0.047,
+  Montana: 0.059,
+  Nebraska: 0.052,
+  Nevada: 0.0,
+  'New Hampshire': 0.0,
+  'New Jersey': 0.053,
+  'New Mexico': 0.047,
+  'New York': 0.055,
+  'North Carolina': 0.0425,
+  'North Dakota': 0.0195,
+  Ohio: 0.0275,
+  Oklahoma: 0.0475,
+  Oregon: 0.0875,
+  Pennsylvania: 0.0307,
+  'Rhode Island': 0.0475,
+  'South Carolina': 0.062,
+  'South Dakota': 0.0,
+  Tennessee: 0.0,
+  Texas: 0.0,
+  Utah: 0.0455,
+  Vermont: 0.066,
+  Virginia: 0.0575,
+  Washington: 0.0,
+  'West Virginia': 0.0482,
+  Wisconsin: 0.053,
+  Wyoming: 0.0,
+  'Washington, DC': 0.085,
+};
 
 function gaussianRandom(): number {
   let u = 0,
@@ -6,6 +65,49 @@ function gaussianRandom(): number {
   while (u === 0) u = Math.random();
   v = Math.random();
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+
+function getStateTaxRate(userData: UserData): number {
+  return STATE_TAX_RATES[userData.state] || 0;
+}
+
+function calculateAfterTaxIncome(
+  amount: number,
+  taxStatus: 'before_tax' | 'after_tax',
+  userData: UserData,
+  year: number
+): number {
+  if (taxStatus === 'after_tax') {
+    return amount;
+  }
+  // For before_tax income, amount is gross - calculate net after taxes
+  const stateTaxRate = getStateTaxRate(userData);
+  return calculateNetFromGross(
+    amount,
+    stateTaxRate,
+    userData.filingStatus,
+    userData.currentAge + (year - userData.referenceYear), // Age in this year
+    year,
+    userData.spouseAge
+  );
+}
+
+function calculateGrossWithdrawal(
+  amount: number,
+  userData: UserData,
+  year: number
+): number {
+  // Since spending is specified as before-tax amount, we need to calculate
+  // the gross withdrawal needed to achieve this net spending
+  const stateTaxRate = getStateTaxRate(userData);
+  return calculateGrossIncomeNeeded(
+    amount,
+    stateTaxRate,
+    userData.filingStatus,
+    userData.currentAge + (year - userData.referenceYear), // Age in this year
+    year,
+    userData.spouseAge
+  );
 }
 
 function getPortfolioReturns(assumptions: UserData['portfolioAssumptions']): {
@@ -64,7 +166,10 @@ export function calculateAnnualSpending(
         yearsSinceStart
       );
     }
-    totalSpending += annualAmount;
+
+    // Gross up for taxes since spending is specified as before-tax amount
+    const grossAmount = calculateGrossWithdrawal(annualAmount, userData, year);
+    totalSpending += grossAmount;
   }
 
   // Spending goals
@@ -90,7 +195,10 @@ export function calculateAnnualSpending(
         const yearsFromReference = year - userData.referenceYear;
         amount *= Math.pow(1 + inflationRate, yearsFromReference);
       }
-      totalSpending += amount;
+
+      // Gross up for taxes since spending goals are specified as before-tax amounts
+      const grossAmount = calculateGrossWithdrawal(amount, userData, year);
+      totalSpending += grossAmount;
     }
   });
 
@@ -132,7 +240,14 @@ export function calculateAnnualIncome(
         amount *= 0.77; // 23% reduction (77% of scheduled benefits)
       }
 
-      totalIncome += amount;
+      // Apply taxes based on tax status
+      const afterTaxAmount = calculateAfterTaxIncome(
+        amount,
+        event.taxStatus,
+        userData,
+        year
+      );
+      totalIncome += afterTaxAmount;
     }
   });
 

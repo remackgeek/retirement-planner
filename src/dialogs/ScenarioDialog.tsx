@@ -55,6 +55,10 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     },
     referenceYear: new Date().getFullYear(),
     inflationRate: 0.035,
+    // Tax configuration
+    filingStatus: 'single' as const, // Default filing status
+    spouseAge: null, // No spouse by default
+    state: 'California', // Default state
     // Legacy fields for backward compatibility
     monthlyRetirementSpending: 5000,
     ssAmount: 30000,
@@ -107,6 +111,10 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         },
         referenceYear: new Date().getFullYear(),
         inflationRate: 0.035,
+        // Tax configuration
+        filingStatus: 'single' as const, // Default filing status
+        spouseAge: null, // No spouse by default
+        state: 'California', // Default state
         // Legacy fields for backward compatibility
         monthlyRetirementSpending: 5000,
         ssAmount: 30000,
@@ -119,6 +127,60 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     { label: 'Conservative', value: 'conservative' },
     { label: 'Moderate', value: 'moderate' },
     { label: 'High', value: 'high' },
+  ];
+
+  const stateOptions = [
+    { label: 'Alabama', value: 'Alabama' },
+    { label: 'Alaska', value: 'Alaska' },
+    { label: 'Arizona', value: 'Arizona' },
+    { label: 'Arkansas', value: 'Arkansas' },
+    { label: 'California', value: 'California' },
+    { label: 'Colorado', value: 'Colorado' },
+    { label: 'Connecticut', value: 'Connecticut' },
+    { label: 'Delaware', value: 'Delaware' },
+    { label: 'Florida', value: 'Florida' },
+    { label: 'Georgia', value: 'Georgia' },
+    { label: 'Hawaii', value: 'Hawaii' },
+    { label: 'Idaho', value: 'Idaho' },
+    { label: 'Illinois', value: 'Illinois' },
+    { label: 'Indiana', value: 'Indiana' },
+    { label: 'Iowa', value: 'Iowa' },
+    { label: 'Kansas', value: 'Kansas' },
+    { label: 'Kentucky', value: 'Kentucky' },
+    { label: 'Louisiana', value: 'Louisiana' },
+    { label: 'Maine', value: 'Maine' },
+    { label: 'Maryland', value: 'Maryland' },
+    { label: 'Massachusetts', value: 'Massachusetts' },
+    { label: 'Michigan', value: 'Michigan' },
+    { label: 'Minnesota', value: 'Minnesota' },
+    { label: 'Mississippi', value: 'Mississippi' },
+    { label: 'Missouri', value: 'Missouri' },
+    { label: 'Montana', value: 'Montana' },
+    { label: 'Nebraska', value: 'Nebraska' },
+    { label: 'Nevada', value: 'Nevada' },
+    { label: 'New Hampshire', value: 'New Hampshire' },
+    { label: 'New Jersey', value: 'New Jersey' },
+    { label: 'New Mexico', value: 'New Mexico' },
+    { label: 'New York', value: 'New York' },
+    { label: 'North Carolina', value: 'North Carolina' },
+    { label: 'North Dakota', value: 'North Dakota' },
+    { label: 'Ohio', value: 'Ohio' },
+    { label: 'Oklahoma', value: 'Oklahoma' },
+    { label: 'Oregon', value: 'Oregon' },
+    { label: 'Pennsylvania', value: 'Pennsylvania' },
+    { label: 'Rhode Island', value: 'Rhode Island' },
+    { label: 'South Carolina', value: 'South Carolina' },
+    { label: 'South Dakota', value: 'South Dakota' },
+    { label: 'Tennessee', value: 'Tennessee' },
+    { label: 'Texas', value: 'Texas' },
+    { label: 'Utah', value: 'Utah' },
+    { label: 'Vermont', value: 'Vermont' },
+    { label: 'Virginia', value: 'Virginia' },
+    { label: 'Washington', value: 'Washington' },
+    { label: 'West Virginia', value: 'West Virginia' },
+    { label: 'Wisconsin', value: 'Wisconsin' },
+    { label: 'Wyoming', value: 'Wyoming' },
+    { label: 'Washington, DC', value: 'Washington, DC' },
   ];
 
   const handleChange = (field: keyof typeof tempData, value: any) => {
@@ -253,6 +315,38 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
             min={0}
             max={20}
             suffix='%'
+          />
+        </div>
+        <div>
+          <label>Filing Status</label>
+          <Dropdown
+            value={tempData.filingStatus}
+            options={[
+              { label: 'Single', value: 'single' },
+              { label: 'Married Filing Separately', value: 'mfs' },
+              { label: 'Married Filing Jointly', value: 'mfj' },
+              { label: 'Head of Household', value: 'hoh' },
+            ]}
+            onChange={(e) => handleChange('filingStatus', e.value)}
+          />
+        </div>
+        <div>
+          <label>Spouse Age (optional)</label>
+          <InputNumber
+            value={tempData.spouseAge || undefined}
+            onValueChange={(e) => handleChange('spouseAge', e.value || null)}
+            mode='decimal'
+            min={18}
+            max={120}
+            placeholder='Leave empty if no spouse'
+          />
+        </div>
+        <div>
+          <label>State</label>
+          <Dropdown
+            value={tempData.state}
+            options={stateOptions}
+            onChange={(e) => handleChange('state', e.value)}
           />
         </div>
       </FormGrid>

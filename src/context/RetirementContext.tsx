@@ -16,6 +16,20 @@ export const RetirementContext = createContext<{
   setActiveScenario: (id: string) => Promise<void>;
 } | null>(null);
 
+const migrateScenario = (scenario: any): Scenario => {
+  // Add default tax fields if missing
+  if (!scenario.filingStatus) {
+    scenario.filingStatus = 'single';
+  }
+  if (scenario.spouseAge === undefined) {
+    scenario.spouseAge = null;
+  }
+  if (!scenario.state) {
+    scenario.state = 'California'; // Default state
+  }
+  return scenario as Scenario;
+};
+
 export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [activeScenario, setActiveScenarioState] = useState<Scenario | null>(
@@ -32,8 +46,14 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       });
       const savedScenarios = await db.getAll(storeName);
       if (savedScenarios.length > 0) {
-        setScenarios(savedScenarios);
-        setActiveScenarioState(savedScenarios[0]); // Set first scenario as active
+        // Migrate scenarios to ensure they have tax fields
+        const migratedScenarios = savedScenarios.map(migrateScenario);
+        // Save migrated scenarios back to DB
+        for (const scenario of migratedScenarios) {
+          await db.put(storeName, scenario, scenario.id);
+        }
+        setScenarios(migratedScenarios);
+        setActiveScenarioState(migratedScenarios[0]); // Set first scenario as active
       }
       // If no scenarios exist, leave scenarios empty and activeScenario null
       setLoading(false);

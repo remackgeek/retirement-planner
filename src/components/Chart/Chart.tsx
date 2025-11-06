@@ -13,6 +13,10 @@ import { Accordion, AccordionTab } from 'primereact/accordion';
 import htmlAnnotationsPlugin, {
   type AnnotationConfig,
 } from '../../plugins/chartHtmlAnnotations';
+import {
+  calculateAnnualIncome,
+  calculateAnnualSpending,
+} from '../../services/SimulationService';
 import type { SpendingGoal } from '../../types/SpendingGoal';
 import type { IncomeEvent } from '../../types/IncomeEvent';
 
@@ -237,7 +241,16 @@ const Projections = ({
                     ? userData.retirementSpending.monthlyAmount * 12
                     : userData.annualSavings;
 
-                  // Calculate total spending and income in today's dollars
+                  // Use tax-adjusted calculations from SimulationService
+                  const totalSpending = calculateAnnualSpending(userData, year);
+                  const totalIncome = calculateAnnualIncome(userData, year);
+                  if (!isRetirement) {
+                    // Add annual savings for pre-retirement years (not included in calculateAnnualIncome)
+                    // Note: annual savings are not taxed in this model
+                  }
+
+                  // For display purposes, calculate non-tax-adjusted versions for the table breakdown
+                  // Calculate total spending and income in today's dollars (without tax adjustments for breakdown)
                   const inflationRate = 0.03; // Assuming 3% inflation rate
                   let totalSpendingBase = 0;
                   if (isRetirement) {
@@ -339,8 +352,15 @@ const Projections = ({
                     }
                   );
 
-                  // Cash flow = income - spending in today's dollars
-                  const cashFlow = totalIncomeBase - totalSpendingBase;
+                  // Cash flow = tax-adjusted income - tax-adjusted spending
+                  // Both functions already account for inflation and taxes appropriately
+                  // Deflate to today's dollars for consistent display with portfolio balance
+                  const inflationFactor = Math.pow(
+                    1 + userData.inflationRate,
+                    index
+                  );
+                  const cashFlow =
+                    (totalIncome - totalSpending) / inflationFactor;
 
                   return (
                     <tr key={year}>

@@ -13,6 +13,10 @@ export interface UserData {
   portfolioAssumptions: PortfolioAssumptions;
   referenceYear: number;
   inflationRate: number;
+  // Tax configuration
+  filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh'; // Filing status for tax calculation
+  spouseAge: number | null; // Spouse age for MFJ filing (null if no spouse)
+  state: string; // State for tax calculation
   // Legacy fields for backward compatibility
   monthlyRetirementSpending?: number;
   ssAmount?: number;
