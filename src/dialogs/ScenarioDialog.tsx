@@ -186,6 +186,15 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
   const handleChange = (field: keyof typeof tempData, value: any) => {
     if (field === 'retirementSpending') {
       setTempData({ ...tempData, retirementSpending: value });
+    } else if (field === 'riskLevel') {
+      setTempData({
+        ...tempData,
+        riskLevel: value,
+        portfolioAssumptions: {
+          ...tempData.portfolioAssumptions,
+          riskLevel: value,
+        },
+      });
     } else {
       setTempData({ ...tempData, [field]: value });
     }
