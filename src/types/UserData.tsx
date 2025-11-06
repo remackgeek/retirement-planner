@@ -1,5 +1,9 @@
 import type { SpendingGoal, RetirementSpending } from './SpendingGoal';
-import type { IncomeEvent, PortfolioAssumptions } from './IncomeEvent';
+import type {
+  IncomeEvent,
+  PortfolioAssumptions,
+  PortfolioType,
+} from './IncomeEvent';
 
 export interface UserData {
   currentAge: number;
@@ -20,5 +24,5 @@ export interface UserData {
   // Legacy fields for backward compatibility
   monthlyRetirementSpending?: number;
   ssAmount?: number;
-  riskLevel?: 'conservative' | 'moderate' | 'high';
+  riskLevel?: PortfolioType;
 }

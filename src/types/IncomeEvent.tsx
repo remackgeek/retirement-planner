@@ -21,8 +21,22 @@ export interface IncomeEvent {
   syncWithEstimate?: boolean; // For Social Security
 }
 
+export type PortfolioType = 'conservative' | 'balanced' | 'aggressive';
+
+export type SimulationType = 'log_normal' | 'fat_tail';
+
+export interface PortfolioParams {
+  mean: number; // Arithmetic mean return (nominal, decimal e.g., 0.045 for 4.5%)
+  stdDev: number; // Standard deviation (decimal e.g., 0.08 for 8%)
+  mu: number; // For log-normal: mean of ln(1 + r)
+  sigma: number; // For log-normal: std dev of ln(1 + r)
+  // Fat-tail parameters
+  df?: number; // Degrees of freedom for t-distribution
+}
+
 export interface PortfolioAssumptions {
-  riskLevel: 'conservative' | 'moderate' | 'high' | 'custom';
+  riskLevel: PortfolioType | 'custom';
+  simulationType?: SimulationType;
   customAllocation?: {
     stocks: number;
     bonds: number;

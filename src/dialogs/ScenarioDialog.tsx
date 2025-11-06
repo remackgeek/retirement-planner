@@ -6,6 +6,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import type { Scenario } from '../types/Scenario';
+import type { PortfolioType } from '../types/IncomeEvent';
 
 const FormGrid = styled.div`
   display: grid;
@@ -51,7 +52,8 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
       },
     ],
     portfolioAssumptions: {
-      riskLevel: 'moderate' as const,
+      riskLevel: 'balanced' as const,
+      simulationType: 'log_normal' as const,
     },
     referenceYear: new Date().getFullYear(),
     inflationRate: 0.035,
@@ -62,7 +64,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     // Legacy fields for backward compatibility
     monthlyRetirementSpending: 5000,
     ssAmount: 30000,
-    riskLevel: 'moderate' as const,
+    riskLevel: 'balanced' as const,
   }));
 
   // Update tempData when scenario prop changes (for editing)
@@ -75,10 +77,11 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         ssAmount:
           scenario.incomeEvents.find((e) => e.type === 'social_security')
             ?.amount || 30000,
-        riskLevel: scenario.portfolioAssumptions.riskLevel as
-          | 'conservative'
-          | 'moderate'
-          | 'high',
+        riskLevel:
+          scenario.portfolioAssumptions.riskLevel === 'custom'
+            ? 'balanced'
+            : (scenario.portfolioAssumptions.riskLevel as PortfolioType) ||
+              'balanced',
       });
     } else {
       // Reset to defaults when no scenario (for new scenario creation)
@@ -107,7 +110,8 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
           },
         ],
         portfolioAssumptions: {
-          riskLevel: 'moderate' as const,
+          riskLevel: 'balanced' as const,
+          simulationType: 'log_normal' as const,
         },
         referenceYear: new Date().getFullYear(),
         inflationRate: 0.035,
@@ -118,15 +122,20 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         // Legacy fields for backward compatibility
         monthlyRetirementSpending: 5000,
         ssAmount: 30000,
-        riskLevel: 'moderate' as const,
+        riskLevel: 'balanced' as const,
       });
     }
   }, [scenario]);
 
   const riskOptions = [
     { label: 'Conservative', value: 'conservative' },
-    { label: 'Moderate', value: 'moderate' },
-    { label: 'High', value: 'high' },
+    { label: 'Balanced', value: 'balanced' },
+    { label: 'Aggressive', value: 'aggressive' },
+  ];
+
+  const simulationTypeOptions = [
+    { label: 'Log-Normal', value: 'log_normal' },
+    { label: 'Fat-Tail', value: 'fat_tail' },
   ];
 
   const stateOptions = [
@@ -311,6 +320,22 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
             value={tempData.riskLevel}
             options={riskOptions}
             onChange={(e) => handleChange('riskLevel', e.value)}
+          />
+        </div>
+        <div>
+          <label>Simulation Type</label>
+          <Dropdown
+            value={tempData.portfolioAssumptions.simulationType || 'log_normal'}
+            options={simulationTypeOptions}
+            onChange={(e) =>
+              setTempData({
+                ...tempData,
+                portfolioAssumptions: {
+                  ...tempData.portfolioAssumptions,
+                  simulationType: e.value,
+                },
+              })
+            }
           />
         </div>
         <div>
