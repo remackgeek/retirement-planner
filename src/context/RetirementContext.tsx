@@ -1,6 +1,32 @@
 import { createContext, useState, useEffect, type ReactNode } from 'react';
 import type { Scenario } from '../types/Scenario';
 import { openDB } from 'idb';
+import ExportScenarioDialog from '../dialogs/ExportScenarioDialog';
+
+declare global {
+  interface FileSystemFileHandle {
+    createWritable(): Promise<FileSystemWritableFileStream>;
+  }
+
+  interface FileSystemWritableFileStream {
+    write(data: string): Promise<void>;
+    close(): Promise<void>;
+  }
+
+  interface SaveFilePickerOptions {
+    suggestedName?: string;
+    types?: Array<{
+      description?: string;
+      accept: Record<string, string[]>;
+    }>;
+  }
+
+  interface Window {
+    showSaveFilePicker(
+      options?: SaveFilePickerOptions
+    ): Promise<FileSystemFileHandle>;
+  }
+}
 
 const dbName = 'RetirementPlanner';
 const storeName = 'scenarios';
@@ -36,6 +62,10 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     null
   );
   const [loading, setLoading] = useState(true);
+
+  const [exportDialogVisible, setExportDialogVisible] = useState(false);
+  const [selectedExportScenario, setSelectedExportScenario] =
+    useState<Scenario | null>(null);
 
   useEffect(() => {
     const initDB = async () => {
@@ -94,17 +124,35 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   const exportScenario = (id: string) => {
     const scenario = scenarios.find((s) => s.id === id);
     if (scenario) {
-      const dataStr = JSON.stringify(scenario, null, 2);
-      const dataUri =
-        'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-      const exportFileDefaultName = `${scenario.name
-        .replace(/[^a-z0-9]/gi, '_')
-        .toLowerCase()}_scenario.json`;
-      const linkElement = document.createElement('a');
-      linkElement.setAttribute('href', dataUri);
-      linkElement.setAttribute('download', exportFileDefaultName);
-      linkElement.click();
+      setSelectedExportScenario(scenario);
+      setExportDialogVisible(true);
     }
+  };
+
+  const confirmExport = async (filename: string) => {
+    const scenario = selectedExportScenario;
+    if (scenario) {
+      try {
+        const dataStr = JSON.stringify(scenario, null, 2);
+        const fileHandle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [
+            {
+              description: 'JSON files',
+              accept: { 'application/json': ['.json'] },
+            },
+          ],
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(dataStr);
+        await writable.close();
+      } catch (err) {
+        // User cancelled or other error, do nothing
+        console.error('Export failed:', err);
+      }
+    }
+    setExportDialogVisible(false);
+    setSelectedExportScenario(null);
   };
 
   const setActiveScenario = async (id: string) => {
@@ -129,6 +177,15 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       }}
     >
       {children}
+      <ExportScenarioDialog
+        visible={exportDialogVisible}
+        onHide={() => {
+          setExportDialogVisible(false);
+          setSelectedExportScenario(null);
+        }}
+        scenario={selectedExportScenario}
+        onConfirm={confirmExport}
+      />
     </RetirementContext.Provider>
   );
 };
