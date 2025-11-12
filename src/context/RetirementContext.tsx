@@ -202,22 +202,43 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       const existingIndex = scenarios.findIndex(
         (s) => s.id === importedData.id
       );
+
       if (existingIndex !== -1) {
-        await updateScenario(importedData);
+        // Confirm overwrite
+        confirmDialog({
+          message: `A scenario with ID '${importedData.id}' already exists. Importing will overwrite it. Are you sure?`,
+          header: 'Overwrite Scenario?',
+          icon: 'pi pi-exclamation-triangle',
+          acceptLabel: 'Yes',
+          rejectLabel: 'No',
+          accept: async () => {
+            await updateScenario(importedData);
+            setActiveScenarioState(importedData);
+            // Success message
+            confirmDialog({
+              message: 'Scenario imported successfully!',
+              header: 'Success',
+              icon: 'pi pi-check',
+              acceptLabel: 'OK',
+              reject: undefined,
+            });
+          },
+          reject: () => {
+            console.log('Import cancelled by user.');
+          },
+        });
       } else {
         await addScenario(importedData);
+        setActiveScenarioState(importedData);
+        // Success message
+        confirmDialog({
+          message: 'Scenario imported successfully!',
+          header: 'Success',
+          icon: 'pi pi-check',
+          acceptLabel: 'OK',
+          reject: undefined,
+        });
       }
-
-      setActiveScenarioState(importedData);
-
-      // Success message
-      confirmDialog({
-        message: 'Scenario imported successfully!',
-        header: 'Success',
-        icon: 'pi pi-check',
-        acceptLabel: 'OK',
-        reject: undefined,
-      });
     } catch (error: unknown) {
       console.error('Import failed:', error);
       const errorMessage =
