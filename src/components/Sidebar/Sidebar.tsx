@@ -93,6 +93,7 @@ const Sidebar: React.FC = () => {
     updateScenario,
     deleteScenario,
     exportScenario,
+    importScenario,
   } = context;
 
   const toggleSidebar = () => {
@@ -248,6 +249,12 @@ const Sidebar: React.FC = () => {
             label='New Scenario'
             onClick={() => setDialogVisible(true)}
             style={{ width: '100%' }}
+          />
+          <Button
+            label='Import Scenario'
+            icon='pi pi-upload'
+            onClick={() => importScenario()}
+            style={{ width: '100%', marginTop: '0.5rem' }}
           />
         </div>
         <ScenarioDialog

@@ -1,7 +1,9 @@
 import { createContext, useState, useEffect, type ReactNode } from 'react';
 import type { Scenario } from '../types/Scenario';
 import { openDB } from 'idb';
+import { confirmDialog } from 'primereact/confirmdialog';
 import ExportScenarioDialog from '../dialogs/ExportScenarioDialog';
+import ImportScenarioDialog from '../dialogs/ImportScenarioDialog';
 
 declare global {
   interface FileSystemFileHandle {
@@ -21,10 +23,20 @@ declare global {
     }>;
   }
 
+  interface OpenFilePickerOptions {
+    types?: Array<{
+      description?: string;
+      accept: Record<string, string[]>;
+    }>;
+  }
+
   interface Window {
     showSaveFilePicker(
       options?: SaveFilePickerOptions
     ): Promise<FileSystemFileHandle>;
+    showOpenFilePicker(
+      options?: OpenFilePickerOptions
+    ): Promise<FileSystemFileHandle[]>;
   }
 }
 
@@ -39,6 +51,7 @@ export const RetirementContext = createContext<{
   updateScenario: (data: Scenario) => Promise<void>;
   deleteScenario: (id: string) => Promise<void>;
   exportScenario: (id: string) => void;
+  importScenario: () => void;
   setActiveScenario: (id: string) => Promise<void>;
 } | null>(null);
 
@@ -66,6 +79,8 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   const [exportDialogVisible, setExportDialogVisible] = useState(false);
   const [selectedExportScenario, setSelectedExportScenario] =
     useState<Scenario | null>(null);
+
+  const [importDialogVisible, setImportDialogVisible] = useState(false);
 
   useEffect(() => {
     const initDB = async () => {
@@ -129,6 +144,10 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const importScenario = () => {
+    setImportDialogVisible(true);
+  };
+
   const confirmExport = async (filename: string) => {
     const scenario = selectedExportScenario;
     if (scenario) {
@@ -155,6 +174,66 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     setSelectedExportScenario(null);
   };
 
+  const confirmImport = async () => {
+    try {
+      const [fileHandle] = await window.showOpenFilePicker({
+        types: [
+          {
+            description: 'JSON files',
+            accept: { 'application/json': ['.json'] },
+          },
+        ],
+      });
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      const importedData = JSON.parse(text) as Scenario;
+
+      // Basic validation
+      if (!importedData.name || typeof importedData.currentAge !== 'number') {
+        throw new Error('Invalid scenario: Missing name or currentAge.');
+      }
+
+      // Generate ID if missing
+      if (!importedData.id) {
+        importedData.id = crypto.randomUUID();
+      }
+
+      // Check if exists
+      const existingIndex = scenarios.findIndex(
+        (s) => s.id === importedData.id
+      );
+      if (existingIndex !== -1) {
+        await updateScenario(importedData);
+      } else {
+        await addScenario(importedData);
+      }
+
+      setActiveScenarioState(importedData);
+
+      // Success message
+      confirmDialog({
+        message: 'Scenario imported successfully!',
+        header: 'Success',
+        icon: 'pi pi-check',
+        acceptLabel: 'OK',
+        reject: undefined,
+      });
+    } catch (error: unknown) {
+      console.error('Import failed:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Invalid file.';
+      confirmDialog({
+        message: `Import failed: ${errorMessage}`,
+        header: 'Error',
+        icon: 'pi pi-exclamation-triangle',
+        acceptLabel: 'OK',
+        reject: undefined,
+      });
+    } finally {
+      setImportDialogVisible(false);
+    }
+  };
+
   const setActiveScenario = async (id: string) => {
     const db = await openDB(dbName, 1);
     const scenario = await db.get(storeName, id);
@@ -173,6 +252,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         updateScenario,
         deleteScenario,
         exportScenario,
+        importScenario,
         setActiveScenario,
       }}
     >
@@ -185,6 +265,11 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         }}
         scenario={selectedExportScenario}
         onConfirm={confirmExport}
+      />
+      <ImportScenarioDialog
+        visible={importDialogVisible}
+        onHide={() => setImportDialogVisible(false)}
+        onConfirm={confirmImport}
       />
     </RetirementContext.Provider>
   );
