@@ -77,7 +77,7 @@ const portfolioParams: Record<PortfolioType, PortfolioParams> = {
     df: 4,
   },
   aggressive: {
-    mean: 0.068,
+    mean: 0.08,
     stdDev: 0.15,
     mu: 0.056,
     sigma: 0.137,
