@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, waitFor, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import { RetirementProvider, RetirementContext } from './RetirementContext';
 import { confirmDialog } from 'primereact/confirmdialog';
 import type { Scenario } from '../types/Scenario';
@@ -33,7 +34,7 @@ const mockFileHandle = {
 const mockFile = new File(['{"name": "Test", "currentAge": 30}'], 'test.json', {
   type: 'application/json',
 });
-mockFileHandle.getFile.mockResolvedValue(mockFile);
+(mockFileHandle.getFile as Mock).mockResolvedValue(mockFile);
 vi.stubGlobal(
   'showOpenFilePicker',
   vi.fn().mockResolvedValue([mockFileHandle as any])
@@ -78,7 +79,7 @@ describe('RetirementContext Import Tests', () => {
     vi.mocked(confirmDialog).mockClear();
     vi.mocked(window.showOpenFilePicker).mockClear();
     vi.mocked(crypto.randomUUID).mockClear();
-    (mockFileHandle.getFile as vi.Mock).mockClear();
+    (mockFileHandle.getFile as Mock).mockClear();
   });
 
   it('imports new scenario successfully', async () => {
@@ -87,7 +88,7 @@ describe('RetirementContext Import Tests', () => {
       type: 'application/json',
     });
     newFile.text = vi.fn().mockResolvedValue(mockText);
-    (mockFileHandle.getFile as vi.Mock).mockResolvedValue(newFile);
+    (mockFileHandle.getFile as Mock).mockResolvedValue(newFile);
     vi.mocked(crypto.randomUUID).mockReturnValue(
       '123e4567-e89b-12d3-a456-426614174000'
     );
@@ -144,7 +145,7 @@ describe('RetirementContext Import Tests', () => {
       type: 'application/json',
     });
     updateFile.text = vi.fn().mockResolvedValue(mockText);
-    (mockFileHandle.getFile as vi.Mock).mockResolvedValue(updateFile);
+    (mockFileHandle.getFile as Mock).mockResolvedValue(updateFile);
     vi.mocked(window.showOpenFilePicker).mockResolvedValue([
       mockFileHandle as any,
     ]);
@@ -210,7 +211,7 @@ describe('RetirementContext Import Tests', () => {
       type: 'application/json',
     });
     updateFile.text = vi.fn().mockResolvedValue(mockText);
-    (mockFileHandle.getFile as vi.Mock).mockResolvedValue(updateFile);
+    (mockFileHandle.getFile as Mock).mockResolvedValue(updateFile);
     vi.mocked(window.showOpenFilePicker).mockResolvedValue([
       mockFileHandle as any,
     ]);
@@ -264,7 +265,7 @@ describe('RetirementContext Import Tests', () => {
       type: 'application/json',
     });
     invalidFile.text = vi.fn().mockResolvedValue(mockText);
-    (mockFileHandle.getFile as vi.Mock).mockResolvedValue(invalidFile);
+    (mockFileHandle.getFile as Mock).mockResolvedValue(invalidFile);
     vi.mocked(window.showOpenFilePicker).mockResolvedValue([
       mockFileHandle as any,
     ]);
