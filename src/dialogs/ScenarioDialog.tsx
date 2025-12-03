@@ -53,7 +53,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     ],
     portfolioAssumptions: {
       riskLevel: 'balanced' as const,
-      simulationType: 'log_normal' as const,
     },
     referenceYear: new Date().getFullYear(),
     inflationRate: 0.035,
@@ -111,7 +110,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         ],
         portfolioAssumptions: {
           riskLevel: 'balanced' as const,
-          simulationType: 'log_normal' as const,
         },
         referenceYear: new Date().getFullYear(),
         inflationRate: 0.035,
@@ -131,11 +129,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     { label: 'Conservative', value: 'conservative' },
     { label: 'Balanced', value: 'balanced' },
     { label: 'Aggressive', value: 'aggressive' },
-  ];
-
-  const simulationTypeOptions = [
-    { label: 'Log-Normal', value: 'log_normal' },
-    { label: 'Fat-Tail', value: 'fat_tail' },
   ];
 
   const stateOptions = [
@@ -322,22 +315,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
             onChange={(e) => handleChange('riskLevel', e.value)}
           />
         </div>
-        <div>
-          <label>Simulation Type</label>
-          <Dropdown
-            value={tempData.portfolioAssumptions.simulationType || 'log_normal'}
-            options={simulationTypeOptions}
-            onChange={(e) =>
-              setTempData({
-                ...tempData,
-                portfolioAssumptions: {
-                  ...tempData.portfolioAssumptions,
-                  simulationType: e.value,
-                },
-              })
-            }
-          />
-        </div>
+
         <div>
           <label>Inflation Rate (%)</label>
           <InputNumber

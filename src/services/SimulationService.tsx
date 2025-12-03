@@ -60,28 +60,25 @@ export const STATE_TAX_RATES: Record<string, number> = {
   'Washington, DC': 0.085,
 };
 
-// Portfolio parameters for log-normal and fat-tail distributions
+// Portfolio parameters for log-normal distributions (industry-standard values)
 const portfolioParams: Record<PortfolioType, PortfolioParams> = {
   conservative: {
-    mean: 0.05,
-    stdDev: 0.08,
-    mu: 0.046,
-    sigma: 0.076,
-    df: 4, // Degrees of freedom for t-distribution (fat-tail)
+    mean: 0.048, // Arithmetic mean return (4.8%)
+    stdDev: 0.065, // Arithmetic standard deviation (6.5%)
+    mu: 0.046, // Lognormal mu parameter
+    sigma: 0.065, // Lognormal sigma parameter
   },
   balanced: {
-    mean: 0.06,
-    stdDev: 0.12,
-    mu: 0.052,
-    sigma: 0.112,
-    df: 4,
+    mean: 0.065, // Arithmetic mean return (6.5%)
+    stdDev: 0.105, // Arithmetic standard deviation (10.5%)
+    mu: 0.06, // Lognormal mu parameter
+    sigma: 0.103, // Lognormal sigma parameter
   },
   aggressive: {
-    mean: 0.08,
-    stdDev: 0.15,
-    mu: 0.056,
-    sigma: 0.137,
-    df: 4,
+    mean: 0.08, // Arithmetic mean return (8.0%)
+    stdDev: 0.165, // Arithmetic standard deviation (16.5%)
+    mu: 0.07, // Lognormal mu parameter
+    sigma: 0.158, // Lognormal sigma parameter
   },
 };
 
@@ -100,80 +97,23 @@ function generateReturnFactor(params: PortfolioParams): number {
   return Math.exp(normalSample);
 }
 
-// Function to generate a t-distribution random variable (for fat-tail distributions)
-function tDistributionRandom(df: number): number {
-  // Using the method: t = z / sqrt(chi^2 / df)
-  // where z ~ N(0,1) and chi^2 ~ Chi-squared(df)
-  const z = standardNormalRandom();
-  const chiSquared = generateChiSquared(df);
-  return z / Math.sqrt(chiSquared / df);
-}
-
-// Function to generate chi-squared random variable
-function generateChiSquared(df: number): number {
-  // For df >= 1, we can use the gamma distribution relationship
-  // Chi-squared(df) = Gamma(df/2, 2)
-  return generateGamma(df / 2, 2);
-}
-
-// Function to generate gamma random variable using Marsaglia and Tsang method
-function generateGamma(shape: number, scale: number): number {
-  if (shape >= 1) {
-    const d = shape - 1 / 3;
-    const c = 1 / Math.sqrt(9 * d);
-    let x, v;
-    do {
-      do {
-        x = standardNormalRandom();
-        v = 1 + c * x;
-      } while (v <= 0);
-      v = v * v * v;
-      const u = Math.random();
-      if (u < 1 - 0.0331 * x * x * x * x) break;
-      if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) break;
-    } while (true);
-    return d * v * scale;
-  } else {
-    // For shape < 1, use the relationship Gamma(shape) = Gamma(shape+1) * U^(1/shape)
-    return generateGamma(shape + 1, scale) * Math.pow(Math.random(), 1 / shape);
-  }
-}
-
-// Function to generate fat-tail return factor using t-distribution
-function generateFatTailReturnFactor(params: PortfolioParams): number {
-  if (!params.df) {
-    throw new Error('Degrees of freedom required for fat-tail distribution');
-  }
-  const tSample = tDistributionRandom(params.df);
-  // Scale by the standard deviation and add the mean
-  const scaledSample = params.mean + params.stdDev * tSample;
-  return Math.exp(scaledSample);
-}
-
 /**
- * Calculates the fund balance after one year of growth based on the portfolio type and simulation type.
+ * Calculates the fund balance after one year of growth based on the portfolio type.
+ * Uses log-normal distribution for realistic return simulation.
  * @param initialAmount - Starting fund balance for the year.
  * @param portfolioType - Type of portfolio: 'conservative', 'balanced', or 'aggressive'.
- * @param simulationType - Type of simulation: 'log_normal' or 'fat_tail'.
  * @returns The new fund balance after applying random growth for one year.
  */
 function calculateYearlyGrowth(
   initialAmount: number,
-  portfolioType: PortfolioType,
-  simulationType: 'log_normal' | 'fat_tail' = 'log_normal'
+  portfolioType: PortfolioType
 ): number {
   const params = portfolioParams[portfolioType];
   if (!params) {
     throw new Error('Invalid portfolio type');
   }
 
-  let growthFactor: number;
-  if (simulationType === 'fat_tail') {
-    growthFactor = generateFatTailReturnFactor(params);
-  } else {
-    growthFactor = generateReturnFactor(params);
-  }
-
+  const growthFactor = generateReturnFactor(params);
   return initialAmount * growthFactor;
 }
 
@@ -427,13 +367,10 @@ export function runSimulation(userData: UserData): {
         useLogNormal &&
         typeof userData.portfolioAssumptions.riskLevel === 'string'
       ) {
-        // Use new log-normal or fat-tail growth
-        const simulationType =
-          userData.portfolioAssumptions.simulationType || 'log_normal';
+        // Use log-normal growth for realistic simulation
         balance = calculateYearlyGrowth(
           balance,
-          userData.portfolioAssumptions.riskLevel as PortfolioType,
-          simulationType
+          userData.portfolioAssumptions.riskLevel as PortfolioType
         );
       } else {
         // Fallback to old normal distribution system
