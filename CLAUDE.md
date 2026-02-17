@@ -1,0 +1,73 @@
+# YARP — Yet Another Retirement Planner
+
+A browser-based retirement planning app positioned between simple tools (HonestMath,
+Empower) and full-featured tools (ProjectionLab). The goal: clean UX, honest Monte Carlo
+projections, and good tax awareness without overwhelming the user.
+
+> **Naming:** The codebase uses `retirement-planner`. "YARP" is for documentation and
+> user-facing text only — don't rename source files or variables.
+
+## Tech Stack
+
+- React 19 + TypeScript (strict), Vite
+- PrimeReact + styled-components
+- Chart.js for visualization
+- IndexedDB (via `idb`) for browser persistence
+
+## Project Structure
+
+- `src/components/` — UI (Sidebar, Chart, SpendingGoalsManager, IncomeEventsManager)
+- `src/context/RetirementContext.tsx` — global state, IndexedDB, schema migrations
+- `src/services/SimulationService.tsx` — Monte Carlo engine (5000 runs, log-normal)
+- `src/services/TaxCalculator.ts` — federal + state tax, memoized, 2024-2026 brackets
+- `src/dialogs/` — CRUD and import/export dialogs
+- `src/types/` — Scenario, UserData, IncomeEvent, SpendingGoal
+
+## Key Concepts
+
+- **Scenario** — top-level unit holding all user config, persisted to IndexedDB
+- **Monte Carlo** — median + 10th percentile portfolio paths, success probability
+- **Income events** — 8 types, COLA, before/after-tax, SS 2034 haircut
+- **Spending goals** — 11 categories, inflation adjustment, age-based activation
+- **Tax** — standard deduction only for now; filing status, state rates, senior/OBBB deductions
+
+## Conventions
+
+Follow existing project patterns when adding new features (types, dialogs, services,
+context migrations, chart annotations). Read the existing examples before creating new ones.
+Run `npm run test` and `npm run build` to verify changes.
+
+**No backward compatibility required.** This is active development — when fields, types,
+or data structures are renamed or removed, just change them cleanly. Do not leave behind
+deprecated aliases, re-exports, compatibility shims, or migration code for old field names.
+Old data in IndexedDB can be wiped; users will re-enter it.
+
+## Design Direction
+
+The app should be **modular and extensible**. Avoid hardcoded assumptions.
+
+### Simulation engine (priority)
+`SimulationService` should evolve toward a pluggable architecture:
+- User-selectable simulation strategies (log-normal Monte Carlo is the first)
+- Historical sequence-of-returns using real S&P 500 and interest rate data
+- Configurable run count, distribution type, parameters
+- New strategies drop in without changing the rest of the app
+
+### Planned UX
+- Side-by-side scenario comparison (visual, not just switching)
+- PDF export of scenario summaries
+
+### Other extensibility
+- Portfolio: user-defined asset classes beyond stocks/bonds/cash
+- Tax: bracket updates as legislation changes; complex mechanics (RMDs, Roth
+  conversions, withdrawal ordering) may be added later but are not current goals
+- Income/spending: new types without UI refactoring
+
+## Dev Commands
+
+```
+npm run dev        # dev server
+npm run build      # type-check + production build
+npm run test       # vitest
+npm run deploy     # gh-pages
+```

@@ -6,7 +6,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import type { Scenario } from '../types/Scenario';
-import type { PortfolioType } from '../types/IncomeEvent';
+
 
 const FormGrid = styled.div`
   display: grid;
@@ -60,28 +60,12 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     filingStatus: 'single' as const, // Default filing status
     spouseAge: null, // No spouse by default
     state: 'California', // Default state
-    // Legacy fields for backward compatibility
-    monthlyRetirementSpending: 5000,
-    ssAmount: 30000,
-    riskLevel: 'balanced' as const,
   }));
 
   // Update tempData when scenario prop changes (for editing)
   useEffect(() => {
     if (scenario) {
-      setTempData({
-        ...scenario,
-        // Ensure legacy fields are set
-        monthlyRetirementSpending: scenario.retirementSpending.monthlyAmount,
-        ssAmount:
-          scenario.incomeEvents.find((e) => e.type === 'social_security')
-            ?.amount || 30000,
-        riskLevel:
-          scenario.portfolioAssumptions.riskLevel === 'custom'
-            ? 'balanced'
-            : (scenario.portfolioAssumptions.riskLevel as PortfolioType) ||
-              'balanced',
-      });
+      setTempData({ ...scenario });
     } else {
       // Reset to defaults when no scenario (for new scenario creation)
       setTempData({
@@ -117,10 +101,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         filingStatus: 'single' as const, // Default filing status
         spouseAge: null, // No spouse by default
         state: 'California', // Default state
-        // Legacy fields for backward compatibility
-        monthlyRetirementSpending: 5000,
-        ssAmount: 30000,
-        riskLevel: 'balanced' as const,
       });
     }
   }, [scenario]);
@@ -188,15 +168,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
   const handleChange = (field: keyof typeof tempData, value: any) => {
     if (field === 'retirementSpending') {
       setTempData({ ...tempData, retirementSpending: value });
-    } else if (field === 'riskLevel') {
-      setTempData({
-        ...tempData,
-        riskLevel: value,
-        portfolioAssumptions: {
-          ...tempData.portfolioAssumptions,
-          riskLevel: value,
-        },
-      });
     } else {
       setTempData({ ...tempData, [field]: value });
     }
@@ -310,9 +281,17 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         <div>
           <label>Risk Level</label>
           <Dropdown
-            value={tempData.riskLevel}
+            value={tempData.portfolioAssumptions.riskLevel}
             options={riskOptions}
-            onChange={(e) => handleChange('riskLevel', e.value)}
+            onChange={(e) =>
+              setTempData({
+                ...tempData,
+                portfolioAssumptions: {
+                  ...tempData.portfolioAssumptions,
+                  riskLevel: e.value,
+                },
+              })
+            }
           />
         </div>
 
