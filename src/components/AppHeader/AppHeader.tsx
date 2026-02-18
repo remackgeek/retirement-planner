@@ -1,12 +1,13 @@
 import React from 'react';
 import styled from 'styled-components';
+import { spacing, colors, fontSize } from '../../styles/theme';
 
 const HeaderContainer = styled.header`
-  padding: 0.5rem 1rem;
-  background-color: #f8f9fa;
+  padding: ${spacing.sm} ${spacing.lg};
+  background-color: ${colors.bgLight};
   border-bottom: 1px solid #e9ecef;
   font-weight: bold;
-  font-size: 1.1rem;
+  font-size: ${fontSize.xl};
 `;
 
 const AppHeader: React.FC = () => {

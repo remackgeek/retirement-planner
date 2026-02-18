@@ -1,12 +1,13 @@
 import styled from 'styled-components';
+import { spacing, colors, fontSize } from '../styles/theme';
 
 const FooterContainer = styled.footer`
-  padding: 0.35rem 1rem;
-  background-color: #f8f9fa;
+  padding: 0.35rem ${spacing.lg};
+  background-color: ${colors.bgLight};
   border-top: 1px solid #dee2e6;
   text-align: center;
-  font-size: 0.8rem;
-  color: #6c757d;
+  font-size: ${fontSize.sm};
+  color: ${colors.textFooter};
   margin-top: auto;
 `;
 

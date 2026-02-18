@@ -2,61 +2,62 @@ import { useContext, useRef } from 'react';
 import styled from 'styled-components';
 import { OverlayPanel } from 'primereact/overlaypanel';
 import { RetirementContext } from '../../context/RetirementContext';
+import { spacing, colors, fontSize, border } from '../../styles/theme';
 
 const HeaderBar = styled.div`
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.4rem 1.25rem;
-  background: #f8f9fa;
-  border-bottom: 1px solid #e0e0e0;
-  font-size: 0.85rem;
+  gap: ${spacing.lg};
+  padding: 0.4rem ${spacing.xl};
+  background: ${colors.bgLight};
+  border-bottom: ${border.medium};
+  font-size: ${fontSize.base};
   min-height: 36px;
   cursor: pointer;
   user-select: none;
 
   &:hover {
-    background: #f0f1f3;
+    background: ${colors.bgHover};
   }
 `;
 
 const ScenarioLabel = styled.span`
   font-weight: 600;
-  color: #333;
-  margin-right: 0.25rem;
+  color: ${colors.textPrimary};
+  margin-right: ${spacing.xs};
 `;
 
 const Stat = styled.span`
-  color: #666;
+  color: ${colors.textSecondary};
   white-space: nowrap;
 `;
 
 const Separator = styled.span`
-  color: #ccc;
+  color: ${colors.textSeparator};
 `;
 
 const InfoHint = styled.span`
-  color: #999;
-  font-size: 0.75rem;
+  color: ${colors.textMuted};
+  font-size: ${fontSize.sm};
   margin-left: auto;
 `;
 
 const OverlayGrid = styled.div`
   display: grid;
   grid-template-columns: auto auto;
-  gap: 0.35rem 1rem;
-  padding: 0.5rem;
-  font-size: 0.85rem;
+  gap: 0.35rem ${spacing.lg};
+  padding: ${spacing.sm};
+  font-size: ${fontSize.base};
 `;
 
 const OverlayLabel = styled.span`
-  color: #666;
+  color: ${colors.textSecondary};
   white-space: nowrap;
 `;
 
 const OverlayValue = styled.span`
   font-weight: 600;
-  color: #333;
+  color: ${colors.textPrimary};
   text-align: right;
 `;
 
@@ -64,8 +65,8 @@ const OverlayTitle = styled.div`
   font-weight: 700;
   font-size: 0.95rem;
   padding-bottom: 0.35rem;
-  margin-bottom: 0.25rem;
-  border-bottom: 1px solid #eee;
+  margin-bottom: ${spacing.xs};
+  border-bottom: ${border.light};
   grid-column: 1 / -1;
 `;
 

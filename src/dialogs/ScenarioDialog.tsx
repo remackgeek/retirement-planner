@@ -6,12 +6,12 @@ import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import type { Scenario } from '../types/Scenario';
-
+import { spacing } from '../styles/theme';
 
 const FormGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1rem;
+  gap: ${spacing.md};
 `;
 
 interface ScenarioDialogProps {

@@ -9,6 +9,7 @@ import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
 import type { SpendingGoal } from '../../types/SpendingGoal';
 import type { IncomeEvent } from '../../types/IncomeEvent';
+import { spacing } from '../../styles/theme';
 
 const ContentContainer = styled.main`
   flex: 1;
@@ -19,14 +20,14 @@ const ContentContainer = styled.main`
 
 const ContentBody = styled.div`
   flex: 1;
-  padding: 1rem 1.25rem;
+  padding: ${spacing.lg} ${spacing.xl};
   overflow-y: auto;
 `;
 
 const ManagersContainer = styled.div`
   display: flex;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: ${spacing.lg};
+  margin-bottom: ${spacing.sm};
 `;
 
 const ManagerSection = styled.div`

@@ -6,6 +6,7 @@ import { ConfirmDialog } from 'primereact/confirmdialog';
 import ScenarioDialog from '../../dialogs/ScenarioDialog';
 import type { Scenario } from '../../types/Scenario';
 import { confirmDialog } from 'primereact/confirmdialog';
+import { spacing, colors, border, fontSize } from '../../styles/theme';
 
 interface SidebarContainerProps {
   $isCollapsed: boolean;
@@ -13,8 +14,8 @@ interface SidebarContainerProps {
 
 const SidebarContainer = styled.aside<SidebarContainerProps>`
   width: ${(props) => (props.$isCollapsed ? '50px' : '300px')};
-  background-color: #f5f5f5;
-  border-right: 1px solid #ddd;
+  background-color: ${colors.bgMedium};
+  border-right: ${border.standard};
   transition: width 0.3s ease;
   display: flex;
   flex-direction: column;
@@ -22,8 +23,8 @@ const SidebarContainer = styled.aside<SidebarContainerProps>`
 `;
 
 const ToggleButton = styled.button`
-  padding: 0.75rem;
-  background-color: #007bff;
+  padding: ${spacing.md};
+  background-color: ${colors.primary};
   color: white;
   border: none;
   cursor: pointer;
@@ -31,12 +32,12 @@ const ToggleButton = styled.button`
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: #0056b3;
+    background-color: ${colors.primaryHover};
   }
 `;
 
 const SidebarContent = styled.div<SidebarContainerProps>`
-  padding: ${(props) => (props.$isCollapsed ? '0' : '1rem')};
+  padding: ${(props) => (props.$isCollapsed ? '0' : spacing.lg)};
   opacity: ${(props) => (props.$isCollapsed ? '0' : '1')};
   transition: opacity 0.3s ease;
   overflow-y: auto;
@@ -49,11 +50,11 @@ const ScenarioList = styled.ul`
 `;
 
 const ScenarioItem = styled.li<{ $isActive: boolean }>`
-  padding: 0.3rem 0.5rem;
+  padding: 0.3rem ${spacing.sm};
   cursor: pointer;
-  background-color: ${(props) => (props.$isActive ? '#e0e0e0' : 'transparent')};
+  background-color: ${(props) => (props.$isActive ? colors.activeRow : 'transparent')};
   &:hover {
-    background-color: #d0d0d0;
+    background-color: ${colors.hoverRow};
   }
 `;
 
@@ -75,16 +76,16 @@ const ScenarioActions = styled.div`
 const ChipsRow = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
+  gap: ${spacing.xs};
   padding: 0.15rem 0 0;
 `;
 
 const Chip = styled.span`
-  font-size: 0.65rem;
+  font-size: ${fontSize.xs};
   padding: 0.1rem 0.4rem;
-  border-radius: 8px;
-  background: #d8e8f8;
-  color: #335;
+  border-radius: ${border.radiusRound};
+  background: ${colors.chipBg};
+  color: ${colors.chipText};
   white-space: nowrap;
   line-height: 1.4;
 `;
@@ -113,10 +114,8 @@ const Sidebar: React.FC = () => {
 
   const handleSave = (scenario: Scenario) => {
     if (editingScenario) {
-      // Editing existing scenario
       updateScenario(scenario);
     } else {
-      // Creating new scenario
       addScenario(scenario);
     }
     setDialogVisible(false);
@@ -128,7 +127,6 @@ const Sidebar: React.FC = () => {
       setDialogVisible(false);
       setEditingScenario(null);
     }
-    // If no scenarios exist, don't allow hiding the dialog
   };
 
   return (
@@ -137,7 +135,7 @@ const Sidebar: React.FC = () => {
         {isCollapsed ? '▶' : '◀'}
       </ToggleButton>
       <SidebarContent $isCollapsed={isCollapsed}>
-        <h3 style={{ margin: '0 0 0.5rem' }}>Scenarios</h3>
+        <h3 style={{ margin: `0 0 ${spacing.sm}` }}>Scenarios</h3>
         <ScenarioList>
           {scenarios.map((scenario) => {
             const isActive = activeScenario?.id === scenario.id;
@@ -231,7 +229,7 @@ const Sidebar: React.FC = () => {
             );
           })}
         </ScenarioList>
-        <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
+        <div style={{ marginTop: 'auto', paddingTop: spacing.lg }}>
           <Button
             label='New Scenario'
             onClick={() => setDialogVisible(true)}
@@ -241,7 +239,7 @@ const Sidebar: React.FC = () => {
             label='Import Scenario'
             icon='pi pi-upload'
             onClick={() => importScenario()}
-            style={{ width: '100%', marginTop: '0.5rem' }}
+            style={{ width: '100%', marginTop: spacing.sm }}
           />
         </div>
         <ScenarioDialog

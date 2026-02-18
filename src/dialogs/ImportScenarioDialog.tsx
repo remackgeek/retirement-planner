@@ -1,6 +1,7 @@
 import React from 'react';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
+import { spacing } from '../styles/theme';
 
 interface ImportScenarioDialogProps {
   visible: boolean;
@@ -46,7 +47,7 @@ const ImportScenarioDialog: React.FC<ImportScenarioDialogProps> = ({
     >
       <div
         className='p-field'
-        style={{ textAlign: 'center', padding: '2rem 0' }}
+        style={{ textAlign: 'center', padding: `${spacing.lg} 0` }}
       >
         <label>Select a JSON file to import your scenario.</label>
         <br />

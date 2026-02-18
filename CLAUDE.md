@@ -47,12 +47,33 @@ Old data in IndexedDB can be wiped; users will re-enter it.
 Keep the UI **compact and dense**. Prefer tight spacing over generous whitespace — this
 is a data-heavy tool, not a marketing page.
 
-- **Padding:** use `0.25rem–0.5rem` for elements, `0.75rem–1.25rem` for containers. Avoid
-  `2rem+` padding anywhere. When in doubt, go tighter.
-- **Margins:** zero out default browser margins on headings (`h1`–`h4`) and `<p>` tags,
-  then add only what's needed (typically `0–0.5rem`).
-- **Gaps:** prefer `0.5rem–1rem` for flex/grid gaps. `2rem` gaps are too loose.
-- **Font sizes:** body ~`0.85rem`, secondary text ~`0.75rem`, headings scaled modestly.
+### Theme tokens (`src/styles/theme.ts`)
+
+All spacing, colors, font sizes, and border styles are centralized in `theme.ts`.
+**Always use theme tokens** — never hardcode hex colors, rem values, or border strings
+in components. Import what you need:
+
+```ts
+import { spacing, colors, fontSize, border } from '../styles/theme';
+// or '../../styles/theme' depending on depth
+```
+
+- **`spacing`** — `xs` (0.25rem) through `xl` (1.25rem). Use these for all padding,
+  margin, and gap values.
+- **`colors`** — surfaces (`bgLight`, `bgMedium`), text (`textPrimary`, `textSecondary`,
+  `textMuted`), actions (`primary`, `danger`), accents (`income`/`spending` with `Bg`
+  variants), sidebar (`activeRow`, `chipBg`).
+- **`fontSize`** — `xs` (0.65rem) through `xl` (1.1rem). `base` (0.85rem) for body text.
+- **`border`** — `standard` (`1px solid #ddd`), `light`, `medium`, plus `radius` (4px),
+  `radiusRound` (8px), `radiusCircle` (50%).
+
+### Compact spacing rules
+
+- **Padding:** `spacing.xs`–`spacing.sm` for elements, `spacing.md`–`spacing.xl` for
+  containers. Avoid `2rem+` anywhere. When in doubt, go tighter.
+- **Margins:** zero out default browser margins on headings and `<p>` tags, then add
+  only what's needed (typically `0`–`spacing.sm`).
+- **Gaps:** `spacing.sm`–`spacing.lg` for flex/grid gaps.
 - **General rule:** if a new element adds visible dead space, tighten it. The app should
   feel information-dense and efficient, not padded out.
 

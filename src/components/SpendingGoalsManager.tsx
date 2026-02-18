@@ -3,26 +3,27 @@ import styled from 'styled-components';
 import SpendingGoalTypeSelectionDialog from '../dialogs/SpendingGoalTypeSelectionDialog';
 import AddSpendingGoalDialog from '../dialogs/AddSpendingGoalDialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
+import { spacing, colors, border, fontSize } from '../styles/theme';
 
 const Container = styled.div`
-  margin: 1rem 0;
+  margin: ${spacing.sm} 0;
 `;
 
 const Header = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: ${spacing.sm};
 `;
 
 const GoalItem = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  margin-bottom: 0.5rem;
-  border-radius: 4px;
+  padding: ${spacing.sm};
+  border: ${border.standard};
+  margin-bottom: ${spacing.sm};
+  border-radius: ${border.radius};
 `;
 
 const GoalInfo = styled.div`
@@ -31,59 +32,59 @@ const GoalInfo = styled.div`
 
 const Actions = styled.div`
   display: flex;
-  gap: 0.5rem;
+  gap: ${spacing.sm};
 `;
 
 const Button = styled.button`
-  padding: 0.25rem 0.5rem;
+  padding: ${spacing.xs} ${spacing.sm};
   border: none;
-  border-radius: 4px;
+  border-radius: ${border.radius};
   cursor: pointer;
-  background: #007bff;
+  background: ${colors.primary};
   color: white;
 
   &:hover {
-    background: #0056b3;
+    background: ${colors.primaryHover};
   }
 `;
 
 const LargeButton = styled(Button)`
-  padding: 0.5rem 1rem;
-  font-size: 1.1rem;
+  padding: ${spacing.sm} ${spacing.lg};
+  font-size: ${fontSize.xl};
 `;
 
 const DeleteButton = styled(Button)`
-  background: #dc3545;
+  background: ${colors.danger};
 
   &:hover {
-    background: #c82333;
+    background: ${colors.dangerHover};
   }
 `;
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 1rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  margin-bottom: 1rem;
+  gap: ${spacing.sm};
+  padding: ${spacing.md};
+  border: ${border.standard};
+  border-radius: ${border.radius};
+  margin-bottom: ${spacing.sm};
 `;
 
 const Input = styled.input`
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: ${spacing.sm};
+  border: ${border.standard};
+  border-radius: ${border.radius};
 `;
 
 const Select = styled.select`
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: ${spacing.sm};
+  border: ${border.standard};
+  border-radius: ${border.radius};
 `;
 
 const Checkbox = styled.input`
-  margin-right: 0.5rem;
+  margin-right: ${spacing.sm};
 `;
 
 interface SpendingGoalsManagerProps {
@@ -315,11 +316,11 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                   <span
                     style={{
                       marginRight: '0.5rem',
-                      color: '#d2691e',
-                      backgroundColor: 'rgba(210, 105, 30, 0.1)',
-                      borderRadius: '50%',
-                      padding: '0.25rem',
-                      fontSize: '0.9rem',
+                      color: colors.spending,
+                      backgroundColor: colors.spendingBg,
+                      borderRadius: border.radiusCircle,
+                      padding: spacing.xs,
+                      fontSize: fontSize.md,
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',

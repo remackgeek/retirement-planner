@@ -2,33 +2,34 @@ import React from 'react';
 import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import type { IncomeEventType } from '../types/IncomeEvent';
+import { spacing, colors, border, fontSize } from '../styles/theme';
 
 const GridContainer = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  padding: 1rem 0;
+  gap: ${spacing.sm};
+  padding: ${spacing.sm} 0;
 `;
 
 const TypeButton = styled.button`
-  padding: 1rem;
-  font-size: 1rem;
+  padding: ${spacing.sm};
+  font-size: ${fontSize.lg};
   white-space: normal;
   text-align: center;
-  color: green;
-  border: 1px solid green;
+  color: ${colors.income};
+  border: 1px solid ${colors.income};
   background: white;
-  border-radius: 4px;
+  border-radius: ${border.radius};
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: ${spacing.sm};
 
   &:hover {
     color: white;
-    background-color: green;
-    border-color: green;
+    background-color: ${colors.income};
+    border-color: ${colors.income};
   }
 
   &:hover .icon-circle {
@@ -37,11 +38,11 @@ const TypeButton = styled.button`
 `;
 
 const IconCircle = styled.span`
-  color: green;
-  background-color: rgba(0, 128, 0, 0.1);
-  border-radius: 50%;
-  padding: 0.25rem;
-  font-size: 0.9rem;
+  color: ${colors.income};
+  background-color: ${colors.incomeBg};
+  border-radius: ${border.radiusCircle};
+  padding: ${spacing.xs};
+  font-size: ${fontSize.md};
   display: inline-flex;
   align-items: center;
   justify-content: center;

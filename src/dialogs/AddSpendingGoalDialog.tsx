@@ -6,18 +6,19 @@ import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { Checkbox } from 'primereact/checkbox';
 import type { SpendingGoal } from '../types/SpendingGoal';
+import { spacing } from '../styles/theme';
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1rem 0;
+  gap: ${spacing.md};
+  padding: ${spacing.sm} 0;
 `;
 
 const InputGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: ${spacing.sm};
 `;
 
 const CheckboxGroup = styled.div`

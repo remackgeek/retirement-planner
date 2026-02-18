@@ -20,6 +20,7 @@ import {
 import { useMemo } from 'react';
 import type { SpendingGoal } from '../../types/SpendingGoal';
 import type { IncomeEvent } from '../../types/IncomeEvent';
+import { spacing, colors, border, fontSize } from '../../styles/theme';
 
 ChartJS.register(
   CategoryScale,
@@ -170,16 +171,16 @@ const Projections = ({
     <div>
       <h2 style={{ margin: '0 0 0.5rem' }}>Probability of Success: {probability}%</h2>
       <Line options={options} data={data} />
-      <Accordion style={{ marginTop: '1rem' }}>
+      <Accordion style={{ marginTop: '0.5rem' }}>
         <AccordionTab header='Yearly Data'>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ backgroundColor: '#f5f5f5' }}>
+                <tr style={{ backgroundColor: colors.bgMedium }}>
                   <th
                     style={{
                       padding: '0.5rem',
-                      border: '1px solid #ddd',
+                      border: border.standard,
                       textAlign: 'left',
                     }}
                   >
@@ -188,7 +189,7 @@ const Projections = ({
                   <th
                     style={{
                       padding: '0.5rem',
-                      border: '1px solid #ddd',
+                      border: border.standard,
                       textAlign: 'right',
                     }}
                   >
@@ -197,7 +198,7 @@ const Projections = ({
                   <th
                     style={{
                       padding: '0.5rem',
-                      border: '1px solid #ddd',
+                      border: border.standard,
                       textAlign: 'right',
                     }}
                   >
@@ -206,7 +207,7 @@ const Projections = ({
                   <th
                     style={{
                       padding: '0.5rem',
-                      border: '1px solid #ddd',
+                      border: border.standard,
                       textAlign: 'right',
                     }}
                   >
@@ -215,7 +216,7 @@ const Projections = ({
                   <th
                     style={{
                       padding: '0.5rem',
-                      border: '1px solid #ddd',
+                      border: border.standard,
                       textAlign: 'right',
                     }}
                   >
@@ -224,7 +225,7 @@ const Projections = ({
                   <th
                     style={{
                       padding: '0.5rem',
-                      border: '1px solid #ddd',
+                      border: border.standard,
                       textAlign: 'right',
                     }}
                   >
@@ -233,7 +234,7 @@ const Projections = ({
                   <th
                     style={{
                       padding: '0.5rem',
-                      border: '1px solid #ddd',
+                      border: border.standard,
                       textAlign: 'right',
                     }}
                   >
@@ -375,14 +376,14 @@ const Projections = ({
                   return (
                     <tr key={year}>
                       <td
-                        style={{ padding: '0.5rem', border: '1px solid #ddd' }}
+                        style={{ padding: '0.5rem', border: border.standard }}
                       >
                         {age} ({year})
                       </td>
                       <td
                         style={{
                           padding: '0.5rem',
-                          border: '1px solid #ddd',
+                          border: border.standard,
                           textAlign: 'right',
                         }}
                       >
@@ -394,7 +395,7 @@ const Projections = ({
                       <td
                         style={{
                           padding: '0.5rem',
-                          border: '1px solid #ddd',
+                          border: border.standard,
                           textAlign: 'right',
                         }}
                       >
@@ -406,7 +407,7 @@ const Projections = ({
                       <td
                         style={{
                           padding: '0.5rem',
-                          border: '1px solid #ddd',
+                          border: border.standard,
                           textAlign: 'right',
                         }}
                       >
@@ -418,7 +419,7 @@ const Projections = ({
                       <td
                         style={{
                           padding: '0.5rem',
-                          border: '1px solid #ddd',
+                          border: border.standard,
                           textAlign: 'right',
                         }}
                       >
@@ -434,11 +435,11 @@ const Projections = ({
                                 key={goal.id}
                                 style={{
                                   marginRight: '0.25rem',
-                                  color: '#d2691e',
-                                  backgroundColor: 'rgba(210, 105, 30, 0.1)',
-                                  borderRadius: '50%',
-                                  padding: '0.25rem',
-                                  fontSize: '0.9rem',
+                                  color: colors.spending,
+                                  backgroundColor: colors.spendingBg,
+                                  borderRadius: border.radiusCircle,
+                                  padding: spacing.xs,
+                                  fontSize: fontSize.md,
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -465,7 +466,7 @@ const Projections = ({
                       <td
                         style={{
                           padding: '0.5rem',
-                          border: '1px solid #ddd',
+                          border: border.standard,
                           textAlign: 'right',
                         }}
                       >
@@ -481,11 +482,11 @@ const Projections = ({
                                 key={event.id}
                                 style={{
                                   marginRight: '0.25rem',
-                                  color: 'green',
-                                  backgroundColor: 'rgba(0, 128, 0, 0.1)',
-                                  borderRadius: '50%',
-                                  padding: '0.25rem',
-                                  fontSize: '0.9rem',
+                                  color: colors.income,
+                                  backgroundColor: colors.incomeBg,
+                                  borderRadius: border.radiusCircle,
+                                  padding: spacing.xs,
+                                  fontSize: fontSize.md,
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -507,7 +508,7 @@ const Projections = ({
                       <td
                         style={{
                           padding: '0.5rem',
-                          border: '1px solid #ddd',
+                          border: border.standard,
                           textAlign: 'right',
                         }}
                       >

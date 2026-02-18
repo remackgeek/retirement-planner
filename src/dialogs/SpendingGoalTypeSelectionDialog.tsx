@@ -2,33 +2,34 @@ import React from 'react';
 import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
+import { spacing, colors, border, fontSize } from '../styles/theme';
 
 const GridContainer = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  padding: 1rem 0;
+  gap: ${spacing.sm};
+  padding: ${spacing.sm} 0;
 `;
 
 const TypeButton = styled.button`
-  padding: 1rem;
-  font-size: 1rem;
+  padding: ${spacing.sm};
+  font-size: ${fontSize.lg};
   white-space: normal;
   text-align: center;
-  color: #d2691e;
-  border: 1px solid #d2691e;
+  color: ${colors.spending};
+  border: 1px solid ${colors.spending};
   background: white;
-  border-radius: 4px;
+  border-radius: ${border.radius};
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: ${spacing.sm};
 
   &:hover {
     color: white;
-    background-color: #d2691e;
-    border-color: #d2691e;
+    background-color: ${colors.spending};
+    border-color: ${colors.spending};
   }
 
   &:hover .icon-circle {
@@ -37,11 +38,11 @@ const TypeButton = styled.button`
 `;
 
 const IconCircle = styled.span`
-  color: #d2691e;
-  background-color: rgba(210, 105, 30, 0.1);
-  border-radius: 50%;
-  padding: 0.25rem;
-  font-size: 0.9rem;
+  color: ${colors.spending};
+  background-color: ${colors.spendingBg};
+  border-radius: ${border.radiusCircle};
+  padding: ${spacing.xs};
+  font-size: ${fontSize.md};
   display: inline-flex;
   align-items: center;
   justify-content: center;
