@@ -6,16 +6,16 @@ import { spacing, colors, border, fontSize } from '../styles/theme';
 
 const GridContainer = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 240px));
   gap: ${spacing.sm};
   padding: ${spacing.sm} 0;
 `;
 
 const TypeButton = styled.button`
-  padding: ${spacing.sm};
-  font-size: ${fontSize.lg};
-  white-space: normal;
-  text-align: center;
+  padding: ${spacing.xs} ${spacing.sm};
+  font-size: ${fontSize.md};
+  white-space: nowrap;
+  text-align: left;
   color: ${colors.spending};
   border: 1px solid ${colors.spending};
   background: white;
@@ -23,8 +23,8 @@ const TypeButton = styled.button`
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: ${spacing.sm};
+  justify-content: flex-start;
+  gap: ${spacing.xs};
 
   &:hover {
     color: white;
@@ -34,6 +34,7 @@ const TypeButton = styled.button`
 
   &:hover .icon-circle {
     background-color: rgba(255, 255, 255, 0.2);
+    color: inherit;
   }
 `;
 
@@ -95,9 +96,9 @@ const SpendingGoalTypeSelectionDialog: React.FC<
 
   return (
     <Dialog
-      header='Select Spending Goal Type'
+      header='Add Spending Goal'
       visible={visible}
-      style={{ width: '60vw' }}
+      style={{ width: '50vw' }}
       onHide={onHide}
     >
       <GridContainer>
@@ -109,7 +110,7 @@ const SpendingGoalTypeSelectionDialog: React.FC<
             <IconCircle className='icon-circle'>
               <i className={goalTypeIcons[type as SpendingGoal['type']]} />
             </IconCircle>
-            Add {label}
+            {label}
           </TypeButton>
         ))}
       </GridContainer>

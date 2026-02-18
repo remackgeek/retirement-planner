@@ -6,16 +6,16 @@ import { spacing, colors, border, fontSize } from '../styles/theme';
 
 const GridContainer = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 240px));
   gap: ${spacing.sm};
   padding: ${spacing.sm} 0;
 `;
 
 const TypeButton = styled.button`
-  padding: ${spacing.sm};
-  font-size: ${fontSize.lg};
-  white-space: normal;
-  text-align: center;
+  padding: ${spacing.xs} ${spacing.sm};
+  font-size: ${fontSize.md};
+  white-space: nowrap;
+  text-align: left;
   color: ${colors.income};
   border: 1px solid ${colors.income};
   background: white;
@@ -23,8 +23,8 @@ const TypeButton = styled.button`
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: ${spacing.sm};
+  justify-content: flex-start;
+  gap: ${spacing.xs};
 
   &:hover {
     color: white;
@@ -34,6 +34,7 @@ const TypeButton = styled.button`
 
   &:hover .icon-circle {
     background-color: rgba(255, 255, 255, 0.2);
+    color: inherit;
   }
 `;
 
@@ -96,7 +97,6 @@ const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
       style={{ width: '50vw' }}
       onHide={onHide}
     >
-      <p>Select the type of income event to add:</p>
       <GridContainer>
         {Object.entries(eventTypeLabels).map(([type, label]) => (
           <TypeButton
@@ -106,7 +106,7 @@ const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
             <IconCircle className='icon-circle'>
               <i className={eventTypeSymbols[type as IncomeEventType]} />
             </IconCircle>
-            Add {label}
+            {label}
           </TypeButton>
         ))}
       </GridContainer>
