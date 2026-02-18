@@ -4,6 +4,7 @@ import { RetirementContext } from '../../context/RetirementContext';
 import { runSimulation } from '../../services/SimulationService';
 import { clearTaxCalculationCache } from '../../services/TaxCalculator';
 import Projections from '../Chart/Chart';
+import ScenarioHeaderBar from '../ScenarioHeaderBar/ScenarioHeaderBar';
 import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
 import type { SpendingGoal } from '../../types/SpendingGoal';
@@ -11,14 +12,21 @@ import type { IncomeEvent } from '../../types/IncomeEvent';
 
 const ContentContainer = styled.main`
   flex: 1;
-  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+`;
+
+const ContentBody = styled.div`
+  flex: 1;
+  padding: 1rem 1.25rem;
   overflow-y: auto;
 `;
 
 const ManagersContainer = styled.div`
   display: flex;
-  gap: 2rem;
-  margin-bottom: 2rem;
+  gap: 1rem;
+  margin-bottom: 1rem;
 `;
 
 const ManagerSection = styled.div`
@@ -105,28 +113,31 @@ const Content: React.FC = () => {
 
   return (
     <ContentContainer>
-      {results && <Projections results={results} userData={activeScenario} />}
-      {activeScenario && (
-        <ManagersContainer>
-          <ManagerSection>
-            <IncomeEventsManager
-              events={activeScenario.incomeEvents}
-              userData={activeScenario}
-              onAdd={handleAddIncomeEvent}
-              onUpdate={handleUpdateIncomeEvent}
-              onDelete={handleDeleteIncomeEvent}
-            />
-          </ManagerSection>
-          <ManagerSection>
-            <SpendingGoalsManager
-              goals={activeScenario.spendingGoals}
-              onAdd={handleAddSpendingGoal}
-              onUpdate={handleUpdateSpendingGoal}
-              onDelete={handleDeleteSpendingGoal}
-            />
-          </ManagerSection>
-        </ManagersContainer>
-      )}
+      <ScenarioHeaderBar />
+      <ContentBody>
+        {results && <Projections results={results} userData={activeScenario} />}
+        {activeScenario && (
+          <ManagersContainer>
+            <ManagerSection>
+              <IncomeEventsManager
+                events={activeScenario.incomeEvents}
+                userData={activeScenario}
+                onAdd={handleAddIncomeEvent}
+                onUpdate={handleUpdateIncomeEvent}
+                onDelete={handleDeleteIncomeEvent}
+              />
+            </ManagerSection>
+            <ManagerSection>
+              <SpendingGoalsManager
+                goals={activeScenario.spendingGoals}
+                onAdd={handleAddSpendingGoal}
+                onUpdate={handleUpdateSpendingGoal}
+                onDelete={handleDeleteSpendingGoal}
+              />
+            </ManagerSection>
+          </ManagersContainer>
+        )}
+      </ContentBody>
     </ContentContainer>
   );
 };

@@ -49,15 +49,18 @@ const ScenarioList = styled.ul`
 `;
 
 const ScenarioItem = styled.li<{ $isActive: boolean }>`
-  padding: 0.5rem;
+  padding: 0.3rem 0.5rem;
   cursor: pointer;
   background-color: ${(props) => (props.$isActive ? '#e0e0e0' : 'transparent')};
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   &:hover {
     background-color: #d0d0d0;
   }
+`;
+
+const ScenarioRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 `;
 
 const ScenarioName = styled.span`
@@ -69,13 +72,21 @@ const ScenarioActions = styled.div`
   gap: 0;
 `;
 
-const ScenarioSummary = styled.dl`
-  dt {
-    font-weight: bold;
-  }
-  dd {
-    margin-bottom: 1rem;
-  }
+const ChipsRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.15rem 0 0;
+`;
+
+const Chip = styled.span`
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 8px;
+  background: #d8e8f8;
+  color: #335;
+  white-space: nowrap;
+  line-height: 1.4;
 `;
 
 const Sidebar: React.FC = () => {
@@ -126,119 +137,100 @@ const Sidebar: React.FC = () => {
         {isCollapsed ? '▶' : '◀'}
       </ToggleButton>
       <SidebarContent $isCollapsed={isCollapsed}>
-        <h3>Scenarios</h3>
+        <h3 style={{ margin: '0 0 0.5rem' }}>Scenarios</h3>
         <ScenarioList>
-          {scenarios.map((scenario) => (
-            <ScenarioItem
-              key={scenario.id}
-              $isActive={activeScenario?.id === scenario.id}
-            >
-              <ScenarioName onClick={() => setActiveScenario(scenario.id)}>
-                {scenario.name}
-              </ScenarioName>
-              <ScenarioActions>
-                <Button
-                  icon='pi pi-trash'
-                  className='p-button-text p-button-danger'
-                  style={{
-                    padding: '0.1rem 0.15rem',
-                    fontSize: '0.6rem',
-                    width: '1.6rem',
-                    minWidth: '1.6rem',
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (scenarios.length === 1) {
-                      confirmDialog({
-                        message:
-                          'Cannot delete the last scenario. Please create a new scenario first.',
-                        header: 'Cannot Delete',
-                        icon: 'pi pi-exclamation-triangle',
-                        acceptLabel: 'OK',
-                        rejectClassName: 'p-button-text',
-                        reject: undefined,
-                      });
-                    } else {
-                      confirmDialog({
-                        message: `Are you sure you want to delete "${scenario.name}"?`,
-                        header: 'Delete Scenario',
-                        icon: 'pi pi-exclamation-triangle',
-                        accept: () => deleteScenario(scenario.id),
-                      });
-                    }
-                  }}
-                  tooltip='Delete'
-                  tooltipOptions={{ position: 'top' }}
-                />
-                <Button
-                  icon='pi pi-download'
-                  className='p-button-text'
-                  style={{
-                    padding: '0.1rem 0.15rem',
-                    fontSize: '0.6rem',
-                    width: '1.6rem',
-                    minWidth: '1.6rem',
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    exportScenario(scenario.id);
-                  }}
-                  tooltip='Export'
-                  tooltipOptions={{ position: 'top' }}
-                />
-                <Button
-                  icon='pi pi-pencil'
-                  className='p-button-text'
-                  style={{
-                    padding: '0.1rem 0.15rem',
-                    fontSize: '0.6rem',
-                    width: '1.6rem',
-                    minWidth: '1.6rem',
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingScenario(scenario);
-                    setDialogVisible(true);
-                  }}
-                  tooltip='Edit'
-                  tooltipOptions={{ position: 'top' }}
-                />
-              </ScenarioActions>
-            </ScenarioItem>
-          ))}
+          {scenarios.map((scenario) => {
+            const isActive = activeScenario?.id === scenario.id;
+            return (
+              <ScenarioItem
+                key={scenario.id}
+                $isActive={isActive}
+              >
+                <ScenarioRow>
+                  <ScenarioName onClick={() => setActiveScenario(scenario.id)}>
+                    {scenario.name}
+                  </ScenarioName>
+                  <ScenarioActions>
+                    <Button
+                      icon='pi pi-trash'
+                      className='p-button-text p-button-danger'
+                      style={{
+                        padding: '0.1rem 0.15rem',
+                        fontSize: '0.6rem',
+                        width: '1.6rem',
+                        minWidth: '1.6rem',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (scenarios.length === 1) {
+                          confirmDialog({
+                            message:
+                              'Cannot delete the last scenario. Please create a new scenario first.',
+                            header: 'Cannot Delete',
+                            icon: 'pi pi-exclamation-triangle',
+                            acceptLabel: 'OK',
+                            rejectClassName: 'p-button-text',
+                            reject: undefined,
+                          });
+                        } else {
+                          confirmDialog({
+                            message: `Are you sure you want to delete "${scenario.name}"?`,
+                            header: 'Delete Scenario',
+                            icon: 'pi pi-exclamation-triangle',
+                            accept: () => deleteScenario(scenario.id),
+                          });
+                        }
+                      }}
+                      tooltip='Delete'
+                      tooltipOptions={{ position: 'top' }}
+                    />
+                    <Button
+                      icon='pi pi-download'
+                      className='p-button-text'
+                      style={{
+                        padding: '0.1rem 0.15rem',
+                        fontSize: '0.6rem',
+                        width: '1.6rem',
+                        minWidth: '1.6rem',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        exportScenario(scenario.id);
+                      }}
+                      tooltip='Export'
+                      tooltipOptions={{ position: 'top' }}
+                    />
+                    <Button
+                      icon='pi pi-pencil'
+                      className='p-button-text'
+                      style={{
+                        padding: '0.1rem 0.15rem',
+                        fontSize: '0.6rem',
+                        width: '1.6rem',
+                        minWidth: '1.6rem',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingScenario(scenario);
+                        setDialogVisible(true);
+                      }}
+                      tooltip='Edit'
+                      tooltipOptions={{ position: 'top' }}
+                    />
+                  </ScenarioActions>
+                </ScenarioRow>
+                {isActive && activeScenario && (
+                  <ChipsRow>
+                    <Chip>{activeScenario.currentAge}→{activeScenario.retirementAge}</Chip>
+                    <Chip>${(activeScenario.retirementSpending?.monthlyAmount || 0).toLocaleString()}/mo</Chip>
+                    <Chip>{activeScenario.incomeEvents.length} income</Chip>
+                    <Chip>{activeScenario.spendingGoals.length} goals</Chip>
+                  </ChipsRow>
+                )}
+              </ScenarioItem>
+            );
+          })}
         </ScenarioList>
-        {activeScenario && (
-          <>
-            <h3>Active Scenario: {activeScenario.name}</h3>
-            <ScenarioSummary>
-              <dt>Current Age:</dt>
-              <dd>{activeScenario.currentAge}</dd>
-              <dt>Retirement Age:</dt>
-              <dd>{activeScenario.retirementAge}</dd>
-              <dt>Life Expectancy:</dt>
-              <dd>{activeScenario.lifeExpectancy}</dd>
-              <dt>Current Savings:</dt>
-              <dd>${activeScenario.currentSavings.toLocaleString()}</dd>
-              <dt>Annual Savings:</dt>
-              <dd>${activeScenario.annualSavings.toLocaleString()}</dd>
-              <dt>Monthly Retirement Spending:</dt>
-              <dd>
-                $
-                {(
-                  activeScenario.retirementSpending?.monthlyAmount || 0
-                ).toLocaleString()}
-              </dd>
-              <dt>Spending Goals:</dt>
-              <dd>{activeScenario.spendingGoals.length}</dd>
-              <dt>Income Events:</dt>
-              <dd>{activeScenario.incomeEvents.length}</dd>
-              <dt>Risk Level:</dt>
-              <dd>{activeScenario.portfolioAssumptions.riskLevel}</dd>
-              <dt>Inflation Rate:</dt>
-              <dd>{(activeScenario.inflationRate * 100).toFixed(1)}%</dd>
-            </ScenarioSummary>
-          </>
-        )}
         <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
           <Button
             label='New Scenario'

@@ -168,7 +168,7 @@ const Projections = ({
 
   return (
     <div>
-      <h2>Probability of Success: {probability}%</h2>
+      <h2 style={{ margin: '0 0 0.5rem' }}>Probability of Success: {probability}%</h2>
       <Line options={options} data={data} />
       <Accordion style={{ marginTop: '1rem' }}>
         <AccordionTab header='Yearly Data'>

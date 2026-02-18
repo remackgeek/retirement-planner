@@ -42,6 +42,20 @@ or data structures are renamed or removed, just change them cleanly. Do not leav
 deprecated aliases, re-exports, compatibility shims, or migration code for old field names.
 Old data in IndexedDB can be wiped; users will re-enter it.
 
+## Styling Guidelines
+
+Keep the UI **compact and dense**. Prefer tight spacing over generous whitespace — this
+is a data-heavy tool, not a marketing page.
+
+- **Padding:** use `0.25rem–0.5rem` for elements, `0.75rem–1.25rem` for containers. Avoid
+  `2rem+` padding anywhere. When in doubt, go tighter.
+- **Margins:** zero out default browser margins on headings (`h1`–`h4`) and `<p>` tags,
+  then add only what's needed (typically `0–0.5rem`).
+- **Gaps:** prefer `0.5rem–1rem` for flex/grid gaps. `2rem` gaps are too loose.
+- **Font sizes:** body ~`0.85rem`, secondary text ~`0.75rem`, headings scaled modestly.
+- **General rule:** if a new element adds visible dead space, tighten it. The app should
+  feel information-dense and efficient, not padded out.
+
 ## Design Direction
 
 The app should be **modular and extensible**. Avoid hardcoded assumptions.
