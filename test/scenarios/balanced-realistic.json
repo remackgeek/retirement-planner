@@ -1,0 +1,34 @@
+{
+  "_description": "Realistic stochastic scenario with balanced portfolio, SS income, and taxes. The first scenario that exercises randomness.",
+  "_rationale": "800k savings, balanced portfolio (6.5% mean, 10.5% stddev), 5k/mo retirement spending = 60k/yr. MFJ in Virginia (5.75% state tax). SS at 67 for 30k/yr (before-tax, fixed COLA, subject to 2034 haircut to 23.1k). With 3% inflation, spending inflates to ~108k by age 75 and ~146k by age 85. After tax grossing-up, gross withdrawals grow much faster than the portfolio. Challenging scenario — see expected file for probability range.",
+  "_seed": 42,
+  "name": "Balanced Realistic",
+  "currentAge": 55,
+  "retirementAge": 60,
+  "lifeExpectancy": 90,
+  "referenceYear": 2026,
+  "currentSavings": 800000,
+  "annualSavings": 30000,
+  "retirementSpending": {
+    "monthlyAmount": 5000,
+    "startAge": 60
+  },
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "amount": 30000,
+      "startAge": 67,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "balanced"
+  },
+  "inflationRate": 0.03,
+  "filingStatus": "mfj",
+  "spouseAge": 53,
+  "state": "Virginia"
+}

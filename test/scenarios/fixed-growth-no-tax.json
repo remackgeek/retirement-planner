@@ -1,0 +1,27 @@
+{
+  "_description": "Deterministic 5% growth, no tax. Tests that portfolio growth compounds correctly.",
+  "_rationale": "500k savings, 5% return (0% stddev = deterministic), 15k/yr spending, 0% inflation. 5% of 500k = 25k growth > 15k spending, so balance grows over time. Closed-form: path[n] = 185000 * 1.05^n + 315000. Never runs out → 100% probability.",
+  "_seed": 12345,
+  "name": "Fixed Growth No Tax",
+  "currentAge": 55,
+  "retirementAge": 55,
+  "lifeExpectancy": 90,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 1250,
+    "startAge": 55
+  },
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0.05,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "state": "Florida"
+}

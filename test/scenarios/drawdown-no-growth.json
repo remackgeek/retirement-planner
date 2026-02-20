@@ -1,0 +1,27 @@
+{
+  "_description": "Pure drawdown — no growth, no income, no tax. The simplest possible scenario.",
+  "_rationale": "500k savings, spending 15k/yr, 0% return. Linear drawdown: 500000/15000 = 33.3 years. Starts at age 55, runs out at age 88. Life expectancy 90. Fails every time → 0% probability.",
+  "_seed": 12345,
+  "name": "Drawdown No Growth",
+  "currentAge": 55,
+  "retirementAge": 55,
+  "lifeExpectancy": 90,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 1250,
+    "startAge": 55
+  },
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "state": "Florida"
+}

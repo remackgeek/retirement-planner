@@ -1,0 +1,5 @@
+{
+  "_rationale": "Balanced portfolio (6.5% mean, 10.5% stddev) with 3% inflation makes this harder than it looks. The 60k/yr spending inflates to ~108k at age 75 and ~146k at age 85 (in nominal terms). After MFJ/Virginia tax grossing-up (5.75% state + federal), gross withdrawals are much higher — roughly 140k+ by age 75. SS at 67 adds ~23k/yr (30k * 0.77 haircut, before-tax) but can't offset the growing spending gap. Pre-retirement savings of 30k/yr for 5 years help, but the compounding inflation + taxes make this a challenging scenario. Probability should be in the 20-45% range.",
+  "probability": { "min": 20, "max": 45 },
+  "medianFinalBalance": { "min": 0, "max": 3000000 }
+}

@@ -98,6 +98,47 @@ The app should be **modular and extensible**. Avoid hardcoded assumptions.
   conversions, withdrawal ordering) may be added later but are not current goals
 - Income/spending: new types without UI refactoring
 
+## Testing
+
+Two testing layers with different audiences:
+
+### Unit tests (`src/**/*.test.ts`)
+Developer-facing, isolated, per-module. Test individual functions directly.
+
+### Scenario tests (`test/scenarios/` + `test/simulation.test.ts`)
+Human-facing, end-to-end trust artifacts. The test runner (`test/simulation.test.ts`) is
+generic infrastructure — it auto-discovers `test/scenarios/*.json` files, runs them through
+`runSimulation()`, and checks results against sidecar `.expected.json` files. **Don't touch
+the runner when adding features.** The intelligence lives in the data files.
+
+#### Scenario file format
+Each `.json` is a valid `UserData` object (importable by the app) plus `_`-prefixed
+test metadata:
+- `_description` — what this scenario tests, in plain English
+- `_rationale` — why the expected numbers are correct (the trust anchor)
+- `_seed` — PRNG seed for reproducible runs
+
+#### Expected output files (`.expected.json`)
+Deterministic scenarios (0% stddev) use exact values with `pathValues` spot-checks.
+Stochastic scenarios use range-based assertions (`{ "min": 70, "max": 85 }`).
+Every expected file **must** include a `_rationale` explaining in plain English why the
+numbers are what they are.
+
+#### Key rules
+- **When a test breaks, fix the code — not the expected values.** Unless the requirements
+  changed, in which case update both the expected values AND the rationale.
+- **When adding features,** add degenerate scenarios that isolate the new behavior for
+  hand-verification (e.g., 0% variance, no tax, single variable changed).
+- **Layer complexity gradually:** start with the simplest scenario that exercises the
+  feature (no tax, no inflation, no randomness), then add variables one at a time.
+- **Injectable RNG:** `runSimulation()` accepts an optional `random` function parameter.
+  Tests pass in a seeded PRNG (`test/utils/seededRandom.ts`); production uses `Math.random`.
+
+#### Adding a new scenario
+1. Create `test/scenarios/my-scenario.json` with full `UserData` + `_` metadata
+2. Create `test/scenarios/my-scenario.expected.json` with rationale + assertions
+3. Run `npm test` — the runner discovers it automatically
+
 ## Dev Commands
 
 ```

@@ -1,0 +1,37 @@
+{
+  "_description": "Deterministic 5% growth plus pension income at 65. Tests income event integration.",
+  "_rationale": "Same as fixed-growth-no-tax but adds 10k/yr after-tax pension at age 65. Before 65: path follows 185000 * 1.05^n + 315000 (same as no-income scenario). After 65: net spending drops from 15k to 5k. New closed-form from age 65: path[n] = 511345.51 * 1.05^n + 105000 (where n=0 at age 65). Balance grows even faster → 100% probability.",
+  "_seed": 12345,
+  "name": "Fixed Growth With Income",
+  "currentAge": 55,
+  "retirementAge": 55,
+  "lifeExpectancy": 90,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 1250,
+    "startAge": 55
+  },
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "name": "Company Pension",
+      "amount": 10000,
+      "startAge": 65,
+      "taxStatus": "after_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0.05,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "state": "Florida"
+}

@@ -10,6 +10,7 @@ export default defineConfig({
     globals: true, // Enables Jest-like globals (e.g., describe, it)
     environment: 'jsdom', // Simulates browser environment
     setupFiles: './src/setupTests.ts', // For custom setup (e.g., jest-dom)
+    include: ['src/**/*.test.{ts,tsx}', 'test/**/*.test.{ts,tsx}'],
     css: true, // Process CSS files for accurate rendering
     coverage: {
       provider: 'v8', // For code coverage reports

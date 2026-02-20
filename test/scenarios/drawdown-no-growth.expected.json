@@ -1,0 +1,14 @@
+{
+  "_rationale": "Linear drawdown: path[k] = 500000 - 15000*k. No growth, no inflation, no tax (15k < 16100 standard deduction). Balance hits 0 during age 88 (year index 33, balance 5000 < 15000 spending). All 5000 sims are identical → 0% probability.",
+  "probability": 0,
+  "pathValues": [
+    { "index": 0, "age": 55, "value": 500000, "note": "Starting balance" },
+    { "index": 5, "age": 60, "value": 425000, "note": "500000 - 5*15000" },
+    { "index": 10, "age": 65, "value": 350000, "note": "500000 - 10*15000" },
+    { "index": 20, "age": 75, "value": 200000, "note": "500000 - 20*15000" },
+    { "index": 30, "age": 85, "value": 50000, "note": "500000 - 30*15000" },
+    { "index": 33, "age": 88, "value": 5000, "note": "Last year with money. 5000 < 15000 spending → fails." },
+    { "index": 34, "age": 89, "value": 0, "note": "Ran out" },
+    { "index": 35, "age": 90, "value": 0, "note": "Ran out" }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "_rationale": "Deterministic 5% growth with 15k/yr spending. Spending happens before growth each year: balance_new = (balance - 15000) * 1.05. Closed-form: path[n] = 185000 * 1.05^n + 315000. Growth always exceeds spending, so balance increases forever. 100% probability.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 55, "value": 500000, "note": "Starting balance" },
+    { "index": 1, "age": 56, "value": 509250, "note": "(500000 - 15000) * 1.05" },
+    { "index": 2, "age": 57, "value": 518962.5, "note": "(509250 - 15000) * 1.05" },
+    { "index": 10, "age": 65, "value": 616345.51, "note": "185000 * 1.05^10 + 315000" },
+    { "index": 20, "age": 75, "value": 805860.08, "note": "185000 * 1.05^20 + 315000" },
+    { "index": 35, "age": 90, "value": 1335462.84, "note": "185000 * 1.05^35 + 315000" }
+  ],
+  "tolerance": 1.0
+}

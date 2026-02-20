@@ -83,46 +83,36 @@ const portfolioParams: Record<PortfolioType, PortfolioParams> = {
 };
 
 // Helper function to generate a standard normal random variable (Box-Muller transform)
-function standardNormalRandom(): number {
+function standardNormalRandom(random: () => number = Math.random): number {
   let u = 0,
     v = 0;
-  while (u === 0) u = Math.random(); // Converting [0,1) to (0,1)
-  while (v === 0) v = Math.random();
+  while (u === 0) u = random(); // Converting [0,1) to (0,1)
+  while (v === 0) v = random();
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
 // Function to generate a single year's log-normal return factor (1 + r)
-function generateReturnFactor(params: PortfolioParams): number {
-  const normalSample = params.mu + params.sigma * standardNormalRandom();
+function generateReturnFactor(
+  params: PortfolioParams,
+  random: () => number = Math.random
+): number {
+  const normalSample =
+    params.mu + params.sigma * standardNormalRandom(random);
   return Math.exp(normalSample);
 }
 
-/**
- * Calculates the fund balance after one year of growth based on the portfolio type.
- * Uses log-normal distribution for realistic return simulation.
- * @param initialAmount - Starting fund balance for the year.
- * @param portfolioType - Type of portfolio: 'conservative', 'balanced', or 'aggressive'.
- * @returns The new fund balance after applying random growth for one year.
- */
 function calculateYearlyGrowth(
   initialAmount: number,
-  portfolioType: PortfolioType
+  portfolioType: PortfolioType,
+  random: () => number = Math.random
 ): number {
   const params = portfolioParams[portfolioType];
   if (!params) {
     throw new Error('Invalid portfolio type');
   }
 
-  const growthFactor = generateReturnFactor(params);
+  const growthFactor = generateReturnFactor(params, random);
   return initialAmount * growthFactor;
-}
-
-function gaussianRandom(): number {
-  let u = 0,
-    v = 0;
-  while (u === 0) u = Math.random();
-  v = Math.random();
-  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
 function getStateTaxRate(userData: UserData): number {
@@ -174,8 +164,8 @@ function getPortfolioReturns(assumptions: UserData['portfolioAssumptions']): {
 } {
   if (
     assumptions.riskLevel === 'custom' &&
-    assumptions.expectedReturn &&
-    assumptions.standardDeviation
+    typeof assumptions.expectedReturn === 'number' &&
+    typeof assumptions.standardDeviation === 'number'
   ) {
     return {
       mean: assumptions.expectedReturn,
@@ -184,16 +174,16 @@ function getPortfolioReturns(assumptions: UserData['portfolioAssumptions']): {
   }
   const realReturns: Record<string, number> = {
     conservative: 0.03,
-    moderate: 0.045,
-    high: 0.06,
+    balanced: 0.045,
+    aggressive: 0.06,
   };
   const vols: Record<string, number> = {
     conservative: 0.05,
-    moderate: 0.1,
-    high: 0.15,
+    balanced: 0.1,
+    aggressive: 0.15,
   };
   const riskLevel =
-    assumptions.riskLevel === 'custom' ? 'moderate' : assumptions.riskLevel; // fallback
+    assumptions.riskLevel === 'custom' ? 'balanced' : assumptions.riskLevel; // fallback
   return { mean: realReturns[riskLevel], sigma: vols[riskLevel] };
 }
 
@@ -312,7 +302,10 @@ export function calculateAnnualIncome(
   return totalIncome;
 }
 
-export function runSimulation(userData: UserData): {
+export function runSimulation(
+  userData: UserData,
+  random: () => number = Math.random
+): {
   probability: number;
   median: number[];
   downside: number[];
@@ -346,10 +339,10 @@ export function runSimulation(userData: UserData): {
       path.push(balance / inflationFactor);
 
       // Calculate spending for this year (includes retirement spending + spending goals)
-      const spending = calculateAnnualSpending(userData, year);
+      const spending = calculateAnnualSpending(userData, year, inflationRate);
 
       // Calculate income for this year (includes income events + annual savings if pre-retirement)
-      let income = calculateAnnualIncome(userData, year);
+      let income = calculateAnnualIncome(userData, year, inflationRate);
       if (year < retirementYear) {
         income += userData.annualSavings; // Add annual savings pre-retirement
       }
@@ -370,14 +363,15 @@ export function runSimulation(userData: UserData): {
         // Use log-normal growth for realistic simulation
         balance = calculateYearlyGrowth(
           balance,
-          userData.portfolioAssumptions.riskLevel as PortfolioType
+          userData.portfolioAssumptions.riskLevel as PortfolioType,
+          random
         );
       } else {
         // Fallback to old normal distribution system
         const { mean, sigma } = getPortfolioReturns(
           userData.portfolioAssumptions
         );
-        const r = mean + sigma * gaussianRandom();
+        const r = mean + sigma * standardNormalRandom(random);
         balance *= 1 + r;
       }
     }
