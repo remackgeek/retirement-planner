@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import SpendingGoalTypeSelectionDialog from '../dialogs/SpendingGoalTypeSelectionDialog';
-import AddSpendingGoalDialog from '../dialogs/AddSpendingGoalDialog';
+import SpendingGoalDialog, { goalTypeLabels } from '../dialogs/SpendingGoalDialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { spacing, colors, border, fontSize } from '../styles/theme';
 
@@ -32,7 +32,7 @@ const GoalInfo = styled.div`
 
 const Actions = styled.div`
   display: flex;
-  gap: ${spacing.sm};
+  gap: ${spacing.xs};
 `;
 
 const Button = styled.button`
@@ -42,6 +42,7 @@ const Button = styled.button`
   cursor: pointer;
   background: ${colors.primary};
   color: white;
+  font-size: ${fontSize.sm};
 
   &:hover {
     background: ${colors.primaryHover};
@@ -61,31 +62,19 @@ const DeleteButton = styled(Button)`
   }
 `;
 
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.sm};
-  padding: ${spacing.md};
-  border: ${border.standard};
-  border-radius: ${border.radius};
-  margin-bottom: ${spacing.sm};
-`;
-
-const Input = styled.input`
-  padding: ${spacing.sm};
-  border: ${border.standard};
-  border-radius: ${border.radius};
-`;
-
-const Select = styled.select`
-  padding: ${spacing.sm};
-  border: ${border.standard};
-  border-radius: ${border.radius};
-`;
-
-const Checkbox = styled.input`
-  margin-right: ${spacing.sm};
-`;
+const goalTypeIcons: Record<SpendingGoal['type'], string> = {
+  monthly_retirement: 'pi pi-dollar',
+  charity: 'pi pi-heart',
+  dependent_support: 'pi pi-users',
+  healthcare: 'pi pi-heart-fill',
+  home_purchase: 'pi pi-home',
+  education: 'pi pi-book',
+  renovation: 'pi pi-wrench',
+  vacation: 'pi pi-plane',
+  vehicle: 'pi pi-car',
+  wedding: 'pi pi-heart',
+  other: 'pi pi-circle',
+};
 
 interface SpendingGoalsManagerProps {
   goals: SpendingGoal[];
@@ -101,221 +90,52 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
   onDelete,
 }) => {
   const [selectionDialogVisible, setSelectionDialogVisible] = useState(false);
-  const [addDialogVisible, setAddDialogVisible] = useState(false);
-  const [selectedType, setSelectedType] = useState<SpendingGoal['type'] | null>(
-    null
-  );
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    type: 'charity' as SpendingGoal['type'],
-    name: '',
-    amount: 0,
-    startAge: 65,
-    endAge: undefined as number | undefined,
-    isOneTime: false,
-    inflationAdjusted: true,
-  });
+  const [dialogVisible, setDialogVisible] = useState(false);
+  const [selectedType, setSelectedType] = useState<SpendingGoal['type'] | null>(null);
+  const [editingGoal, setEditingGoal] = useState<SpendingGoal | undefined>(undefined);
 
   const handleTypeSelect = (type: SpendingGoal['type']) => {
     setSelectedType(type);
-    setAddDialogVisible(true);
+    setEditingGoal(undefined);
+    setDialogVisible(true);
   };
 
-  const handleAddGoal = (goal: Omit<SpendingGoal, 'id'>) => {
-    onAdd(goal);
-    setAddDialogVisible(false);
-    setSelectedType(null);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingId) {
-      onUpdate(editingId, formData);
-      setEditingId(null);
+  const handleSave = (goal: Omit<SpendingGoal, 'id'>) => {
+    if (editingGoal) {
+      onUpdate(editingGoal.id, goal);
+    } else {
+      onAdd(goal);
     }
-    setFormData({
-      type: 'charity',
-      name: '',
-      amount: 0,
-      startAge: 65,
-      endAge: undefined,
-      isOneTime: false,
-      inflationAdjusted: true,
-    });
+    setDialogVisible(false);
+    setSelectedType(null);
+    setEditingGoal(undefined);
   };
 
   const startEdit = (goal: SpendingGoal) => {
-    setEditingId(goal.id);
-    setFormData({
-      type: goal.type,
-      name: goal.name || '',
-      amount: goal.amount,
-      startAge: goal.startAge,
-      endAge: goal.endAge,
-      isOneTime: goal.isOneTime || false,
-      inflationAdjusted: goal.inflationAdjusted,
-    });
-  };
-
-  const goalTypeLabels: Record<SpendingGoal['type'], string> = {
-    monthly_retirement: 'Monthly Retirement',
-    charity: 'Charity/Gift',
-    dependent_support: 'Dependent Support',
-    healthcare: 'Healthcare',
-    home_purchase: 'Home Purchase/Upgrade',
-    education: 'Education',
-    renovation: 'Renovation',
-    vacation: 'Vacation',
-    vehicle: 'Vehicle',
-    wedding: 'Wedding',
-    other: 'Other Expense',
-  };
-
-  const goalTypeIcons: Record<SpendingGoal['type'], string> = {
-    monthly_retirement: 'pi pi-dollar',
-    charity: 'pi pi-heart',
-    dependent_support: 'pi pi-users',
-    healthcare: 'pi pi-heart-fill',
-    home_purchase: 'pi pi-home',
-    education: 'pi pi-book',
-    renovation: 'pi pi-wrench',
-    vacation: 'pi pi-plane',
-    vehicle: 'pi pi-car',
-    wedding: 'pi pi-heart',
-    other: 'pi pi-circle',
+    setEditingGoal(goal);
+    setSelectedType(null);
+    setDialogVisible(true);
   };
 
   return (
     <Container>
       <Header>
         <h3>Spending Goals</h3>
-        {!editingId && (
-          <LargeButton onClick={() => setSelectionDialogVisible(true)}>
-            Add Goal
-          </LargeButton>
-        )}
+        <LargeButton onClick={() => setSelectionDialogVisible(true)}>
+          Add Goal
+        </LargeButton>
       </Header>
-
-      {editingId && (
-        <Form onSubmit={handleSubmit}>
-          <Select
-            value={formData.type}
-            onChange={(e) =>
-              setFormData({
-                ...formData,
-                type: e.target.value as SpendingGoal['type'],
-              })
-            }
-          >
-            {Object.entries(goalTypeLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-
-          {formData.type === 'other' && (
-            <Input
-              type='text'
-              placeholder='Goal name'
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              required
-            />
-          )}
-
-          <Input
-            type='number'
-            placeholder='Annual amount'
-            value={formData.amount}
-            onChange={(e) =>
-              setFormData({ ...formData, amount: Number(e.target.value) })
-            }
-            required
-          />
-
-          <Input
-            type='number'
-            placeholder='Start age'
-            value={formData.startAge}
-            onChange={(e) =>
-              setFormData({ ...formData, startAge: Number(e.target.value) })
-            }
-            required
-          />
-
-          <Input
-            type='number'
-            placeholder='End age (optional)'
-            value={formData.endAge ?? ''}
-            onChange={(e) =>
-              setFormData({
-                ...formData,
-                endAge: e.target.value ? Number(e.target.value) : undefined,
-              })
-            }
-          />
-
-          <label>
-            <Checkbox
-              type='checkbox'
-              checked={formData.isOneTime}
-              onChange={(e) =>
-                setFormData({ ...formData, isOneTime: e.target.checked })
-              }
-            />
-            One-time event (occurs only in start year)
-          </label>
-
-          <label>
-            <Checkbox
-              type='checkbox'
-              checked={formData.inflationAdjusted}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  inflationAdjusted: e.target.checked,
-                })
-              }
-            />
-            Inflation adjusted
-          </label>
-
-          <div>
-            <Button type='submit'>{editingId ? 'Update' : 'Add'} Goal</Button>
-            <Button
-              type='button'
-              onClick={() => {
-                setEditingId(null);
-                setFormData({
-                  type: 'charity',
-                  name: '',
-                  amount: 0,
-                  startAge: 65,
-                  endAge: undefined,
-                  isOneTime: false,
-                  inflationAdjusted: true,
-                });
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </Form>
-      )}
 
       {[...goals]
         .sort((a, b) => a.startAge - b.startAge)
         .map((goal) => (
           <GoalItem key={goal.id}>
             <GoalInfo>
-              <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ marginBottom: spacing.xs }}>
                 <strong>
                   <span
                     style={{
-                      marginRight: '0.5rem',
+                      marginRight: spacing.xs,
                       color: colors.spending,
                       backgroundColor: colors.spendingBg,
                       borderRadius: border.radiusCircle,
@@ -359,14 +179,16 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
         onSelectType={handleTypeSelect}
       />
 
-      <AddSpendingGoalDialog
-        visible={addDialogVisible}
+      <SpendingGoalDialog
+        visible={dialogVisible}
         onHide={() => {
-          setAddDialogVisible(false);
+          setDialogVisible(false);
           setSelectedType(null);
+          setEditingGoal(undefined);
         }}
-        onSave={handleAddGoal}
+        onSave={handleSave}
         initialType={selectedType || undefined}
+        editGoal={editingGoal}
       />
     </Container>
   );

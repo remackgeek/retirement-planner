@@ -13,28 +13,41 @@ const Form = styled.form`
   flex-direction: column;
   gap: ${spacing.md};
   padding: ${spacing.sm} 0;
+
+  .p-inputtext,
+  .p-dropdown,
+  .p-inputnumber {
+    width: 100%;
+  }
 `;
 
 const InputGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${spacing.sm};
+  gap: ${spacing.xs};
+`;
+
+const FieldRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: ${spacing.md};
 `;
 
 const CheckboxGroup = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: ${spacing.sm};
 `;
 
-interface AddSpendingGoalDialogProps {
+interface SpendingGoalDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (goal: Omit<SpendingGoal, 'id'>) => void;
   initialType?: SpendingGoal['type'];
+  editGoal?: SpendingGoal;
 }
 
-const goalTypeLabels: Record<SpendingGoal['type'], string> = {
+export const goalTypeLabels: Record<SpendingGoal['type'], string> = {
   monthly_retirement: 'Monthly Retirement',
   charity: 'Charity/Gift',
   dependent_support: 'Dependent Support',
@@ -48,42 +61,54 @@ const goalTypeLabels: Record<SpendingGoal['type'], string> = {
   other: 'Other Expense',
 };
 
-const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
+const makeDefaultFormData = (type: SpendingGoal['type'] = 'charity') => ({
+  type,
+  name: '',
+  amount: 0,
+  startAge: 65,
+  endAge: undefined as number | undefined,
+  isOneTime: false,
+  inflationAdjusted: true,
+});
+
+const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
   visible,
   onHide,
   onSave,
   initialType,
+  editGoal,
 }) => {
-  const [formData, setFormData] = useState({
-    type: 'charity' as SpendingGoal['type'],
-    name: '',
-    amount: 0,
-    startAge: 65,
-    endAge: undefined as number | undefined,
-    isOneTime: false,
-    inflationAdjusted: true,
-  });
+  const isEditing = !!editGoal;
+  const [formData, setFormData] = useState(makeDefaultFormData());
 
-  // Reset form when dialog opens with initial type
   useEffect(() => {
-    if (visible && initialType) {
+    if (!visible) return;
+    if (editGoal) {
       setFormData({
-        type: initialType,
-        name: '',
-        amount: 0,
-        startAge: 65,
-        endAge: undefined,
-        isOneTime: false,
-        inflationAdjusted: true,
+        type: editGoal.type,
+        name: editGoal.name || '',
+        amount: editGoal.amount,
+        startAge: editGoal.startAge,
+        endAge: editGoal.endAge,
+        isOneTime: editGoal.isOneTime || false,
+        inflationAdjusted: editGoal.inflationAdjusted,
       });
+    } else if (initialType) {
+      setFormData(makeDefaultFormData(initialType));
+    } else {
+      setFormData(makeDefaultFormData());
     }
-  }, [visible, initialType]);
+  }, [visible, editGoal, initialType]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(formData);
     onHide();
   };
+
+  const headerLabel = isEditing
+    ? `Edit ${goalTypeLabels[formData.type]}`
+    : `Add ${goalTypeLabels[formData.type]}`;
 
   const dialogFooter = (
     <div>
@@ -94,7 +119,7 @@ const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
         className='p-button-text'
       />
       <Button
-        label='Add Goal'
+        label={isEditing ? 'Save Changes' : 'Add Goal'}
         icon='pi pi-check'
         onClick={handleSubmit}
         type='submit'
@@ -104,9 +129,9 @@ const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
 
   return (
     <Dialog
-      header={`Add ${goalTypeLabels[formData.type]}`}
+      header={headerLabel}
       visible={visible}
-      style={{ width: '50vw' }}
+      style={{ width: '32rem' }}
       onHide={onHide}
       footer={dialogFooter}
     >
@@ -119,6 +144,7 @@ const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
               onChange={(e) =>
                 setFormData({ ...formData, name: e.target.value })
               }
+              placeholder='e.g., Home repairs'
               required
             />
           </InputGroup>
@@ -137,42 +163,43 @@ const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
           />
         </InputGroup>
 
-        <InputGroup>
-          <label>Start Age</label>
-          <InputNumber
-            value={formData.startAge}
-            onValueChange={(e) =>
-              setFormData({
-                ...formData,
-                startAge: e.value || 65,
-              })
-            }
-            required
-          />
-        </InputGroup>
+        <FieldRow>
+          <InputGroup>
+            <label>Start Age</label>
+            <InputNumber
+              value={formData.startAge}
+              onValueChange={(e) =>
+                setFormData({ ...formData, startAge: e.value || 65 })
+              }
+              required
+            />
+          </InputGroup>
 
-        <InputGroup>
-          <label>End Age (optional)</label>
-          <InputNumber
-            value={formData.endAge ?? null}
-            onValueChange={(e) =>
-              setFormData({ ...formData, endAge: e.value ?? undefined })
-            }
-          />
-        </InputGroup>
+          <InputGroup>
+            <label>End Age (optional)</label>
+            <InputNumber
+              value={formData.endAge ?? null}
+              onValueChange={(e) =>
+                setFormData({ ...formData, endAge: e.value ?? undefined })
+              }
+            />
+          </InputGroup>
+        </FieldRow>
 
         <CheckboxGroup>
           <Checkbox
+            inputId='isOneTime'
             checked={formData.isOneTime}
             onChange={(e) =>
               setFormData({ ...formData, isOneTime: e.checked || false })
             }
           />
-          <label>One-time event (occurs only in start year)</label>
+          <label htmlFor='isOneTime'>One-time event (occurs only in start year)</label>
         </CheckboxGroup>
 
         <CheckboxGroup>
           <Checkbox
+            inputId='inflationAdjusted'
             checked={formData.inflationAdjusted}
             onChange={(e) =>
               setFormData({
@@ -181,11 +208,11 @@ const AddSpendingGoalDialog: React.FC<AddSpendingGoalDialogProps> = ({
               })
             }
           />
-          <label>Inflation adjusted</label>
+          <label htmlFor='inflationAdjusted'>Inflation adjusted</label>
         </CheckboxGroup>
       </Form>
     </Dialog>
   );
 };
 
-export default AddSpendingGoalDialog;
+export default SpendingGoalDialog;

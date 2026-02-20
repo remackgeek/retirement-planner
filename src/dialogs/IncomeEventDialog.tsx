@@ -14,28 +14,41 @@ const Form = styled.form`
   flex-direction: column;
   gap: ${spacing.md};
   padding: ${spacing.sm} 0;
+
+  .p-inputtext,
+  .p-dropdown,
+  .p-inputnumber {
+    width: 100%;
+  }
 `;
 
 const InputGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${spacing.sm};
+  gap: ${spacing.xs};
+`;
+
+const FieldRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: ${spacing.md};
 `;
 
 const CheckboxGroup = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: ${spacing.sm};
 `;
 
-interface AddIncomeEventDialogProps {
+interface IncomeEventDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (event: Omit<IncomeEvent, 'id'>) => void;
   initialType?: IncomeEventType;
+  editEvent?: IncomeEvent;
 }
 
-const eventTypeLabels: Record<IncomeEventType, string> = {
+export const eventTypeLabels: Record<IncomeEventType, string> = {
   social_security: 'Social Security',
   annuity_income: 'Annuity Income',
   inheritance: 'Inheritance',
@@ -60,41 +73,48 @@ const getDefaultCOLA = (
   return inflationAdjustedTypes.includes(type) ? 'inflation_adjusted' : 'fixed';
 };
 
-const AddIncomeEventDialog: React.FC<AddIncomeEventDialogProps> = ({
+const makeDefaultFormData = (type: IncomeEventType = 'social_security') => ({
+  type,
+  name: '',
+  amount: 0,
+  startAge: 65,
+  endAge: undefined as number | undefined,
+  isOneTime: false,
+  taxStatus: 'before_tax' as 'before_tax' | 'after_tax',
+  colaType: getDefaultCOLA(type),
+  syncWithEstimate: false,
+});
+
+const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
   visible,
   onHide,
   onSave,
   initialType,
+  editEvent,
 }) => {
-  const [formData, setFormData] = useState({
-    type: 'social_security' as IncomeEventType,
-    name: '',
-    amount: 0,
-    startAge: 65,
-    endAge: undefined as number | undefined,
-    isOneTime: false,
-    taxStatus: 'before_tax' as 'before_tax' | 'after_tax',
-    colaType: 'inflation_adjusted' as 'fixed' | 'inflation_adjusted',
-    syncWithEstimate: false,
-  });
+  const isEditing = !!editEvent;
+  const [formData, setFormData] = useState(makeDefaultFormData());
 
-  // Reset form when dialog opens with initial type
   useEffect(() => {
-    if (visible && initialType) {
+    if (!visible) return;
+    if (editEvent) {
       setFormData({
-        type: initialType,
-        name: '',
-        amount: 0,
-        startAge: 65,
-        endAge: undefined,
-        isOneTime: false,
-        taxStatus:
-          initialType === 'social_security' ? 'before_tax' : 'before_tax',
-        colaType: getDefaultCOLA(initialType),
-        syncWithEstimate: false,
+        type: editEvent.type,
+        name: editEvent.name || '',
+        amount: editEvent.amount,
+        startAge: editEvent.startAge,
+        endAge: editEvent.endAge,
+        isOneTime: editEvent.isOneTime || false,
+        taxStatus: editEvent.taxStatus,
+        colaType: editEvent.colaType,
+        syncWithEstimate: editEvent.syncWithEstimate || false,
       });
+    } else if (initialType) {
+      setFormData(makeDefaultFormData(initialType));
+    } else {
+      setFormData(makeDefaultFormData());
     }
-  }, [visible, initialType]);
+  }, [visible, editEvent, initialType]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,6 +141,10 @@ const AddIncomeEventDialog: React.FC<AddIncomeEventDialogProps> = ({
     { label: 'Inflation Adjusted', value: 'inflation_adjusted' },
   ];
 
+  const headerLabel = isEditing
+    ? `Edit ${eventTypeLabels[formData.type]}`
+    : `Add ${eventTypeLabels[formData.type]}`;
+
   const dialogFooter = (
     <div>
       <Button
@@ -130,7 +154,7 @@ const AddIncomeEventDialog: React.FC<AddIncomeEventDialogProps> = ({
         className='p-button-text'
       />
       <Button
-        label='Add Event'
+        label={isEditing ? 'Save Changes' : 'Add Event'}
         icon='pi pi-check'
         onClick={handleSubmit}
         type='submit'
@@ -140,9 +164,9 @@ const AddIncomeEventDialog: React.FC<AddIncomeEventDialogProps> = ({
 
   return (
     <Dialog
-      header={`Add ${eventTypeLabels[formData.type]}`}
+      header={headerLabel}
       visible={visible}
-      style={{ width: '50vw' }}
+      style={{ width: '32rem' }}
       onHide={onHide}
       footer={dialogFooter}
     >
@@ -167,6 +191,7 @@ const AddIncomeEventDialog: React.FC<AddIncomeEventDialogProps> = ({
               onChange={(e) =>
                 setFormData({ ...formData, name: e.target.value })
               }
+              placeholder='e.g., Part-time consulting'
               required
             />
           </InputGroup>
@@ -185,35 +210,38 @@ const AddIncomeEventDialog: React.FC<AddIncomeEventDialogProps> = ({
           />
         </InputGroup>
 
-        <InputGroup>
-          <label>Start Age</label>
-          <InputNumber
-            value={formData.startAge}
-            onValueChange={(e) =>
-              setFormData({ ...formData, startAge: e.value || 65 })
-            }
-            required
-          />
-        </InputGroup>
+        <FieldRow>
+          <InputGroup>
+            <label>Start Age</label>
+            <InputNumber
+              value={formData.startAge}
+              onValueChange={(e) =>
+                setFormData({ ...formData, startAge: e.value || 65 })
+              }
+              required
+            />
+          </InputGroup>
 
-        <InputGroup>
-          <label>End Age (optional)</label>
-          <InputNumber
-            value={formData.endAge ?? null}
-            onValueChange={(e) =>
-              setFormData({ ...formData, endAge: e.value ?? undefined })
-            }
-          />
-        </InputGroup>
+          <InputGroup>
+            <label>End Age (optional)</label>
+            <InputNumber
+              value={formData.endAge ?? null}
+              onValueChange={(e) =>
+                setFormData({ ...formData, endAge: e.value ?? undefined })
+              }
+            />
+          </InputGroup>
+        </FieldRow>
 
         <CheckboxGroup>
           <Checkbox
+            inputId='isOneTime'
             checked={formData.isOneTime}
             onChange={(e) =>
               setFormData({ ...formData, isOneTime: e.checked || false })
             }
           />
-          <label>One-time event (occurs only in start year)</label>
+          <label htmlFor='isOneTime'>One-time event (occurs only in start year)</label>
         </CheckboxGroup>
 
         {formData.type !== 'social_security' && (
@@ -239,6 +267,7 @@ const AddIncomeEventDialog: React.FC<AddIncomeEventDialogProps> = ({
         {formData.type === 'social_security' && (
           <CheckboxGroup>
             <Checkbox
+              inputId='syncWithEstimate'
               checked={formData.syncWithEstimate}
               onChange={(e) =>
                 setFormData({
@@ -247,7 +276,7 @@ const AddIncomeEventDialog: React.FC<AddIncomeEventDialogProps> = ({
                 })
               }
             />
-            <label>Sync with SSA estimate</label>
+            <label htmlFor='syncWithEstimate'>Sync with SSA estimate</label>
           </CheckboxGroup>
         )}
       </Form>
@@ -255,4 +284,4 @@ const AddIncomeEventDialog: React.FC<AddIncomeEventDialogProps> = ({
   );
 };
 
-export default AddIncomeEventDialog;
+export default IncomeEventDialog;
