@@ -1,0 +1,45 @@
+{
+  "_description": "MFS filer — SS is always 85% taxable regardless of provisional income.",
+  "_rationale": "MFS filer, Florida, SS $20k + pension $30k at age 62, haircut disabled. MFS rule: 85% of SS is always taxable = $17k. Combined taxable gross = $47k. Deduction $16,100 (2026 MFS). Taxable = $30,900. Federal tax = $1,240 (10% on $12,400) + $2,220 (12% on $18,500) = $3,460. Net = $46,540/yr.",
+  "_seed": 12345,
+  "name": "SS MFS Always 85%",
+  "currentAge": 60,
+  "retirementAge": 60,
+  "lifeExpectancy": 67,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 0,
+    "startAge": 60
+  },
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "amount": 20000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "ssHaircutEnabled": false
+    },
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "amount": 30000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "mfs",
+  "spouseAge": null,
+  "state": "Florida"
+}

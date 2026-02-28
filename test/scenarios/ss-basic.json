@@ -1,0 +1,37 @@
+{
+  "_description": "SS income with 0% taxable fraction (low provisional income). Tests basic SS flow and that SS is untaxed when below threshold.",
+  "_rationale": "Single filer, Florida (no state tax), $24k SS at age 62, haircut disabled. Provisional income = 0 + 0.5 * 24000 = $12,000, below $25k single threshold, so 0% of SS is taxable. No spending (startAge beyond lifeExpectancy). Balance grows by $24k/yr from age 62 onward.",
+  "_seed": 12345,
+  "name": "SS Basic",
+  "currentAge": 60,
+  "retirementAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 0,
+    "startAge": 60
+  },
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "amount": 24000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "ssHaircutEnabled": false
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "state": "Florida"
+}

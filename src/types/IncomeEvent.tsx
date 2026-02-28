@@ -18,7 +18,9 @@ export interface IncomeEvent {
   isOneTime?: boolean; // If true, income occurs only in the start year
   taxStatus: 'before_tax' | 'after_tax'; // Except Social Security is always before_tax
   colaType: 'fixed' | 'inflation_adjusted';
-  syncWithEstimate?: boolean; // For Social Security
+  ssHaircutEnabled?: boolean; // SS only — apply trust fund reduction from 2034
+  ssHaircutPercent?: number; // SS only — reduction percentage (default 23)
+  ssAmountBasis?: 'today' | 'future'; // SS only — today's dollars vs already-inflated (default 'today')
 }
 
 export type PortfolioType = 'conservative' | 'balanced' | 'aggressive';

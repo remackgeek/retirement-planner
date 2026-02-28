@@ -1,0 +1,44 @@
+{
+  "_description": "Multiple before_tax income events taxed as aggregate. Tests that only one standard deduction applies.",
+  "_rationale": "Single filer, Florida, two pensions of $20k each (before_tax) at age 62. Combined gross = $40k. Standard deduction (2026 single) = $16,100. Taxable = $23,900. Federal tax = $1,240 (10% on $12,400) + $1,380 (12% on $11,500) = $2,620. Net = $37,380/yr.",
+  "_seed": 12345,
+  "name": "Aggregate Tax",
+  "currentAge": 60,
+  "retirementAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 0,
+    "startAge": 60
+  },
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "amount": 20000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    },
+    {
+      "id": "pension-2",
+      "type": "pension_income",
+      "amount": 20000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "state": "Florida"
+}

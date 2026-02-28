@@ -73,7 +73,7 @@ const getDefaultCOLA = (
   return inflationAdjustedTypes.includes(type) ? 'inflation_adjusted' : 'fixed';
 };
 
-const makeDefaultFormData = (type: IncomeEventType = 'social_security') => ({
+const makeDefaultFormData = (type: IncomeEventType = 'pension_income') => ({
   type,
   name: '',
   amount: 0,
@@ -82,7 +82,6 @@ const makeDefaultFormData = (type: IncomeEventType = 'social_security') => ({
   isOneTime: false,
   taxStatus: 'before_tax' as 'before_tax' | 'after_tax',
   colaType: getDefaultCOLA(type),
-  syncWithEstimate: false,
 });
 
 const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
@@ -107,7 +106,6 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
         isOneTime: editEvent.isOneTime || false,
         taxStatus: editEvent.taxStatus,
         colaType: editEvent.colaType,
-        syncWithEstimate: editEvent.syncWithEstimate || false,
       });
     } else if (initialType) {
       setFormData(makeDefaultFormData(initialType));
@@ -127,7 +125,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
       ...formData,
       type,
       colaType: getDefaultCOLA(type),
-      taxStatus: type === 'social_security' ? 'before_tax' : formData.taxStatus,
+      taxStatus: formData.taxStatus,
     });
   };
 
@@ -175,10 +173,12 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
           <label>Event Type</label>
           <Dropdown
             value={formData.type}
-            options={Object.entries(eventTypeLabels).map(([value, label]) => ({
-              label,
-              value,
-            }))}
+            options={Object.entries(eventTypeLabels)
+              .filter(([value]) => value !== 'social_security')
+              .map(([value, label]) => ({
+                label,
+                value,
+              }))}
             onChange={(e) => handleTypeChange(e.value as IncomeEventType)}
           />
         </InputGroup>
@@ -244,16 +244,14 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
           <label htmlFor='isOneTime'>One-time event (occurs only in start year)</label>
         </CheckboxGroup>
 
-        {formData.type !== 'social_security' && (
-          <InputGroup>
-            <label>Tax Status</label>
-            <Dropdown
-              value={formData.taxStatus}
-              options={taxStatusOptions}
-              onChange={(e) => setFormData({ ...formData, taxStatus: e.value })}
-            />
-          </InputGroup>
-        )}
+        <InputGroup>
+          <label>Tax Status</label>
+          <Dropdown
+            value={formData.taxStatus}
+            options={taxStatusOptions}
+            onChange={(e) => setFormData({ ...formData, taxStatus: e.value })}
+          />
+        </InputGroup>
 
         <InputGroup>
           <label>Cost of Living Adjustment</label>
@@ -264,21 +262,6 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
           />
         </InputGroup>
 
-        {formData.type === 'social_security' && (
-          <CheckboxGroup>
-            <Checkbox
-              inputId='syncWithEstimate'
-              checked={formData.syncWithEstimate}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  syncWithEstimate: e.checked || false,
-                })
-              }
-            />
-            <label htmlFor='syncWithEstimate'>Sync with SSA estimate</label>
-          </CheckboxGroup>
-        )}
       </Form>
     </Dialog>
   );

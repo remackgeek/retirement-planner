@@ -1,0 +1,11 @@
+{
+  "_rationale": "Ages 60-61: no income, balance flat at 500k. From age 62: SS $30k + pension $50k. Provisional = $65k, in 85% zone for MFJ. SS taxable = $23,850. Combined taxable gross = $73,850. Deduction $32,200 (2026 MFJ). Taxable = $41,650. Fed tax = $4,502 (10% on 24800 + 12% on 16850). Net = $75,498/yr.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
+    { "index": 2, "age": 62, "value": 500000, "note": "Income starts this year" },
+    { "index": 3, "age": 63, "value": 575498, "note": "500000 + 75498" },
+    { "index": 5, "age": 65, "value": 726494, "note": "500000 + 75498 * 3 = 726494" }
+  ],
+  "tolerance": 1.0
+}

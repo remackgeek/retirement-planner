@@ -3,6 +3,7 @@ import type { PortfolioType, PortfolioParams } from '../types/IncomeEvent';
 import {
   calculateNetFromGross,
   calculateGrossIncomeNeeded,
+  calculateSSTaxableAmount,
 } from './TaxCalculator';
 
 // State tax rates (from user's table, converted to decimal)
@@ -119,26 +120,6 @@ function getStateTaxRate(userData: UserData): number {
   return STATE_TAX_RATES[userData.state] || 0;
 }
 
-function calculateAfterTaxIncome(
-  amount: number,
-  taxStatus: 'before_tax' | 'after_tax',
-  userData: UserData,
-  year: number
-): number {
-  if (taxStatus === 'after_tax') {
-    return amount;
-  }
-  // For before_tax income, amount is gross - calculate net after taxes
-  const stateTaxRate = getStateTaxRate(userData);
-  return calculateNetFromGross(
-    amount,
-    stateTaxRate,
-    userData.filingStatus,
-    userData.currentAge + (year - userData.referenceYear), // Age in this year
-    year,
-    userData.spouseAge
-  );
-}
 
 function calculateGrossWithdrawal(
   amount: number,
@@ -258,8 +239,11 @@ export function calculateAnnualIncome(
   year: number,
   inflationRate: number = 0.03
 ): number {
-  let totalIncome = 0;
+  let afterTaxTotal = 0;
+  let ssGross = 0;
+  let otherGross = 0;
 
+  // Phase 1: Accumulate gross amounts by category
   userData.incomeEvents.forEach((event) => {
     const startYear =
       userData.referenceYear + (event.startAge - userData.currentAge);
@@ -269,37 +253,64 @@ export function calculateAnnualIncome(
 
     let shouldInclude = false;
     if (event.isOneTime) {
-      // One-time events only occur in the start year
       shouldInclude = year === startYear;
     } else {
-      // Ongoing events occur from start to end year
       shouldInclude = year >= startYear && year <= endYear;
     }
 
     if (shouldInclude) {
       let amount = event.amount;
       if (event.colaType === 'inflation_adjusted') {
-        const yearsFromReference = year - userData.referenceYear;
-        amount *= Math.pow(1 + inflationRate, yearsFromReference);
+        // SS with future-dollars basis: inflate only from claiming year (post-claiming COLA)
+        // All other inflation-adjusted events: inflate from reference year
+        let baseYear = userData.referenceYear;
+        if (event.type === 'social_security' && event.ssAmountBasis === 'future') {
+          baseYear = startYear;
+        }
+        const yearsFromBase = year - baseYear;
+        if (yearsFromBase > 0) {
+          amount *= Math.pow(1 + inflationRate, yearsFromBase);
+        }
       }
 
-      // Apply Social Security shortfall reduction starting in 2034
-      if (event.type === 'social_security' && year >= 2034) {
-        amount *= 0.77; // 23% reduction (77% of scheduled benefits)
+      // Apply Social Security trust fund reduction starting in 2034
+      if (event.type === 'social_security' && event.ssHaircutEnabled !== false && year >= 2034) {
+        const reduction = (event.ssHaircutPercent ?? 23) / 100;
+        amount *= (1 - reduction);
       }
 
-      // Apply taxes based on tax status
-      const afterTaxAmount = calculateAfterTaxIncome(
-        amount,
-        event.taxStatus,
-        userData,
-        year
-      );
-      totalIncome += afterTaxAmount;
+      // Bucket by tax treatment
+      if (event.taxStatus === 'after_tax') {
+        afterTaxTotal += amount;
+      } else if (event.type === 'social_security') {
+        ssGross += amount;
+      } else {
+        otherGross += amount;
+      }
     }
   });
 
-  return totalIncome;
+  // Phase 2: Compute tax on aggregate income with SS taxable fraction
+  const ssTaxableAmount = calculateSSTaxableAmount(ssGross, otherGross, userData.filingStatus);
+  const combinedTaxableGross = otherGross + ssTaxableAmount;
+
+  if (combinedTaxableGross <= 0) {
+    return afterTaxTotal + ssGross + otherGross;
+  }
+
+  const stateTaxRate = getStateTaxRate(userData);
+  const age = userData.currentAge + (year - userData.referenceYear);
+  const netFromTaxable = calculateNetFromGross(
+    combinedTaxableGross,
+    stateTaxRate,
+    userData.filingStatus,
+    age,
+    year,
+    userData.spouseAge
+  );
+  const totalTax = combinedTaxableGross - netFromTaxable;
+
+  return afterTaxTotal + ssGross + otherGross - totalTax;
 }
 
 export function runSimulation(

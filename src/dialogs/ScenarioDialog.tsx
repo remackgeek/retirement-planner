@@ -48,7 +48,9 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         startAge: 65,
         taxStatus: 'before_tax' as const,
         colaType: 'inflation_adjusted' as const,
-        syncWithEstimate: true,
+        ssAmountBasis: 'today' as const,
+        ssHaircutEnabled: true,
+        ssHaircutPercent: 23,
       },
     ],
     portfolioAssumptions: {
@@ -89,7 +91,9 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
             startAge: 65,
             taxStatus: 'before_tax' as const,
             colaType: 'inflation_adjusted' as const,
-            syncWithEstimate: true,
+            ssAmountBasis: 'today' as const,
+            ssHaircutEnabled: true,
+            ssHaircutPercent: 23,
           },
         ],
         portfolioAssumptions: {

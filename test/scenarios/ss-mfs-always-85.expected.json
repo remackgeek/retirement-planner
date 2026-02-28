@@ -1,0 +1,11 @@
+{
+  "_rationale": "Ages 60-61: no income, balance flat at 500k. From age 62: SS $20k + pension $30k. MFS always taxes 85% of SS = $17k. Combined taxable gross = $47k. Deduction $16,100. Taxable $30,900. Tax $3,460 (10% on 12400 + 12% on 18500). Net $46,540/yr.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
+    { "index": 2, "age": 62, "value": 500000, "note": "Income starts this year" },
+    { "index": 3, "age": 63, "value": 546540, "note": "500000 + 46540" },
+    { "index": 5, "age": 65, "value": 639620, "note": "500000 + 46540 * 3" }
+  ],
+  "tolerance": 1.0
+}

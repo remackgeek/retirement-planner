@@ -20,22 +20,30 @@ projections, and good tax awareness without overwhelming the user.
 - `src/context/RetirementContext.tsx` — global state, IndexedDB, schema migrations
 - `src/services/SimulationService.tsx` — Monte Carlo engine (5000 runs, log-normal)
 - `src/services/TaxCalculator.ts` — federal + state tax, memoized, 2024-2026 brackets
-- `src/dialogs/` — CRUD and import/export dialogs
+- `src/dialogs/` — type-specific edit dialogs (e.g., `SocialSecurityDialog`),
+  shared `IncomeEventDialog` for other types, type-selection pickers, import/export
 - `src/types/` — Scenario, UserData, IncomeEvent, SpendingGoal
 
 ## Key Concepts
 
 - **Scenario** — top-level unit holding all user config, persisted to IndexedDB
 - **Monte Carlo** — median + 10th percentile portfolio paths, success probability
-- **Income events** — 8 types, COLA, before/after-tax, SS 2034 haircut
+- **Income events** — 8 types, COLA, before/after-tax, SS 2034 haircut (configurable)
 - **Spending goals** — 11 categories, inflation adjustment, age-based activation
-- **Tax** — standard deduction only for now; filing status, state rates, senior/OBBB deductions
+- **Tax** — aggregate income taxation; SS 50%/85% taxable fraction (IRS provisional
+  income formula); standard deduction, filing status, state rates, senior/OBBB deductions
 
 ## Conventions
 
 Follow existing project patterns when adding new features (types, dialogs, services,
 context migrations, chart annotations). Read the existing examples before creating new ones.
 Run `npm run test` and `npm run build` to verify changes.
+
+**Income/spending dialogs:** Each income event type should get its own dedicated dialog
+with type-specific fields and labels (Social Security is the first). The type-selection
+picker (`EventTypeSelectionDialog`) remains the entry point; `IncomeEventsManager` routes
+to the correct per-type dialog. New income types should get a dedicated dialog, not extend
+the shared `IncomeEventDialog`.
 
 **No backward compatibility required.** This is active development — when fields, types,
 or data structures are renamed or removed, just change them cleanly. Do not leave behind

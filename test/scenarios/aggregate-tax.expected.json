@@ -1,0 +1,11 @@
+{
+  "_rationale": "Ages 60-61: no income, balance flat at 500k. From age 62: two pensions totaling $40k gross. One deduction of $16,100 applied to aggregate (not per-event). Taxable $23,900. Tax $2,620. Net $37,380/yr.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
+    { "index": 2, "age": 62, "value": 500000, "note": "Income starts this year" },
+    { "index": 3, "age": 63, "value": 537380, "note": "500000 + 37380" },
+    { "index": 5, "age": 65, "value": 612140, "note": "500000 + 37380 * 3" }
+  ],
+  "tolerance": 1.0
+}

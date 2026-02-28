@@ -1,0 +1,11 @@
+{
+  "_rationale": "Ages 60-61: no income, balance flat at 500k. From age 62: SS $20k + pension $20k. Provisional = $30k, in 50% zone. SS taxable = $2,500. Combined taxable gross = $22,500. Deduction = $16,100 (2026 single, age < 65). Taxable = $6,400. Federal tax = $640 (10%). Net income = $39,360/yr. Balance increases by $39,360/yr.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
+    { "index": 2, "age": 62, "value": 500000, "note": "Income starts this year" },
+    { "index": 3, "age": 63, "value": 539360, "note": "500000 + 39360" },
+    { "index": 5, "age": 65, "value": 618080, "note": "500000 + 39360 * 3" }
+  ],
+  "tolerance": 1.0
+}

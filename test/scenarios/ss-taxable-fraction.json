@@ -1,0 +1,45 @@
+{
+  "_description": "SS taxable fraction in the 50% zone. Tests IRS provisional income formula.",
+  "_rationale": "Single filer, Florida, SS $20k + pension $20k (before_tax) both at age 62, haircut disabled. Provisional income = $20k + 0.5 * $20k = $30k. Single thresholds $25k/$34k → 50% zone. SS taxable = min(0.5 * ($30k - $25k), 0.5 * $20k) = $2,500. Combined taxable gross = $22,500. Standard deduction (2026) = $16,100. Taxable income = $6,400. Federal tax = $640 (10%). Net income = $40k - $640 = $39,360/yr.",
+  "_seed": 12345,
+  "name": "SS Taxable Fraction 50%",
+  "currentAge": 60,
+  "retirementAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 0,
+    "startAge": 60
+  },
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "amount": 20000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "ssHaircutEnabled": false
+    },
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "amount": 20000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "state": "Florida"
+}

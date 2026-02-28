@@ -407,6 +407,45 @@ export function calculateNetFromGross(
   return result;
 }
 
+// SS taxable fraction thresholds (frozen since 1983/1993, not inflation-indexed)
+const ssThresholds: Record<string, { t1: number; t2: number; base: number }> = {
+  single: { t1: 25000, t2: 34000, base: 4500 },
+  hoh: { t1: 25000, t2: 34000, base: 4500 },
+  mfj: { t1: 32000, t2: 44000, base: 6000 },
+};
+
+/**
+ * Compute the taxable portion of Social Security benefits using IRS provisional income rules.
+ * Returns the dollar amount of SS that counts as taxable income (0% to 85% of ssGross).
+ */
+export function calculateSSTaxableAmount(
+  ssGross: number,
+  otherGross: number,
+  filingStatus: FilingStatus
+): number {
+  if (ssGross <= 0) return 0;
+
+  // MFS: always 85% taxable regardless of provisional income
+  if (filingStatus === 'mfs') return 0.85 * ssGross;
+
+  const { t1, t2, base } = ssThresholds[filingStatus];
+  const provisionalIncome = otherGross + 0.5 * ssGross;
+
+  if (provisionalIncome <= t1) {
+    return 0;
+  }
+
+  if (provisionalIncome <= t2) {
+    return Math.min(0.5 * (provisionalIncome - t1), 0.5 * ssGross);
+  }
+
+  // Above t2: up to 85% taxable
+  // base is capped at 0.5 * ssGross per IRS Publication 915
+  const adjustedBase = Math.min(base, 0.5 * ssGross);
+  const taxableAmount = 0.85 * (provisionalIncome - t2) + adjustedBase;
+  return Math.min(taxableAmount, 0.85 * ssGross);
+}
+
 // Function to clear cache when user data changes
 export function clearTaxCalculationCache(): void {
   taxCalculationCache.clear();

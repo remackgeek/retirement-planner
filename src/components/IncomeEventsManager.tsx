@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import EventTypeSelectionDialog from '../dialogs/EventTypeSelectionDialog';
 import IncomeEventDialog, { eventTypeLabels } from '../dialogs/IncomeEventDialog';
+import SocialSecurityDialog from '../dialogs/SocialSecurityDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import { spacing, colors, border, fontSize } from '../styles/theme';
 
@@ -172,13 +173,12 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
               {event.endAge && !event.isOneTime && ` until age ${event.endAge}`}
               {event.isOneTime && ' (one-time event)'}
               <br />
-              {event.taxStatus === 'before_tax'
-                ? 'Before tax'
-                : 'After tax'} •{' '}
-              {event.colaType === 'fixed'
-                ? 'Fixed amount'
-                : 'Inflation adjusted'}
-              {event.syncWithEstimate && ' • Synced with estimate'}
+              {event.type === 'social_security'
+                ? (event.ssAmountBasis === 'future' ? 'Future dollars' : "Today's dollars")
+                : <>
+                    {event.taxStatus === 'before_tax' ? 'Before tax' : 'After tax'} •{' '}
+                    {event.colaType === 'fixed' ? 'Fixed amount' : 'Inflation adjusted'}
+                  </>}
             </EventInfo>
             <Actions>
               <Button onClick={() => startEdit(event)}>Edit</Button>
@@ -195,17 +195,30 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
         onSelectType={handleTypeSelect}
       />
 
-      <IncomeEventDialog
-        visible={dialogVisible}
-        onHide={() => {
-          setDialogVisible(false);
-          setSelectedType(null);
-          setEditingEvent(undefined);
-        }}
-        onSave={handleSave}
-        initialType={selectedType || undefined}
-        editEvent={editingEvent}
-      />
+      {(selectedType === 'social_security' || editingEvent?.type === 'social_security') ? (
+        <SocialSecurityDialog
+          visible={dialogVisible}
+          onHide={() => {
+            setDialogVisible(false);
+            setSelectedType(null);
+            setEditingEvent(undefined);
+          }}
+          onSave={handleSave}
+          editEvent={editingEvent}
+        />
+      ) : (
+        <IncomeEventDialog
+          visible={dialogVisible}
+          onHide={() => {
+            setDialogVisible(false);
+            setSelectedType(null);
+            setEditingEvent(undefined);
+          }}
+          onSave={handleSave}
+          initialType={selectedType || undefined}
+          editEvent={editingEvent}
+        />
+      )}
     </Container>
   );
 };
