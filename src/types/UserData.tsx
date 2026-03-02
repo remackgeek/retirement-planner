@@ -17,7 +17,8 @@ export interface UserData {
   referenceYear: number;
   inflationRate: number;
   // Tax configuration
-  filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh'; // Filing status for tax calculation
-  spouseAge: number | null; // Spouse age for MFJ filing (null if no spouse)
+  filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh';
+  spouseName: string | null;
+  spouseAge: number | null;
   state: string; // State for tax calculation
 }

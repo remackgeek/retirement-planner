@@ -11,6 +11,7 @@ export type IncomeEventType =
 export interface IncomeEvent {
   id: string;
   type: IncomeEventType;
+  owner?: 'self' | 'spouse';
   name?: string; // For 'other_income' type
   amount: number; // Annual amount in today's dollars
   startAge: number;

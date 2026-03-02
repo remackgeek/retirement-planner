@@ -1,0 +1,10 @@
+{
+  "_rationale": "SS $24k + pension $10k, spending $48k. AvailableCash = $34k. Withdrawal needed. PI = (10k + w) + 0.5*24k = w + 22k. For w > 12k, PI > 34k → 85% zone. ssTaxable = 0.85(PI-34k) + 4500. Algebraic: w = 14000 + tax, tax = 0.222w - 1664 → w = 12336/0.778 ≈ 15856, tax ≈ 1856. Net cash flow ≈ -15856/yr. Stays below age 65 to avoid senior deduction changes.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
+    { "index": 1, "age": 61, "value": 484144, "note": "500000 - 15856" },
+    { "index": 4, "age": 64, "value": 436576, "note": "500000 - 4*15856" }
+  ],
+  "tolerance": 5.0
+}

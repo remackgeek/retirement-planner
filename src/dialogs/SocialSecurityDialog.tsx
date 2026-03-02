@@ -49,9 +49,13 @@ interface SocialSecurityDialogProps {
   onHide: () => void;
   onSave: (event: Omit<IncomeEvent, 'id'>) => void;
   editEvent?: IncomeEvent;
+  filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh';
+  spouseName: string | null;
+  existingSSEvents: IncomeEvent[];
 }
 
 const makeDefaultFormData = () => ({
+  owner: 'self' as 'self' | 'spouse',
   amount: 0,
   startAge: 67,
   ssAmountBasis: 'today' as 'today' | 'future',
@@ -64,14 +68,28 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
   onHide,
   onSave,
   editEvent,
+  filingStatus,
+  spouseName,
+  existingSSEvents,
 }) => {
   const isEditing = !!editEvent;
   const [formData, setFormData] = useState(makeDefaultFormData());
+
+  const isMfj = filingStatus === 'mfj';
+
+  // Determine which owner slots are already taken (excluding the event being edited)
+  const takenOwners = existingSSEvents
+    .filter((e) => !editEvent || e.id !== editEvent.id)
+    .map((e) => e.owner ?? 'self');
+
+  const selfTaken = takenOwners.includes('self');
+  const spouseTaken = takenOwners.includes('spouse');
 
   useEffect(() => {
     if (!visible) return;
     if (editEvent) {
       setFormData({
+        owner: editEvent.owner ?? 'self',
         amount: editEvent.amount,
         startAge: editEvent.startAge,
         ssAmountBasis: editEvent.ssAmountBasis ?? 'today',
@@ -79,14 +97,17 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
         ssHaircutPercent: editEvent.ssHaircutPercent ?? 23,
       });
     } else {
-      setFormData(makeDefaultFormData());
+      // Auto-select the available slot
+      const defaultOwner = isMfj && selfTaken && !spouseTaken ? 'spouse' : 'self';
+      setFormData({ ...makeDefaultFormData(), owner: defaultOwner });
     }
-  }, [visible, editEvent]);
+  }, [visible, editEvent, isMfj, selfTaken, spouseTaken]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({
       type: 'social_security',
+      owner: isMfj ? formData.owner : 'self',
       amount: formData.amount,
       startAge: formData.startAge,
       taxStatus: 'before_tax',
@@ -101,6 +122,11 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
   const amountBasisOptions = [
     { label: "Today's Dollars", value: 'today' },
     { label: 'Adjusted for Future Inflation', value: 'future' },
+  ];
+
+  const ownerOptions = [
+    { label: 'Self', value: 'self', disabled: selfTaken },
+    { label: spouseName || 'Spouse', value: 'spouse', disabled: spouseTaken },
   ];
 
   const dialogFooter = (
@@ -129,6 +155,17 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
       footer={dialogFooter}
     >
       <Form onSubmit={handleSubmit}>
+        {isMfj && (
+          <InputGroup>
+            <label>Benefit Owner</label>
+            <Dropdown
+              value={formData.owner}
+              options={ownerOptions}
+              onChange={(e) => setFormData({ ...formData, owner: e.value })}
+            />
+          </InputGroup>
+        )}
+
         <InputGroup>
           <label>Annual Benefit</label>
           <InputNumber

@@ -132,10 +132,10 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
 
       {[...events]
         .sort((a, b) => {
-          const aStartYear =
-            userData.referenceYear + (a.startAge - userData.currentAge);
-          const bStartYear =
-            userData.referenceYear + (b.startAge - userData.currentAge);
+          const aAge = (a.owner === 'spouse' && userData.spouseAge) ? userData.spouseAge : userData.currentAge;
+          const bAge = (b.owner === 'spouse' && userData.spouseAge) ? userData.spouseAge : userData.currentAge;
+          const aStartYear = userData.referenceYear + (a.startAge - aAge);
+          const bStartYear = userData.referenceYear + (b.startAge - bAge);
           return aStartYear - bStartYear;
         })
         .map((event) => (
@@ -161,7 +161,9 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
                   >
                     {eventTypeSymbols[event.type]}
                   </span>
-                  {eventTypeLabels[event.type]}
+                  {event.type === 'social_security' && event.owner === 'spouse' && userData.spouseName
+                    ? `${userData.spouseName}'s Social Security`
+                    : eventTypeLabels[event.type]}
                   {event.name && ` - ${event.name}`}
                 </strong>
               </div>
@@ -193,6 +195,8 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
         visible={selectionDialogVisible}
         onHide={() => setSelectionDialogVisible(false)}
         onSelectType={handleTypeSelect}
+        filingStatus={userData.filingStatus}
+        existingSSEvents={events.filter((e) => e.type === 'social_security')}
       />
 
       {(selectedType === 'social_security' || editingEvent?.type === 'social_security') ? (
@@ -205,6 +209,9 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           }}
           onSave={handleSave}
           editEvent={editingEvent}
+          filingStatus={userData.filingStatus}
+          spouseName={userData.spouseName}
+          existingSSEvents={events.filter((e) => e.type === 'social_security')}
         />
       ) : (
         <IncomeEventDialog

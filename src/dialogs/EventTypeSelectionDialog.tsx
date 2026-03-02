@@ -1,7 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
-import type { IncomeEventType } from '../types/IncomeEvent';
+import type { IncomeEventType, IncomeEvent } from '../types/IncomeEvent';
 import { spacing, colors, border, fontSize } from '../styles/theme';
 
 const GridContainer = styled.div`
@@ -11,35 +11,36 @@ const GridContainer = styled.div`
   padding: ${spacing.sm} 0;
 `;
 
-const TypeButton = styled.button`
+const TypeButton = styled.button<{ disabled?: boolean }>`
   padding: ${spacing.xs} ${spacing.sm};
   font-size: ${fontSize.md};
   white-space: nowrap;
   text-align: left;
-  color: ${colors.income};
-  border: 1px solid ${colors.income};
-  background: white;
+  color: ${({ disabled }) => (disabled ? colors.textMuted : colors.income)};
+  border: 1px solid ${({ disabled }) => (disabled ? colors.border : colors.income)};
+  background: ${({ disabled }) => (disabled ? colors.bgMedium : 'white')};
   border-radius: ${border.radius};
-  cursor: pointer;
+  cursor: ${({ disabled }) => (disabled ? 'not-allowed' : 'pointer')};
+  opacity: ${({ disabled }) => (disabled ? 0.6 : 1)};
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: ${spacing.xs};
 
-  &:hover {
+  &:hover:not(:disabled) {
     color: white;
     background-color: ${colors.income};
     border-color: ${colors.income};
   }
 
-  &:hover .icon-circle {
+  &:hover:not(:disabled) .icon-circle {
     background-color: rgba(255, 255, 255, 0.2);
     color: inherit;
   }
 `;
 
 const IconCircle = styled.span`
-  color: ${colors.income};
+  color: inherit;
   background-color: ${colors.incomeBg};
   border-radius: ${border.radiusCircle};
   padding: ${spacing.xs};
@@ -56,6 +57,8 @@ interface EventTypeSelectionDialogProps {
   visible: boolean;
   onHide: () => void;
   onSelectType: (type: IncomeEventType) => void;
+  filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh';
+  existingSSEvents: IncomeEvent[];
 }
 
 const eventTypeLabels: Record<IncomeEventType, string> = {
@@ -84,8 +87,14 @@ const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
   visible,
   onHide,
   onSelectType,
+  filingStatus,
+  existingSSEvents,
 }) => {
+  const maxSSEvents = filingStatus === 'mfj' ? 2 : 1;
+  const ssSlotsFulll = existingSSEvents.length >= maxSSEvents;
+
   const handleTypeSelect = (type: IncomeEventType) => {
+    if (type === 'social_security' && ssSlotsFulll) return;
     onSelectType(type);
     onHide();
   };
@@ -98,17 +107,26 @@ const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
       onHide={onHide}
     >
       <GridContainer>
-        {Object.entries(eventTypeLabels).map(([type, label]) => (
-          <TypeButton
-            key={type}
-            onClick={() => handleTypeSelect(type as IncomeEventType)}
-          >
-            <IconCircle className='icon-circle'>
-              <i className={eventTypeSymbols[type as IncomeEventType]} />
-            </IconCircle>
-            {label}
-          </TypeButton>
-        ))}
+        {Object.entries(eventTypeLabels).map(([type, label]) => {
+          const isSSDisabled = type === 'social_security' && ssSlotsFulll;
+          return (
+            <TypeButton
+              key={type}
+              disabled={isSSDisabled}
+              onClick={() => handleTypeSelect(type as IncomeEventType)}
+              title={isSSDisabled
+                ? (filingStatus === 'mfj'
+                  ? 'Both Social Security slots are filled'
+                  : 'Social Security event already exists')
+                : undefined}
+            >
+              <IconCircle className='icon-circle'>
+                <i className={eventTypeSymbols[type as IncomeEventType]} />
+              </IconCircle>
+              {label}
+            </TypeButton>
+          );
+        })}
       </GridContainer>
     </Dialog>
   );

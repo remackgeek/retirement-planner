@@ -1,0 +1,14 @@
+{
+  "_rationale": "Self SS $24k starts at self age 65 (year 2031, index 5). Spouse SS $18k starts at spouse age 67 (year 2035, index 9). MFJ Florida, no other income. Combined provisional income = 0.5 * $42k = $21k < $32k MFJ threshold → 0% taxable. No growth, no inflation. Balance: flat 500k through index 4, +24k/yr from index 5, +42k/yr from index 9.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
+    { "index": 5, "age": 65, "value": 500000, "note": "Self SS starts this year, not yet reflected" },
+    { "index": 6, "age": 66, "value": 524000, "note": "500k + 24k (first year self SS)" },
+    { "index": 9, "age": 69, "value": 596000, "note": "500k + 24k*4, spouse SS starts this year" },
+    { "index": 10, "age": 70, "value": 638000, "note": "596k + 42k (first year both SS)" },
+    { "index": 15, "age": 75, "value": 848000, "note": "638k + 42k*5" },
+    { "index": 20, "age": 80, "value": 1058000, "note": "638k + 42k*10" }
+  ],
+  "tolerance": 1.0
+}

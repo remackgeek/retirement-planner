@@ -1,0 +1,49 @@
+{
+  "_description": "Spouse SS income uses spouse age for year mapping. Two SS events with different owners start in different calendar years based on their respective ages.",
+  "_rationale": "Primary age 60, spouse age 58, referenceYear 2026. Self SS $24k at age 65 → startYear = 2026 + (65-60) = 2031. Spouse SS $18k at age 67 → startYear = 2026 + (67-58) = 2035. No growth, no tax (Florida), no inflation, fixed COLA, no haircut. Balance grows by $24k/yr from 2031, then $42k/yr from 2035.",
+  "_seed": 12345,
+  "name": "SS Spouse",
+  "currentAge": 60,
+  "retirementAge": 60,
+  "lifeExpectancy": 80,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 0,
+    "startAge": 60
+  },
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "ss-self",
+      "type": "social_security",
+      "owner": "self",
+      "amount": 24000,
+      "startAge": 65,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "ssHaircutEnabled": false
+    },
+    {
+      "id": "ss-spouse",
+      "type": "social_security",
+      "owner": "spouse",
+      "amount": 18000,
+      "startAge": 67,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "ssHaircutEnabled": false
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "mfj",
+  "spouseName": "Alice",
+  "spouseAge": 58,
+  "state": "Florida"
+}

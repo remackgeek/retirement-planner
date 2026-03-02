@@ -14,12 +14,10 @@ import htmlAnnotationsPlugin, {
   type AnnotationConfig,
 } from '../../plugins/chartHtmlAnnotations';
 import {
-  calculateAnnualIncome,
-  calculateAnnualSpending,
+  calculateAnnualCashFlow,
+  type AnnualCashFlowBreakdown,
 } from '../../services/SimulationService';
-import { useMemo } from 'react';
-import type { SpendingGoal } from '../../types/SpendingGoal';
-import type { IncomeEvent } from '../../types/IncomeEvent';
+import React, { useMemo, useState } from 'react';
 import { spacing, colors, border, fontSize } from '../../styles/theme';
 
 ChartJS.register(
@@ -69,14 +67,19 @@ const Projections = ({
   if (!results) return null;
   const { probability, median, downside, years } = results;
 
-  // Pre-calculate annual spending and income for all years to avoid redundant calculations
-  const annualCalculations = useMemo(() => {
-    return years.map((year: number) => ({
-      year,
-      totalSpending: calculateAnnualSpending(userData, year),
-      totalIncome: calculateAnnualIncome(userData, year),
-    }));
+  // Pre-calculate annual cash flow breakdowns for all years
+  const annualBreakdowns: AnnualCashFlowBreakdown[] = useMemo(() => {
+    return years.map((year: number) => calculateAnnualCashFlow(userData, year));
   }, [years, userData]);
+
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const toggleRow = (index: number) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      next.has(index) ? next.delete(index) : next.add(index);
+      return next;
+    });
+  };
   const labels = years.map(
     (_: number, index: number) =>
       `${userData.currentAge + index} (${years[index]})`
@@ -103,8 +106,9 @@ const Projections = ({
   const htmlAnnotations: AnnotationConfig[] = [];
   years.forEach((year: number, index: number) => {
     const startingEvents = userData.incomeEvents.filter((event: any) => {
-      const startYear =
-        userData.referenceYear + (event.startAge - userData.currentAge);
+      const ownerAge = (event.owner === 'spouse' && userData.spouseAge != null)
+        ? userData.spouseAge : userData.currentAge;
+      const startYear = userData.referenceYear + (event.startAge - ownerAge);
       return startYear === year;
     });
 
@@ -246,110 +250,24 @@ const Projections = ({
                 {years.map((year: number, index: number) => {
                   const age = userData.currentAge + index;
                   const isRetirement = year >= retirementYear;
+                  const breakdown = annualBreakdowns[index];
 
-                  // Basic amount = annual savings (pre-retirement) or retirement spending (post-retirement)
                   const basicAmount = isRetirement
                     ? userData.retirementSpending.monthlyAmount * 12
                     : userData.annualSavings;
 
-                  // Use pre-calculated tax-adjusted values
-                  const { totalSpending, totalIncome } =
-                    annualCalculations[index];
-                  if (!isRetirement) {
-                    // Add annual savings for pre-retirement years (not included in calculateAnnualIncome)
-                    // Note: annual savings are not taxed in this model
-                  }
+                  // Other spending = goals only (breakdown already separates retirement vs goals)
+                  const otherSpendingGoals = breakdown.otherSpendingGoalsNet;
 
-                  // For display purposes, calculate non-tax-adjusted versions for the table breakdown
-                  // Calculate total spending and income in today's dollars (without tax adjustments for breakdown)
-                  const inflationRate = 0.03; // Assuming 3% inflation rate
-                  let totalSpendingBase = 0;
-                  if (isRetirement) {
-                    totalSpendingBase +=
-                      userData.retirementSpending.monthlyAmount * 12;
-                  }
-                  userData.spendingGoals.forEach((goal: SpendingGoal) => {
-                    const startYear =
-                      userData.referenceYear +
-                      (goal.startAge - userData.currentAge);
-                    const endYear = goal.endAge
-                      ? userData.referenceYear +
-                        (goal.endAge - userData.currentAge)
-                      : userData.lifeExpectancy +
-                        userData.referenceYear -
-                        userData.currentAge;
-                    let shouldInclude = false;
-                    if (goal.isOneTime) {
-                      shouldInclude = year === startYear;
-                    } else {
-                      shouldInclude = year >= startYear && year <= endYear;
-                    }
-                    if (shouldInclude) {
-                      let amount = goal.amount;
-                      if (!goal.inflationAdjusted) {
-                        // Fixed spending: deflate by inflation to show in today's dollars
-                        const yearsFromReference =
-                          year - userData.referenceYear;
-                        amount =
-                          goal.amount /
-                          Math.pow(1 + inflationRate, yearsFromReference);
-                      }
-                      // Inflation-adjusted spending: amount stays constant (real value preserved)
-                      totalSpendingBase += amount;
-                    }
-                  });
-
-                  let totalIncomeBase = 0;
-                  userData.incomeEvents.forEach((event: IncomeEvent) => {
-                    const startYear =
-                      userData.referenceYear +
-                      (event.startAge - userData.currentAge);
-                    const endYear = event.endAge
-                      ? userData.referenceYear +
-                        (event.endAge - userData.currentAge)
-                      : userData.lifeExpectancy +
-                        userData.referenceYear -
-                        userData.currentAge;
-                    let shouldInclude = false;
-                    if (event.isOneTime) {
-                      shouldInclude = year === startYear;
-                    } else {
-                      shouldInclude = year >= startYear && year <= endYear;
-                    }
-                    if (shouldInclude) {
-                      let amount = event.amount;
-                      if (event.colaType === 'fixed') {
-                        // Fixed income: deflate by inflation to show in today's dollars
-                        const yearsFromReference =
-                          year - userData.referenceYear;
-                        amount =
-                          event.amount /
-                          Math.pow(1 + inflationRate, yearsFromReference);
-                      }
-                      // Inflation-adjusted income: amount stays constant (real value preserved)
-                      totalIncomeBase += amount;
-                    }
-                  });
-                  if (!isRetirement) {
-                    totalIncomeBase += userData.annualSavings;
-                  }
-
-                  // Other spending goals = total spending base minus basic
-                  const otherSpendingGoals = Math.max(
-                    0,
-                    totalSpendingBase - basicAmount
-                  );
-
-                  // Other income events = total income base minus annual savings if pre-retirement
-                  const otherIncomeEvents =
-                    totalIncomeBase -
-                    (isRetirement ? 0 : userData.annualSavings);
+                  // Other income = all income events (gross, before unified tax)
+                  const otherIncomeEvents = breakdown.totalGrossIncome;
 
                   const startingEvents = userData.incomeEvents.filter(
                     (event: any) => {
+                      const ownerAge = (event.owner === 'spouse' && userData.spouseAge != null)
+                        ? userData.spouseAge : userData.currentAge;
                       const startYear =
-                        userData.referenceYear +
-                        (event.startAge - userData.currentAge);
+                        userData.referenceYear + (event.startAge - ownerAge);
                       return startYear === year;
                     }
                   );
@@ -363,21 +281,31 @@ const Projections = ({
                     }
                   );
 
-                  // Cash flow = tax-adjusted income - tax-adjusted spending
-                  // Both functions already account for inflation and taxes appropriately
-                  // Deflate to today's dollars for consistent display with portfolio balance
+                  // Cash flow deflated to today's dollars
                   const inflationFactor = Math.pow(
                     1 + userData.inflationRate,
                     index
                   );
-                  const cashFlow =
-                    (totalIncome - totalSpending) / inflationFactor;
+                  let netFlow = breakdown.netCashFlow;
+                  if (!isRetirement) {
+                    netFlow += userData.annualSavings;
+                  }
+                  const cashFlow = netFlow / inflationFactor;
+
+                  const isExpanded = expandedRows.has(index);
+                  const fmt = (v: number) => v.toLocaleString(undefined, {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  });
 
                   return (
-                    <tr key={year}>
+                    <React.Fragment key={year}>
+                    <tr onClick={() => toggleRow(index)} style={{ cursor: 'pointer' }}>
                       <td
-                        style={{ padding: '0.5rem', border: border.standard }}
+                        style={{ padding: '0.5rem', border: border.standard, whiteSpace: 'nowrap' }}
                       >
+                        <i className={isExpanded ? 'pi pi-chevron-down' : 'pi pi-chevron-right'}
+                          style={{ fontSize: fontSize.xs, marginRight: spacing.xs, color: colors.textMuted }} />
                         {age} ({year})
                       </td>
                       <td
@@ -387,10 +315,7 @@ const Projections = ({
                           textAlign: 'right',
                         }}
                       >
-                        {median[index]?.toLocaleString(undefined, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        })}
+                        {fmt(median[index] ?? 0)}
                       </td>
                       <td
                         style={{
@@ -399,10 +324,7 @@ const Projections = ({
                           textAlign: 'right',
                         }}
                       >
-                        {downside[index]?.toLocaleString(undefined, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        })}
+                        {fmt(downside[index] ?? 0)}
                       </td>
                       <td
                         style={{
@@ -411,10 +333,7 @@ const Projections = ({
                           textAlign: 'right',
                         }}
                       >
-                        {basicAmount.toLocaleString(undefined, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        })}
+                        {fmt(basicAmount)}
                       </td>
                       <td
                         style={{
@@ -454,14 +373,8 @@ const Projections = ({
                           </div>
                         )}
                         {otherSpendingGoals > 0
-                          ? `-${otherSpendingGoals.toLocaleString(undefined, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            })}`
-                          : otherSpendingGoals.toLocaleString(undefined, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            })}
+                          ? `-${fmt(otherSpendingGoals)}`
+                          : fmt(otherSpendingGoals)}
                       </td>
                       <td
                         style={{
@@ -500,10 +413,7 @@ const Projections = ({
                             ))}
                           </div>
                         )}
-                        {otherIncomeEvents.toLocaleString(undefined, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        })}
+                        {fmt(otherIncomeEvents)}
                       </td>
                       <td
                         style={{
@@ -512,12 +422,50 @@ const Projections = ({
                           textAlign: 'right',
                         }}
                       >
-                        {cashFlow.toLocaleString(undefined, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 0,
-                        })}
+                        {fmt(cashFlow)}
                       </td>
                     </tr>
+                    {isExpanded && (
+                      <tr key={`${year}-detail`}>
+                        <td colSpan={7} style={{
+                          padding: `${spacing.xs} ${spacing.sm}`,
+                          backgroundColor: colors.bgLight,
+                          border: border.standard,
+                          fontSize: fontSize.sm,
+                        }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: spacing.md }}>
+                            {breakdown.totalGrossIncome > 0 && (
+                            <div>
+                              <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.income }}>Income (nominal)</div>
+                              {breakdown.ssGross > 0 && <div>SS Gross: ${fmt(breakdown.ssGross)}</div>}
+                              {breakdown.otherTaxableGross > 0 && <div>Other Taxable: ${fmt(breakdown.otherTaxableGross)}</div>}
+                              {breakdown.afterTaxIncome > 0 && <div>After-Tax: ${fmt(breakdown.afterTaxIncome)}</div>}
+                              {breakdown.ssTaxableAmount > 0 && (
+                                <div style={{ color: colors.textSecondary }}>SS Taxable Portion: ${fmt(breakdown.ssTaxableAmount)}</div>
+                              )}
+                            </div>
+                            )}
+                            {breakdown.totalSpendingNet > 0 && (
+                            <div>
+                              <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.spending }}>Spending (nominal)</div>
+                              {breakdown.retirementSpendingNet > 0 && <div>Retirement: ${fmt(breakdown.retirementSpendingNet)}</div>}
+                              {breakdown.otherSpendingGoalsNet > 0 && <div>Goals: ${fmt(breakdown.otherSpendingGoalsNet)}</div>}
+                              <div style={{ fontWeight: 'bold' }}>Total Need: ${fmt(breakdown.totalSpendingNet)}</div>
+                            </div>
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textPrimary }}>Tax &amp; Withdrawal</div>
+                              {breakdown.totalTax > 0 && <div>Total Tax: ${fmt(breakdown.totalTax)}</div>}
+                              {breakdown.portfolioWithdrawal > 0 && <div>Portfolio Withdrawal: ${fmt(breakdown.portfolioWithdrawal)}</div>}
+                              <div style={{ fontWeight: 'bold' }}>
+                                Net Cash Flow: {breakdown.netCashFlow >= 0 ? '' : '-'}${fmt(Math.abs(breakdown.netCashFlow))}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

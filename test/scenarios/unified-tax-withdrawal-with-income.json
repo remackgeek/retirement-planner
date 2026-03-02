@@ -1,0 +1,37 @@
+{
+  "_description": "Unified tax: pension income + retirement spending. Tests that withdrawal is taxed in same brackets as income (one deduction, not two).",
+  "_rationale": "Single filer, Florida, pension $30k (before_tax) at age 60 + $4k/mo spending ($48k/yr). 0% growth/inflation/stddev. At convergence: combined taxable = $30k + withdrawal. Deduction $16,100. Solving w = 18000 + tax where tax = 1420 + 0.12w gives w = 22068.18, tax = 4068.18. Net cash flow = -22068.18/yr.",
+  "_seed": 12345,
+  "name": "Unified Tax: Withdrawal + Income",
+  "currentAge": 60,
+  "retirementAge": 60,
+  "lifeExpectancy": 64,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 4000,
+    "startAge": 60
+  },
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "amount": 30000,
+      "startAge": 60,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseName": null,
+  "spouseAge": null,
+  "state": "Florida"
+}

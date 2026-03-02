@@ -135,6 +135,10 @@ numbers are what they are.
 #### Key rules
 - **When a test breaks, fix the code — not the expected values.** Unless the requirements
   changed, in which case update both the expected values AND the rationale.
+- **When changing `UserData` or `Scenario` fields,** update ALL existing scenario JSON
+  files to include the new fields. Scenario files must stay in sync with the type
+  definitions — missing fields won't cause TypeScript errors (they're plain JSON) but
+  will silently produce wrong defaults at runtime.
 - **When adding features,** add degenerate scenarios that isolate the new behavior for
   hand-verification (e.g., 0% variance, no tax, single variable changed).
 - **Layer complexity gradually:** start with the simplest scenario that exercises the

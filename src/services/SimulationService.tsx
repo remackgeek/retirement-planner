@@ -2,7 +2,6 @@ import type { UserData } from '../types/UserData';
 import type { PortfolioType, PortfolioParams } from '../types/IncomeEvent';
 import {
   calculateNetFromGross,
-  calculateGrossIncomeNeeded,
   calculateSSTaxableAmount,
 } from './TaxCalculator';
 
@@ -121,24 +120,6 @@ function getStateTaxRate(userData: UserData): number {
 }
 
 
-function calculateGrossWithdrawal(
-  amount: number,
-  userData: UserData,
-  year: number
-): number {
-  // Since spending is specified as before-tax amount, we need to calculate
-  // the gross withdrawal needed to achieve this net spending
-  const stateTaxRate = getStateTaxRate(userData);
-  return calculateGrossIncomeNeeded(
-    amount,
-    stateTaxRate,
-    userData.filingStatus,
-    userData.currentAge + (year - userData.referenceYear), // Age in this year
-    year,
-    userData.spouseAge
-  );
-}
-
 function getPortfolioReturns(assumptions: UserData['portfolioAssumptions']): {
   mean: number;
   sigma: number;
@@ -168,87 +149,37 @@ function getPortfolioReturns(assumptions: UserData['portfolioAssumptions']): {
   return { mean: realReturns[riskLevel], sigma: vols[riskLevel] };
 }
 
-export function calculateAnnualSpending(
-  userData: UserData,
-  year: number,
-  inflationRate: number = 0.03
-): number {
-  let totalSpending = 0;
-
-  // Retirement spending with inflation adjustment and optional decrease
-  const retirementSpending = userData.retirementSpending;
-  const retirementStartYear =
-    userData.referenceYear +
-    (retirementSpending.startAge - userData.currentAge);
-  if (year >= retirementStartYear) {
-    let annualAmount = retirementSpending.monthlyAmount * 12;
-
-    // Apply inflation adjustment first (retirement spending should keep up with inflation)
-    const yearsFromReference = year - userData.referenceYear;
-    annualAmount *= Math.pow(1 + inflationRate, yearsFromReference);
-
-    // Then apply optional yearly decrease after inflation
-    if (retirementSpending.yearlyDecreasePercent) {
-      const yearsSinceStart = year - retirementStartYear;
-      annualAmount *= Math.pow(
-        1 - retirementSpending.yearlyDecreasePercent / 100,
-        yearsSinceStart
-      );
-    }
-
-    // Gross up for taxes since spending is specified as before-tax amount
-    const grossAmount = calculateGrossWithdrawal(annualAmount, userData, year);
-    totalSpending += grossAmount;
-  }
-
-  // Spending goals
-  userData.spendingGoals.forEach((goal) => {
-    const startYear =
-      userData.referenceYear + (goal.startAge - userData.currentAge);
-    const endYear = goal.endAge
-      ? userData.referenceYear + (goal.endAge - userData.currentAge)
-      : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
-
-    let shouldInclude = false;
-    if (goal.isOneTime) {
-      // One-time goals only occur in the start year
-      shouldInclude = year === startYear;
-    } else {
-      // Ongoing goals occur from start to end year
-      shouldInclude = year >= startYear && year <= endYear;
-    }
-
-    if (shouldInclude) {
-      let amount = goal.amount;
-      if (goal.inflationAdjusted) {
-        const yearsFromReference = year - userData.referenceYear;
-        amount *= Math.pow(1 + inflationRate, yearsFromReference);
-      }
-
-      // Gross up for taxes since spending goals are specified as before-tax amounts
-      const grossAmount = calculateGrossWithdrawal(amount, userData, year);
-      totalSpending += grossAmount;
-    }
-  });
-
-  return totalSpending;
+export interface AnnualCashFlowBreakdown {
+  ssGross: number;
+  otherTaxableGross: number;
+  afterTaxIncome: number;
+  totalGrossIncome: number;
+  ssTaxableAmount: number;
+  retirementSpendingNet: number;
+  otherSpendingGoalsNet: number;
+  totalSpendingNet: number;
+  portfolioWithdrawal: number;
+  totalTax: number;
+  netCashFlow: number;
 }
 
-export function calculateAnnualIncome(
+function accumulateIncome(
   userData: UserData,
   year: number,
-  inflationRate: number = 0.03
-): number {
-  let afterTaxTotal = 0;
+  inflationRate: number
+): { ssGross: number; otherTaxableGross: number; afterTaxIncome: number } {
+  let afterTaxIncome = 0;
   let ssGross = 0;
-  let otherGross = 0;
+  let otherTaxableGross = 0;
 
-  // Phase 1: Accumulate gross amounts by category
   userData.incomeEvents.forEach((event) => {
+    const ownerAge = (event.owner === 'spouse' && userData.spouseAge !== null)
+      ? userData.spouseAge
+      : userData.currentAge;
     const startYear =
-      userData.referenceYear + (event.startAge - userData.currentAge);
+      userData.referenceYear + (event.startAge - ownerAge);
     const endYear = event.endAge
-      ? userData.referenceYear + (event.endAge - userData.currentAge)
+      ? userData.referenceYear + (event.endAge - ownerAge)
       : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
 
     let shouldInclude = false;
@@ -261,8 +192,6 @@ export function calculateAnnualIncome(
     if (shouldInclude) {
       let amount = event.amount;
       if (event.colaType === 'inflation_adjusted') {
-        // SS with future-dollars basis: inflate only from claiming year (post-claiming COLA)
-        // All other inflation-adjusted events: inflate from reference year
         let baseYear = userData.referenceYear;
         if (event.type === 'social_security' && event.ssAmountBasis === 'future') {
           baseYear = startYear;
@@ -273,44 +202,141 @@ export function calculateAnnualIncome(
         }
       }
 
-      // Apply Social Security trust fund reduction starting in 2034
       if (event.type === 'social_security' && event.ssHaircutEnabled !== false && year >= 2034) {
         const reduction = (event.ssHaircutPercent ?? 23) / 100;
         amount *= (1 - reduction);
       }
 
-      // Bucket by tax treatment
       if (event.taxStatus === 'after_tax') {
-        afterTaxTotal += amount;
+        afterTaxIncome += amount;
       } else if (event.type === 'social_security') {
         ssGross += amount;
       } else {
-        otherGross += amount;
+        otherTaxableGross += amount;
       }
     }
   });
 
-  // Phase 2: Compute tax on aggregate income with SS taxable fraction
-  const ssTaxableAmount = calculateSSTaxableAmount(ssGross, otherGross, userData.filingStatus);
-  const combinedTaxableGross = otherGross + ssTaxableAmount;
+  return { ssGross, otherTaxableGross, afterTaxIncome };
+}
 
-  if (combinedTaxableGross <= 0) {
-    return afterTaxTotal + ssGross + otherGross;
+function accumulateSpending(
+  userData: UserData,
+  year: number,
+  inflationRate: number
+): { retirementSpendingNet: number; otherSpendingGoalsNet: number } {
+  let retirementSpendingNet = 0;
+  let otherSpendingGoalsNet = 0;
+
+  const retirementSpending = userData.retirementSpending;
+  const retirementStartYear =
+    userData.referenceYear +
+    (retirementSpending.startAge - userData.currentAge);
+  if (year >= retirementStartYear) {
+    let annualAmount = retirementSpending.monthlyAmount * 12;
+    const yearsFromReference = year - userData.referenceYear;
+    annualAmount *= Math.pow(1 + inflationRate, yearsFromReference);
+
+    if (retirementSpending.yearlyDecreasePercent) {
+      const yearsSinceStart = year - retirementStartYear;
+      annualAmount *= Math.pow(
+        1 - retirementSpending.yearlyDecreasePercent / 100,
+        yearsSinceStart
+      );
+    }
+
+    retirementSpendingNet += annualAmount;
   }
+
+  userData.spendingGoals.forEach((goal) => {
+    const startYear =
+      userData.referenceYear + (goal.startAge - userData.currentAge);
+    const endYear = goal.endAge
+      ? userData.referenceYear + (goal.endAge - userData.currentAge)
+      : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
+
+    let shouldInclude = false;
+    if (goal.isOneTime) {
+      shouldInclude = year === startYear;
+    } else {
+      shouldInclude = year >= startYear && year <= endYear;
+    }
+
+    if (shouldInclude) {
+      let amount = goal.amount;
+      if (goal.inflationAdjusted) {
+        const yearsFromReference = year - userData.referenceYear;
+        amount *= Math.pow(1 + inflationRate, yearsFromReference);
+      }
+      otherSpendingGoalsNet += amount;
+    }
+  });
+
+  return { retirementSpendingNet, otherSpendingGoalsNet };
+}
+
+export function calculateAnnualCashFlow(
+  userData: UserData,
+  year: number,
+  inflationRate: number = 0.03
+): AnnualCashFlowBreakdown {
+  const income = accumulateIncome(userData, year, inflationRate);
+  const spending = accumulateSpending(userData, year, inflationRate);
+  const { ssGross, otherTaxableGross, afterTaxIncome } = income;
+  const totalSpendingNet = spending.retirementSpendingNet + spending.otherSpendingGoalsNet;
+  const totalGrossIncome = ssGross + otherTaxableGross + afterTaxIncome;
+  const availableCash = afterTaxIncome + ssGross + otherTaxableGross;
 
   const stateTaxRate = getStateTaxRate(userData);
   const age = userData.currentAge + (year - userData.referenceYear);
-  const netFromTaxable = calculateNetFromGross(
-    combinedTaxableGross,
-    stateTaxRate,
-    userData.filingStatus,
-    age,
-    year,
-    userData.spouseAge
-  );
-  const totalTax = combinedTaxableGross - netFromTaxable;
 
-  return afterTaxTotal + ssGross + otherGross - totalTax;
+  // Iterative solver: withdrawal is taxable income, which increases tax,
+  // which increases the withdrawal needed
+  let withdrawal = Math.max(0, totalSpendingNet - availableCash);
+  let totalTax = 0;
+  let ssTaxableAmount = 0;
+
+  const MAX_ITERATIONS = 50;
+  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    ssTaxableAmount = calculateSSTaxableAmount(
+      ssGross, otherTaxableGross + withdrawal, userData.filingStatus
+    );
+    const combinedTaxable = otherTaxableGross + withdrawal + ssTaxableAmount;
+
+    if (combinedTaxable > 0) {
+      const netFromTaxable = calculateNetFromGross(
+        combinedTaxable, stateTaxRate, userData.filingStatus,
+        age, year, userData.spouseAge
+      );
+      totalTax = combinedTaxable - netFromTaxable;
+    } else {
+      totalTax = 0;
+    }
+
+    const newWithdrawal = Math.max(0, totalSpendingNet + totalTax - availableCash);
+
+    if (Math.abs(newWithdrawal - withdrawal) < 0.01) {
+      withdrawal = newWithdrawal;
+      break;
+    }
+    withdrawal = newWithdrawal;
+  }
+
+  const netCashFlow = availableCash - totalTax - totalSpendingNet;
+
+  return {
+    ssGross,
+    otherTaxableGross,
+    afterTaxIncome,
+    totalGrossIncome,
+    ssTaxableAmount,
+    retirementSpendingNet: spending.retirementSpendingNet,
+    otherSpendingGoalsNet: spending.otherSpendingGoalsNet,
+    totalSpendingNet,
+    portfolioWithdrawal: withdrawal,
+    totalTax,
+    netCashFlow,
+  };
 }
 
 export function runSimulation(
@@ -349,17 +375,12 @@ export function runSimulation(
       const inflationFactor = Math.pow(1 + inflationRate, i);
       path.push(balance / inflationFactor);
 
-      // Calculate spending for this year (includes retirement spending + spending goals)
-      const spending = calculateAnnualSpending(userData, year, inflationRate);
-
-      // Calculate income for this year (includes income events + annual savings if pre-retirement)
-      let income = calculateAnnualIncome(userData, year, inflationRate);
+      // Calculate unified cash flow for this year
+      const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
+      let netFlow = cashFlow.netCashFlow;
       if (year < retirementYear) {
-        income += userData.annualSavings; // Add annual savings pre-retirement
+        netFlow += userData.annualSavings; // Pre-tax savings, not part of tax calc
       }
-
-      // Apply net cash flow
-      const netFlow = income - spending; // Positive = surplus, negative = deficit
       balance += netFlow;
       if (balance < 0) {
         failed = true;

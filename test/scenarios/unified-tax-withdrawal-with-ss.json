@@ -1,16 +1,16 @@
 {
-  "_description": "SS taxable fraction in the 50% zone. Tests IRS provisional income formula.",
-  "_rationale": "Single filer, Florida, SS $20k + pension $20k (before_tax) both at age 62, haircut disabled. Provisional income = $20k + 0.5 * $20k = $30k. Single thresholds $25k/$34k → 50% zone. SS taxable = min(0.5 * ($30k - $25k), 0.5 * $20k) = $2,500. Combined taxable gross = $22,500. Standard deduction (2026) = $16,100. Taxable income = $6,400. Federal tax = $640 (10%). Net income = $40k - $640 = $39,360/yr.",
+  "_description": "Unified tax: SS income + pension + spending where withdrawal affects SS provisional income. Tests that portfolio withdrawal pushes PI above threshold, triggering SS taxation.",
+  "_rationale": "Single filer, Florida, SS $24k + pension $10k (both before_tax) at age 60 + $4k/mo spending ($48k/yr). 0% growth/inflation/stddev. Without withdrawal: PI = (10k + 0) + 12k = 22k < 25k → 0% SS taxable. With withdrawal: PI = (10k + w) + 12k > 25k, pushing SS into 85% zone. Algebraic solution: w ≈ 15856, tax ≈ 1856, ssTaxable ≈ 7778.",
   "_seed": 12345,
-  "name": "SS Taxable Fraction 50%",
+  "name": "Unified Tax: SS + Withdrawal",
   "currentAge": 60,
   "retirementAge": 60,
-  "lifeExpectancy": 70,
+  "lifeExpectancy": 64,
   "referenceYear": 2026,
   "currentSavings": 500000,
   "annualSavings": 0,
   "retirementSpending": {
-    "monthlyAmount": 0,
+    "monthlyAmount": 4000,
     "startAge": 60
   },
   "spendingGoals": [],
@@ -18,8 +18,8 @@
     {
       "id": "ss-1",
       "type": "social_security",
-      "amount": 20000,
-      "startAge": 62,
+      "amount": 24000,
+      "startAge": 60,
       "taxStatus": "before_tax",
       "colaType": "fixed",
       "ssHaircutEnabled": false
@@ -27,8 +27,8 @@
     {
       "id": "pension-1",
       "type": "pension_income",
-      "amount": 20000,
-      "startAge": 62,
+      "amount": 10000,
+      "startAge": 60,
       "taxStatus": "before_tax",
       "colaType": "fixed"
     }

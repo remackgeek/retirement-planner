@@ -1,0 +1,10 @@
+{
+  "_rationale": "Pension $50k, spending $24k. No withdrawal needed — income surplus. Tax on $50k: deduction $16,100, taxable $33,900. Fed = $1,240 + $2,580 = $3,820. Net income $46,180. Surplus = $46,180 - $24,000 = $22,180/yr added to portfolio. Stays below age 65 to avoid senior deduction changes.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
+    { "index": 1, "age": 61, "value": 522180, "note": "500000 + 22180" },
+    { "index": 4, "age": 64, "value": 588720, "note": "500000 + 4*22180" }
+  ],
+  "tolerance": 5.0
+}

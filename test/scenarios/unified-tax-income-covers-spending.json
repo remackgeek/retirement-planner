@@ -1,0 +1,37 @@
+{
+  "_description": "Unified tax: income surplus covers spending. No portfolio withdrawal needed. Tests the no-withdrawal path.",
+  "_rationale": "Single filer, Florida, pension $50k (before_tax) at age 60 + $2k/mo spending ($24k/yr). 0% growth/inflation/stddev. Income exceeds spending. Tax on $50k: deduction $16,100, taxable $33,900. Fed tax = $1,240 (10% on $12,400) + $2,580 (12% on $21,500) = $3,820. Net income = $46,180. Net cash flow = 46180 - 24000 = $22,180 surplus/yr.",
+  "_seed": 12345,
+  "name": "Unified Tax: Income Covers Spending",
+  "currentAge": 60,
+  "retirementAge": 60,
+  "lifeExpectancy": 64,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 2000,
+    "startAge": 60
+  },
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "amount": 50000,
+      "startAge": 60,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseName": null,
+  "spouseAge": null,
+  "state": "Florida"
+}

@@ -29,6 +29,7 @@
   },
   "inflationRate": 0.03,
   "filingStatus": "mfj",
+  "spouseName": null,
   "spouseAge": 53,
   "state": "Virginia"
 }
