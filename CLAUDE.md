@@ -39,11 +39,18 @@ Follow existing project patterns when adding new features (types, dialogs, servi
 context migrations, chart annotations). Read the existing examples before creating new ones.
 Run `npm run test` and `npm run build` to verify changes.
 
-**Income/spending dialogs:** Each income event type should get its own dedicated dialog
+**Income event dialogs:** Each income event type should get its own dedicated dialog
 with type-specific fields and labels (Social Security is the first). The type-selection
 picker (`EventTypeSelectionDialog`) remains the entry point; `IncomeEventsManager` routes
 to the correct per-type dialog. New income types should get a dedicated dialog, not extend
 the shared `IncomeEventDialog`.
+
+**Spending goal dialogs:** Spending goal types that have meaningful type-specific fields
+should get their own dedicated dialog (e.g., healthcare with recurring vs. one-time toggle,
+education with beneficiary, home purchase with down payment vs. full price). The type-selection
+picker (`SpendingGoalTypeSelectionDialog`) remains the entry point; `SpendingGoalsManager`
+routes to the correct per-type dialog. Simple goal types without unique fields can share
+`SpendingGoalDialog`, but create dedicated dialogs where it meaningfully improves UX.
 
 **No backward compatibility required.** This is active development — when fields, types,
 or data structures are renamed or removed, just change them cleanly. Do not leave behind

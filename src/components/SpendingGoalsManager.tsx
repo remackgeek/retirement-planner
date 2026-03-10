@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import SpendingGoalTypeSelectionDialog from '../dialogs/SpendingGoalTypeSelectionDialog';
 import SpendingGoalDialog, { goalTypeLabels } from '../dialogs/SpendingGoalDialog';
+import HomePurchaseDialog from '../dialogs/HomePurchaseDialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { spacing, colors, border, fontSize } from '../styles/theme';
 
@@ -155,14 +156,25 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                   {goal.name && ` - ${goal.name}`}
                 </strong>
               </div>
-              ${goal.amount.toLocaleString()}
-              {goal.isOneTime
-                ? ' one-time at age '
-                : ' annually starting at age '}
-              {goal.startAge}
-              {goal.endAge && !goal.isOneTime && ` until age ${goal.endAge}`}
-              {goal.isOneTime && ' (one-time event)'}
-              {goal.inflationAdjusted && ' (inflation adjusted)'}
+              {goal.type === 'home_purchase' ? (
+                <>
+                  ${goal.amount.toLocaleString()}{' '}
+                  {goal.amountType === 'down_payment' ? 'down payment' : 'full purchase'}{' '}
+                  at age {goal.startAge}
+                  {goal.inflationAdjusted && ' (today\'s dollars)'}
+                </>
+              ) : (
+                <>
+                  ${goal.amount.toLocaleString()}
+                  {goal.isOneTime
+                    ? ' one-time at age '
+                    : ' annually starting at age '}
+                  {goal.startAge}
+                  {goal.endAge && !goal.isOneTime && ` until age ${goal.endAge}`}
+                  {goal.isOneTime && ' (one-time event)'}
+                  {goal.inflationAdjusted && ' (inflation adjusted)'}
+                </>
+              )}
             </GoalInfo>
             <Actions>
               <Button onClick={() => startEdit(goal)}>Edit</Button>
@@ -179,17 +191,30 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
         onSelectType={handleTypeSelect}
       />
 
-      <SpendingGoalDialog
-        visible={dialogVisible}
-        onHide={() => {
-          setDialogVisible(false);
-          setSelectedType(null);
-          setEditingGoal(undefined);
-        }}
-        onSave={handleSave}
-        initialType={selectedType || undefined}
-        editGoal={editingGoal}
-      />
+      {editingGoal?.type === 'home_purchase' || selectedType === 'home_purchase' ? (
+        <HomePurchaseDialog
+          visible={dialogVisible}
+          onHide={() => {
+            setDialogVisible(false);
+            setSelectedType(null);
+            setEditingGoal(undefined);
+          }}
+          onSave={handleSave}
+          editGoal={editingGoal?.type === 'home_purchase' ? editingGoal : undefined}
+        />
+      ) : (
+        <SpendingGoalDialog
+          visible={dialogVisible}
+          onHide={() => {
+            setDialogVisible(false);
+            setSelectedType(null);
+            setEditingGoal(undefined);
+          }}
+          onSave={handleSave}
+          initialType={selectedType || undefined}
+          editGoal={editingGoal}
+        />
+      )}
     </Container>
   );
 };
