@@ -39,6 +39,9 @@ Follow existing project patterns when adding new features (types, dialogs, servi
 context migrations, chart annotations). Read the existing examples before creating new ones.
 Run `npm run test` and `npm run build` to verify changes.
 
+**Never commit or push.** The user controls all git operations. When work is done, say so —
+do not offer to commit, stage files, or push.
+
 **Income/spending dialogs:** Each income event type should get its own dedicated dialog
 with type-specific fields and labels (Social Security is the first). The type-selection
 picker (`EventTypeSelectionDialog`) remains the entry point; `IncomeEventsManager` routes
