@@ -42,11 +42,21 @@ Run `npm run test` and `npm run build` to verify changes.
 **Never commit or push.** The user controls all git operations. When work is done, say so —
 do not offer to commit, stage files, or push.
 
-**Income/spending dialogs:** Each income event type should get its own dedicated dialog
+**Never commit or push.** The user controls all git operations. When work is done, say so —
+do not offer to commit, stage files, or push.
+
+**Income event dialogs:** Each income event type should get its own dedicated dialog
 with type-specific fields and labels (Social Security is the first). The type-selection
 picker (`EventTypeSelectionDialog`) remains the entry point; `IncomeEventsManager` routes
 to the correct per-type dialog. New income types should get a dedicated dialog, not extend
 the shared `IncomeEventDialog`.
+
+**Spending goal dialogs:** Spending goal types that have meaningful type-specific fields
+should get their own dedicated dialog (e.g., healthcare with recurring vs. one-time toggle,
+education with beneficiary, home purchase with down payment vs. full price). The type-selection
+picker (`SpendingGoalTypeSelectionDialog`) remains the entry point; `SpendingGoalsManager`
+routes to the correct per-type dialog. Simple goal types without unique fields can share
+`SpendingGoalDialog`, but create dedicated dialogs where it meaningfully improves UX.
 
 **No backward compatibility required.** This is active development — when fields, types,
 or data structures are renamed or removed, just change them cleanly. Do not leave behind
@@ -93,17 +103,21 @@ import { spacing, colors, fontSize, border } from '../styles/theme';
 The app should be **modular and extensible**. Avoid hardcoded assumptions.
 
 ### Simulation engine (priority)
+
 `SimulationService` should evolve toward a pluggable architecture:
+
 - User-selectable simulation strategies (log-normal Monte Carlo is the first)
 - Historical sequence-of-returns using real S&P 500 and interest rate data
 - Configurable run count, distribution type, parameters
 - New strategies drop in without changing the rest of the app
 
 ### Planned UX
+
 - Side-by-side scenario comparison (visual, not just switching)
 - PDF export of scenario summaries
 
 ### Other extensibility
+
 - Portfolio: user-defined asset classes beyond stocks/bonds/cash
 - Tax: bracket updates as legislation changes; complex mechanics (RMDs, Roth
   conversions, withdrawal ordering) may be added later but are not current goals
@@ -114,28 +128,34 @@ The app should be **modular and extensible**. Avoid hardcoded assumptions.
 Two testing layers with different audiences:
 
 ### Unit tests (`src/**/*.test.ts`)
+
 Developer-facing, isolated, per-module. Test individual functions directly.
 
 ### Scenario tests (`test/scenarios/` + `test/simulation.test.ts`)
+
 Human-facing, end-to-end trust artifacts. The test runner (`test/simulation.test.ts`) is
 generic infrastructure — it auto-discovers `test/scenarios/*.json` files, runs them through
 `runSimulation()`, and checks results against sidecar `.expected.json` files. **Don't touch
 the runner when adding features.** The intelligence lives in the data files.
 
 #### Scenario file format
+
 Each `.json` is a valid `UserData` object (importable by the app) plus `_`-prefixed
 test metadata:
+
 - `_description` — what this scenario tests, in plain English
 - `_rationale` — why the expected numbers are correct (the trust anchor)
 - `_seed` — PRNG seed for reproducible runs
 
 #### Expected output files (`.expected.json`)
+
 Deterministic scenarios (0% stddev) use exact values with `pathValues` spot-checks.
 Stochastic scenarios use range-based assertions (`{ "min": 70, "max": 85 }`).
 Every expected file **must** include a `_rationale` explaining in plain English why the
 numbers are what they are.
 
 #### Key rules
+
 - **When a test breaks, fix the code — not the expected values.** Unless the requirements
   changed, in which case update both the expected values AND the rationale.
 - **When changing `UserData` or `Scenario` fields,** update ALL existing scenario JSON
@@ -150,6 +170,7 @@ numbers are what they are.
   Tests pass in a seeded PRNG (`test/utils/seededRandom.ts`); production uses `Math.random`.
 
 #### Adding a new scenario
+
 1. Create `test/scenarios/my-scenario.json` with full `UserData` + `_` metadata
 2. Create `test/scenarios/my-scenario.expected.json` with rationale + assertions
 3. Run `npm test` — the runner discovers it automatically

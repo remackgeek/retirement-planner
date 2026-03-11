@@ -18,6 +18,7 @@ export interface SpendingGoal {
   endAge?: number; // Optional for one-time or ongoing
   isOneTime?: boolean; // If true, spending occurs only in the start year
   inflationAdjusted: boolean;
+  amountType?: 'full_price' | 'down_payment'; // home_purchase only
 }
 
 export interface RetirementSpending {

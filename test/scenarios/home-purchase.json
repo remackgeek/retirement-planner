@@ -1,0 +1,38 @@
+{
+  "_description": "Single one-time home purchase at age 66, entered in future dollars, 0% return, 0% inflation. Tests that isOneTime correctly deducts from portfolio only in the purchase year.",
+  "_rationale": "500k savings, 0% return, 0% inflation, no retirement spending, no tax (Florida). Home purchase of 100k at age 66 with inflationAdjusted=false (future dollars, no scaling). startYear = 2026 + (66-65) = 2027. Year 2026 (i=0): path[0]=500k, no purchase. Year 2027 (i=1): path[1]=500k (recorded before cash flow), purchase deducts 100k, balance -> 400k. Year 2028 (i=2): path[2]=400k, isOneTime so no repeat. 100% probability (never runs out).",
+  "_seed": 42,
+  "name": "Home Purchase",
+  "currentAge": 65,
+  "retirementAge": 65,
+  "lifeExpectancy": 67,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "annualSavings": 0,
+  "retirementSpending": {
+    "monthlyAmount": 0,
+    "startAge": 65
+  },
+  "spendingGoals": [
+    {
+      "id": "goal-home",
+      "type": "home_purchase",
+      "amount": 100000,
+      "startAge": 66,
+      "isOneTime": true,
+      "inflationAdjusted": false,
+      "amountType": "full_price"
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseName": null,
+  "spouseAge": null,
+  "state": "Florida"
+}
