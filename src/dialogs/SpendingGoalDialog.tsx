@@ -69,6 +69,7 @@ const makeDefaultFormData = (type: SpendingGoal['type'] = 'charity') => ({
   endAge: undefined as number | undefined,
   isOneTime: false,
   inflationAdjusted: true,
+  yearlyDecreasePercent: undefined as number | undefined,
 });
 
 const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
@@ -92,6 +93,7 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
         endAge: editGoal.endAge,
         isOneTime: editGoal.isOneTime || false,
         inflationAdjusted: editGoal.inflationAdjusted,
+        yearlyDecreasePercent: editGoal.yearlyDecreasePercent,
       });
     } else if (initialType) {
       setFormData(makeDefaultFormData(initialType));
@@ -100,9 +102,15 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
     }
   }, [visible, editGoal, initialType]);
 
+  const isMonthlyRetirement = formData.type === 'monthly_retirement';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    const saveData = { ...formData };
+    if (!saveData.yearlyDecreasePercent) {
+      delete (saveData as any).yearlyDecreasePercent;
+    }
+    onSave(saveData);
     onHide();
   };
 
@@ -151,17 +159,40 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
         )}
 
         <InputGroup>
-          <label>Annual Amount</label>
+          <label>{isMonthlyRetirement ? 'Monthly Amount' : 'Annual Amount'}</label>
           <InputNumber
-            value={formData.amount}
+            value={isMonthlyRetirement ? formData.amount / 12 : formData.amount}
             onValueChange={(e) =>
-              setFormData({ ...formData, amount: e.value || 0 })
+              setFormData({
+                ...formData,
+                amount: isMonthlyRetirement ? (e.value || 0) * 12 : (e.value || 0),
+              })
             }
             mode='currency'
             currency='USD'
             required
           />
         </InputGroup>
+
+        {isMonthlyRetirement && (
+          <InputGroup>
+            <label>Yearly Spending Decrease (%)</label>
+            <InputNumber
+              value={formData.yearlyDecreasePercent ?? null}
+              onValueChange={(e) =>
+                setFormData({
+                  ...formData,
+                  yearlyDecreasePercent: e.value ?? undefined,
+                })
+              }
+              mode='decimal'
+              min={0}
+              max={10}
+              suffix='%'
+              placeholder='Optional — reduces spending each year after inflation'
+            />
+          </InputGroup>
+        )}
 
         <FieldRow>
           <InputGroup>

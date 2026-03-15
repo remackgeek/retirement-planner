@@ -26,6 +26,7 @@ interface HtmlAnnotationsOptions {
 
 const eventTypeIcons: Record<string, string> = {
   // Income events
+  employment_savings: 'pi pi-wallet',
   social_security: 'pi pi-shield',
   annuity_income: 'pi pi-money-bill',
   inheritance: 'pi pi-gift',

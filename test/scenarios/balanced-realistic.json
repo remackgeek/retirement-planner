@@ -4,17 +4,28 @@
   "_seed": 42,
   "name": "Balanced Realistic",
   "currentAge": 55,
-  "retirementAge": 60,
   "lifeExpectancy": 90,
   "referenceYear": 2026,
   "currentSavings": 800000,
-  "annualSavings": 30000,
-  "retirementSpending": {
-    "monthlyAmount": 5000,
-    "startAge": 60
-  },
-  "spendingGoals": [],
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "monthly_retirement",
+      "amount": 60000,
+      "startAge": 60,
+      "inflationAdjusted": true
+    }
+  ],
   "incomeEvents": [
+    {
+      "id": "emp-savings-1",
+      "type": "employment_savings",
+      "amount": 30000,
+      "startAge": 55,
+      "endAge": 60,
+      "taxStatus": "after_tax",
+      "colaType": "inflation_adjusted"
+    },
     {
       "id": "ss-1",
       "type": "social_security",

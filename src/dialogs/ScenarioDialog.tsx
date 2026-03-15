@@ -84,25 +84,10 @@ const makeDefaults = (): Scenario => ({
   id: '',
   name: '',
   currentAge: 40,
-  retirementAge: 65,
   lifeExpectancy: 92,
   currentSavings: 100000,
-  annualSavings: 20000,
-  retirementSpending: { monthlyAmount: 5000, startAge: 65 },
   spendingGoals: [],
-  incomeEvents: [
-    {
-      id: crypto.randomUUID(),
-      type: 'social_security' as const,
-      amount: 30000,
-      startAge: 65,
-      taxStatus: 'before_tax' as const,
-      colaType: 'inflation_adjusted' as const,
-      ssAmountBasis: 'today' as const,
-      ssHaircutEnabled: true,
-      ssHaircutPercent: 23,
-    },
-  ],
+  incomeEvents: [],
   portfolioAssumptions: { riskLevel: 'balanced' as const },
   referenceYear: new Date().getFullYear(),
   inflationRate: 0.035,
@@ -117,6 +102,7 @@ interface ScenarioDialogProps {
   onHide: () => void;
   onSave: (scenario: Scenario) => void;
   scenario?: Scenario;
+  isFirstScenario?: boolean;
 }
 
 const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
@@ -124,6 +110,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
   onHide,
   onSave,
   scenario,
+  isFirstScenario,
 }) => {
   const [tempData, setTempData] = useState<Scenario>(makeDefaults);
 
@@ -132,11 +119,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
   }, [scenario]);
 
   const handleChange = (field: keyof Scenario, value: any) => {
-    if (field === 'retirementSpending') {
-      setTempData({ ...tempData, retirementSpending: value });
-    } else {
-      setTempData({ ...tempData, [field]: value });
-    }
+    setTempData({ ...tempData, [field]: value });
   };
 
   const handleFilingStatusChange = (value: Scenario['filingStatus']) => {
@@ -153,7 +136,16 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     }
   };
 
+  const isValid =
+    tempData.name.trim().length > 0 &&
+    tempData.currentAge >= 18 &&
+    tempData.currentAge <= 100 &&
+    tempData.lifeExpectancy > tempData.currentAge &&
+    tempData.lifeExpectancy <= 120 &&
+    tempData.currentSavings >= 0;
+
   const handleSave = () => {
+    if (!isValid) return;
     const spouseName = tempData.spouseName?.trim() || null;
     const scenarioData = scenario
       ? { ...tempData, id: scenario.id, spouseName }
@@ -166,13 +158,20 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
 
   const dialogFooter = (
     <div>
+      {!isFirstScenario && (
+        <Button
+          label='Cancel'
+          icon='pi pi-times'
+          onClick={onHide}
+          className='p-button-text'
+        />
+      )}
       <Button
-        label='Cancel'
-        icon='pi pi-times'
-        onClick={onHide}
-        className='p-button-text'
+        label='Save'
+        icon='pi pi-check'
+        onClick={handleSave}
+        disabled={!isValid}
       />
-      <Button label='Save' icon='pi pi-check' onClick={handleSave} />
     </div>
   );
 
@@ -193,6 +192,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
             <InputText
               value={tempData.name}
               onChange={(e) => handleChange('name', e.target.value)}
+              className={tempData.name.trim().length === 0 ? 'p-invalid' : ''}
             />
           </FullWidthField>
 
@@ -202,25 +202,21 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
               value={tempData.currentAge}
               onValueChange={(e) => handleChange('currentAge', e.value)}
               mode='decimal'
+              min={18}
+              max={100}
             />
           </FieldGroup>
-          <FieldGroup>
-            <label>Retirement Age</label>
-            <InputNumber
-              value={tempData.retirementAge}
-              onValueChange={(e) => handleChange('retirementAge', e.value)}
-              mode='decimal'
-            />
-          </FieldGroup>
-
           <FieldGroup>
             <label>Life Expectancy</label>
             <InputNumber
               value={tempData.lifeExpectancy}
               onValueChange={(e) => handleChange('lifeExpectancy', e.value)}
               mode='decimal'
+              min={(tempData.currentAge || 18) + 1}
+              max={120}
             />
           </FieldGroup>
+
           <FieldGroup>
             <label>Filing Status</label>
             <Dropdown
@@ -265,46 +261,9 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
               onValueChange={(e) => handleChange('currentSavings', e.value)}
               mode='currency'
               currency='USD'
+              min={0}
             />
           </FieldGroup>
-          <FieldGroup>
-            <label>Annual Savings</label>
-            <InputNumber
-              value={tempData.annualSavings}
-              onValueChange={(e) => handleChange('annualSavings', e.value)}
-              mode='currency'
-              currency='USD'
-            />
-          </FieldGroup>
-
-          <FieldGroup>
-            <label>Monthly Retirement Spending</label>
-            <InputNumber
-              value={tempData.retirementSpending.monthlyAmount}
-              onValueChange={(e) =>
-                handleChange('retirementSpending', {
-                  ...tempData.retirementSpending,
-                  monthlyAmount: e.value,
-                })
-              }
-              mode='currency'
-              currency='USD'
-            />
-          </FieldGroup>
-          <FieldGroup>
-            <label>Spending Start Age</label>
-            <InputNumber
-              value={tempData.retirementSpending.startAge}
-              onValueChange={(e) =>
-                handleChange('retirementSpending', {
-                  ...tempData.retirementSpending,
-                  startAge: e.value,
-                })
-              }
-              mode='decimal'
-            />
-          </FieldGroup>
-
           <FieldGroup>
             <label>Inflation Rate</label>
             <InputNumber

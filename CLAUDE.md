@@ -28,8 +28,11 @@ projections, and good tax awareness without overwhelming the user.
 
 - **Scenario** — top-level unit holding all user config, persisted to IndexedDB
 - **Monte Carlo** — median + 10th percentile portfolio paths, success probability
-- **Income events** — 8 types, COLA, before/after-tax, SS 2034 haircut (configurable)
-- **Spending goals** — 11 categories, inflation adjustment, age-based activation
+- **Income events** — 9 types (including `employment_savings` for pre-retirement savings),
+  COLA, before/after-tax, SS 2034 haircut (configurable). All cash flow flows through
+  events/goals — no special-cased fields on UserData
+- **Spending goals** — 11 categories, inflation adjustment, age-based activation.
+  `monthly_retirement` goals support optional `yearlyDecreasePercent` for spending decay
 - **Tax** — aggregate income taxation; SS 50%/85% taxable fraction (IRS provisional
   income formula); standard deduction, filing status, state rates, senior/OBBB deductions
 
@@ -38,9 +41,6 @@ projections, and good tax awareness without overwhelming the user.
 Follow existing project patterns when adding new features (types, dialogs, services,
 context migrations, chart annotations). Read the existing examples before creating new ones.
 Run `npm run test` and `npm run build` to verify changes.
-
-**Never commit or push.** The user controls all git operations. When work is done, say so —
-do not offer to commit, stage files, or push.
 
 **Never commit or push.** The user controls all git operations. When work is done, say so —
 do not offer to commit, stage files, or push.

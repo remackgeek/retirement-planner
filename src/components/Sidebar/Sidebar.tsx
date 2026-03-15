@@ -219,8 +219,7 @@ const Sidebar: React.FC = () => {
                 </ScenarioRow>
                 {isActive && activeScenario && (
                   <ChipsRow>
-                    <Chip>{activeScenario.currentAge}→{activeScenario.retirementAge}</Chip>
-                    <Chip>${(activeScenario.retirementSpending?.monthlyAmount || 0).toLocaleString()}/mo</Chip>
+                    <Chip>Age {activeScenario.currentAge}</Chip>
                     <Chip>{activeScenario.incomeEvents.length} income</Chip>
                     <Chip>{activeScenario.spendingGoals.length} goals</Chip>
                   </ChipsRow>
@@ -247,6 +246,7 @@ const Sidebar: React.FC = () => {
           onHide={handleDialogHide}
           onSave={handleSave}
           scenario={editingScenario || undefined}
+          isFirstScenario={scenarios.length === 0}
         />
         <ConfirmDialog />
       </SidebarContent>

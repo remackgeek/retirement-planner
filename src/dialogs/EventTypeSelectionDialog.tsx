@@ -62,6 +62,7 @@ interface EventTypeSelectionDialogProps {
 }
 
 const eventTypeLabels: Record<IncomeEventType, string> = {
+  employment_savings: 'Employment Savings',
   social_security: 'Social Security',
   annuity_income: 'Annuity Income',
   inheritance: 'Inheritance',
@@ -73,6 +74,7 @@ const eventTypeLabels: Record<IncomeEventType, string> = {
 };
 
 const eventTypeSymbols: Record<IncomeEventType, string> = {
+  employment_savings: 'pi pi-wallet',
   social_security: 'pi pi-shield',
   annuity_income: 'pi pi-money-bill',
   inheritance: 'pi pi-gift',

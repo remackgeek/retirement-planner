@@ -4,15 +4,9 @@
   "_seed": 42,
   "name": "Home Purchase",
   "currentAge": 65,
-  "retirementAge": 65,
   "lifeExpectancy": 67,
   "referenceYear": 2026,
   "currentSavings": 500000,
-  "annualSavings": 0,
-  "retirementSpending": {
-    "monthlyAmount": 0,
-    "startAge": 65
-  },
   "spendingGoals": [
     {
       "id": "goal-home",

@@ -4,16 +4,18 @@
   "_seed": 12345,
   "name": "Unified Tax: Withdrawal + Income",
   "currentAge": 60,
-  "retirementAge": 60,
   "lifeExpectancy": 64,
   "referenceYear": 2026,
   "currentSavings": 500000,
-  "annualSavings": 0,
-  "retirementSpending": {
-    "monthlyAmount": 4000,
-    "startAge": 60
-  },
-  "spendingGoals": [],
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "monthly_retirement",
+      "amount": 48000,
+      "startAge": 60,
+      "inflationAdjusted": false
+    }
+  ],
   "incomeEvents": [
     {
       "id": "pension-1",

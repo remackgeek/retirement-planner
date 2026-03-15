@@ -87,16 +87,12 @@ const ScenarioHeaderBar: React.FC = () => {
   const { activeScenario } = context;
   if (!activeScenario) return null;
 
-  const monthlySpending = activeScenario.retirementSpending?.monthlyAmount || 0;
-
   return (
     <>
       <HeaderBar onClick={(e) => overlayRef.current?.toggle(e)}>
         <ScenarioLabel>{activeScenario.name}</ScenarioLabel>
         <Separator>|</Separator>
-        <Stat>
-          Age {activeScenario.currentAge} → {activeScenario.retirementAge}
-        </Stat>
+        <Stat>Age {activeScenario.currentAge}</Stat>
         <Separator>|</Separator>
         <Stat>{formatCurrency(activeScenario.currentSavings)} saved</Stat>
         <Separator>|</Separator>
@@ -110,24 +106,16 @@ const ScenarioHeaderBar: React.FC = () => {
           <OverlayTitle>{activeScenario.name}</OverlayTitle>
           <OverlayLabel>Current Age</OverlayLabel>
           <OverlayValue>{activeScenario.currentAge}</OverlayValue>
-          <OverlayLabel>Retirement Age</OverlayLabel>
-          <OverlayValue>{activeScenario.retirementAge}</OverlayValue>
           <OverlayLabel>Life Expectancy</OverlayLabel>
           <OverlayValue>{activeScenario.lifeExpectancy}</OverlayValue>
           <OverlayLabel>Current Savings</OverlayLabel>
           <OverlayValue>
             ${activeScenario.currentSavings.toLocaleString()}
           </OverlayValue>
-          <OverlayLabel>Annual Savings</OverlayLabel>
-          <OverlayValue>
-            ${activeScenario.annualSavings.toLocaleString()}
-          </OverlayValue>
-          <OverlayLabel>Monthly Spending</OverlayLabel>
-          <OverlayValue>${monthlySpending.toLocaleString()}</OverlayValue>
-          <OverlayLabel>Spending Goals</OverlayLabel>
-          <OverlayValue>{activeScenario.spendingGoals.length}</OverlayValue>
           <OverlayLabel>Income Events</OverlayLabel>
           <OverlayValue>{activeScenario.incomeEvents.length}</OverlayValue>
+          <OverlayLabel>Spending Goals</OverlayLabel>
+          <OverlayValue>{activeScenario.spendingGoals.length}</OverlayValue>
           <OverlayLabel>Risk Level</OverlayLabel>
           <OverlayValue>
             {activeScenario.portfolioAssumptions.riskLevel}

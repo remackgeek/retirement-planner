@@ -19,10 +19,5 @@ export interface SpendingGoal {
   isOneTime?: boolean; // If true, spending occurs only in the start year
   inflationAdjusted: boolean;
   amountType?: 'full_price' | 'down_payment'; // home_purchase only
-}
-
-export interface RetirementSpending {
-  monthlyAmount: number;
-  yearlyDecreasePercent?: number; // Optional percentage decrease after inflation
-  startAge: number; // Usually 65 or later
+  yearlyDecreasePercent?: number; // Optional percentage decrease after inflation (monthly_retirement)
 }

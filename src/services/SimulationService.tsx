@@ -155,7 +155,7 @@ export interface AnnualCashFlowBreakdown {
   afterTaxIncome: number;
   totalGrossIncome: number;
   ssTaxableAmount: number;
-  retirementSpendingNet: number;
+  baseSpendingNet: number;
   otherSpendingGoalsNet: number;
   totalSpendingNet: number;
   portfolioWithdrawal: number;
@@ -224,29 +224,9 @@ function accumulateSpending(
   userData: UserData,
   year: number,
   inflationRate: number
-): { retirementSpendingNet: number; otherSpendingGoalsNet: number } {
-  let retirementSpendingNet = 0;
+): { baseSpendingNet: number; otherSpendingGoalsNet: number } {
+  let baseSpendingNet = 0;
   let otherSpendingGoalsNet = 0;
-
-  const retirementSpending = userData.retirementSpending;
-  const retirementStartYear =
-    userData.referenceYear +
-    (retirementSpending.startAge - userData.currentAge);
-  if (year >= retirementStartYear) {
-    let annualAmount = retirementSpending.monthlyAmount * 12;
-    const yearsFromReference = year - userData.referenceYear;
-    annualAmount *= Math.pow(1 + inflationRate, yearsFromReference);
-
-    if (retirementSpending.yearlyDecreasePercent) {
-      const yearsSinceStart = year - retirementStartYear;
-      annualAmount *= Math.pow(
-        1 - retirementSpending.yearlyDecreasePercent / 100,
-        yearsSinceStart
-      );
-    }
-
-    retirementSpendingNet += annualAmount;
-  }
 
   userData.spendingGoals.forEach((goal) => {
     const startYear =
@@ -268,11 +248,19 @@ function accumulateSpending(
         const yearsFromReference = year - userData.referenceYear;
         amount *= Math.pow(1 + inflationRate, yearsFromReference);
       }
-      otherSpendingGoalsNet += amount;
+      if (goal.yearlyDecreasePercent) {
+        const yearsSinceStart = year - startYear;
+        amount *= Math.pow(1 - goal.yearlyDecreasePercent / 100, yearsSinceStart);
+      }
+      if (goal.type === 'monthly_retirement') {
+        baseSpendingNet += amount;
+      } else {
+        otherSpendingGoalsNet += amount;
+      }
     }
   });
 
-  return { retirementSpendingNet, otherSpendingGoalsNet };
+  return { baseSpendingNet, otherSpendingGoalsNet };
 }
 
 export function calculateAnnualCashFlow(
@@ -283,7 +271,7 @@ export function calculateAnnualCashFlow(
   const income = accumulateIncome(userData, year, inflationRate);
   const spending = accumulateSpending(userData, year, inflationRate);
   const { ssGross, otherTaxableGross, afterTaxIncome } = income;
-  const totalSpendingNet = spending.retirementSpendingNet + spending.otherSpendingGoalsNet;
+  const totalSpendingNet = spending.baseSpendingNet + spending.otherSpendingGoalsNet;
   const totalGrossIncome = ssGross + otherTaxableGross + afterTaxIncome;
   const availableCash = afterTaxIncome + ssGross + otherTaxableGross;
 
@@ -330,7 +318,7 @@ export function calculateAnnualCashFlow(
     afterTaxIncome,
     totalGrossIncome,
     ssTaxableAmount,
-    retirementSpendingNet: spending.retirementSpendingNet,
+    baseSpendingNet: spending.baseSpendingNet,
     otherSpendingGoalsNet: spending.otherSpendingGoalsNet,
     totalSpendingNet,
     portfolioWithdrawal: withdrawal,
@@ -349,8 +337,6 @@ export function runSimulation(
   years: number[];
 } {
   const currentYear = userData.referenceYear;
-  const yearsToRetire = userData.retirementAge - userData.currentAge;
-  const retirementYear = currentYear + yearsToRetire;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const inflationRate = userData.inflationRate;
   const numSims = 5000;
@@ -377,11 +363,7 @@ export function runSimulation(
 
       // Calculate unified cash flow for this year
       const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
-      let netFlow = cashFlow.netCashFlow;
-      if (year < retirementYear) {
-        netFlow += userData.annualSavings; // Pre-tax savings, not part of tax calc
-      }
-      balance += netFlow;
+      balance += cashFlow.netCashFlow;
       if (balance < 0) {
         failed = true;
         balance = 0;

@@ -49,6 +49,7 @@ interface IncomeEventDialogProps {
 }
 
 export const eventTypeLabels: Record<IncomeEventType, string> = {
+  employment_savings: 'Employment Savings',
   social_security: 'Social Security',
   annuity_income: 'Annuity Income',
   inheritance: 'Inheritance',
@@ -63,6 +64,7 @@ const getDefaultCOLA = (
   type: IncomeEventType
 ): 'fixed' | 'inflation_adjusted' => {
   const inflationAdjustedTypes: IncomeEventType[] = [
+    'employment_savings',
     'social_security',
     'inheritance',
     'rental_income',
@@ -73,14 +75,19 @@ const getDefaultCOLA = (
   return inflationAdjustedTypes.includes(type) ? 'inflation_adjusted' : 'fixed';
 };
 
+const getDefaultTaxStatus = (type: IncomeEventType): 'before_tax' | 'after_tax' => {
+  if (type === 'employment_savings') return 'after_tax';
+  return 'before_tax';
+};
+
 const makeDefaultFormData = (type: IncomeEventType = 'pension_income') => ({
   type,
   name: '',
   amount: 0,
-  startAge: 65,
-  endAge: undefined as number | undefined,
+  startAge: type === 'employment_savings' ? 40 : 65,
+  endAge: (type === 'employment_savings' ? 65 : undefined) as number | undefined,
   isOneTime: false,
-  taxStatus: 'before_tax' as 'before_tax' | 'after_tax',
+  taxStatus: getDefaultTaxStatus(type),
   colaType: getDefaultCOLA(type),
 });
 
@@ -125,7 +132,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
       ...formData,
       type,
       colaType: getDefaultCOLA(type),
-      taxStatus: formData.taxStatus,
+      taxStatus: type === 'employment_savings' ? 'after_tax' : formData.taxStatus,
     });
   };
 
@@ -244,14 +251,16 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
           <label htmlFor='isOneTime'>One-time event (occurs only in start year)</label>
         </CheckboxGroup>
 
-        <InputGroup>
-          <label>Tax Status</label>
-          <Dropdown
-            value={formData.taxStatus}
-            options={taxStatusOptions}
-            onChange={(e) => setFormData({ ...formData, taxStatus: e.value })}
-          />
-        </InputGroup>
+        {formData.type !== 'employment_savings' && (
+          <InputGroup>
+            <label>Tax Status</label>
+            <Dropdown
+              value={formData.taxStatus}
+              options={taxStatusOptions}
+              onChange={(e) => setFormData({ ...formData, taxStatus: e.value })}
+            />
+          </InputGroup>
+        )}
 
         <InputGroup>
           <label>Cost of Living Adjustment</label>

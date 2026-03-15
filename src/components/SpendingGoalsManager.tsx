@@ -163,6 +163,14 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                   at age {goal.startAge}
                   {goal.inflationAdjusted && ' (today\'s dollars)'}
                 </>
+              ) : goal.type === 'monthly_retirement' ? (
+                <>
+                  ${Math.round(goal.amount / 12).toLocaleString()}/mo
+                  {' '}starting at age {goal.startAge}
+                  {goal.endAge && ` until age ${goal.endAge}`}
+                  {goal.inflationAdjusted && ' (inflation adjusted)'}
+                  {goal.yearlyDecreasePercent && ` (-${goal.yearlyDecreasePercent}%/yr)`}
+                </>
               ) : (
                 <>
                   ${goal.amount.toLocaleString()}

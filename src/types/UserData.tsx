@@ -1,4 +1,4 @@
-import type { SpendingGoal, RetirementSpending } from './SpendingGoal';
+import type { SpendingGoal } from './SpendingGoal';
 import type {
   IncomeEvent,
   PortfolioAssumptions,
@@ -6,11 +6,8 @@ import type {
 
 export interface UserData {
   currentAge: number;
-  retirementAge: number;
   lifeExpectancy: number;
   currentSavings: number;
-  annualSavings: number;
-  retirementSpending: RetirementSpending;
   spendingGoals: SpendingGoal[];
   incomeEvents: IncomeEvent[];
   portfolioAssumptions: PortfolioAssumptions;

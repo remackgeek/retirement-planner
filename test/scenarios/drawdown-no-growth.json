@@ -4,16 +4,18 @@
   "_seed": 12345,
   "name": "Drawdown No Growth",
   "currentAge": 55,
-  "retirementAge": 55,
   "lifeExpectancy": 90,
   "referenceYear": 2026,
   "currentSavings": 500000,
-  "annualSavings": 0,
-  "retirementSpending": {
-    "monthlyAmount": 1250,
-    "startAge": 55
-  },
-  "spendingGoals": [],
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "monthly_retirement",
+      "amount": 15000,
+      "startAge": 55,
+      "inflationAdjusted": false
+    }
+  ],
   "incomeEvents": [],
   "portfolioAssumptions": {
     "riskLevel": "custom",

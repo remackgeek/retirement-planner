@@ -1,0 +1,32 @@
+{
+  "_description": "Employment savings only — no spending, no growth, no tax. Verifies employment_savings flows as after_tax income and respects start/end ages.",
+  "_rationale": "100k initial savings, 50k/yr employment_savings ages 55–64 (10 years). 0% return, no spending. Balance grows linearly: 100k + 50k*n. At age 64 (last year active), balance = 100k + 50k*10 = 600k. Ages 65+ balance stays flat at 600k. Success 100%.",
+  "_seed": 12345,
+  "name": "Employment Savings Basic",
+  "currentAge": 55,
+  "lifeExpectancy": 75,
+  "referenceYear": 2026,
+  "currentSavings": 100000,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "emp-savings-1",
+      "type": "employment_savings",
+      "amount": 50000,
+      "startAge": 55,
+      "endAge": 64,
+      "taxStatus": "after_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseName": null,
+  "spouseAge": null,
+  "state": "Florida"
+}

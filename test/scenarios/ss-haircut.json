@@ -4,15 +4,9 @@
   "_seed": 12345,
   "name": "SS Haircut",
   "currentAge": 60,
-  "retirementAge": 60,
   "lifeExpectancy": 70,
   "referenceYear": 2026,
   "currentSavings": 500000,
-  "annualSavings": 0,
-  "retirementSpending": {
-    "monthlyAmount": 0,
-    "startAge": 60
-  },
   "spendingGoals": [],
   "incomeEvents": [
     {

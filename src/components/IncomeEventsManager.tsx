@@ -68,6 +68,7 @@ const DeleteButton = styled(Button)`
 `;
 
 const eventTypeSymbols: Record<IncomeEventType, string> = {
+  employment_savings: '💰',
   social_security: '🛡',
   annuity_income: '$',
   inheritance: '⬇',

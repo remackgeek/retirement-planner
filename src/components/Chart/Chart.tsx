@@ -33,6 +33,7 @@ ChartJS.register(
 
 // PrimeReact icons for chart annotations and table
 const eventTypeIcons: Record<string, string> = {
+  employment_savings: 'pi pi-wallet',
   social_security: 'pi pi-shield',
   annuity_income: 'pi pi-money-bill',
   inheritance: 'pi pi-gift',
@@ -167,10 +168,6 @@ const Projections = ({
     },
   };
 
-  const currentYear = userData.referenceYear;
-  const yearsToRetire = userData.retirementAge - userData.currentAge;
-  const retirementYear = currentYear + yearsToRetire;
-
   return (
     <div>
       <h2 style={{ margin: '0 0 0.5rem' }}>Probability of Success: {probability}%</h2>
@@ -197,7 +194,7 @@ const Projections = ({
                       textAlign: 'right',
                     }}
                   >
-                    Starting Portfolio Value (Median)
+                    Median Portfolio
                   </th>
                   <th
                     style={{
@@ -206,7 +203,7 @@ const Projections = ({
                       textAlign: 'right',
                     }}
                   >
-                    Starting Portfolio Value (10th Percentile)
+                    10th Percentile
                   </th>
                   <th
                     style={{
@@ -215,7 +212,7 @@ const Projections = ({
                       textAlign: 'right',
                     }}
                   >
-                    Basic Saving or Retirement Spending
+                    Spending
                   </th>
                   <th
                     style={{
@@ -224,16 +221,7 @@ const Projections = ({
                       textAlign: 'right',
                     }}
                   >
-                    Other Spending Goals
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      border: border.standard,
-                      textAlign: 'right',
-                    }}
-                  >
-                    Other Income Events
+                    Income
                   </th>
                   <th
                     style={{
@@ -249,18 +237,10 @@ const Projections = ({
               <tbody>
                 {years.map((year: number, index: number) => {
                   const age = userData.currentAge + index;
-                  const isRetirement = year >= retirementYear;
                   const breakdown = annualBreakdowns[index];
 
-                  const basicAmount = isRetirement
-                    ? userData.retirementSpending.monthlyAmount * 12
-                    : userData.annualSavings;
-
-                  // Other spending = goals only (breakdown already separates retirement vs goals)
-                  const otherSpendingGoals = breakdown.otherSpendingGoalsNet;
-
-                  // Other income = all income events (gross, before unified tax)
-                  const otherIncomeEvents = breakdown.totalGrossIncome;
+                  const totalSpending = breakdown.baseSpendingNet + breakdown.otherSpendingGoalsNet;
+                  const totalIncome = breakdown.totalGrossIncome;
 
                   const startingEvents = userData.incomeEvents.filter(
                     (event: any) => {
@@ -286,11 +266,7 @@ const Projections = ({
                     1 + userData.inflationRate,
                     index
                   );
-                  let netFlow = breakdown.netCashFlow;
-                  if (!isRetirement) {
-                    netFlow += userData.annualSavings;
-                  }
-                  const cashFlow = netFlow / inflationFactor;
+                  const cashFlow = breakdown.netCashFlow / inflationFactor;
 
                   const isExpanded = expandedRows.has(index);
                   const fmt = (v: number) => v.toLocaleString(undefined, {
@@ -333,15 +309,6 @@ const Projections = ({
                           textAlign: 'right',
                         }}
                       >
-                        {fmt(basicAmount)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '0.5rem',
-                          border: border.standard,
-                          textAlign: 'right',
-                        }}
-                      >
                         {startingGoals.length > 0 && (
                           <div
                             style={{
@@ -372,9 +339,9 @@ const Projections = ({
                             ))}
                           </div>
                         )}
-                        {otherSpendingGoals > 0
-                          ? `-${fmt(otherSpendingGoals)}`
-                          : fmt(otherSpendingGoals)}
+                        {totalSpending > 0
+                          ? `-${fmt(totalSpending)}`
+                          : fmt(totalSpending)}
                       </td>
                       <td
                         style={{
@@ -413,7 +380,7 @@ const Projections = ({
                             ))}
                           </div>
                         )}
-                        {fmt(otherIncomeEvents)}
+                        {fmt(totalIncome)}
                       </td>
                       <td
                         style={{
@@ -427,7 +394,7 @@ const Projections = ({
                     </tr>
                     {isExpanded && (
                       <tr key={`${year}-detail`}>
-                        <td colSpan={7} style={{
+                        <td colSpan={6} style={{
                           padding: `${spacing.xs} ${spacing.sm}`,
                           backgroundColor: colors.bgLight,
                           border: border.standard,
@@ -448,7 +415,7 @@ const Projections = ({
                             {breakdown.totalSpendingNet > 0 && (
                             <div>
                               <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.spending }}>Spending (nominal)</div>
-                              {breakdown.retirementSpendingNet > 0 && <div>Retirement: ${fmt(breakdown.retirementSpendingNet)}</div>}
+                              {breakdown.baseSpendingNet > 0 && <div>Base Spending: ${fmt(breakdown.baseSpendingNet)}</div>}
                               {breakdown.otherSpendingGoalsNet > 0 && <div>Goals: ${fmt(breakdown.otherSpendingGoalsNet)}</div>}
                               <div style={{ fontWeight: 'bold' }}>Total Need: ${fmt(breakdown.totalSpendingNet)}</div>
                             </div>

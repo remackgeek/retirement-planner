@@ -1,4 +1,5 @@
 export type IncomeEventType =
+  | 'employment_savings'
   | 'social_security'
   | 'annuity_income'
   | 'inheritance'
