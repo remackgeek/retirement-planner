@@ -9,7 +9,7 @@ import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
 import type { SpendingGoal } from '../../types/SpendingGoal';
 import type { IncomeEvent } from '../../types/IncomeEvent';
-import { spacing } from '../../styles/theme';
+import { spacing, colors } from '../../styles/theme';
 
 const ContentContainer = styled.main`
   flex: 1;
@@ -116,7 +116,12 @@ const Content: React.FC = () => {
     <ContentContainer>
       <ScenarioHeaderBar />
       <ContentBody>
-        {results && <Projections results={results} userData={activeScenario} />}
+        {!activeScenario && (
+          <div style={{ color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl }}>
+            No scenario selected. Create or import a scenario to get started.
+          </div>
+        )}
+        {results && activeScenario && <Projections results={results} userData={activeScenario} />}
         {activeScenario && (
           <ManagersContainer>
             <ManagerSection>

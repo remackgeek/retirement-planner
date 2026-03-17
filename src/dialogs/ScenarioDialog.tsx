@@ -102,7 +102,7 @@ interface ScenarioDialogProps {
   onHide: () => void;
   onSave: (scenario: Scenario) => void;
   scenario?: Scenario;
-  isFirstScenario?: boolean;
+
 }
 
 const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
@@ -110,7 +110,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
   onHide,
   onSave,
   scenario,
-  isFirstScenario,
 }) => {
   const [tempData, setTempData] = useState<Scenario>(makeDefaults);
 
@@ -158,14 +157,12 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
 
   const dialogFooter = (
     <div>
-      {!isFirstScenario && (
-        <Button
-          label='Cancel'
-          icon='pi pi-times'
-          onClick={onHide}
-          className='p-button-text'
-        />
-      )}
+      <Button
+        label='Cancel'
+        icon='pi pi-times'
+        onClick={onHide}
+        className='p-button-text'
+      />
       <Button
         label='Save'
         icon='pi pi-check'

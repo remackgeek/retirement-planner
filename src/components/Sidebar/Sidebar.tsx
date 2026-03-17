@@ -99,7 +99,6 @@ const Sidebar: React.FC = () => {
   const {
     scenarios,
     activeScenario,
-    loading,
     setActiveScenario,
     addScenario,
     updateScenario,
@@ -160,24 +159,12 @@ const Sidebar: React.FC = () => {
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (scenarios.length === 1) {
-                          confirmDialog({
-                            message:
-                              'Cannot delete the last scenario. Please create a new scenario first.',
-                            header: 'Cannot Delete',
-                            icon: 'pi pi-exclamation-triangle',
-                            acceptLabel: 'OK',
-                            rejectClassName: 'p-button-text',
-                            reject: undefined,
-                          });
-                        } else {
-                          confirmDialog({
-                            message: `Are you sure you want to delete "${scenario.name}"?`,
-                            header: 'Delete Scenario',
-                            icon: 'pi pi-exclamation-triangle',
-                            accept: () => deleteScenario(scenario.id),
-                          });
-                        }
+                        confirmDialog({
+                          message: `Are you sure you want to delete "${scenario.name}"?`,
+                          header: 'Delete Scenario',
+                          icon: 'pi pi-exclamation-triangle',
+                          accept: () => deleteScenario(scenario.id),
+                        });
                       }}
                       tooltip='Delete'
                       tooltipOptions={{ position: 'top' }}
@@ -242,11 +229,11 @@ const Sidebar: React.FC = () => {
           />
         </div>
         <ScenarioDialog
-          visible={dialogVisible || (scenarios.length === 0 && !loading)}
+          visible={dialogVisible}
           onHide={handleDialogHide}
           onSave={handleSave}
           scenario={editingScenario || undefined}
-          isFirstScenario={scenarios.length === 0}
+
         />
         <ConfirmDialog />
       </SidebarContent>
