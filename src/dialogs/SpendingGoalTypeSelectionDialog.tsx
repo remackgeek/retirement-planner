@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { spacing, colors, border, fontSize } from '../styles/theme';
+import { goalTypeLabels } from '../utils/defaultName';
 
 const GridContainer = styled.div`
   display: grid;
@@ -58,19 +59,6 @@ interface SpendingGoalTypeSelectionDialogProps {
   onSelectType: (type: SpendingGoal['type']) => void;
 }
 
-const goalTypeLabels: Record<SpendingGoal['type'], string> = {
-  monthly_retirement: 'Monthly Retirement',
-  charity: 'Charity/Gift',
-  dependent_support: 'Dependent Support',
-  healthcare: 'Healthcare',
-  home_purchase: 'Home Purchase/Upgrade',
-  education: 'Education',
-  renovation: 'Renovation',
-  vacation: 'Vacation',
-  vehicle: 'Vehicle',
-  wedding: 'Wedding',
-  other: 'Other Expense',
-};
 
 const goalTypeIcons: Record<SpendingGoal['type'], string> = {
   monthly_retirement: 'pi pi-dollar',

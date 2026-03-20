@@ -12,7 +12,7 @@ export interface SpendingGoal {
     | 'vehicle'
     | 'wedding'
     | 'other';
-  name?: string; // For 'other' type
+  name: string;
   amount: number; // Annual amount
   startAge: number;
   endAge?: number; // Optional for one-time or ongoing

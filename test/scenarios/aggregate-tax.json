@@ -15,7 +15,8 @@
       "amount": 20000,
       "startAge": 62,
       "taxStatus": "before_tax",
-      "colaType": "fixed"
+      "colaType": "fixed",
+      "name": "Pension Income 1"
     },
     {
       "id": "pension-2",
@@ -23,7 +24,8 @@
       "amount": 20000,
       "startAge": 62,
       "taxStatus": "before_tax",
-      "colaType": "fixed"
+      "colaType": "fixed",
+      "name": "Pension Income 2"
     }
   ],
   "portfolioAssumptions": {

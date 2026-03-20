@@ -45,21 +45,10 @@ interface SpendingGoalDialogProps {
   onSave: (goal: Omit<SpendingGoal, 'id'>) => void;
   initialType?: SpendingGoal['type'];
   editGoal?: SpendingGoal;
+  existingGoals?: SpendingGoal[];
 }
 
-export const goalTypeLabels: Record<SpendingGoal['type'], string> = {
-  monthly_retirement: 'Monthly Retirement',
-  charity: 'Charity/Gift',
-  dependent_support: 'Dependent Support',
-  healthcare: 'Healthcare',
-  home_purchase: 'Home Purchase/Upgrade',
-  education: 'Education',
-  renovation: 'Renovation',
-  vacation: 'Vacation',
-  vehicle: 'Vehicle',
-  wedding: 'Wedding',
-  other: 'Other Expense',
-};
+import { goalTypeLabels, generateDefaultSpendingGoalName } from '../utils/defaultName';
 
 const makeDefaultFormData = (type: SpendingGoal['type'] = 'charity') => ({
   type,
@@ -78,6 +67,7 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
   onSave,
   initialType,
   editGoal,
+  existingGoals = [],
 }) => {
   const isEditing = !!editGoal;
   const [formData, setFormData] = useState(makeDefaultFormData());
@@ -87,7 +77,7 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
     if (editGoal) {
       setFormData({
         type: editGoal.type,
-        name: editGoal.name || '',
+        name: editGoal.name,
         amount: editGoal.amount,
         startAge: editGoal.startAge,
         endAge: editGoal.endAge,
@@ -96,11 +86,13 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
         yearlyDecreasePercent: editGoal.yearlyDecreasePercent,
       });
     } else if (initialType) {
-      setFormData(makeDefaultFormData(initialType));
+      const defaults = makeDefaultFormData(initialType);
+      defaults.name = generateDefaultSpendingGoalName(initialType, existingGoals);
+      setFormData(defaults);
     } else {
       setFormData(makeDefaultFormData());
     }
-  }, [visible, editGoal, initialType]);
+  }, [visible, editGoal, initialType, existingGoals]);
 
   const isMonthlyRetirement = formData.type === 'monthly_retirement';
 
@@ -144,19 +136,16 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
       footer={dialogFooter}
     >
       <Form onSubmit={handleSubmit}>
-        {formData.type === 'other' && (
-          <InputGroup>
-            <label>Goal Name</label>
-            <InputText
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              placeholder='e.g., Home repairs'
-              required
-            />
-          </InputGroup>
-        )}
+        <InputGroup>
+          <label>Name</label>
+          <InputText
+            value={formData.name}
+            onChange={(e) =>
+              setFormData({ ...formData, name: e.target.value })
+            }
+            required
+          />
+        </InputGroup>
 
         <InputGroup>
           <label>{isMonthlyRetirement ? 'Monthly Amount' : 'Annual Amount'}</label>

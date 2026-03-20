@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import EventTypeSelectionDialog from '../dialogs/EventTypeSelectionDialog';
-import IncomeEventDialog, { eventTypeLabels } from '../dialogs/IncomeEventDialog';
+import IncomeEventDialog from '../dialogs/IncomeEventDialog';
 import SocialSecurityDialog from '../dialogs/SocialSecurityDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import { spacing, colors, border, fontSize } from '../styles/theme';
@@ -162,10 +162,7 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
                   >
                     {eventTypeSymbols[event.type]}
                   </span>
-                  {event.type === 'social_security' && event.owner === 'spouse' && userData.spouseName
-                    ? `${userData.spouseName}'s Social Security`
-                    : eventTypeLabels[event.type]}
-                  {event.name && ` - ${event.name}`}
+                  {event.name}
                 </strong>
               </div>
               ${event.amount.toLocaleString()}
@@ -225,6 +222,7 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           onSave={handleSave}
           initialType={selectedType || undefined}
           editEvent={editingEvent}
+          existingEvents={events}
         />
       )}
     </Container>

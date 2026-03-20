@@ -17,7 +17,8 @@
       "startAge": 65,
       "taxStatus": "before_tax",
       "colaType": "fixed",
-      "ssHaircutEnabled": false
+      "ssHaircutEnabled": false,
+      "name": "Social Security 1"
     },
     {
       "id": "ss-spouse",
@@ -27,7 +28,8 @@
       "startAge": 67,
       "taxStatus": "before_tax",
       "colaType": "fixed",
-      "ssHaircutEnabled": false
+      "ssHaircutEnabled": false,
+      "name": "Social Security 2"
     }
   ],
   "portfolioAssumptions": {

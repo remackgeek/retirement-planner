@@ -15,7 +15,8 @@
       "startAge": 66,
       "isOneTime": true,
       "inflationAdjusted": false,
-      "amountType": "full_price"
+      "amountType": "full_price",
+      "name": "Home Purchase/Upgrade 1"
     }
   ],
   "incomeEvents": [],

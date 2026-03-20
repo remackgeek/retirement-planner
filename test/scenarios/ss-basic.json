@@ -16,7 +16,8 @@
       "startAge": 62,
       "taxStatus": "before_tax",
       "colaType": "fixed",
-      "ssHaircutEnabled": false
+      "ssHaircutEnabled": false,
+      "name": "Social Security 1"
     }
   ],
   "portfolioAssumptions": {

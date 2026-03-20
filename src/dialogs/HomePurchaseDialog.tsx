@@ -6,6 +6,7 @@ import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { spacing, colors, fontSize } from '../styles/theme';
+import { generateDefaultSpendingGoalName } from '../utils/defaultName';
 
 const Form = styled.form`
   display: flex;
@@ -50,6 +51,7 @@ interface HomePurchaseDialogProps {
   onHide: () => void;
   onSave: (goal: Omit<SpendingGoal, 'id'>) => void;
   editGoal?: SpendingGoal;
+  existingGoals?: SpendingGoal[];
 }
 
 const makeDefaultFormData = () => ({
@@ -65,6 +67,7 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
   onHide,
   onSave,
   editGoal,
+  existingGoals = [],
 }) => {
   const isEditing = !!editGoal;
   const [formData, setFormData] = useState(makeDefaultFormData());
@@ -73,22 +76,24 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
     if (!visible) return;
     if (editGoal) {
       setFormData({
-        name: editGoal.name || '',
+        name: editGoal.name,
         amount: editGoal.amount,
         startAge: editGoal.startAge,
         amountType: editGoal.amountType ?? 'full_price',
         inflationAdjusted: editGoal.inflationAdjusted,
       });
     } else {
-      setFormData(makeDefaultFormData());
+      const defaults = makeDefaultFormData();
+      defaults.name = generateDefaultSpendingGoalName('home_purchase', existingGoals);
+      setFormData(defaults);
     }
-  }, [visible, editGoal]);
+  }, [visible, editGoal, existingGoals]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({
       type: 'home_purchase',
-      name: formData.name || undefined,
+      name: formData.name,
       amount: formData.amount,
       startAge: formData.startAge,
       isOneTime: true,
@@ -128,11 +133,11 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
     >
       <Form onSubmit={handleSubmit}>
         <InputGroup>
-          <label>Description (optional)</label>
+          <label>Name</label>
           <InputText
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder='e.g., Vacation home in Florida'
+            required
           />
         </InputGroup>
 

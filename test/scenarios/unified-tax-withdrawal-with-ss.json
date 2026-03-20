@@ -13,7 +13,8 @@
       "type": "monthly_retirement",
       "amount": 48000,
       "startAge": 60,
-      "inflationAdjusted": false
+      "inflationAdjusted": false,
+      "name": "Monthly Retirement 1"
     }
   ],
   "incomeEvents": [
@@ -24,7 +25,8 @@
       "startAge": 60,
       "taxStatus": "before_tax",
       "colaType": "fixed",
-      "ssHaircutEnabled": false
+      "ssHaircutEnabled": false,
+      "name": "Social Security 1"
     },
     {
       "id": "pension-1",
@@ -32,7 +34,8 @@
       "amount": 10000,
       "startAge": 60,
       "taxStatus": "before_tax",
-      "colaType": "fixed"
+      "colaType": "fixed",
+      "name": "Pension Income 1"
     }
   ],
   "portfolioAssumptions": {

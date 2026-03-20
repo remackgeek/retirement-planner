@@ -13,7 +13,8 @@
       "type": "monthly_retirement",
       "amount": 15000,
       "startAge": 55,
-      "inflationAdjusted": false
+      "inflationAdjusted": false,
+      "name": "Monthly Retirement 1"
     }
   ],
   "incomeEvents": [

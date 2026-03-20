@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import SpendingGoalTypeSelectionDialog from '../dialogs/SpendingGoalTypeSelectionDialog';
-import SpendingGoalDialog, { goalTypeLabels } from '../dialogs/SpendingGoalDialog';
+import SpendingGoalDialog from '../dialogs/SpendingGoalDialog';
 import HomePurchaseDialog from '../dialogs/HomePurchaseDialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { spacing, colors, border, fontSize } from '../styles/theme';
@@ -152,8 +152,7 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                   >
                     <i className={goalTypeIcons[goal.type]} />
                   </span>
-                  {goalTypeLabels[goal.type]}
-                  {goal.name && ` - ${goal.name}`}
+                  {goal.name}
                 </strong>
               </div>
               {goal.type === 'home_purchase' ? (
@@ -209,6 +208,7 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
           }}
           onSave={handleSave}
           editGoal={editingGoal?.type === 'home_purchase' ? editingGoal : undefined}
+          existingGoals={goals}
         />
       ) : (
         <SpendingGoalDialog
@@ -221,6 +221,7 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
           onSave={handleSave}
           initialType={selectedType || undefined}
           editGoal={editingGoal}
+          existingGoals={goals}
         />
       )}
     </Container>

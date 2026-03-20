@@ -17,7 +17,8 @@
       "taxStatus": "before_tax",
       "colaType": "fixed",
       "ssHaircutEnabled": true,
-      "ssHaircutPercent": 30
+      "ssHaircutPercent": 30,
+      "name": "Social Security 1"
     }
   ],
   "portfolioAssumptions": {

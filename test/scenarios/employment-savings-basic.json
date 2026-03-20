@@ -16,7 +16,8 @@
       "startAge": 55,
       "endAge": 64,
       "taxStatus": "after_tax",
-      "colaType": "fixed"
+      "colaType": "fixed",
+      "name": "Employment Savings 1"
     }
   ],
   "portfolioAssumptions": {

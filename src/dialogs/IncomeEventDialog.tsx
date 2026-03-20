@@ -46,19 +46,10 @@ interface IncomeEventDialogProps {
   onSave: (event: Omit<IncomeEvent, 'id'>) => void;
   initialType?: IncomeEventType;
   editEvent?: IncomeEvent;
+  existingEvents?: IncomeEvent[];
 }
 
-export const eventTypeLabels: Record<IncomeEventType, string> = {
-  employment_savings: 'Employment Savings',
-  social_security: 'Social Security',
-  annuity_income: 'Annuity Income',
-  inheritance: 'Inheritance',
-  pension_income: 'Pension Income',
-  rental_income: 'Rental Income',
-  sale_of_property: 'Sale of Property/Downsize',
-  work_during_retirement: 'Work During Retirement',
-  other_income: 'Other Income',
-};
+import { eventTypeLabels, generateDefaultIncomeEventName } from '../utils/defaultName';
 
 const getDefaultCOLA = (
   type: IncomeEventType
@@ -97,6 +88,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
   onSave,
   initialType,
   editEvent,
+  existingEvents = [],
 }) => {
   const isEditing = !!editEvent;
   const [formData, setFormData] = useState(makeDefaultFormData());
@@ -106,7 +98,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
     if (editEvent) {
       setFormData({
         type: editEvent.type,
-        name: editEvent.name || '',
+        name: editEvent.name,
         amount: editEvent.amount,
         startAge: editEvent.startAge,
         endAge: editEvent.endAge,
@@ -115,11 +107,13 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
         colaType: editEvent.colaType,
       });
     } else if (initialType) {
-      setFormData(makeDefaultFormData(initialType));
+      const defaults = makeDefaultFormData(initialType);
+      defaults.name = generateDefaultIncomeEventName(initialType, existingEvents);
+      setFormData(defaults);
     } else {
       setFormData(makeDefaultFormData());
     }
-  }, [visible, editEvent, initialType]);
+  }, [visible, editEvent, initialType, existingEvents]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,6 +125,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
     setFormData({
       ...formData,
       type,
+      name: isEditing ? formData.name : generateDefaultIncomeEventName(type, existingEvents),
       colaType: getDefaultCOLA(type),
       taxStatus: type === 'employment_savings' ? 'after_tax' : formData.taxStatus,
     });
@@ -190,19 +185,16 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
           />
         </InputGroup>
 
-        {formData.type === 'other_income' && (
-          <InputGroup>
-            <label>Event Name</label>
-            <InputText
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              placeholder='e.g., Part-time consulting'
-              required
-            />
-          </InputGroup>
-        )}
+        <InputGroup>
+          <label>Name</label>
+          <InputText
+            value={formData.name}
+            onChange={(e) =>
+              setFormData({ ...formData, name: e.target.value })
+            }
+            required
+          />
+        </InputGroup>
 
         <InputGroup>
           <label>Annual Amount</label>

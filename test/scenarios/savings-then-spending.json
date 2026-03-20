@@ -13,7 +13,8 @@
       "type": "monthly_retirement",
       "amount": 30000,
       "startAge": 60,
-      "inflationAdjusted": false
+      "inflationAdjusted": false,
+      "name": "Monthly Retirement 1"
     }
   ],
   "incomeEvents": [
@@ -24,7 +25,8 @@
       "startAge": 50,
       "endAge": 59,
       "taxStatus": "after_tax",
-      "colaType": "fixed"
+      "colaType": "fixed",
+      "name": "Employment Savings 1"
     }
   ],
   "portfolioAssumptions": {

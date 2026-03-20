@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import type { IncomeEventType, IncomeEvent } from '../types/IncomeEvent';
 import { spacing, colors, border, fontSize } from '../styles/theme';
+import { eventTypeLabels } from '../utils/defaultName';
 
 const GridContainer = styled.div`
   display: grid;
@@ -61,17 +62,6 @@ interface EventTypeSelectionDialogProps {
   existingSSEvents: IncomeEvent[];
 }
 
-const eventTypeLabels: Record<IncomeEventType, string> = {
-  employment_savings: 'Employment Savings',
-  social_security: 'Social Security',
-  annuity_income: 'Annuity Income',
-  inheritance: 'Inheritance',
-  pension_income: 'Pension Income',
-  rental_income: 'Rental Income',
-  sale_of_property: 'Sale of Property/Downsize',
-  work_during_retirement: 'Work During Retirement',
-  other_income: 'Other Income',
-};
 
 const eventTypeSymbols: Record<IncomeEventType, string> = {
   employment_savings: 'pi pi-wallet',

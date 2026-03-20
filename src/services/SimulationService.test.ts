@@ -21,6 +21,7 @@ const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
 /** Helper to create a monthly_retirement spending goal */
 const baseSpending = (monthlyAmount: number, startAge: number = 60) => ({
   id: 'base-spending',
+  name: 'Monthly Retirement 1',
   type: 'monthly_retirement' as const,
   amount: monthlyAmount * 12,
   startAge,
@@ -32,8 +33,8 @@ describe('calculateAnnualCashFlow', () => {
     it('applies one standard deduction across multiple before_tax events', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', type: 'pension_income', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
-          { id: '2', type: 'pension_income', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '2', name: 'Pension Income 2', type: 'pension_income', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -46,7 +47,7 @@ describe('calculateAnnualCashFlow', () => {
     it('passes after_tax income through without tax', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', type: 'pension_income', amount: 10000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 10000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -70,7 +71,7 @@ describe('calculateAnnualCashFlow', () => {
     it('SS is untaxed when provisional income below threshold', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 24000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 24000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -83,8 +84,8 @@ describe('calculateAnnualCashFlow', () => {
     it('SS is partially taxed in the 50% zone', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
-          { id: '2', type: 'pension_income', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+          { id: '2', name: 'Pension Income 2', type: 'pension_income', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -98,7 +99,7 @@ describe('calculateAnnualCashFlow', () => {
     it('applies default 23% haircut from 2034', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2034, 0);
@@ -109,7 +110,7 @@ describe('calculateAnnualCashFlow', () => {
     it('applies custom haircut percentage', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: true, ssHaircutPercent: 30 },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: true, ssHaircutPercent: 30 },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2034, 0);
@@ -120,7 +121,7 @@ describe('calculateAnnualCashFlow', () => {
     it('does not apply haircut when disabled', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2034, 0);
@@ -130,7 +131,7 @@ describe('calculateAnnualCashFlow', () => {
     it('does not apply haircut before 2034', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: true },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: true },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2033, 0);
@@ -144,7 +145,7 @@ describe('calculateAnnualCashFlow', () => {
         currentAge: 60,
         referenceYear: 2026,
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false, ssAmountBasis: 'today' },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false, ssAmountBasis: 'today' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2033, 0.03);
@@ -157,7 +158,7 @@ describe('calculateAnnualCashFlow', () => {
         currentAge: 60,
         referenceYear: 2026,
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false, ssAmountBasis: 'future' },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false, ssAmountBasis: 'future' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2033, 0.03);
@@ -169,7 +170,7 @@ describe('calculateAnnualCashFlow', () => {
         currentAge: 60,
         referenceYear: 2026,
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false, ssAmountBasis: 'future' },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false, ssAmountBasis: 'future' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2035, 0.03);
@@ -181,7 +182,7 @@ describe('calculateAnnualCashFlow', () => {
         currentAge: 60,
         referenceYear: 2026,
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2033, 0.03);
@@ -221,7 +222,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [baseSpending(1000)], // 12k/yr
         incomeEvents: [
-          { id: '1', type: 'pension_income', amount: 50000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 50000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -237,7 +238,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [baseSpending(4000)], // 48k/yr net
         incomeEvents: [
-          { id: '1', type: 'pension_income', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -252,7 +253,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [baseSpending(2500)], // 30k/yr net
         incomeEvents: [
-          { id: '1', type: 'pension_income', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -265,7 +266,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [baseSpending(500)], // 6k/yr
         incomeEvents: [
-          { id: '1', type: 'pension_income', amount: 10000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 10000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -278,7 +279,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [baseSpending(2000)], // 24k/yr
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 40000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 40000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -287,7 +288,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData2 = makeUserData({
         spendingGoals: [baseSpending(4000)], // 48k/yr
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 40000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 40000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
         ],
       });
       const result2 = calculateAnnualCashFlow(userData2, 2026, 0);
@@ -299,7 +300,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [baseSpending(10000)], // 120k/yr
         incomeEvents: [
-          { id: '1', type: 'pension_income', amount: 80000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 80000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -312,9 +313,9 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [baseSpending(5000)], // 60k/yr
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
-          { id: '2', type: 'pension_income', amount: 15000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
-          { id: '3', type: 'other_income', amount: 5000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+          { id: '2', name: 'Pension Income 2', type: 'pension_income', amount: 15000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '3', name: 'Other Income 3', type: 'other_income', amount: 5000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -333,7 +334,7 @@ describe('calculateAnnualCashFlow', () => {
     it('flows through as after_tax income with no taxation', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', type: 'employment_savings', amount: 20000, startAge: 60, endAge: 65, taxStatus: 'after_tax', colaType: 'fixed' },
+          { id: '1', name: 'Employment Savings 1', type: 'employment_savings', amount: 20000, startAge: 60, endAge: 65, taxStatus: 'after_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -347,7 +348,7 @@ describe('calculateAnnualCashFlow', () => {
         currentAge: 55,
         referenceYear: 2026,
         incomeEvents: [
-          { id: '1', type: 'employment_savings', amount: 20000, startAge: 60, endAge: 65, taxStatus: 'after_tax', colaType: 'fixed' },
+          { id: '1', name: 'Employment Savings 1', type: 'employment_savings', amount: 20000, startAge: 60, endAge: 65, taxStatus: 'after_tax', colaType: 'fixed' },
         ],
       });
       // Year 2026 = age 55, event starts at age 60 = year 2031
@@ -361,7 +362,7 @@ describe('calculateAnnualCashFlow', () => {
         currentAge: 55,
         referenceYear: 2026,
         incomeEvents: [
-          { id: '1', type: 'employment_savings', amount: 20000, startAge: 55, endAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+          { id: '1', name: 'Employment Savings 1', type: 'employment_savings', amount: 20000, startAge: 55, endAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
         ],
       });
       // Year 2032 = age 61, event ends at age 60 = year 2031
@@ -376,6 +377,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [{
           id: '1',
+          name: 'Monthly Retirement 1',
           type: 'monthly_retirement' as const,
           amount: 60000,
           startAge: 60,
@@ -400,6 +402,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [{
           id: '1',
+          name: 'Monthly Retirement 1',
           type: 'monthly_retirement' as const,
           amount: 60000,
           startAge: 60,
@@ -418,6 +421,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [{
           id: '1',
+          name: 'Monthly Retirement 1',
           type: 'monthly_retirement' as const,
           amount: 60000,
           startAge: 60,
@@ -435,9 +439,9 @@ describe('calculateAnnualCashFlow', () => {
     it('totalGrossIncome equals sum of income components', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
-          { id: '2', type: 'pension_income', amount: 15000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
-          { id: '3', type: 'other_income', amount: 5000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+          { id: '2', name: 'Pension Income 2', type: 'pension_income', amount: 15000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '3', name: 'Other Income 3', type: 'other_income', amount: 5000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
@@ -450,7 +454,7 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [
           baseSpending(3000), // 36k/yr
-          { id: '1', type: 'vacation' as const, amount: 5000, startAge: 60, inflationAdjusted: false, isOneTime: true },
+          { id: '1', name: 'Vacation 1', type: 'vacation' as const, amount: 5000, startAge: 60, inflationAdjusted: false, isOneTime: true },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);

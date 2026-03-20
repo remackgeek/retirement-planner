@@ -115,9 +115,7 @@ function createIconElement(
 
   // Add tooltip
   const tooltipText = annotation.data
-    ? `${
-        annotation.data.name || (isIncome ? 'Income Event' : 'Spending Goal')
-      }\nAmount: $${(
+    ? `${annotation.data.name}\nAmount: $${(
         annotation.data.annualAmount || annotation.data.amount
       )?.toLocaleString()}`
     : '';

@@ -13,7 +13,7 @@ export interface IncomeEvent {
   id: string;
   type: IncomeEventType;
   owner?: 'self' | 'spouse';
-  name?: string; // For 'other_income' type
+  name: string;
   amount: number; // Annual amount in today's dollars
   startAge: number;
   endAge?: number; // Optional for ongoing income

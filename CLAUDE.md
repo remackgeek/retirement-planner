@@ -23,15 +23,18 @@ projections, and good tax awareness without overwhelming the user.
 - `src/dialogs/` — type-specific edit dialogs (e.g., `SocialSecurityDialog`),
   shared `IncomeEventDialog` for other types, type-selection pickers, import/export
 - `src/types/` — Scenario, UserData, IncomeEvent, SpendingGoal
+- `src/utils/defaultName.ts` — `eventTypeLabels`, `goalTypeLabels`, default name generators
 
 ## Key Concepts
 
 - **Scenario** — top-level unit holding all user config, persisted to IndexedDB
 - **Monte Carlo** — median + 10th percentile portfolio paths, success probability
 - **Income events** — 9 types (including `employment_savings` for pre-retirement savings),
+  each with a required `name` (auto-generated defaults like "Pension Income 1"),
   COLA, before/after-tax, SS 2034 haircut (configurable). All cash flow flows through
   events/goals — no special-cased fields on UserData
-- **Spending goals** — 11 categories, inflation adjustment, age-based activation.
+- **Spending goals** — 11 categories, each with a required `name` (auto-generated defaults
+  like "Vacation 1"), inflation adjustment, age-based activation.
   `monthly_retirement` goals support optional `yearlyDecreasePercent` for spending decay
 - **Tax** — aggregate income taxation; SS 50%/85% taxable fraction (IRS provisional
   income formula); standard deduction, filing status, state rates, senior/OBBB deductions

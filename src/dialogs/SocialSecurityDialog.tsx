@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
+import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import { spacing, colors, fontSize } from '../styles/theme';
+import { generateDefaultIncomeEventName } from '../utils/defaultName';
 
 const Form = styled.form`
   display: flex;
@@ -55,6 +57,7 @@ interface SocialSecurityDialogProps {
 }
 
 const makeDefaultFormData = () => ({
+  name: '',
   owner: 'self' as 'self' | 'spouse',
   amount: 0,
   startAge: 67,
@@ -89,6 +92,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
     if (!visible) return;
     if (editEvent) {
       setFormData({
+        name: editEvent.name,
         owner: editEvent.owner ?? 'self',
         amount: editEvent.amount,
         startAge: editEvent.startAge,
@@ -98,15 +102,18 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
       });
     } else {
       // Auto-select the available slot
-      const defaultOwner = isMfj && selfTaken && !spouseTaken ? 'spouse' : 'self';
-      setFormData({ ...makeDefaultFormData(), owner: defaultOwner });
+      const defaultOwner: 'self' | 'spouse' = isMfj && selfTaken && !spouseTaken ? 'spouse' : 'self';
+      const defaults = { ...makeDefaultFormData(), owner: defaultOwner };
+      defaults.name = generateDefaultIncomeEventName('social_security', existingSSEvents);
+      setFormData(defaults);
     }
-  }, [visible, editEvent, isMfj, selfTaken, spouseTaken]);
+  }, [visible, editEvent, isMfj, selfTaken, spouseTaken, existingSSEvents]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({
       type: 'social_security',
+      name: formData.name,
       owner: isMfj ? formData.owner : 'self',
       amount: formData.amount,
       startAge: formData.startAge,
@@ -155,6 +162,17 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
       footer={dialogFooter}
     >
       <Form onSubmit={handleSubmit}>
+        <InputGroup>
+          <label>Name</label>
+          <InputText
+            value={formData.name}
+            onChange={(e) =>
+              setFormData({ ...formData, name: e.target.value })
+            }
+            required
+          />
+        </InputGroup>
+
         {isMfj && (
           <InputGroup>
             <label>Benefit Owner</label>
