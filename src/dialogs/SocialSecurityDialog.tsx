@@ -245,7 +245,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
             <InputNumber
               value={formData.ssHaircutPercent}
               onValueChange={(e) =>
-                setFormData({ ...formData, ssHaircutPercent: e.value || 23 })
+                setFormData({ ...formData, ssHaircutPercent: e.value ?? 23 })
               }
               suffix='%'
               min={0}

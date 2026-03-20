@@ -248,7 +248,7 @@ function accumulateSpending(
         const yearsFromReference = year - userData.referenceYear;
         amount *= Math.pow(1 + inflationRate, yearsFromReference);
       }
-      if (goal.yearlyDecreasePercent) {
+      if (goal.yearlyDecreasePercent != null) {
         const yearsSinceStart = year - startYear;
         amount *= Math.pow(1 - goal.yearlyDecreasePercent / 100, yearsSinceStart);
       }

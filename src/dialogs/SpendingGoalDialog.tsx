@@ -99,7 +99,7 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const saveData = { ...formData };
-    if (!saveData.yearlyDecreasePercent) {
+    if (saveData.yearlyDecreasePercent === undefined) {
       delete (saveData as any).yearlyDecreasePercent;
     }
     onSave(saveData);

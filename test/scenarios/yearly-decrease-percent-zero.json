@@ -1,0 +1,32 @@
+{
+  "_description": "Monthly retirement spending with yearlyDecreasePercent explicitly set to 0 — verifies that zero is treated as 'no decay', not ignored. No growth, no inflation, no income.",
+  "_rationale": "500k savings, 60k/yr flat spending (0% yearly decrease) starting at age 60. Spending stays constant at 60k/yr. With Florida (no state tax) and federal standard deduction, effective tax is low. Portfolio depletes faster than the 5% decrease scenario because spending never decays.",
+  "_seed": 12345,
+  "name": "Yearly Decrease Percent Zero",
+  "currentAge": 60,
+  "lifeExpectancy": 80,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "monthly_retirement",
+      "amount": 60000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "yearlyDecreasePercent": 0,
+      "name": "Monthly Retirement 1"
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseName": null,
+  "spouseAge": null,
+  "state": "Florida"
+}
