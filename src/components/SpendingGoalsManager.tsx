@@ -168,7 +168,7 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                   {' '}starting at age {goal.startAge}
                   {goal.endAge && ` until age ${goal.endAge}`}
                   {goal.inflationAdjusted && ' (inflation adjusted)'}
-                  {goal.yearlyDecreasePercent && ` (-${goal.yearlyDecreasePercent}%/yr)`}
+                  {goal.yearlyDecreasePercent != null && goal.yearlyDecreasePercent > 0 && ` (-${goal.yearlyDecreasePercent}%/yr)`}
                 </>
               ) : (
                 <>
