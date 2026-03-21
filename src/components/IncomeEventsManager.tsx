@@ -210,6 +210,9 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           filingStatus={userData.filingStatus}
           spouseName={userData.spouseName}
           existingSSEvents={events.filter((e) => e.type === 'social_security')}
+          currentAge={userData.currentAge}
+          spouseAge={userData.spouseAge}
+          referenceYear={userData.referenceYear}
         />
       ) : (
         <IncomeEventDialog

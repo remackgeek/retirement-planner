@@ -25,6 +25,7 @@
       "startAge": 60,
       "taxStatus": "before_tax",
       "colaType": "fixed",
+      "ssAmountPeriod": "annual",
       "ssHaircutEnabled": false,
       "name": "Social Security 1"
     },
