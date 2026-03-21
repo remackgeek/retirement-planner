@@ -43,5 +43,5 @@
   "filingStatus": "mfj",
   "spouseName": "Alice",
   "spouseAge": 58,
-  "state": "Florida"
+  "stateTimeline": [{ "state": "Florida" }]
 }

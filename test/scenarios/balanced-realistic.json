@@ -46,5 +46,5 @@
   "filingStatus": "mfj",
   "spouseName": null,
   "spouseAge": 53,
-  "state": "Virginia"
+  "stateTimeline": [{ "state": "Virginia" }]
 }

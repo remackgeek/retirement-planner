@@ -39,5 +39,5 @@
   "filingStatus": "mfs",
   "spouseName": null,
   "spouseAge": null,
-  "state": "Florida"
+  "stateTimeline": [{ "state": "Florida" }]
 }

@@ -115,8 +115,18 @@ function calculateYearlyGrowth(
   return initialAmount * growthFactor;
 }
 
-function getStateTaxRate(userData: UserData): number {
-  return STATE_TAX_RATES[userData.state] || 0;
+function getStateTaxRate(userData: UserData, year: number): number {
+  const timeline = userData.stateTimeline;
+  let effectiveState = timeline[0].state;
+  for (let i = 1; i < timeline.length; i++) {
+    const startYear = timeline[i].startYear;
+    if (startYear != null && year >= startYear) {
+      effectiveState = timeline[i].state;
+    } else {
+      break;
+    }
+  }
+  return STATE_TAX_RATES[effectiveState] || 0;
 }
 
 
@@ -275,7 +285,7 @@ export function calculateAnnualCashFlow(
   const totalGrossIncome = ssGross + otherTaxableGross + afterTaxIncome;
   const availableCash = afterTaxIncome + ssGross + otherTaxableGross;
 
-  const stateTaxRate = getStateTaxRate(userData);
+  const stateTaxRate = getStateTaxRate(userData, year);
   const age = userData.currentAge + (year - userData.referenceYear);
 
   // Iterative solver: withdrawal is taxable income, which increases tax,

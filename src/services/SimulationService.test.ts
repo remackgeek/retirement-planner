@@ -14,7 +14,7 @@ const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
   filingStatus: 'single',
   spouseName: null,
   spouseAge: null,
-  state: 'Florida',
+  stateTimeline: [{ state: 'Florida' }],
   ...overrides,
 });
 
@@ -463,6 +463,86 @@ describe('calculateAnnualCashFlow', () => {
       );
       expect(result.baseSpendingNet).toBe(36000);
       expect(result.otherSpendingGoalsNet).toBe(5000);
+    });
+  });
+
+  describe('state timeline', () => {
+    it('single-state timeline applies state tax', () => {
+      const userData = makeUserData({
+        stateTimeline: [{ state: 'California' }],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      // CA state tax = 100000 * 0.08 = 8000
+      // Federal tax on 100000 - 16100 = 83900 taxable
+      expect(result.totalTax).toBeGreaterThan(8000); // federal + state
+      // Compare with Florida (0% state tax)
+      const flResult = calculateAnnualCashFlow(makeUserData({
+        stateTimeline: [{ state: 'Florida' }],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      }), 2026, 0);
+      expect(result.totalTax - flResult.totalTax).toBeCloseTo(8000, 0);
+    });
+
+    it('relocation changes tax rate at the correct year', () => {
+      const userData = makeUserData({
+        stateTimeline: [
+          { state: 'California' },
+          { state: 'Florida', startYear: 2030 },
+        ],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const before = calculateAnnualCashFlow(userData, 2029, 0);
+      const after = calculateAnnualCashFlow(userData, 2030, 0);
+      // Before relocation: CA 8% state tax. After: FL 0%
+      expect(before.totalTax - after.totalTax).toBeCloseTo(8000, 0);
+    });
+
+    it('multiple relocations: middle segment uses correct rate', () => {
+      const userData = makeUserData({
+        stateTimeline: [
+          { state: 'Texas' },
+          { state: 'New York', startYear: 2028 },
+          { state: 'Florida', startYear: 2030 },
+        ],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      // All years keep age < 65 to avoid senior deduction differences
+      const tx = calculateAnnualCashFlow(userData, 2027, 0);  // age 61, TX
+      const ny = calculateAnnualCashFlow(userData, 2029, 0);  // age 63, NY
+      const fl = calculateAnnualCashFlow(userData, 2030, 0);  // age 64, FL
+      // TX and FL both have 0% state tax, same federal brackets/deduction (all age < 65)
+      expect(tx.totalTax).toBe(fl.totalTax);
+      expect(ny.totalTax - tx.totalTax).toBeCloseTo(5500, 0); // 100k * 5.5%
+    });
+
+    it('relocation in reference year takes effect immediately', () => {
+      const userData = makeUserData({
+        stateTimeline: [
+          { state: 'California' },
+          { state: 'Florida', startYear: 2026 },
+        ],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const flOnly = makeUserData({
+        stateTimeline: [{ state: 'Florida' }],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      const flResult = calculateAnnualCashFlow(flOnly, 2026, 0);
+      expect(result.totalTax).toBe(flResult.totalTax);
     });
   });
 });

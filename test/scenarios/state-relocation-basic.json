@@ -1,0 +1,35 @@
+{
+  "_description": "State relocation: CA (8%) for 2026-2029, then FL (0%) from 2030. Tests that state tax rate changes at the relocation year.",
+  "_rationale": "Single filer, $100k pension, 0% growth/inflation/stddev. Gross $100k, std deduction $16,100, taxable $83,900. Federal tax $13,170 (10% on $12,400 + 12% on $38,000 + 22% on $33,500). CA state tax = $100k × 8% = $8,000. Net with CA = $78,830/yr. Net with FL = $86,830/yr. Portfolio grows by net income each year.",
+  "_seed": 12345,
+  "name": "State Relocation Basic",
+  "currentAge": 60,
+  "lifeExpectancy": 64,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "amount": 100000,
+      "startAge": 60,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "name": "Pension Income 1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseName": null,
+  "spouseAge": null,
+  "stateTimeline": [
+    { "state": "California" },
+    { "state": "Florida", "startYear": 2030 }
+  ]
+}

@@ -37,7 +37,11 @@ projections, and good tax awareness without overwhelming the user.
   like "Vacation 1"), inflation adjustment, age-based activation.
   `monthly_retirement` goals support optional `yearlyDecreasePercent` for spending decay
 - **Tax** — aggregate income taxation; SS 50%/85% taxable fraction (IRS provisional
-  income formula); standard deduction, filing status, state rates, senior/OBBB deductions
+  income formula); standard deduction, filing status, state rates with optional
+  relocation timeline, senior/OBBB deductions
+- **State timeline** — ordered list of `{ state, startYear? }` on `UserData`. First entry
+  is current state (no startYear); subsequent entries are future relocations. Simulation
+  resolves effective state per year via `getStateTaxRate(userData, year)`
 
 ## Conventions
 
@@ -125,6 +129,8 @@ The app should be **modular and extensible**. Avoid hardcoded assumptions.
 - Tax: bracket updates as legislation changes; complex mechanics (RMDs, Roth
   conversions, withdrawal ordering) may be added later but are not current goals
 - Income/spending: new types without UI refactoring
+- State timeline: "Other" option with custom name + tax rate for international
+  retirement (Mexico, Portugal, etc.)
 
 ## Testing
 

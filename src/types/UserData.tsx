@@ -4,6 +4,11 @@ import type {
   PortfolioAssumptions,
 } from './IncomeEvent';
 
+export interface StateResidency {
+  state: string;
+  startYear?: number; // omitted for first entry (= current state)
+}
+
 export interface UserData {
   currentAge: number;
   lifeExpectancy: number;
@@ -17,5 +22,5 @@ export interface UserData {
   filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh';
   spouseName: string | null;
   spouseAge: number | null;
-  state: string; // State for tax calculation
+  stateTimeline: StateResidency[];
 }

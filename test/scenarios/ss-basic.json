@@ -30,5 +30,5 @@
   "filingStatus": "single",
   "spouseName": null,
   "spouseAge": null,
-  "state": "Florida"
+  "stateTimeline": [{ "state": "Florida" }]
 }

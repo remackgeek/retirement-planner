@@ -1,0 +1,36 @@
+{
+  "_description": "Multiple state relocations: TX (0%) → NY (5.5%) in 2028 → FL (0%) in 2030. Tests three-segment timeline with correct rates in each.",
+  "_rationale": "Single filer, $100k pension, 0% growth/inflation/stddev. Federal tax = $13,170 all years. TX/FL state tax = $0 → net $86,830. NY state tax = $5,500 → net $81,330. Portfolio accumulates net income each year.",
+  "_seed": 12345,
+  "name": "State Relocation Multiple",
+  "currentAge": 60,
+  "lifeExpectancy": 64,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "amount": 100000,
+      "startAge": 60,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "name": "Pension Income 1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "riskLevel": "custom",
+    "expectedReturn": 0,
+    "standardDeviation": 0
+  },
+  "inflationRate": 0,
+  "filingStatus": "single",
+  "spouseName": null,
+  "spouseAge": null,
+  "stateTimeline": [
+    { "state": "Texas" },
+    { "state": "New York", "startYear": 2028 },
+    { "state": "Florida", "startYear": 2030 }
+  ]
+}
