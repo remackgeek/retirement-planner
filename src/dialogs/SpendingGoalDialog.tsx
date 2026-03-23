@@ -5,6 +5,7 @@ import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { Checkbox } from 'primereact/checkbox';
+import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { spacing } from '../styles/theme';
 
@@ -33,6 +34,13 @@ const FieldRow = styled.div`
   gap: ${spacing.md};
 `;
 
+const AmountRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 9rem;
+  gap: ${spacing.sm};
+  align-items: start;
+`;
+
 const CheckboxGroup = styled.div`
   display: flex;
   align-items: center;
@@ -50,10 +58,16 @@ interface SpendingGoalDialogProps {
 
 import { goalTypeLabels, generateDefaultSpendingGoalName } from '../utils/defaultName';
 
+const periodOptions = [
+  { label: 'Monthly', value: 'monthly' as const },
+  { label: 'Annual', value: 'annual' as const },
+];
+
 const makeDefaultFormData = (type: SpendingGoal['type'] = 'charity') => ({
   type,
   name: '',
-  amount: 0,
+  displayAmount: 0,
+  amountPeriod: (type === 'living_expenses' ? 'monthly' : 'annual') as 'monthly' | 'annual',
   startAge: 65,
   endAge: undefined as number | undefined,
   isOneTime: false,
@@ -75,10 +89,13 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
   useEffect(() => {
     if (!visible) return;
     if (editGoal) {
+      const period = editGoal.amountPeriod ?? (editGoal.type === 'living_expenses' ? 'monthly' : 'annual');
+      const displayAmount = period === 'monthly' ? editGoal.amount / 12 : editGoal.amount;
       setFormData({
         type: editGoal.type,
         name: editGoal.name,
-        amount: editGoal.amount,
+        displayAmount,
+        amountPeriod: period,
         startAge: editGoal.startAge,
         endAge: editGoal.endAge,
         isOneTime: editGoal.isOneTime || false,
@@ -94,13 +111,32 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
     }
   }, [visible, editGoal, initialType, existingGoals]);
 
-  const isMonthlyRetirement = formData.type === 'monthly_retirement';
+  const isLivingExpenses = formData.type === 'living_expenses';
+
+  const handlePeriodChange = (newPeriod: 'monthly' | 'annual') => {
+    if (newPeriod === formData.amountPeriod) return;
+    const converted = newPeriod === 'monthly'
+      ? formData.displayAmount / 12
+      : formData.displayAmount * 12;
+    setFormData({
+      ...formData,
+      amountPeriod: newPeriod,
+      displayAmount: Math.round(converted * 100) / 100,
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const saveData = { ...formData };
+    const amount = formData.amountPeriod === 'monthly'
+      ? formData.displayAmount * 12
+      : formData.displayAmount;
+    const saveData: any = { ...formData, amount };
+    if (!isLivingExpenses) {
+      delete saveData.amountPeriod;
+    }
+    delete saveData.displayAmount;
     if (saveData.yearlyDecreasePercent === undefined) {
-      delete (saveData as any).yearlyDecreasePercent;
+      delete saveData.yearlyDecreasePercent;
     }
     onSave(saveData);
     onHide();
@@ -148,22 +184,38 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
         </InputGroup>
 
         <InputGroup>
-          <label>{isMonthlyRetirement ? 'Monthly Amount' : 'Annual Amount'}</label>
-          <InputNumber
-            value={isMonthlyRetirement ? formData.amount / 12 : formData.amount}
-            onValueChange={(e) =>
-              setFormData({
-                ...formData,
-                amount: isMonthlyRetirement ? (e.value || 0) * 12 : (e.value || 0),
-              })
-            }
-            mode='currency'
-            currency='USD'
-            required
-          />
+          <label>{isLivingExpenses ? 'Amount' : 'Annual Amount'}</label>
+          {isLivingExpenses ? (
+            <AmountRow>
+              <InputNumber
+                value={formData.displayAmount}
+                onValueChange={(e) =>
+                  setFormData({ ...formData, displayAmount: e.value || 0 })
+                }
+                mode='currency'
+                currency='USD'
+                required
+              />
+              <Dropdown
+                value={formData.amountPeriod}
+                options={periodOptions}
+                onChange={(e) => handlePeriodChange(e.value)}
+              />
+            </AmountRow>
+          ) : (
+            <InputNumber
+              value={formData.displayAmount}
+              onValueChange={(e) =>
+                setFormData({ ...formData, displayAmount: e.value || 0 })
+              }
+              mode='currency'
+              currency='USD'
+              required
+            />
+          )}
         </InputGroup>
 
-        {isMonthlyRetirement && (
+        {isLivingExpenses && (
           <InputGroup>
             <label>Yearly Spending Decrease (%)</label>
             <InputNumber

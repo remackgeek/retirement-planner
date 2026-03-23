@@ -64,7 +64,7 @@ const DeleteButton = styled(Button)`
 `;
 
 const goalTypeIcons: Record<SpendingGoal['type'], string> = {
-  monthly_retirement: 'pi pi-dollar',
+  living_expenses: 'pi pi-dollar',
   charity: 'pi pi-heart',
   dependent_support: 'pi pi-users',
   healthcare: 'pi pi-heart-fill',
@@ -162,9 +162,11 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                   at age {goal.startAge}
                   {goal.inflationAdjusted && ' (today\'s dollars)'}
                 </>
-              ) : goal.type === 'monthly_retirement' ? (
+              ) : goal.type === 'living_expenses' ? (
                 <>
-                  ${Math.round(goal.amount / 12).toLocaleString()}/mo
+                  {(goal.amountPeriod ?? 'monthly') === 'monthly'
+                    ? `$${Math.round(goal.amount / 12).toLocaleString()}/mo`
+                    : `$${goal.amount.toLocaleString()}/yr`}
                   {' '}starting at age {goal.startAge}
                   {goal.endAge && ` until age ${goal.endAge}`}
                   {goal.inflationAdjusted && ' (inflation adjusted)'}

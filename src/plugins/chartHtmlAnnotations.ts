@@ -37,7 +37,7 @@ const eventTypeIcons: Record<string, string> = {
   other_income: 'pi pi-ellipsis-h',
 
   // Spending goals
-  monthly_retirement: 'pi pi-dollar',
+  living_expenses: 'pi pi-dollar',
   charity: 'pi pi-heart',
   dependent_support: 'pi pi-users',
   healthcare: 'pi pi-heart-fill',

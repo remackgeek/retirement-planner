@@ -262,7 +262,7 @@ function accumulateSpending(
         const yearsSinceStart = year - startYear;
         amount *= Math.pow(1 - goal.yearlyDecreasePercent / 100, yearsSinceStart);
       }
-      if (goal.type === 'monthly_retirement') {
+      if (goal.type === 'living_expenses') {
         baseSpendingNet += amount;
       } else {
         otherSpendingGoalsNet += amount;

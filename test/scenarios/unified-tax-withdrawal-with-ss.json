@@ -10,11 +10,11 @@
   "spendingGoals": [
     {
       "id": "base-spending-1",
-      "type": "monthly_retirement",
+      "type": "living_expenses",
       "amount": 48000,
       "startAge": 60,
       "inflationAdjusted": false,
-      "name": "Monthly Retirement 1"
+      "name": "Living Expenses 1"
     }
   ],
   "incomeEvents": [
@@ -25,7 +25,7 @@
       "startAge": 60,
       "taxStatus": "before_tax",
       "colaType": "fixed",
-      "ssAmountPeriod": "annual",
+      "amountPeriod": "annual",
       "ssHaircutEnabled": false,
       "name": "Social Security 1"
     },

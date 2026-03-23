@@ -23,7 +23,7 @@ export interface IncomeEvent {
   ssHaircutEnabled?: boolean; // SS only — apply trust fund reduction from 2034
   ssHaircutPercent?: number; // SS only — reduction percentage (default 23)
   ssAmountBasis?: 'today' | 'future'; // SS only — today's dollars vs already-inflated (default 'today')
-  ssAmountPeriod?: 'monthly' | 'annual'; // SS only — UI hint for re-editing (default 'annual')
+  amountPeriod?: 'monthly' | 'annual'; // UI hint for input/display period (default 'annual')
 }
 
 export type PortfolioType = 'conservative' | 'balanced' | 'aggressive';

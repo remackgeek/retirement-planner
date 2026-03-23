@@ -61,7 +61,7 @@ interface SpendingGoalTypeSelectionDialogProps {
 
 
 const goalTypeIcons: Record<SpendingGoal['type'], string> = {
-  monthly_retirement: 'pi pi-dollar',
+  living_expenses: 'pi pi-dollar',
   charity: 'pi pi-heart',
   dependent_support: 'pi pi-users',
   healthcare: 'pi pi-heart-fill',

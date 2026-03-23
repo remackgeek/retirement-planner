@@ -1,7 +1,7 @@
 export interface SpendingGoal {
   id: string;
   type:
-    | 'monthly_retirement'
+    | 'living_expenses'
     | 'charity'
     | 'dependent_support'
     | 'healthcare'
@@ -19,5 +19,6 @@ export interface SpendingGoal {
   isOneTime?: boolean; // If true, spending occurs only in the start year
   inflationAdjusted: boolean;
   amountType?: 'full_price' | 'down_payment'; // home_purchase only
-  yearlyDecreasePercent?: number; // Optional percentage decrease after inflation (monthly_retirement)
+  amountPeriod?: 'monthly' | 'annual'; // UI hint for input/display period (default 'annual')
+  yearlyDecreasePercent?: number; // Optional percentage decrease after inflation (living_expenses)
 }

@@ -75,14 +75,14 @@ describe('monthly/annual conversion logic', () => {
   });
 
   it('re-edit restores monthly display amount from stored annual', () => {
-    // User saved $2000/month → stored as $24000 annual with ssAmountPeriod: 'monthly'
+    // User saved $2000/month → stored as $24000 annual with amountPeriod: 'monthly'
     const storedAmount = 24000;
     const storedPeriod = 'monthly';
     const displayAmount = storedPeriod === 'monthly' ? storedAmount / 12 : storedAmount;
     expect(displayAmount).toBe(2000);
   });
 
-  it('re-edit shows annual amount when ssAmountPeriod is annual', () => {
+  it('re-edit shows annual amount when amountPeriod is annual', () => {
     const storedAmount = 30000;
     // Annual period means display amount equals stored amount (no division)
     expect(storedAmount).toBe(30000);

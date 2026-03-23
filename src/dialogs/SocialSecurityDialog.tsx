@@ -82,7 +82,7 @@ const makeDefaultFormData = () => ({
   name: '',
   owner: 'self' as 'self' | 'spouse',
   displayAmount: 0,
-  ssAmountPeriod: 'monthly' as 'monthly' | 'annual',
+  amountPeriod: 'monthly' as 'monthly' | 'annual',
   startAge: 67,
   ssAmountBasis: 'today' as 'today' | 'future',
   ssHaircutEnabled: true,
@@ -121,13 +121,13 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
   useEffect(() => {
     if (!visible) return;
     if (editEvent) {
-      const period = editEvent.ssAmountPeriod ?? 'annual';
+      const period = editEvent.amountPeriod ?? 'annual';
       const displayAmount = period === 'monthly' ? editEvent.amount / 12 : editEvent.amount;
       setFormData({
         name: editEvent.name,
         owner: editEvent.owner ?? 'self',
         displayAmount,
-        ssAmountPeriod: period,
+        amountPeriod: period,
         startAge: editEvent.startAge,
         ssAmountBasis: editEvent.ssAmountBasis ?? 'today',
         ssHaircutEnabled: editEvent.ssHaircutEnabled !== false,
@@ -154,20 +154,20 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
   };
 
   const handlePeriodChange = (newPeriod: 'monthly' | 'annual') => {
-    if (newPeriod === formData.ssAmountPeriod) return;
+    if (newPeriod === formData.amountPeriod) return;
     const converted = newPeriod === 'monthly'
       ? formData.displayAmount / 12
       : formData.displayAmount * 12;
     setFormData({
       ...formData,
-      ssAmountPeriod: newPeriod,
+      amountPeriod: newPeriod,
       displayAmount: Math.round(converted * 100) / 100,
     });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const annualAmount = formData.ssAmountPeriod === 'monthly'
+    const annualAmount = formData.amountPeriod === 'monthly'
       ? formData.displayAmount * 12
       : formData.displayAmount;
     onSave({
@@ -181,7 +181,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
       ssAmountBasis: formData.ssAmountBasis,
       ssHaircutEnabled: formData.ssHaircutEnabled,
       ssHaircutPercent: formData.ssHaircutPercent,
-      ssAmountPeriod: formData.ssAmountPeriod,
+      amountPeriod: formData.amountPeriod,
     });
     onHide();
   };
@@ -262,7 +262,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
               required
             />
             <Dropdown
-              value={formData.ssAmountPeriod}
+              value={formData.amountPeriod}
               options={periodOptions}
               onChange={(e) => handlePeriodChange(e.value)}
             />

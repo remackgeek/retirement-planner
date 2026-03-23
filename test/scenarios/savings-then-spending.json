@@ -1,5 +1,5 @@
 {
-  "_description": "Accumulation then drawdown — employment_savings pre-retirement, monthly_retirement spending post-retirement. No growth, no tax, no inflation. Tests the savings→spending transition.",
+  "_description": "Accumulation then drawdown — employment_savings pre-retirement, living_expenses spending post-retirement. No growth, no tax, no inflation. Tests the savings→spending transition.",
   "_rationale": "200k initial, 40k/yr savings ages 50–59 (10 years), then 30k/yr spending ages 60–80. Savings phase: 200k + 40k*10 = 600k at age 60. Drawdown phase: 600k - 30k*n. Runs out at 600k/30k = 20 years after 60 = age 80. Life expectancy 85, so fails at age 80. 0% success.",
   "_seed": 12345,
   "name": "Savings Then Spending",
@@ -10,11 +10,11 @@
   "spendingGoals": [
     {
       "id": "base-spending-1",
-      "type": "monthly_retirement",
+      "type": "living_expenses",
       "amount": 30000,
       "startAge": 60,
       "inflationAdjusted": false,
-      "name": "Monthly Retirement 1"
+      "name": "Living Expenses 1"
     }
   ],
   "incomeEvents": [

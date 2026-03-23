@@ -18,11 +18,11 @@ const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
   ...overrides,
 });
 
-/** Helper to create a monthly_retirement spending goal */
+/** Helper to create a living_expenses spending goal */
 const baseSpending = (monthlyAmount: number, startAge: number = 60) => ({
   id: 'base-spending',
-  name: 'Monthly Retirement 1',
-  type: 'monthly_retirement' as const,
+  name: 'Living Expenses 1',
+  type: 'living_expenses' as const,
   amount: monthlyAmount * 12,
   startAge,
   inflationAdjusted: false,
@@ -373,12 +373,12 @@ describe('calculateAnnualCashFlow', () => {
   });
 
   describe('yearlyDecreasePercent on spending goals', () => {
-    it('applies compound decay to monthly_retirement spending', () => {
+    it('applies compound decay to living_expenses spending', () => {
       const userData = makeUserData({
         spendingGoals: [{
           id: '1',
-          name: 'Monthly Retirement 1',
-          type: 'monthly_retirement' as const,
+          name: 'Living Expenses 1',
+          type: 'living_expenses' as const,
           amount: 60000,
           startAge: 60,
           inflationAdjusted: false,
@@ -402,8 +402,8 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [{
           id: '1',
-          name: 'Monthly Retirement 1',
-          type: 'monthly_retirement' as const,
+          name: 'Living Expenses 1',
+          type: 'living_expenses' as const,
           amount: 60000,
           startAge: 60,
           inflationAdjusted: true,
@@ -421,8 +421,8 @@ describe('calculateAnnualCashFlow', () => {
       const userData = makeUserData({
         spendingGoals: [{
           id: '1',
-          name: 'Monthly Retirement 1',
-          type: 'monthly_retirement' as const,
+          name: 'Living Expenses 1',
+          type: 'living_expenses' as const,
           amount: 60000,
           startAge: 60,
           inflationAdjusted: false,

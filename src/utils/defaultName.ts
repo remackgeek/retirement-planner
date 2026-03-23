@@ -14,7 +14,7 @@ export const eventTypeLabels: Record<IncomeEventType, string> = {
 };
 
 export const goalTypeLabels: Record<SpendingGoal['type'], string> = {
-  monthly_retirement: 'Monthly Retirement',
+  living_expenses: 'Living Expenses',
   charity: 'Charity/Gift',
   dependent_support: 'Dependent Support',
   healthcare: 'Healthcare',

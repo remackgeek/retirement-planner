@@ -10,12 +10,12 @@
   "spendingGoals": [
     {
       "id": "base-spending-1",
-      "type": "monthly_retirement",
+      "type": "living_expenses",
       "amount": 60000,
       "startAge": 60,
       "inflationAdjusted": false,
       "yearlyDecreasePercent": 0,
-      "name": "Monthly Retirement 1"
+      "name": "Living Expenses 1"
     }
   ],
   "incomeEvents": [],

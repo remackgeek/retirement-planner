@@ -35,7 +35,7 @@ projections, and good tax awareness without overwhelming the user.
   events/goals — no special-cased fields on UserData
 - **Spending goals** — 11 categories, each with a required `name` (auto-generated defaults
   like "Vacation 1"), inflation adjustment, age-based activation.
-  `monthly_retirement` goals support optional `yearlyDecreasePercent` for spending decay
+  `living_expenses` goals support optional `yearlyDecreasePercent` for spending decay
 - **Tax** — aggregate income taxation; SS 50%/85% taxable fraction (IRS provisional
   income formula); standard deduction, filing status, state rates with optional
   relocation timeline, senior/OBBB deductions
@@ -122,6 +122,9 @@ The app should be **modular and extensible**. Avoid hardcoded assumptions.
 
 - Side-by-side scenario comparison (visual, not just switching)
 - PDF export of scenario summaries
+- Monthly/annual input toggle for remaining spending goal and income event dialogs
+  (the `amountPeriod` field is already on both `SpendingGoal` and `IncomeEvent` types;
+  living expenses and Social Security dialogs already have the toggle)
 
 ### Other extensibility
 
