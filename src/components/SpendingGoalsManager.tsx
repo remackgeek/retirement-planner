@@ -79,6 +79,7 @@ const goalTypeIcons: Record<SpendingGoal['type'], string> = {
 
 interface SpendingGoalsManagerProps {
   goals: SpendingGoal[];
+  userData: any;
   onAdd: (goal: Omit<SpendingGoal, 'id'>) => void;
   onUpdate: (id: string, goal: Partial<SpendingGoal>) => void;
   onDelete: (id: string) => void;
@@ -86,6 +87,7 @@ interface SpendingGoalsManagerProps {
 
 export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
   goals,
+  userData,
   onAdd,
   onUpdate,
   onDelete,
@@ -211,6 +213,8 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
           onSave={handleSave}
           editGoal={editingGoal?.type === 'home_purchase' ? editingGoal : undefined}
           existingGoals={goals}
+          currentAge={userData.currentAge}
+          referenceYear={userData.referenceYear}
         />
       ) : (
         <SpendingGoalDialog
@@ -224,6 +228,8 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
           initialType={selectedType || undefined}
           editGoal={editingGoal}
           existingGoals={goals}
+          currentAge={userData.currentAge}
+          referenceYear={userData.referenceYear}
         />
       )}
     </Container>

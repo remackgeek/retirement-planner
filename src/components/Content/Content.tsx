@@ -136,6 +136,7 @@ const Content: React.FC = () => {
             <ManagerSection>
               <SpendingGoalsManager
                 goals={activeScenario.spendingGoals}
+                userData={activeScenario}
                 onAdd={handleAddSpendingGoal}
                 onUpdate={handleUpdateSpendingGoal}
                 onDelete={handleDeleteSpendingGoal}

@@ -226,6 +226,8 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           initialType={selectedType || undefined}
           editEvent={editingEvent}
           existingEvents={events}
+          currentAge={userData.currentAge}
+          referenceYear={userData.referenceYear}
         />
       )}
     </Container>

@@ -8,6 +8,7 @@ import { Checkbox } from 'primereact/checkbox';
 import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { spacing } from '../styles/theme';
+import { buildAgeOptions, buildEndAgeOptions, spendingGoalAgeRanges } from '../utils/ageOptions';
 
 const Form = styled.form`
   display: flex;
@@ -54,6 +55,8 @@ interface SpendingGoalDialogProps {
   initialType?: SpendingGoal['type'];
   editGoal?: SpendingGoal;
   existingGoals?: SpendingGoal[];
+  currentAge: number;
+  referenceYear: number;
 }
 
 import { goalTypeLabels, generateDefaultSpendingGoalName } from '../utils/defaultName';
@@ -82,9 +85,17 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
   initialType,
   editGoal,
   existingGoals = [],
+  currentAge,
+  referenceYear,
 }) => {
   const isEditing = !!editGoal;
   const [formData, setFormData] = useState(makeDefaultFormData());
+
+  const range = spendingGoalAgeRanges[formData.type];
+  const effectiveMin = Math.min(range.min, formData.startAge);
+  const effectiveEndMin = formData.endAge ? Math.min(range.min, formData.endAge) : range.min;
+  const startAgeOptions = buildAgeOptions(referenceYear, currentAge, effectiveMin, range.max);
+  const endAgeOptions = buildEndAgeOptions(referenceYear, currentAge, effectiveEndMin, range.max);
 
   useEffect(() => {
     if (!visible) return;
@@ -238,21 +249,22 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
         <FieldRow>
           <InputGroup>
             <label>Start Age</label>
-            <InputNumber
+            <Dropdown
               value={formData.startAge}
-              onValueChange={(e) =>
-                setFormData({ ...formData, startAge: e.value || 65 })
+              options={startAgeOptions}
+              onChange={(e) =>
+                setFormData({ ...formData, startAge: e.value })
               }
-              required
             />
           </InputGroup>
 
           <InputGroup>
             <label>End Age (optional)</label>
-            <InputNumber
-              value={formData.endAge ?? null}
-              onValueChange={(e) =>
-                setFormData({ ...formData, endAge: e.value ?? undefined })
+            <Dropdown
+              value={formData.endAge ?? 0}
+              options={endAgeOptions}
+              onChange={(e) =>
+                setFormData({ ...formData, endAge: e.value === 0 ? undefined : e.value })
               }
             />
           </InputGroup>

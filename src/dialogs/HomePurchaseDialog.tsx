@@ -4,8 +4,10 @@ import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
+import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { spacing, colors, fontSize } from '../styles/theme';
+import { buildAgeOptions, spendingGoalAgeRanges } from '../utils/ageOptions';
 import { generateDefaultSpendingGoalName } from '../utils/defaultName';
 
 const Form = styled.form`
@@ -15,7 +17,8 @@ const Form = styled.form`
   padding: ${spacing.sm} 0;
 
   .p-inputtext,
-  .p-inputnumber {
+  .p-inputnumber,
+  .p-dropdown {
     width: 100%;
   }
 `;
@@ -52,6 +55,8 @@ interface HomePurchaseDialogProps {
   onSave: (goal: Omit<SpendingGoal, 'id'>) => void;
   editGoal?: SpendingGoal;
   existingGoals?: SpendingGoal[];
+  currentAge: number;
+  referenceYear: number;
 }
 
 const makeDefaultFormData = () => ({
@@ -68,6 +73,8 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
   onSave,
   editGoal,
   existingGoals = [],
+  currentAge,
+  referenceYear,
 }) => {
   const isEditing = !!editGoal;
   const [formData, setFormData] = useState(makeDefaultFormData());
@@ -143,12 +150,17 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
 
         <InputGroup>
           <label>Purchase Age</label>
-          <InputNumber
+          <Dropdown
             value={formData.startAge}
-            onValueChange={(e) =>
-              setFormData({ ...formData, startAge: e.value || 65 })
+            options={buildAgeOptions(
+              referenceYear,
+              currentAge,
+              Math.min(spendingGoalAgeRanges.home_purchase.min, formData.startAge),
+              spendingGoalAgeRanges.home_purchase.max,
+            )}
+            onChange={(e) =>
+              setFormData({ ...formData, startAge: e.value })
             }
-            required
           />
         </InputGroup>
 
