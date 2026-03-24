@@ -133,8 +133,8 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
 
       {[...events]
         .sort((a, b) => {
-          const aAge = (a.owner === 'spouse' && userData.spouseAge) ? userData.spouseAge : userData.currentAge;
-          const bAge = (b.owner === 'spouse' && userData.spouseAge) ? userData.spouseAge : userData.currentAge;
+          const aAge = (a.owner === 'spouse' && userData.spouseAge !== null) ? userData.spouseAge : userData.currentAge;
+          const bAge = (b.owner === 'spouse' && userData.spouseAge !== null) ? userData.spouseAge : userData.currentAge;
           const aStartYear = userData.referenceYear + (a.startAge - aAge);
           const bStartYear = userData.referenceYear + (b.startAge - bAge);
           return aStartYear - bStartYear;

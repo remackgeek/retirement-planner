@@ -52,6 +52,11 @@ const HelpText = styled.small`
   font-size: ${fontSize.xs};
 `;
 
+const WarningText = styled.small`
+  color: ${colors.danger};
+  font-size: ${fontSize.xs};
+`;
+
 interface SocialSecurityDialogProps {
   visible: boolean;
   onHide: () => void;
@@ -63,6 +68,27 @@ interface SocialSecurityDialogProps {
   currentAge: number;
   spouseAge: number | null;
   referenceYear: number;
+}
+
+/** Resolve the effective age for an SS event owner */
+export function resolveOwnerAge(
+  owner: 'self' | 'spouse',
+  currentAge: number,
+  spouseAge: number | null,
+): number {
+  return owner === 'spouse' && spouseAge !== null ? spouseAge : currentAge;
+}
+
+/** Build start-age dropdown options (62–120) with year labels */
+export function buildStartAgeOptions(
+  referenceYear: number,
+  ownerAge: number,
+): { label: string; value: number }[] {
+  return Array.from({ length: 120 - 62 + 1 }, (_, i) => {
+    const age = 62 + i;
+    const year = referenceYear + (age - ownerAge);
+    return { label: `${age} (${year})`, value: age };
+  });
 }
 
 /** Check if a name matches an auto-generated SS pattern */
@@ -115,8 +141,11 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
   const spouseTaken = takenOwners.includes('spouse');
 
   // Calculate the start year based on owner's age
-  const ownerAge = formData.owner === 'spouse' && spouseAge ? spouseAge : currentAge;
-  const startYear = referenceYear + (formData.startAge - ownerAge);
+  const ownerAge = resolveOwnerAge(formData.owner, currentAge, spouseAge);
+  const missingSpouseAge = formData.owner === 'spouse' && spouseAge === null;
+
+  // Build start age dropdown options showing age + year
+  const startAgeOptions = buildStartAgeOptions(referenceYear, ownerAge);
 
   useEffect(() => {
     if (!visible) return;
@@ -213,6 +242,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
         label={isEditing ? 'Save Changes' : 'Add Event'}
         icon='pi pi-check'
         onClick={handleSubmit}
+        disabled={missingSpouseAge}
         type='submit'
       />
     </div>
@@ -277,15 +307,14 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
         <FieldRow>
           <InputGroup>
             <label>Start Age</label>
-            <InputNumber
+            <Dropdown
               value={formData.startAge}
-              onValueChange={(e) =>
-                setFormData({ ...formData, startAge: e.value || 67 })
-              }
-              min={62}
-              required
+              options={startAgeOptions}
+              onChange={(e) => setFormData({ ...formData, startAge: e.value })}
             />
-            <HelpText>starts {startYear}</HelpText>
+            {missingSpouseAge && (
+              <WarningText>Set spouse age in scenario to show correct years</WarningText>
+            )}
           </InputGroup>
 
           <InputGroup>

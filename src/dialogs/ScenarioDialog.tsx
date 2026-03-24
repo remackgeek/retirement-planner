@@ -186,13 +186,16 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     }
   };
 
+  const isMfj = tempData.filingStatus === 'mfj';
+
   const isValid =
     tempData.name.trim().length > 0 &&
     tempData.currentAge >= 18 &&
     tempData.currentAge <= 100 &&
     tempData.lifeExpectancy > tempData.currentAge &&
     tempData.lifeExpectancy <= 120 &&
-    tempData.currentSavings >= 0;
+    tempData.currentSavings >= 0 &&
+    (!isMfj || (tempData.spouseAge !== null && tempData.spouseAge >= 18 && tempData.spouseAge <= 100));
 
   const handleSave = () => {
     if (!isValid) return;
@@ -203,8 +206,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     onSave(scenarioData);
     onHide();
   };
-
-  const isMfj = tempData.filingStatus === 'mfj';
 
   const yearOptions = Array.from({ length: 41 }, (_, i) => {
     const y = tempData.referenceYear + i;
@@ -289,13 +290,14 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
                 />
               </FieldGroup>
               <FieldGroup>
-                <label>Spouse Age</label>
+                <label>Spouse Age *</label>
                 <InputNumber
                   value={tempData.spouseAge ?? undefined}
                   onValueChange={(e) => handleChange('spouseAge', e.value ?? null)}
                   mode='decimal'
                   min={18}
-                  max={120}
+                  max={100}
+                  className={tempData.spouseAge === null ? 'p-invalid' : ''}
                 />
               </FieldGroup>
             </>
