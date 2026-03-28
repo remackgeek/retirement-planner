@@ -143,7 +143,6 @@ const makeDefaults = (): Scenario => ({
   referenceYear: new Date().getFullYear(),
   inflationRate: 0.035,
   filingStatus: 'single' as const,
-  spouseName: null,
   spouseAge: null,
   stateTimeline: [{ state: 'California' }],
 });
@@ -177,7 +176,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
       setTempData({
         ...tempData,
         filingStatus: value,
-        spouseName: null,
         spouseAge: null,
         incomeEvents: tempData.incomeEvents.filter((e) => e.owner !== 'spouse'),
       });
@@ -199,10 +197,9 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
 
   const handleSave = () => {
     if (!isValid) return;
-    const spouseName = tempData.spouseName?.trim() || null;
     const scenarioData = scenario
-      ? { ...tempData, id: scenario.id, spouseName }
-      : { ...tempData, id: crypto.randomUUID(), spouseName };
+      ? { ...tempData, id: scenario.id }
+      : { ...tempData, id: crypto.randomUUID() };
     onSave(scenarioData);
     onHide();
   };
@@ -282,13 +279,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
 
           {isMfj && (
             <>
-              <FieldGroup>
-                <label>Spouse Name</label>
-                <InputText
-                  value={tempData.spouseName || ''}
-                  onChange={(e) => handleChange('spouseName', e.target.value || null)}
-                />
-              </FieldGroup>
               <FieldGroup>
                 <label>Spouse Age *</label>
                 <InputNumber

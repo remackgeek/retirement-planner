@@ -20,7 +20,6 @@ export interface UserData {
   inflationRate: number;
   // Tax configuration
   filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh';
-  spouseName: string | null;
   spouseAge: number | null;
   stateTimeline: StateResidency[];
 }

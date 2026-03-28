@@ -35,7 +35,7 @@ Create a new scenario test pair in `test/scenarios/`. The scenario should test: 
      - `incomeEvents` (array, can be empty)
      - `portfolioAssumptions` (with `riskLevel`, `expectedReturn`, `standardDeviation`)
      - `inflationRate`
-     - `filingStatus`, `spouseName`, `spouseAge`, `state`
+     - `filingStatus`, `spouseAge`, `state`
 
 5. **Create the expected JSON** — must include:
    - `_rationale` — plain English explanation of WHY each number is what it is

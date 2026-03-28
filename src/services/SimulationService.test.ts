@@ -12,7 +12,6 @@ const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
   portfolioAssumptions: { riskLevel: 'custom', expectedReturn: 0, standardDeviation: 0 },
   inflationRate: 0,
   filingStatus: 'single',
-  spouseName: null,
   spouseAge: null,
   stateTimeline: [{ state: 'Florida' }],
   ...overrides,

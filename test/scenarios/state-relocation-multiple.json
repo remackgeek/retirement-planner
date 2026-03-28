@@ -26,7 +26,6 @@
   },
   "inflationRate": 0,
   "filingStatus": "single",
-  "spouseName": null,
   "spouseAge": null,
   "stateTimeline": [
     { "state": "Texas" },
