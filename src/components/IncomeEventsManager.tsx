@@ -6,15 +6,16 @@ import SocialSecurityDialog from '../dialogs/SocialSecurityDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import { spacing, colors, border, fontSize } from '../styles/theme';
 
-const Container = styled.div`
-  margin: ${spacing.sm} 0;
-`;
+const Container = styled.div``;
 
 const Header = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: ${spacing.sm};
+  h3 {
+    margin: 0;
+  }
 `;
 
 const EventItem = styled.div`

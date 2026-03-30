@@ -9,7 +9,7 @@ import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
 import type { SpendingGoal } from '../../types/SpendingGoal';
 import type { IncomeEvent } from '../../types/IncomeEvent';
-import { spacing, colors } from '../../styles/theme';
+import { spacing, colors, border } from '../../styles/theme';
 
 const ContentContainer = styled.main`
   flex: 1;
@@ -26,12 +26,17 @@ const ContentBody = styled.div`
 
 const ManagersContainer = styled.div`
   display: flex;
-  gap: ${spacing.lg};
+  gap: ${spacing.xl};
+  margin-top: ${spacing.lg};
   margin-bottom: ${spacing.sm};
 `;
 
 const ManagerSection = styled.div`
   flex: 1;
+  background: ${colors.bgLight};
+  border: ${border.standard};
+  border-radius: ${border.radiusRound};
+  padding: ${spacing.md};
 `;
 
 const Content: React.FC = () => {
