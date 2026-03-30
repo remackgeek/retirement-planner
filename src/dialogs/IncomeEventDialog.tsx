@@ -132,24 +132,9 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
     onHide();
   };
 
-  const handleTypeChange = (type: IncomeEventType) => {
-    setFormData({
-      ...formData,
-      type,
-      name: isEditing ? formData.name : generateDefaultIncomeEventName(type, existingEvents),
-      colaType: getDefaultCOLA(type),
-      taxStatus: type === 'employment_savings' ? 'after_tax' : formData.taxStatus,
-    });
-  };
-
   const taxStatusOptions = [
     { label: 'Before Tax', value: 'before_tax' },
     { label: 'After Tax', value: 'after_tax' },
-  ];
-
-  const colaOptions = [
-    { label: 'Fixed Amount', value: 'fixed' },
-    { label: 'Inflation Adjusted', value: 'inflation_adjusted' },
   ];
 
   const headerLabel = isEditing
@@ -182,20 +167,6 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
       footer={dialogFooter}
     >
       <Form onSubmit={handleSubmit}>
-        <InputGroup>
-          <label>Event Type</label>
-          <Dropdown
-            value={formData.type}
-            options={Object.entries(eventTypeLabels)
-              .filter(([value]) => value !== 'social_security')
-              .map(([value, label]) => ({
-                label,
-                value,
-              }))}
-            onChange={(e) => handleTypeChange(e.value as IncomeEventType)}
-          />
-        </InputGroup>
-
         <InputGroup>
           <label>Name</label>
           <InputText
@@ -266,14 +237,16 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
           </InputGroup>
         )}
 
-        <InputGroup>
-          <label>Cost of Living Adjustment</label>
-          <Dropdown
-            value={formData.colaType}
-            options={colaOptions}
-            onChange={(e) => setFormData({ ...formData, colaType: e.value })}
+        <CheckboxGroup>
+          <Checkbox
+            inputId='colaType'
+            checked={formData.colaType === 'inflation_adjusted'}
+            onChange={(e) =>
+              setFormData({ ...formData, colaType: e.checked ? 'inflation_adjusted' : 'fixed' })
+            }
           />
-        </InputGroup>
+          <label htmlFor='colaType'>Inflation adjusted</label>
+        </CheckboxGroup>
 
       </Form>
     </Dialog>
