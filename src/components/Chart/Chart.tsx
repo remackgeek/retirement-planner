@@ -58,6 +58,68 @@ const goalTypeIcons: Record<string, string> = {
   other: 'pi pi-circle',
 };
 
+type ViewMode = 'median' | 'nominal' | 'downside';
+
+const VIEW_COLORS: Record<ViewMode, string> = {
+  median: 'blue',
+  nominal: '#9ca3af',
+  downside: 'red',
+};
+
+const VIEW_LABELS: Record<ViewMode, string> = {
+  median: 'Median',
+  nominal: 'Deterministic',
+  downside: 'Downside',
+};
+
+function exportCsv(
+  scenarioName: string,
+  years: number[],
+  nominal: number[],
+  median: number[],
+  downside: number[],
+  annualBreakdowns: AnnualCashFlowBreakdown[],
+  currentAge: number
+) {
+  const header = [
+    'Age', 'Year',
+    'Deterministic Portfolio ($)', 'Median Portfolio ($)', 'Downside Portfolio ($)',
+    'SS Gross', 'Other Taxable Income', 'After-Tax Income', 'Total Gross Income',
+    'Base Spending', 'Goal Spending', 'Total Spending',
+    'Total Tax', 'Portfolio Withdrawal', 'Net Cash Flow',
+  ].join(',');
+
+  const rows = years.map((year, i) => {
+    const bd = annualBreakdowns[i];
+    return [
+      currentAge + i,
+      year,
+      Math.round(nominal[i] ?? 0),
+      Math.round(median[i] ?? 0),
+      Math.round(downside[i] ?? 0),
+      Math.round(bd.ssGross),
+      Math.round(bd.otherTaxableGross),
+      Math.round(bd.afterTaxIncome),
+      Math.round(bd.totalGrossIncome),
+      Math.round(bd.baseSpendingNet),
+      Math.round(bd.otherSpendingGoalsNet),
+      Math.round(bd.totalSpendingNet),
+      Math.round(bd.totalTax),
+      Math.round(bd.portfolioWithdrawal),
+      Math.round(bd.netCashFlow),
+    ].join(',');
+  });
+
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${scenarioName.replace(/[^a-z0-9]/gi, '-')}-projection.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const Projections = ({
   results,
   userData,
@@ -66,7 +128,7 @@ const Projections = ({
   userData: any;
 }) => {
   if (!results) return null;
-  const { probability, median, downside, years } = results;
+  const { probability, median, downside, nominal, years } = results;
 
   // Pre-calculate annual cash flow breakdowns for all years
   const annualBreakdowns: AnnualCashFlowBreakdown[] = useMemo(() => {
@@ -74,6 +136,8 @@ const Projections = ({
   }, [years, userData]);
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [view, setView] = useState<ViewMode>('median');
+
   const toggleRow = (index: number) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -81,25 +145,30 @@ const Projections = ({
       return next;
     });
   };
+
   const labels = years.map(
     (_: number, index: number) =>
       `${userData.currentAge + index} (${years[index]})`
   );
-  const data = {
+
+  const makeDataset = (label: string, mode: ViewMode, data: number[]) => {
+    const isSelected = view === mode;
+    return {
+      label,
+      data,
+      borderColor: VIEW_COLORS[mode],
+      backgroundColor: VIEW_COLORS[mode],
+      borderWidth: isSelected ? 3 : 1.5,
+      pointRadius: 0,
+    };
+  };
+
+  const chartData = {
     labels,
     datasets: [
-      {
-        label: 'Median',
-        data: median,
-        borderColor: 'blue',
-        backgroundColor: 'blue',
-      },
-      {
-        label: 'Downside (10th percentile)',
-        data: downside,
-        borderColor: 'red',
-        backgroundColor: 'red',
-      },
+      makeDataset('Median', 'median', median),
+      makeDataset('Deterministic', 'nominal', nominal),
+      makeDataset('Downside (10th percentile)', 'downside', downside),
     ],
   };
 
@@ -158,78 +227,83 @@ const Projections = ({
         annotations: htmlAnnotations,
         onIconClick: (annotation: AnnotationConfig) => {
           console.log('Clicked annotation:', annotation);
-          // TODO: Could implement navigation to table row, edit dialog, etc.
         },
         onIconHover: (annotation: AnnotationConfig | null) => {
           console.log('Hovered annotation:', annotation);
-          // TODO: Could implement table row highlighting
         },
       },
     },
   };
 
+
   return (
     <div>
       <h2 style={{ margin: '0 0 0.5rem' }}>Probability of Success: {probability}%</h2>
-      <Line options={options} data={data} />
+      <Line options={options} data={chartData} />
       <Accordion style={{ marginTop: '0.5rem' }}>
-        <AccordionTab header='Yearly Data'>
+        <AccordionTab header={
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: spacing.md }}>
+            <span>Yearly Data</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: fontSize.sm }}>
+              {(['median', 'nominal', 'downside'] as ViewMode[]).map(mode => (
+                <label
+                  key={mode}
+                  style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, cursor: 'pointer', fontWeight: 'normal', color: view === mode ? (mode === 'nominal' ? colors.textPrimary : VIEW_COLORS[mode]) : colors.textPrimary }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <input
+                    type="radio"
+                    name="view"
+                    value={mode}
+                    checked={view === mode}
+                    onChange={() => setView(mode)}
+                    style={{ accentColor: mode === 'nominal' ? colors.textPrimary : VIEW_COLORS[mode] }}
+                  />
+                  {VIEW_LABELS[mode]}
+                </label>
+              ))}
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  exportCsv(userData.name ?? 'scenario', years, nominal, median, downside, annualBreakdowns, userData.currentAge);
+                }}
+                style={{
+                  marginLeft: spacing.sm,
+                  padding: `${spacing.xs} ${spacing.sm}`,
+                  fontSize: fontSize.sm,
+                  background: colors.bgMedium,
+                  border: border.standard,
+                  borderRadius: border.radius,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: spacing.xs,
+                  color: colors.textPrimary,
+                }}
+              >
+                <i className="pi pi-download" style={{ fontSize: fontSize.sm }} />
+                CSV
+              </button>
+            </div>
+          </div>
+        }>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ backgroundColor: colors.bgMedium }}>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      border: border.standard,
-                      textAlign: 'left',
-                    }}
-                  >
+                  <th style={{ padding: '0.5rem', border: border.standard, textAlign: 'left' }}>
                     Age (Year)
                   </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      border: border.standard,
-                      textAlign: 'right',
-                    }}
-                  >
-                    Median Portfolio
+                  <th style={{ padding: '0.5rem', border: border.standard, textAlign: 'right' }}>
+                    Portfolio
                   </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      border: border.standard,
-                      textAlign: 'right',
-                    }}
-                  >
-                    10th Percentile
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      border: border.standard,
-                      textAlign: 'right',
-                    }}
-                  >
+                  <th style={{ padding: '0.5rem', border: border.standard, textAlign: 'right' }}>
                     Spending
                   </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      border: border.standard,
-                      textAlign: 'right',
-                    }}
-                  >
+                  <th style={{ padding: '0.5rem', border: border.standard, textAlign: 'right' }}>
                     Income
                   </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      border: border.standard,
-                      textAlign: 'right',
-                    }}
-                  >
+                  <th style={{ padding: '0.5rem', border: border.standard, textAlign: 'right' }}>
                     Cash Flow
                   </th>
                 </tr>
@@ -284,23 +358,8 @@ const Projections = ({
                           style={{ fontSize: fontSize.xs, marginRight: spacing.xs, color: colors.textMuted }} />
                         {age} ({year})
                       </td>
-                      <td
-                        style={{
-                          padding: '0.5rem',
-                          border: border.standard,
-                          textAlign: 'right',
-                        }}
-                      >
-                        {fmt(median[index] ?? 0)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '0.5rem',
-                          border: border.standard,
-                          textAlign: 'right',
-                        }}
-                      >
-                        {fmt(downside[index] ?? 0)}
+                      <td style={{ padding: '0.5rem', border: border.standard, textAlign: 'right' }}>
+                        {fmt((view === 'median' ? median : view === 'nominal' ? nominal : downside)[index] ?? 0)}
                       </td>
                       <td
                         style={{
@@ -394,7 +453,7 @@ const Projections = ({
                     </tr>
                     {isExpanded && (
                       <tr key={`${year}-detail`}>
-                        <td colSpan={6} style={{
+                        <td colSpan={5} style={{
                           padding: `${spacing.xs} ${spacing.sm}`,
                           backgroundColor: colors.bgLight,
                           border: border.standard,

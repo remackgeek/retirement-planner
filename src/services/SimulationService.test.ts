@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateAnnualCashFlow } from './SimulationService';
+import { calculateAnnualCashFlow, runSimulation } from './SimulationService';
 import type { UserData } from '../types/UserData';
 
 const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
@@ -543,5 +543,35 @@ describe('calculateAnnualCashFlow', () => {
       const flResult = calculateAnnualCashFlow(flOnly, 2026, 0);
       expect(result.totalTax).toBe(flResult.totalTax);
     });
+  });
+});
+
+describe('runSimulation — deterministic path', () => {
+  const noFlowUserData = makeUserData({
+    currentAge: 60,
+    lifeExpectancy: 65,
+    currentSavings: 1_000_000,
+    inflationRate: 0,
+    portfolioAssumptions: { riskLevel: 'balanced' },
+    spendingGoals: [],
+    incomeEvents: [],
+  });
+
+  it('nominal array is identical regardless of random function used', () => {
+    const alwaysLow = () => 0.01;
+    const alwaysHigh = () => 0.99;
+    const r1 = runSimulation(noFlowUserData, alwaysLow);
+    const r2 = runSimulation(noFlowUserData, alwaysHigh);
+    expect(r1.nominal).toEqual(r2.nominal);
+  });
+
+  it('nominal compounds at balanced arithmetic mean (6.5%) with no cash flow and 0% inflation', () => {
+    const mean = 0.065;
+    const { nominal } = runSimulation(noFlowUserData);
+    const totalYears = noFlowUserData.lifeExpectancy - noFlowUserData.currentAge + 1;
+    for (let i = 0; i < totalYears; i++) {
+      const expected = noFlowUserData.currentSavings * Math.pow(1 + mean, i);
+      expect(nominal[i]).toBeCloseTo(expected, 0);
+    }
   });
 });

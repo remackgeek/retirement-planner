@@ -344,6 +344,7 @@ export function runSimulation(
   probability: number;
   median: number[];
   downside: number[];
+  nominal: number[];
   years: number[];
 } {
   const currentYear = userData.referenceYear;
@@ -409,5 +410,24 @@ export function runSimulation(
   const median = sortedPaths.map((s) => s[Math.floor(numSims / 2)]);
   const downside = sortedPaths.map((s) => s[Math.floor(numSims * 0.1)]);
   const years = Array.from({ length: totalYears }, (_, i) => currentYear + i);
-  return { probability, median, downside, years };
+
+  // Deterministic nominal path: single pass using expected mean return, no variance
+  const nominalMeanReturn = useLogNormal
+    ? portfolioParams[userData.portfolioAssumptions.riskLevel as PortfolioType].mean
+    : getPortfolioReturns(userData.portfolioAssumptions).mean;
+  const nominal: number[] = [];
+  {
+    let balance = userData.currentSavings;
+    for (let i = 0; i < totalYears; i++) {
+      const year = currentYear + i;
+      const inflationFactor = Math.pow(1 + inflationRate, i);
+      nominal.push(balance / inflationFactor);
+      const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
+      balance += cashFlow.netCashFlow;
+      if (balance < 0) balance = 0;
+      balance *= 1 + nominalMeanReturn;
+    }
+  }
+
+  return { probability, median, downside, nominal, years };
 }

@@ -125,6 +125,14 @@ The app should be **modular and extensible**. Avoid hardcoded assumptions.
 - Monthly/annual input toggle for remaining spending goal and income event dialogs
   (the `amountPeriod` field is already on both `SpendingGoal` and `IncomeEvent` types;
   living expenses and Social Security dialogs already have the toggle)
+- **Nominal projection**: deterministic (no-variance, expected-return) portfolio path
+  alongside median/downside; computed as a single pass in `runSimulation()` and returned
+  as `nominal: number[]` alongside existing `median` and `downside` arrays
+- **View selection**: radio control (Median / Nominal / Downside) in the yearly data
+  header; selected path renders bold on the chart; all three portfolio columns visible
+  in the yearly data table with the selected one highlighted
+- **CSV export**: download button in yearly data header exports all three portfolio
+  paths plus full income/spending/tax breakdown per year as a `.csv` file
 
 ### Other extensibility
 
