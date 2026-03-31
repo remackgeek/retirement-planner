@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import EventTypeSelectionDialog from '../dialogs/EventTypeSelectionDialog';
 import IncomeEventDialog from '../dialogs/IncomeEventDialog';
 import SocialSecurityDialog from '../dialogs/SocialSecurityDialog';
+import PensionIncomeDialog from '../dialogs/PensionIncomeDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import { spacing, colors, border, fontSize } from '../styles/theme';
 
@@ -212,6 +213,22 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           existingSSEvents={events.filter((e) => e.type === 'social_security')}
           currentAge={userData.currentAge}
           spouseAge={userData.spouseAge}
+          referenceYear={userData.referenceYear}
+        />
+      ) : (selectedType === 'pension_income' || editingEvent?.type === 'pension_income') ? (
+        <PensionIncomeDialog
+          visible={dialogVisible}
+          onHide={() => {
+            setDialogVisible(false);
+            setSelectedType(null);
+            setEditingEvent(undefined);
+          }}
+          onSave={handleSave}
+          editEvent={editingEvent}
+          existingEvents={events}
+          currentAge={userData.currentAge}
+          spouseAge={userData.spouseAge}
+          filingStatus={userData.filingStatus}
           referenceYear={userData.referenceYear}
         />
       ) : (
