@@ -21,7 +21,7 @@ const Header = styled.div`
 const GoalItem = styled.div`
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: ${spacing.sm};
   border: ${border.standard};
   margin-bottom: ${spacing.sm};
@@ -35,6 +35,7 @@ const GoalInfo = styled.div`
 const Actions = styled.div`
   display: flex;
   gap: ${spacing.xs};
+  align-self: flex-end;
 `;
 
 const Button = styled.button`

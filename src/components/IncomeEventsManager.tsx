@@ -27,7 +27,6 @@ const EventItem = styled.div`
   border: ${border.standard};
   margin-bottom: ${spacing.sm};
   border-radius: ${border.radius};
-  position: relative;
 `;
 
 const EventInfo = styled.div`
@@ -37,9 +36,7 @@ const EventInfo = styled.div`
 const Actions = styled.div`
   display: flex;
   gap: ${spacing.xs};
-  position: absolute;
-  bottom: ${spacing.sm};
-  right: ${spacing.sm};
+  align-self: flex-end;
 `;
 
 const Button = styled.button`
