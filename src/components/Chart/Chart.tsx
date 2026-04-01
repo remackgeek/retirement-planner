@@ -238,9 +238,9 @@ const Projections = ({
 
   return (
     <div>
-      <h2 style={{ margin: '0 0 0.5rem' }}>Probability of Success: {probability}%</h2>
+      <h2 style={{ margin: `0 0 ${spacing.sm}` }}>Probability of Success: {probability}%</h2>
       <Line options={options} data={chartData} />
-      <Accordion style={{ marginTop: '0.5rem' }}>
+      <Accordion style={{ marginTop: spacing.sm }}>
         <AccordionTab header={
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: spacing.md }}>
             <span>Yearly Data</span>
@@ -257,7 +257,7 @@ const Projections = ({
                     value={mode}
                     checked={view === mode}
                     onChange={() => setView(mode)}
-                    style={{ accentColor: mode === 'nominal' ? colors.textPrimary : VIEW_COLORS[mode] }}
+                    style={{ accentColor: mode === 'nominal' ? colors.textPrimary : VIEW_COLORS[mode], margin: 0 }}
                   />
                   {VIEW_LABELS[mode]}
                 </label>
@@ -291,19 +291,19 @@ const Projections = ({
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ backgroundColor: colors.bgMedium }}>
-                  <th style={{ padding: '0.5rem', border: border.standard, textAlign: 'left' }}>
+                  <th style={{ padding: spacing.sm, border: border.standard, textAlign: 'left' }}>
                     Age (Year)
                   </th>
-                  <th style={{ padding: '0.5rem', border: border.standard, textAlign: 'right' }}>
+                  <th style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                     Portfolio
                   </th>
-                  <th style={{ padding: '0.5rem', border: border.standard, textAlign: 'right' }}>
+                  <th style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                     Spending
                   </th>
-                  <th style={{ padding: '0.5rem', border: border.standard, textAlign: 'right' }}>
+                  <th style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                     Income
                   </th>
-                  <th style={{ padding: '0.5rem', border: border.standard, textAlign: 'right' }}>
+                  <th style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                     Cash Flow
                   </th>
                 </tr>
@@ -352,18 +352,18 @@ const Projections = ({
                     <React.Fragment key={year}>
                     <tr onClick={() => toggleRow(index)} style={{ cursor: 'pointer' }}>
                       <td
-                        style={{ padding: '0.5rem', border: border.standard, whiteSpace: 'nowrap' }}
+                        style={{ padding: spacing.sm, border: border.standard, whiteSpace: 'nowrap' }}
                       >
                         <i className={isExpanded ? 'pi pi-chevron-down' : 'pi pi-chevron-right'}
                           style={{ fontSize: fontSize.xs, marginRight: spacing.xs, color: colors.textMuted }} />
                         {age} ({year})
                       </td>
-                      <td style={{ padding: '0.5rem', border: border.standard, textAlign: 'right' }}>
+                      <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                         {fmt((view === 'median' ? median : view === 'nominal' ? nominal : downside)[index] ?? 0)}
                       </td>
                       <td
                         style={{
-                          padding: '0.5rem',
+                          padding: spacing.sm,
                           border: border.standard,
                           textAlign: 'right',
                         }}
@@ -371,7 +371,7 @@ const Projections = ({
                         {startingGoals.length > 0 && (
                           <div
                             style={{
-                              marginBottom: '0.25rem',
+                              marginBottom: spacing.xs,
                               textAlign: 'left',
                             }}
                           >
@@ -379,7 +379,7 @@ const Projections = ({
                               <span
                                 key={goal.id}
                                 style={{
-                                  marginRight: '0.25rem',
+                                  marginRight: spacing.xs,
                                   color: colors.spending,
                                   backgroundColor: colors.spendingBg,
                                   borderRadius: border.radiusCircle,
@@ -404,7 +404,7 @@ const Projections = ({
                       </td>
                       <td
                         style={{
-                          padding: '0.5rem',
+                          padding: spacing.sm,
                           border: border.standard,
                           textAlign: 'right',
                         }}
@@ -412,7 +412,7 @@ const Projections = ({
                         {startingEvents.length > 0 && (
                           <div
                             style={{
-                              marginBottom: '0.25rem',
+                              marginBottom: spacing.xs,
                               textAlign: 'left',
                             }}
                           >
@@ -420,7 +420,7 @@ const Projections = ({
                               <span
                                 key={event.id}
                                 style={{
-                                  marginRight: '0.25rem',
+                                  marginRight: spacing.xs,
                                   color: colors.income,
                                   backgroundColor: colors.incomeBg,
                                   borderRadius: border.radiusCircle,
@@ -443,7 +443,7 @@ const Projections = ({
                       </td>
                       <td
                         style={{
-                          padding: '0.5rem',
+                          padding: spacing.sm,
                           border: border.standard,
                           textAlign: 'right',
                         }}

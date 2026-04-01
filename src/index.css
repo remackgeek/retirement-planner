@@ -3,3 +3,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
 }
+
+/* Tighten PrimeReact accordion header to match app's compact style */
+.p-accordion .p-accordion-header .p-accordion-header-link {
+  padding: 0.5rem 0.75rem;
+}
