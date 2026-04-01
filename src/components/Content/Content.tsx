@@ -4,7 +4,6 @@ import { RetirementContext } from '../../context/RetirementContext';
 import { runSimulation } from '../../services/SimulationService';
 import { clearTaxCalculationCache } from '../../services/TaxCalculator';
 import Projections from '../Chart/Chart';
-import ScenarioHeaderBar from '../ScenarioHeaderBar/ScenarioHeaderBar';
 import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
 import type { SpendingGoal } from '../../types/SpendingGoal';
@@ -119,7 +118,6 @@ const Content: React.FC = () => {
 
   return (
     <ContentContainer>
-      <ScenarioHeaderBar />
       <ContentBody>
         {!activeScenario && (
           <div style={{ color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl }}>
