@@ -61,9 +61,9 @@ const goalTypeIcons: Record<string, string> = {
 type ViewMode = 'median' | 'nominal' | 'downside';
 
 const VIEW_COLORS: Record<ViewMode, string> = {
-  median: 'blue',
+  median: '#2563eb',
   nominal: '#9ca3af',
-  downside: 'red',
+  downside: '#dc2626',
 };
 
 const VIEW_LABELS: Record<ViewMode, string> = {
@@ -158,7 +158,7 @@ const Projections = ({
       data,
       borderColor: VIEW_COLORS[mode],
       backgroundColor: VIEW_COLORS[mode],
-      borderWidth: isSelected ? 3 : 1.5,
+      borderWidth: isSelected ? 4 : 1.5,
       pointRadius: 0,
     };
   };
