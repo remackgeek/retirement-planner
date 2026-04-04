@@ -68,10 +68,10 @@ const goalTypeIcons: Record<SpendingGoal['type'], string> = {
   home_purchase: 'pi pi-home',
   education: 'pi pi-book',
   renovation: 'pi pi-wrench',
-  vacation: 'pi pi-plane',
+  vacation: 'pi pi-map',
   vehicle: 'pi pi-car',
-  wedding: 'pi pi-heart',
-  other: 'pi pi-circle',
+  wedding: 'pi pi-star',
+  other: 'pi pi-ellipsis-h',
 };
 
 const SpendingGoalTypeSelectionDialog: React.FC<
