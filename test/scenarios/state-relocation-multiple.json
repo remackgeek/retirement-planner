@@ -28,8 +28,19 @@
   "filingStatus": "single",
   "spouseAge": null,
   "stateTimeline": [
-    { "state": "Texas" },
-    { "state": "New York", "startYear": 2028 },
-    { "state": "Florida", "startYear": 2030 }
-  ]
+    {
+      "state": "Texas"
+    },
+    {
+      "state": "New York",
+      "startYear": 2028
+    },
+    {
+      "state": "Florida",
+      "startYear": 2030
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  }
 }

@@ -28,7 +28,15 @@
   "filingStatus": "single",
   "spouseAge": null,
   "stateTimeline": [
-    { "state": "California" },
-    { "state": "Florida", "startYear": 2030 }
-  ]
+    {
+      "state": "California"
+    },
+    {
+      "state": "Florida",
+      "startYear": 2030
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  }
 }

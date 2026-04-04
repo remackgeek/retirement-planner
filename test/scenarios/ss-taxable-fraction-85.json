@@ -38,5 +38,12 @@
   "inflationRate": 0,
   "filingStatus": "mfj",
   "spouseAge": 60,
-  "stateTimeline": [{ "state": "Florida" }]
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  }
 }

@@ -11,6 +11,7 @@ const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
   incomeEvents: [],
   portfolioAssumptions: { riskLevel: 'custom', expectedReturn: 0, standardDeviation: 0 },
   inflationRate: 0,
+  simulationSettings: { numSimulations: 5000 },
   filingStatus: 'single',
   spouseAge: null,
   stateTimeline: [{ state: 'Florida' }],
@@ -552,7 +553,7 @@ describe('runSimulation — deterministic path', () => {
     lifeExpectancy: 65,
     currentSavings: 1_000_000,
     inflationRate: 0,
-    portfolioAssumptions: { riskLevel: 'balanced' },
+    portfolioAssumptions: { riskLevel: 'balanced', expectedReturn: 0.065, standardDeviation: 0.105 },
     spendingGoals: [],
     incomeEvents: [],
   });

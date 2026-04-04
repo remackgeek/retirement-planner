@@ -1,5 +1,4 @@
 import type { UserData } from '../types/UserData';
-import type { PortfolioType, PortfolioParams } from '../types/IncomeEvent';
 import {
   calculateNetFromGross,
   calculateSSTaxableAmount,
@@ -60,27 +59,15 @@ export const STATE_TAX_RATES: Record<string, number> = {
   'Washington, DC': 0.085,
 };
 
-// Portfolio parameters for log-normal distributions (industry-standard values)
-const portfolioParams: Record<PortfolioType, PortfolioParams> = {
-  conservative: {
-    mean: 0.048, // Arithmetic mean return (4.8%)
-    stdDev: 0.065, // Arithmetic standard deviation (6.5%)
-    mu: 0.046, // Lognormal mu parameter
-    sigma: 0.065, // Lognormal sigma parameter
-  },
-  balanced: {
-    mean: 0.065, // Arithmetic mean return (6.5%)
-    stdDev: 0.105, // Arithmetic standard deviation (10.5%)
-    mu: 0.06, // Lognormal mu parameter
-    sigma: 0.103, // Lognormal sigma parameter
-  },
-  aggressive: {
-    mean: 0.08, // Arithmetic mean return (8.0%)
-    stdDev: 0.165, // Arithmetic standard deviation (16.5%)
-    mu: 0.07, // Lognormal mu parameter
-    sigma: 0.158, // Lognormal sigma parameter
-  },
-};
+// Derive log-normal mu/sigma from arithmetic mean return and standard deviation.
+// For a log-normal where (1+r) ~ LogNormal(mu, sigma):
+//   E[1+r] = exp(mu + sigma²/2) = 1 + mean  →  mu = ln(1+mean) - sigma²/2
+//   Var[1+r] / E[1+r]² = exp(sigma²) - 1    →  sigma = sqrt(ln(1 + stdDev²/(1+mean)²))
+function lognormalParams(mean: number, stdDev: number): { mu: number; sigma: number } {
+  const sigma = Math.sqrt(Math.log(1 + (stdDev * stdDev) / ((1 + mean) * (1 + mean))));
+  const mu = Math.log(1 + mean) - (sigma * sigma) / 2;
+  return { mu, sigma };
+}
 
 // Helper function to generate a standard normal random variable (Box-Muller transform)
 function standardNormalRandom(random: () => number = Math.random): number {
@@ -91,28 +78,15 @@ function standardNormalRandom(random: () => number = Math.random): number {
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
-// Function to generate a single year's log-normal return factor (1 + r)
+// Generate a single year's log-normal return factor (1 + r)
 function generateReturnFactor(
-  params: PortfolioParams,
+  mean: number,
+  stdDev: number,
   random: () => number = Math.random
 ): number {
-  const normalSample =
-    params.mu + params.sigma * standardNormalRandom(random);
+  const { mu, sigma } = lognormalParams(mean, stdDev);
+  const normalSample = mu + sigma * standardNormalRandom(random);
   return Math.exp(normalSample);
-}
-
-function calculateYearlyGrowth(
-  initialAmount: number,
-  portfolioType: PortfolioType,
-  random: () => number = Math.random
-): number {
-  const params = portfolioParams[portfolioType];
-  if (!params) {
-    throw new Error('Invalid portfolio type');
-  }
-
-  const growthFactor = generateReturnFactor(params, random);
-  return initialAmount * growthFactor;
 }
 
 function getStateTaxRate(userData: UserData, year: number): number {
@@ -130,34 +104,6 @@ function getStateTaxRate(userData: UserData, year: number): number {
 }
 
 
-function getPortfolioReturns(assumptions: UserData['portfolioAssumptions']): {
-  mean: number;
-  sigma: number;
-} {
-  if (
-    assumptions.riskLevel === 'custom' &&
-    typeof assumptions.expectedReturn === 'number' &&
-    typeof assumptions.standardDeviation === 'number'
-  ) {
-    return {
-      mean: assumptions.expectedReturn,
-      sigma: assumptions.standardDeviation,
-    };
-  }
-  const realReturns: Record<string, number> = {
-    conservative: 0.03,
-    balanced: 0.045,
-    aggressive: 0.06,
-  };
-  const vols: Record<string, number> = {
-    conservative: 0.05,
-    balanced: 0.1,
-    aggressive: 0.15,
-  };
-  const riskLevel =
-    assumptions.riskLevel === 'custom' ? 'balanced' : assumptions.riskLevel; // fallback
-  return { mean: realReturns[riskLevel], sigma: vols[riskLevel] };
-}
 
 export interface AnnualCashFlowBreakdown {
   ssGross: number;
@@ -350,16 +296,10 @@ export function runSimulation(
   const currentYear = userData.referenceYear;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const inflationRate = userData.inflationRate;
-  const numSims = 5000;
+  const numSims = userData.simulationSettings.numSimulations;
+  const { expectedReturn, standardDeviation } = userData.portfolioAssumptions;
   let successCount = 0;
   const portfolioPaths: number[][] = [];
-
-  // Determine if we should use log-normal growth or fallback to old system
-  const useLogNormal =
-    userData.portfolioAssumptions.riskLevel !== 'custom' &&
-    ['conservative', 'balanced', 'aggressive'].includes(
-      userData.portfolioAssumptions.riskLevel
-    );
 
   for (let sim = 0; sim < numSims; sim++) {
     let balance = userData.currentSavings;
@@ -380,25 +320,8 @@ export function runSimulation(
         balance = 0;
       }
 
-      // Apply portfolio returns at the END of the year
-      if (
-        useLogNormal &&
-        typeof userData.portfolioAssumptions.riskLevel === 'string'
-      ) {
-        // Use log-normal growth for realistic simulation
-        balance = calculateYearlyGrowth(
-          balance,
-          userData.portfolioAssumptions.riskLevel as PortfolioType,
-          random
-        );
-      } else {
-        // Fallback to old normal distribution system
-        const { mean, sigma } = getPortfolioReturns(
-          userData.portfolioAssumptions
-        );
-        const r = mean + sigma * standardNormalRandom(random);
-        balance *= 1 + r;
-      }
+      // Apply log-normal portfolio returns at the END of the year
+      balance *= generateReturnFactor(expectedReturn, standardDeviation, random);
     }
     portfolioPaths.push(path);
     if (!failed) successCount++;
@@ -412,9 +335,6 @@ export function runSimulation(
   const years = Array.from({ length: totalYears }, (_, i) => currentYear + i);
 
   // Deterministic nominal path: single pass using expected mean return, no variance
-  const nominalMeanReturn = useLogNormal
-    ? portfolioParams[userData.portfolioAssumptions.riskLevel as PortfolioType].mean
-    : getPortfolioReturns(userData.portfolioAssumptions).mean;
   const nominal: number[] = [];
   {
     let balance = userData.currentSavings;
@@ -425,7 +345,7 @@ export function runSimulation(
       const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
       balance += cashFlow.netCashFlow;
       if (balance < 0) balance = 0;
-      balance *= 1 + nominalMeanReturn;
+      balance *= 1 + expectedReturn;
     }
   }
 

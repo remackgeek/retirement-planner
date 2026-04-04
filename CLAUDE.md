@@ -109,14 +109,35 @@ import { spacing, colors, fontSize, border } from '../styles/theme';
 
 The app should be **modular and extensible**. Avoid hardcoded assumptions.
 
-### Simulation engine (priority)
+### Simulation engine
 
-`SimulationService` should evolve toward a pluggable architecture:
+`SimulationService` uses log-normal Monte Carlo (5000 runs default). All simulation
+parameters are per-scenario in `UserData`:
 
-- User-selectable simulation strategies (log-normal Monte Carlo is the first)
+- `portfolioAssumptions.expectedReturn` / `standardDeviation` — real annual return params
+- `portfolioAssumptions.riskLevel` — `'conservative' | 'balanced' | 'aggressive' | 'custom'`;
+  named levels populate default return/stddev from `src/utils/portfolioPresets.ts`
+- `simulationSettings.numSimulations` — run count (1000 / 5000 / 10000)
+- `inflationRate` — annual inflation, affects all cash flow inflation-adjustment
+
+Future direction:
+
 - Historical sequence-of-returns using real S&P 500 and interest rate data
-- Configurable run count, distribution type, parameters
-- New strategies drop in without changing the rest of the app
+- Fat-tail / no-tail distribution options
+- New strategies drop in without changing the rest of the app (`modelType` placeholder
+  reserved in `SimulationSettings`)
+
+### Top bar: Settings menu
+
+`AppHeader` renders a single **Settings** dropdown (PrimeReact `Menu` popup) with two items:
+
+- **Portfolio** → `PortfolioDialog` — risk level (conservative/balanced/aggressive/custom);
+  selecting a named level auto-populates return/deviation defaults in Modeling
+- **Modeling** → `ModelingDialog` — expected return %, standard deviation %, inflation rate %,
+  simulation run count; saving back-derives `riskLevel` from values (preset match → named
+  level, otherwise `'custom'`)
+
+Both dialogs are disabled when no active scenario.
 
 ### Planned UX
 
@@ -125,9 +146,8 @@ The app should be **modular and extensible**. Avoid hardcoded assumptions.
 - Monthly/annual input toggle for remaining spending goal and income event dialogs
   (the `amountPeriod` field is already on both `SpendingGoal` and `IncomeEvent` types;
   living expenses and Social Security dialogs already have the toggle)
-- **Nominal projection**: deterministic (no-variance, expected-return) portfolio path
-  alongside median/downside; computed as a single pass in `runSimulation()` and returned
-  as `nominal: number[]` alongside existing `median` and `downside` arrays
+- **Nominal projection**: computed as `nominal: number[]` in `runSimulation()` — already
+  implemented and returned; not yet exposed in the chart or yearly data UI
 - **View selection**: radio control (Median / Nominal / Downside) in the yearly data
   header; selected path renders bold on the chart; all three portfolio columns visible
   in the yearly data table with the selected one highlighted

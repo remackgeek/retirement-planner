@@ -28,20 +28,8 @@ export interface IncomeEvent {
 
 export type PortfolioType = 'conservative' | 'balanced' | 'aggressive';
 
-export interface PortfolioParams {
-  mean: number; // Arithmetic mean return (nominal, decimal e.g., 0.045 for 4.5%)
-  stdDev: number; // Standard deviation (decimal e.g., 0.08 for 8%)
-  mu: number; // For log-normal: mean of ln(1 + r)
-  sigma: number; // For log-normal: std dev of ln(1 + r)
-}
-
 export interface PortfolioAssumptions {
   riskLevel: PortfolioType | 'custom';
-  customAllocation?: {
-    stocks: number;
-    bonds: number;
-    cash: number;
-  };
-  expectedReturn?: number;
-  standardDeviation?: number;
+  expectedReturn: number;
+  standardDeviation: number;
 }

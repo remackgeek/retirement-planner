@@ -40,10 +40,19 @@
     }
   ],
   "portfolioAssumptions": {
-    "riskLevel": "balanced"
+    "riskLevel": "balanced",
+    "expectedReturn": 0.065,
+    "standardDeviation": 0.105
   },
   "inflationRate": 0.03,
   "filingStatus": "mfj",
   "spouseAge": 53,
-  "stateTimeline": [{ "state": "Virginia" }]
+  "stateTimeline": [
+    {
+      "state": "Virginia"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  }
 }

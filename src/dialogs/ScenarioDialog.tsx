@@ -8,25 +8,6 @@ import { Dialog } from 'primereact/dialog';
 import type { Scenario } from '../types/Scenario';
 import { spacing, colors, fontSize, border } from '../styles/theme';
 
-const SectionGroup = styled.div`
-  margin-bottom: ${spacing.md};
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-`;
-
-const SectionLabel = styled.h4`
-  margin: 0 0 ${spacing.sm} 0;
-  font-size: ${fontSize.sm};
-  font-weight: 600;
-  color: ${colors.textSecondary};
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  border-bottom: ${border.light};
-  padding-bottom: ${spacing.xs};
-`;
-
 const SectionGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -112,12 +93,6 @@ const filingStatusOptions = [
   { label: 'Head of Household', value: 'hoh' },
 ];
 
-const riskOptions = [
-  { label: 'Conservative', value: 'conservative' },
-  { label: 'Balanced', value: 'balanced' },
-  { label: 'Aggressive', value: 'aggressive' },
-];
-
 const stateOptions = [
   'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado',
   'Connecticut', 'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho',
@@ -139,9 +114,14 @@ const makeDefaults = (): Scenario => ({
   currentSavings: 100000,
   spendingGoals: [],
   incomeEvents: [],
-  portfolioAssumptions: { riskLevel: 'balanced' as const },
+  portfolioAssumptions: {
+    riskLevel: 'balanced' as const,
+    expectedReturn: 0.065,
+    standardDeviation: 0.105,
+  },
   referenceYear: new Date().getFullYear(),
   inflationRate: 0.035,
+  simulationSettings: { numSimulations: 5000 },
   filingStatus: 'single' as const,
   spouseAge: null,
   stateTimeline: [{ state: 'California' }],
@@ -152,7 +132,6 @@ interface ScenarioDialogProps {
   onHide: () => void;
   onSave: (scenario: Scenario) => void;
   scenario?: Scenario;
-
 }
 
 const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
@@ -234,218 +213,172 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
       onHide={onHide}
       footer={dialogFooter}
     >
-      {/* People */}
-      <SectionGroup>
-        <SectionLabel>People</SectionLabel>
-        <SectionGrid>
-          <FullWidthField>
-            <label>Scenario Name</label>
-            <InputText
-              value={tempData.name}
-              onChange={(e) => handleChange('name', e.target.value)}
-              className={tempData.name.trim().length === 0 ? 'p-invalid' : ''}
-            />
-          </FullWidthField>
+      <SectionGrid>
+        <FullWidthField>
+          <label>Scenario Name</label>
+          <InputText
+            value={tempData.name}
+            onChange={(e) => handleChange('name', e.target.value)}
+            className={tempData.name.trim().length === 0 ? 'p-invalid' : ''}
+          />
+        </FullWidthField>
 
+        <FieldGroup>
+          <label>Current Age</label>
+          <InputNumber
+            value={tempData.currentAge}
+            onValueChange={(e) => handleChange('currentAge', e.value)}
+            mode='decimal'
+            min={18}
+            max={100}
+          />
+        </FieldGroup>
+        <FieldGroup>
+          <label>Life Expectancy</label>
+          <InputNumber
+            value={tempData.lifeExpectancy}
+            onValueChange={(e) => handleChange('lifeExpectancy', e.value)}
+            mode='decimal'
+            min={(tempData.currentAge || 18) + 1}
+            max={120}
+          />
+        </FieldGroup>
+
+        <FieldGroup>
+          <label>Filing Status</label>
+          <Dropdown
+            value={tempData.filingStatus}
+            options={filingStatusOptions}
+            onChange={(e) => handleFilingStatusChange(e.value)}
+          />
+        </FieldGroup>
+
+        {isMfj && (
           <FieldGroup>
-            <label>Current Age</label>
+            <label>Spouse Age *</label>
             <InputNumber
-              value={tempData.currentAge}
-              onValueChange={(e) => handleChange('currentAge', e.value)}
+              value={tempData.spouseAge ?? undefined}
+              onValueChange={(e) => handleChange('spouseAge', e.value ?? null)}
               mode='decimal'
               min={18}
               max={100}
+              className={tempData.spouseAge === null ? 'p-invalid' : ''}
             />
           </FieldGroup>
-          <FieldGroup>
-            <label>Life Expectancy</label>
-            <InputNumber
-              value={tempData.lifeExpectancy}
-              onValueChange={(e) => handleChange('lifeExpectancy', e.value)}
-              mode='decimal'
-              min={(tempData.currentAge || 18) + 1}
-              max={120}
-            />
-          </FieldGroup>
+        )}
 
+        <FieldGroup>
+          <label>Current Savings</label>
+          <InputNumber
+            value={tempData.currentSavings}
+            onValueChange={(e) => handleChange('currentSavings', e.value)}
+            mode='currency'
+            currency='USD'
+            min={0}
+          />
+        </FieldGroup>
+
+        {tempData.stateTimeline.length === 1 && (
           <FieldGroup>
-            <label>Filing Status</label>
+            <label>State</label>
             <Dropdown
-              value={tempData.filingStatus}
-              options={filingStatusOptions}
-              onChange={(e) => handleFilingStatusChange(e.value)}
+              value={tempData.stateTimeline[0]?.state ?? 'California'}
+              options={stateOptions}
+              onChange={(e) => {
+                const updated = [...tempData.stateTimeline];
+                updated[0] = { ...updated[0], state: e.value };
+                setTempData({ ...tempData, stateTimeline: updated });
+              }}
             />
-          </FieldGroup>
-
-          {isMfj && (
-            <>
-              <FieldGroup>
-                <label>Spouse Age *</label>
-                <InputNumber
-                  value={tempData.spouseAge ?? undefined}
-                  onValueChange={(e) => handleChange('spouseAge', e.value ?? null)}
-                  mode='decimal'
-                  min={18}
-                  max={100}
-                  className={tempData.spouseAge === null ? 'p-invalid' : ''}
-                />
-              </FieldGroup>
-            </>
-          )}
-        </SectionGrid>
-      </SectionGroup>
-
-      {/* Finances */}
-      <SectionGroup>
-        <SectionLabel>Finances</SectionLabel>
-        <SectionGrid>
-          <FieldGroup>
-            <label>Current Savings</label>
-            <InputNumber
-              value={tempData.currentSavings}
-              onValueChange={(e) => handleChange('currentSavings', e.value)}
-              mode='currency'
-              currency='USD'
-              min={0}
-            />
-          </FieldGroup>
-          <FieldGroup>
-            <label>Inflation Rate</label>
-            <InputNumber
-              value={tempData.inflationRate * 100}
-              onValueChange={(e) =>
-                handleChange('inflationRate', (e.value || 0) / 100)
-              }
-              mode='decimal'
-              min={0}
-              max={20}
-              suffix='%'
-            />
-          </FieldGroup>
-        </SectionGrid>
-      </SectionGroup>
-
-      {/* Portfolio & Tax */}
-      <SectionGroup>
-        <SectionLabel>Portfolio & Tax</SectionLabel>
-        <SectionGrid>
-          <FieldGroup>
-            <label>Risk Level</label>
-            <Dropdown
-              value={tempData.portfolioAssumptions.riskLevel}
-              options={riskOptions}
-              onChange={(e) =>
-                setTempData({
-                  ...tempData,
-                  portfolioAssumptions: {
-                    ...tempData.portfolioAssumptions,
-                    riskLevel: e.value,
-                  },
-                })
-              }
-            />
-          </FieldGroup>
-          {tempData.stateTimeline.length === 1 && (
-            <FieldGroup>
-              <label>State</label>
-              <Dropdown
-                value={tempData.stateTimeline[0]?.state ?? 'California'}
-                options={stateOptions}
-                onChange={(e) => {
-                  const updated = [...tempData.stateTimeline];
-                  updated[0] = { ...updated[0], state: e.value };
-                  setTempData({ ...tempData, stateTimeline: updated });
-                }}
-              />
-              <AddRelocationButton
-                className='p-button-text p-button-sm'
-                icon='pi pi-plus'
-                label='Add relocation'
-                onClick={() => {
-                  const currentState = tempData.stateTimeline[0]?.state ?? 'California';
-                  setTempData({
-                    ...tempData,
-                    stateTimeline: [
-                      ...tempData.stateTimeline,
-                      { state: currentState, startYear: tempData.referenceYear + 5 },
-                    ],
-                  });
-                }}
-              />
-            </FieldGroup>
-          )}
-        </SectionGrid>
-        {tempData.stateTimeline.length > 1 && (
-          <TimelineCard>
-            <TimelineLabel>State Residence Timeline</TimelineLabel>
-            <TimelineHeader>
-              <span style={{ width: '12rem' }}>State</span>
-              <span>Year</span>
-            </TimelineHeader>
-            {tempData.stateTimeline.map((entry, idx) => (
-              <TimelineRow key={idx}>
-                <Dropdown
-                  value={entry.state}
-                  options={stateOptions}
-                  onChange={(e) => {
-                    const updated = [...tempData.stateTimeline];
-                    updated[idx] = { ...updated[idx], state: e.value };
-                    setTempData({ ...tempData, stateTimeline: updated });
-                  }}
-                  style={{ width: '12rem' }}
-                />
-                <TimelineYearSection>
-                  {idx === 0 ? (
-                    <span>current</span>
-                  ) : (
-                    <Dropdown
-                      value={entry.startYear ?? tempData.referenceYear}
-                      options={yearOptions}
-                      onChange={(e) => {
-                        const updated = [...tempData.stateTimeline];
-                        updated[idx] = { ...updated[idx], startYear: e.value };
-                        const base = updated[0];
-                        const relocations = updated.slice(1).sort(
-                          (a, b) => (a.startYear ?? 0) - (b.startYear ?? 0)
-                        );
-                        setTempData({ ...tempData, stateTimeline: [base, ...relocations] });
-                      }}
-                    />
-                  )}
-                </TimelineYearSection>
-                {idx > 0 && (
-                  <Button
-                    icon='pi pi-trash'
-                    className='p-button-text p-button-sm p-button-danger'
-                    onClick={() => {
-                      const updated = tempData.stateTimeline.filter((_, i) => i !== idx);
-                      setTempData({ ...tempData, stateTimeline: updated });
-                    }}
-                    style={{ padding: spacing.xs, flexShrink: 0 }}
-                  />
-                )}
-              </TimelineRow>
-            ))}
             <AddRelocationButton
               className='p-button-text p-button-sm'
               icon='pi pi-plus'
               label='Add relocation'
               onClick={() => {
                 const currentState = tempData.stateTimeline[0]?.state ?? 'California';
-                const lastYear =
-                  (tempData.stateTimeline[tempData.stateTimeline.length - 1].startYear ?? tempData.referenceYear) + 5;
                 setTempData({
                   ...tempData,
                   stateTimeline: [
                     ...tempData.stateTimeline,
-                    { state: currentState, startYear: lastYear },
+                    { state: currentState, startYear: tempData.referenceYear + 5 },
                   ],
                 });
               }}
             />
-          </TimelineCard>
+          </FieldGroup>
         )}
-      </SectionGroup>
+      </SectionGrid>
+
+      {tempData.stateTimeline.length > 1 && (
+        <TimelineCard>
+          <TimelineLabel>State Residence Timeline</TimelineLabel>
+          <TimelineHeader>
+            <span style={{ width: '12rem' }}>State</span>
+            <span>Year</span>
+          </TimelineHeader>
+          {tempData.stateTimeline.map((entry, idx) => (
+            <TimelineRow key={idx}>
+              <Dropdown
+                value={entry.state}
+                options={stateOptions}
+                onChange={(e) => {
+                  const updated = [...tempData.stateTimeline];
+                  updated[idx] = { ...updated[idx], state: e.value };
+                  setTempData({ ...tempData, stateTimeline: updated });
+                }}
+                style={{ width: '12rem' }}
+              />
+              <TimelineYearSection>
+                {idx === 0 ? (
+                  <span>current</span>
+                ) : (
+                  <Dropdown
+                    value={entry.startYear ?? tempData.referenceYear}
+                    options={yearOptions}
+                    onChange={(e) => {
+                      const updated = [...tempData.stateTimeline];
+                      updated[idx] = { ...updated[idx], startYear: e.value };
+                      const base = updated[0];
+                      const relocations = updated.slice(1).sort(
+                        (a, b) => (a.startYear ?? 0) - (b.startYear ?? 0)
+                      );
+                      setTempData({ ...tempData, stateTimeline: [base, ...relocations] });
+                    }}
+                  />
+                )}
+              </TimelineYearSection>
+              {idx > 0 && (
+                <Button
+                  icon='pi pi-trash'
+                  className='p-button-text p-button-sm p-button-danger'
+                  onClick={() => {
+                    const updated = tempData.stateTimeline.filter((_, i) => i !== idx);
+                    setTempData({ ...tempData, stateTimeline: updated });
+                  }}
+                  style={{ padding: spacing.xs, flexShrink: 0 }}
+                />
+              )}
+            </TimelineRow>
+          ))}
+          <AddRelocationButton
+            className='p-button-text p-button-sm'
+            icon='pi pi-plus'
+            label='Add relocation'
+            onClick={() => {
+              const currentState = tempData.stateTimeline[0]?.state ?? 'California';
+              const lastYear =
+                (tempData.stateTimeline[tempData.stateTimeline.length - 1].startYear ?? tempData.referenceYear) + 5;
+              setTempData({
+                ...tempData,
+                stateTimeline: [
+                  ...tempData.stateTimeline,
+                  { state: currentState, startYear: lastYear },
+                ],
+              });
+            }}
+          />
+        </TimelineCard>
+      )}
     </Dialog>
   );
 };

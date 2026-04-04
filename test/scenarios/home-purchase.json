@@ -28,5 +28,12 @@
   "inflationRate": 0,
   "filingStatus": "single",
   "spouseAge": null,
-  "stateTimeline": [{ "state": "Florida" }]
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  }
 }
