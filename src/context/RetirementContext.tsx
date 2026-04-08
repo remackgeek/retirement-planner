@@ -172,6 +172,14 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       if (!importedData.name || typeof importedData.currentAge !== 'number') {
         throw new Error('Invalid scenario: Missing name or currentAge.');
       }
+      const pa = importedData.portfolioAssumptions;
+      if (!pa || typeof pa.stockAllocation !== 'number' || typeof pa.stockReturn !== 'number' ||
+          typeof pa.bondReturn !== 'number') {
+        throw new Error('Invalid scenario: Missing or invalid portfolioAssumptions fields.');
+      }
+      if (typeof importedData.inflationStdDev !== 'number') {
+        importedData.inflationStdDev = 0;
+      }
 
       // Generate ID if missing
       if (!importedData.id) {

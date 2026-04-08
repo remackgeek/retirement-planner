@@ -283,58 +283,102 @@ export function calculateAnnualCashFlow(
   };
 }
 
+interface SimRun {
+  path: number[];
+  stockFactors: number[];
+  bondFactors: number[];
+  failed: boolean;
+  failedYear: number; // index of first year balance hit zero; totalYears if never failed
+}
+
 export function runSimulation(
   userData: UserData,
   random: () => number = Math.random
 ): {
   probability: number;
   median: number[];
+  medianStockFactors: number[];
+  medianBondFactors: number[];
   downside: number[];
+  downsideStockFactors: number[];
+  downsideBondFactors: number[];
   nominal: number[];
   years: number[];
 } {
   const currentYear = userData.referenceYear;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const inflationRate = userData.inflationRate;
+  const inflationStdDev = userData.inflationStdDev;
   const numSims = userData.simulationSettings.numSimulations;
-  const { expectedReturn, standardDeviation } = userData.portfolioAssumptions;
+  const { stockAllocation, stockReturn, stockStdDev, bondReturn, bondStdDev } =
+    userData.portfolioAssumptions;
+  const bondAllocation = 1 - stockAllocation;
+
   let successCount = 0;
-  const portfolioPaths: number[][] = [];
+  const allRuns: SimRun[] = [];
 
   for (let sim = 0; sim < numSims; sim++) {
     let balance = userData.currentSavings;
     const path: number[] = [];
+    const stockFactors: number[] = [];
+    const bondFactors: number[] = [];
     let failed = false;
+    let failedYear = totalYears;
+    let cumulativeInflation = 1;
+
     for (let i = 0; i < totalYears; i++) {
       const year = currentYear + i;
 
-      // Store starting balance for this year (before any changes)
-      const inflationFactor = Math.pow(1 + inflationRate, i);
-      path.push(balance / inflationFactor);
+      // Store starting balance for this year (before any changes), deflated to real dollars.
+      // cumulativeInflation represents inflation accumulated through the START of year i.
+      path.push(balance / cumulativeInflation);
 
-      // Calculate unified cash flow for this year
+      // Cash flows use deterministic mean inflationRate (stochastic inflation is deflation-only)
       const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
       balance += cashFlow.netCashFlow;
       if (balance < 0) {
+        if (!failed) failedYear = i;
         failed = true;
         balance = 0;
       }
 
-      // Apply log-normal portfolio returns at the END of the year
-      balance *= generateReturnFactor(expectedReturn, standardDeviation, random);
+      // Per-asset log-normal return factors
+      const sf = generateReturnFactor(stockReturn, stockStdDev, random);
+      const bf = generateReturnFactor(bondReturn, bondStdDev, random);
+      stockFactors.push(sf);
+      bondFactors.push(bf);
+      balance *= stockAllocation * sf + bondAllocation * bf;
+
+      // Stochastic inflation: update cumulative inflation AFTER recording this year's balance.
+      // Affects real-dollar deflation of future years only; cash flows remain deterministic.
+      const yearInflation = inflationStdDev > 0
+        ? generateReturnFactor(inflationRate, inflationStdDev, random) - 1
+        : inflationRate;
+      cumulativeInflation *= (1 + yearInflation);
     }
-    portfolioPaths.push(path);
+
+    allRuns.push({ path, stockFactors, bondFactors, failed, failedYear });
     if (!failed) successCount++;
   }
+
   const probability = Math.round((successCount / numSims) * 100);
-  const sortedPaths = Array.from({ length: totalYears }, (_, i) =>
-    portfolioPaths.map((path) => path[i]).sort((a, b) => a - b)
-  );
-  const median = sortedPaths.map((s) => s[Math.floor(numSims / 2)]);
-  const downside = sortedPaths.map((s) => s[Math.floor(numSims * 0.1)]);
+
+  // Select representative runs by ranking all runs from worst to best outcome:
+  //   - Failed runs: ranked by the year they first hit zero (earlier failure = worse)
+  //   - Successful runs: ranked by final balance above all failed runs
+  // This ensures median and downside are distinct even when many runs fail (all ending at $0).
+  const sorted = [...allRuns].sort((a, b) => {
+    const scoreA = a.failed ? a.failedYear : totalYears + a.path[totalYears - 1];
+    const scoreB = b.failed ? b.failedYear : totalYears + b.path[totalYears - 1];
+    return scoreA - scoreB;
+  });
+  const medianRun   = sorted[Math.floor(numSims * 0.50)];
+  const downsideRun = sorted[Math.floor(numSims * 0.10)];
+
   const years = Array.from({ length: totalYears }, (_, i) => currentYear + i);
 
-  // Deterministic nominal path: single pass using expected mean return, no variance
+  // Deterministic nominal path: blended expected returns, no variance, mean inflation rate
+  const nominalBlendedReturn = stockAllocation * stockReturn + bondAllocation * bondReturn;
   const nominal: number[] = [];
   {
     let balance = userData.currentSavings;
@@ -345,9 +389,19 @@ export function runSimulation(
       const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
       balance += cashFlow.netCashFlow;
       if (balance < 0) balance = 0;
-      balance *= 1 + expectedReturn;
+      balance *= 1 + nominalBlendedReturn;
     }
   }
 
-  return { probability, median, downside, nominal, years };
+  return {
+    probability,
+    median: medianRun.path,
+    medianStockFactors: medianRun.stockFactors,
+    medianBondFactors: medianRun.bondFactors,
+    downside: downsideRun.path,
+    downsideStockFactors: downsideRun.stockFactors,
+    downsideBondFactors: downsideRun.bondFactors,
+    nominal,
+    years,
+  };
 }

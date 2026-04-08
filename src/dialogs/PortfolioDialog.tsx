@@ -3,8 +3,9 @@ import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
+import { InputNumber } from 'primereact/inputnumber';
 import type { Scenario } from '../types/Scenario';
-import type { PortfolioAssumptions } from '../types/IncomeEvent';
+import type { PortfolioAssumptions, PortfolioType } from '../types/IncomeEvent';
 import { PORTFOLIO_PRESETS } from '../utils/portfolioPresets';
 import { spacing, colors, fontSize } from '../styles/theme';
 
@@ -35,10 +36,10 @@ const HelpText = styled.small`
   font-size: ${fontSize.xs};
 `;
 
-const riskOptions = [
-  { label: 'Conservative', value: 'conservative' },
-  { label: 'Balanced', value: 'balanced' },
-  { label: 'Aggressive', value: 'aggressive' },
+const balanceOptions = [
+  { label: '80/20 (Stocks/Bonds)', value: '80_20' },
+  { label: '60/40 (Stocks/Bonds)', value: '60_40' },
+  { label: '50/50 (Stocks/Bonds)', value: '50_50' },
   { label: 'Custom', value: 'custom' },
 ];
 
@@ -63,12 +64,13 @@ const PortfolioDialog: React.FC<PortfolioDialogProps> = ({
     }
   }, [visible, scenario]);
 
-  const handleRiskLevelChange = (value: PortfolioAssumptions['riskLevel']) => {
+  const handleBalanceChange = (value: PortfolioType | 'custom') => {
     if (value !== 'custom' && value in PORTFOLIO_PRESETS) {
-      const preset = PORTFOLIO_PRESETS[value as keyof typeof PORTFOLIO_PRESETS];
-      setForm({ riskLevel: value, ...preset });
+      const { stockAllocation } = PORTFOLIO_PRESETS[value];
+      // Only update allocation — return/stddev fields are managed in Modeling
+      setForm({ ...form, portfolioBalance: value, stockAllocation });
     } else {
-      setForm({ ...form, riskLevel: value });
+      setForm({ ...form, portfolioBalance: value });
     }
   };
 
@@ -86,7 +88,7 @@ const PortfolioDialog: React.FC<PortfolioDialogProps> = ({
 
   return (
     <Dialog
-      header="Portfolio"
+      header="Portfolio Balance"
       visible={visible}
       style={{ width: '24rem' }}
       onHide={onHide}
@@ -94,14 +96,30 @@ const PortfolioDialog: React.FC<PortfolioDialogProps> = ({
     >
       <Form onSubmit={(e) => e.preventDefault()}>
         <InputGroup>
-          <label>Risk Level</label>
+          <label>Stock / Bond Split</label>
           <Dropdown
-            value={form.riskLevel}
-            options={riskOptions}
-            onChange={(e) => handleRiskLevelChange(e.value)}
+            value={form.portfolioBalance}
+            options={balanceOptions}
+            onChange={(e) => handleBalanceChange(e.value)}
           />
         </InputGroup>
-        <HelpText>Sets the risk profile and populates default return and deviation assumptions in Modeling.</HelpText>
+        {form.portfolioBalance === 'custom' && (
+          <InputGroup>
+            <label>Stock Allocation (%)</label>
+            <InputNumber
+              value={Math.round(form.stockAllocation * 100)}
+              onValueChange={(e) =>
+                setForm({ ...form, stockAllocation: (e.value ?? 60) / 100 })
+              }
+              min={0}
+              max={100}
+              suffix="%"
+            />
+          </InputGroup>
+        )}
+        <HelpText>
+          Sets the stock/bond split. Return and volatility assumptions are configured in Modeling.
+        </HelpText>
       </Form>
     </Dialog>
   );

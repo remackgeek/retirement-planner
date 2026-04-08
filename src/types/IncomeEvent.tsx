@@ -26,10 +26,13 @@ export interface IncomeEvent {
   amountPeriod?: 'monthly' | 'annual'; // UI hint for input/display period (default 'annual')
 }
 
-export type PortfolioType = 'conservative' | 'balanced' | 'aggressive';
+export type PortfolioType = '80_20' | '60_40' | '50_50';
 
 export interface PortfolioAssumptions {
-  riskLevel: PortfolioType | 'custom';
-  expectedReturn: number;
-  standardDeviation: number;
+  portfolioBalance: PortfolioType | 'custom';
+  stockAllocation: number; // 0.0–1.0
+  stockReturn: number;     // decimal, e.g. 0.07
+  stockStdDev: number;
+  bondReturn: number;
+  bondStdDev: number;
 }

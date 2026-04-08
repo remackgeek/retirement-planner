@@ -1,0 +1,32 @@
+{
+  "_description": "Isolates inflationStdDev effect: zero portfolio variance, non-zero inflation stddev. Verifies that stochastic inflation creates spread in real-dollar outcomes without affecting probability.",
+  "_rationale": "Same 60/40 portfolio as split-returns-blended (stocks 10%/0%, bonds 2%/0%) with 3% inflation and 2% inflation stddev. All portfolio variance is zero so all runs produce identical nominal balances. Only inflation differs across runs, creating spread in real-dollar portfolio values. No spending so probability = 100% for all runs. Median real balance should be near 500000 * 1.068^10 / 1.03^10 ≈ 718k but may vary due to log-normal inflation deflation (the geometric mean slightly exceeds the arithmetic mean).",
+  "_seed": 99999,
+  "name": "Inflation StdDev Test",
+  "currentAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "currentSavings": 500000,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "portfolioBalance": "60_40",
+    "stockAllocation": 0.6,
+    "stockReturn": 0.10,
+    "stockStdDev": 0,
+    "bondReturn": 0.02,
+    "bondStdDev": 0
+  },
+  "inflationRate": 0.03,
+  "inflationStdDev": 0.02,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  }
+}

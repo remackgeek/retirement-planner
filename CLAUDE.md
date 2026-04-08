@@ -114,11 +114,21 @@ The app should be **modular and extensible**. Avoid hardcoded assumptions.
 `SimulationService` uses log-normal Monte Carlo (5000 runs default). All simulation
 parameters are per-scenario in `UserData`:
 
-- `portfolioAssumptions.expectedReturn` / `standardDeviation` — real annual return params
-- `portfolioAssumptions.riskLevel` — `'conservative' | 'balanced' | 'aggressive' | 'custom'`;
-  named levels populate default return/stddev from `src/utils/portfolioPresets.ts`
+- `portfolioAssumptions.portfolioBalance` — `'80_20' | '60_40' | '50_50' | 'custom'`;
+  presets set `stockAllocation` only — return assumptions are independent
+- `portfolioAssumptions.stockAllocation` — fraction in stocks (0.0–1.0); bonds = 1 - stock
+- `portfolioAssumptions.stockReturn` / `stockStdDev` — stock log-normal return params
+- `portfolioAssumptions.bondReturn` / `bondStdDev` — bond log-normal return params
 - `simulationSettings.numSimulations` — run count (1000 / 5000 / 10000)
-- `inflationRate` — annual inflation, affects all cash flow inflation-adjustment
+- `inflationRate` — annual inflation, affects cash flow inflation-adjustment
+- `inflationStdDev` — inflation volatility; affects portfolio deflation (real vs nominal)
+  in the MC loop only; cash flows always use the deterministic mean `inflationRate`
+
+**Monte Carlo path construction:** each year draws independent stock and bond return factors;
+portfolio return = `stockAllocation × stockFactor + bondAllocation × bondFactor`. Annual
+rebalancing to target allocation is assumed. The median and downside paths are the single
+simulation runs whose final balance is closest to the 50th/10th percentile of all final
+balances — coherent per-year paths with actual return factors, not year-by-year envelopes.
 
 Future direction:
 
@@ -126,16 +136,26 @@ Future direction:
 - Fat-tail / no-tail distribution options
 - New strategies drop in without changing the rest of the app (`modelType` placeholder
   reserved in `SimulationSettings`)
+- **Stock/bond correlation**: returns are currently drawn independently per year. Real
+  negative correlation (~-0.2) slightly understates diversification benefit. Future: inject
+  a correlation matrix into the return generation step.
+- **Full stochastic inflation**: `inflationStdDev` currently only affects portfolio deflation
+  (real vs nominal balance). Future: propagate per-run cumulative inflation to cash flow
+  adjustments (income/spending), which requires rethinking whether users enter amounts in
+  today's dollars vs nominal future dollars throughout the UI.
+- **Median/downside path construction**: currently uses the single run whose final balance
+  is closest to the 50th/10th percentile. An alternative is year-by-year percentile envelopes
+  (smoother chart lines, but synthetic paths with no coherent per-year actuals). The
+  representative-run approach was chosen to enable exact stock/bond attribution in detail rows.
 
 ### Top bar: Settings menu
 
 `AppHeader` renders a single **Settings** dropdown (PrimeReact `Menu` popup) with two items:
 
-- **Portfolio** → `PortfolioDialog` — risk level (conservative/balanced/aggressive/custom);
-  selecting a named level auto-populates return/deviation defaults in Modeling
-- **Modeling** → `ModelingDialog` — expected return %, standard deviation %, inflation rate %,
-  simulation run count; saving back-derives `riskLevel` from values (preset match → named
-  level, otherwise `'custom'`)
+- **Portfolio** → `PortfolioDialog` — stock/bond split (80/20, 60/40, 50/50, Custom);
+  selecting a preset sets `stockAllocation` only; return assumptions are managed in Modeling
+- **Modeling** → `ModelingDialog` — stock/bond expected return % and std dev % (grouped),
+  inflation rate % and std dev %, simulation run count; read-only blended return display
 
 Both dialogs are disabled when no active scenario.
 

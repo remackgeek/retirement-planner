@@ -128,11 +128,15 @@ const Projections = ({
   userData: any;
 }) => {
   if (!results) return null;
-  const { probability, median, downside, nominal, years } = results;
+  const {
+    probability, median, downside, nominal, years,
+    medianStockFactors, medianBondFactors,
+    downsideStockFactors, downsideBondFactors,
+  } = results;
 
   // Pre-calculate annual cash flow breakdowns for all years
   const annualBreakdowns: AnnualCashFlowBreakdown[] = useMemo(() => {
-    return years.map((year: number) => calculateAnnualCashFlow(userData, year));
+    return years.map((year: number) => calculateAnnualCashFlow(userData, year, userData.inflationRate));
   }, [years, userData]);
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
@@ -451,46 +455,78 @@ const Projections = ({
                         {fmt(cashFlow)}
                       </td>
                     </tr>
-                    {isExpanded && (
-                      <tr key={`${year}-detail`}>
-                        <td colSpan={5} style={{
-                          padding: `${spacing.xs} ${spacing.sm}`,
-                          backgroundColor: colors.bgLight,
-                          border: border.standard,
-                          fontSize: fontSize.sm,
-                        }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: spacing.md }}>
-                            {breakdown.totalGrossIncome > 0 && (
-                            <div>
-                              <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.income }}>Income (nominal)</div>
-                              {breakdown.ssGross > 0 && <div>SS Gross: ${fmt(breakdown.ssGross)}</div>}
-                              {breakdown.otherTaxableGross > 0 && <div>Other Taxable: ${fmt(breakdown.otherTaxableGross)}</div>}
-                              {breakdown.afterTaxIncome > 0 && <div>After-Tax: ${fmt(breakdown.afterTaxIncome)}</div>}
-                              {breakdown.ssTaxableAmount > 0 && (
-                                <div style={{ color: colors.textSecondary }}>SS Taxable Portion: ${fmt(breakdown.ssTaxableAmount)}</div>
+                    {isExpanded && (() => {
+                      const { stockAllocation, stockReturn, bondReturn } = userData.portfolioAssumptions;
+                      const bondAllocation = 1 - stockAllocation;
+                      const selectedPath = view === 'median' ? median : view === 'nominal' ? nominal : downside;
+                      const startBalance = index === 0 ? userData.currentSavings : (selectedPath[index - 1] ?? 0);
+
+                      let stockFactor: number;
+                      let bondFactor: number;
+                      if (view === 'nominal') {
+                        stockFactor = 1 + stockReturn;
+                        bondFactor = 1 + bondReturn;
+                      } else if (view === 'median') {
+                        stockFactor = medianStockFactors?.[index] ?? (1 + stockReturn);
+                        bondFactor = medianBondFactors?.[index] ?? (1 + bondReturn);
+                      } else {
+                        stockFactor = downsideStockFactors?.[index] ?? (1 + stockReturn);
+                        bondFactor = downsideBondFactors?.[index] ?? (1 + bondReturn);
+                      }
+
+                      const stockGain = startBalance * stockAllocation * (stockFactor - 1);
+                      const bondGain  = startBalance * bondAllocation  * (bondFactor  - 1);
+                      const netGrowth = stockGain + bondGain;
+                      const fmtPct = (f: number) => `${((f - 1) * 100).toFixed(1)}%`;
+                      const fmtSigned = (v: number) => `${v >= 0 ? '+' : '-'}$${fmt(Math.abs(v))}`;
+
+                      return (
+                        <tr key={`${year}-detail`}>
+                          <td colSpan={5} style={{
+                            padding: `${spacing.xs} ${spacing.sm}`,
+                            backgroundColor: colors.bgLight,
+                            border: border.standard,
+                            fontSize: fontSize.sm,
+                          }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: spacing.md }}>
+                              {breakdown.totalGrossIncome > 0 && (
+                              <div>
+                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.income }}>Income (nominal)</div>
+                                {breakdown.ssGross > 0 && <div>SS Gross: ${fmt(breakdown.ssGross)}</div>}
+                                {breakdown.otherTaxableGross > 0 && <div>Other Taxable: ${fmt(breakdown.otherTaxableGross)}</div>}
+                                {breakdown.afterTaxIncome > 0 && <div>After-Tax: ${fmt(breakdown.afterTaxIncome)}</div>}
+                                {breakdown.ssTaxableAmount > 0 && (
+                                  <div style={{ color: colors.textSecondary }}>SS Taxable Portion: ${fmt(breakdown.ssTaxableAmount)}</div>
+                                )}
+                              </div>
                               )}
-                            </div>
-                            )}
-                            {breakdown.totalSpendingNet > 0 && (
-                            <div>
-                              <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.spending }}>Spending (nominal)</div>
-                              {breakdown.baseSpendingNet > 0 && <div>Base Spending: ${fmt(breakdown.baseSpendingNet)}</div>}
-                              {breakdown.otherSpendingGoalsNet > 0 && <div>Goals: ${fmt(breakdown.otherSpendingGoalsNet)}</div>}
-                              <div style={{ fontWeight: 'bold' }}>Total Need: ${fmt(breakdown.totalSpendingNet)}</div>
-                            </div>
-                            )}
-                            <div>
-                              <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textPrimary }}>Tax &amp; Withdrawal</div>
-                              {breakdown.totalTax > 0 && <div>Total Tax: ${fmt(breakdown.totalTax)}</div>}
-                              {breakdown.portfolioWithdrawal > 0 && <div>Portfolio Withdrawal: ${fmt(breakdown.portfolioWithdrawal)}</div>}
-                              <div style={{ fontWeight: 'bold' }}>
-                                Net Cash Flow: {breakdown.netCashFlow >= 0 ? '' : '-'}${fmt(Math.abs(breakdown.netCashFlow))}
+                              {breakdown.totalSpendingNet > 0 && (
+                              <div>
+                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.spending }}>Spending (nominal)</div>
+                                {breakdown.baseSpendingNet > 0 && <div>Base Spending: ${fmt(breakdown.baseSpendingNet)}</div>}
+                                {breakdown.otherSpendingGoalsNet > 0 && <div>Goals: ${fmt(breakdown.otherSpendingGoalsNet)}</div>}
+                                <div style={{ fontWeight: 'bold' }}>Total Need: ${fmt(breakdown.totalSpendingNet)}</div>
+                              </div>
+                              )}
+                              <div>
+                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textPrimary }}>Tax &amp; Withdrawal</div>
+                                {breakdown.totalTax > 0 && <div>Total Tax: ${fmt(breakdown.totalTax)}</div>}
+                                {breakdown.portfolioWithdrawal > 0 && <div>Portfolio Withdrawal: ${fmt(breakdown.portfolioWithdrawal)}</div>}
+                                <div style={{ fontWeight: 'bold' }}>
+                                  Net Cash Flow: {breakdown.netCashFlow >= 0 ? '' : '-'}${fmt(Math.abs(breakdown.netCashFlow))}
+                                </div>
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textSecondary }}>Portfolio Growth</div>
+                                <div>Stocks ({Math.round(stockAllocation * 100)}%): {fmtPct(stockFactor)} → {fmtSigned(stockGain)}</div>
+                                <div>Bonds ({Math.round(bondAllocation * 100)}%): {fmtPct(bondFactor)} → {fmtSigned(bondGain)}</div>
+                                <div style={{ fontWeight: 'bold' }}>Net: {fmtSigned(netGrowth)}</div>
                               </div>
                             </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                          </td>
+                        </tr>
+                      );
+                    })()}
                     </React.Fragment>
                   );
                 })}

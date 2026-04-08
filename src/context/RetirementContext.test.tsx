@@ -83,7 +83,7 @@ describe('RetirementContext Import Tests', () => {
   });
 
   it('imports new scenario successfully', async () => {
-    const mockText = '{"name": "New Scenario", "currentAge": 40}';
+    const mockText = '{"name": "New Scenario", "currentAge": 40, "inflationStdDev": 0, "portfolioAssumptions": {"portfolioBalance": "60_40", "stockAllocation": 0.6, "stockReturn": 0.07, "stockStdDev": 0.15, "bondReturn": 0.03, "bondStdDev": 0.05}}';
     const newFile = new File([mockText], 'new.json', {
       type: 'application/json',
     });
@@ -140,7 +140,7 @@ describe('RetirementContext Import Tests', () => {
     mockGetAll.mockResolvedValue([existingScenario]);
 
     const mockText =
-      '{"id": "existing-id", "name": "Updated", "currentAge": 50}';
+      '{"id": "existing-id", "name": "Updated", "currentAge": 50, "inflationStdDev": 0, "portfolioAssumptions": {"portfolioBalance": "60_40", "stockAllocation": 0.6, "stockReturn": 0.07, "stockStdDev": 0.15, "bondReturn": 0.03, "bondStdDev": 0.05}}';
     const updateFile = new File([mockText], 'update.json', {
       type: 'application/json',
     });
@@ -206,7 +206,7 @@ describe('RetirementContext Import Tests', () => {
     mockGetAll.mockResolvedValue([existingScenario]);
 
     const mockText =
-      '{"id": "existing-id", "name": "Updated", "currentAge": 50}';
+      '{"id": "existing-id", "name": "Updated", "currentAge": 50, "inflationStdDev": 0, "portfolioAssumptions": {"portfolioBalance": "60_40", "stockAllocation": 0.6, "stockReturn": 0.07, "stockStdDev": 0.15, "bondReturn": 0.03, "bondStdDev": 0.05}}';
     const updateFile = new File([mockText], 'update.json', {
       type: 'application/json',
     });

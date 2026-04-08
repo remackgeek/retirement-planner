@@ -19,11 +19,15 @@
   ],
   "incomeEvents": [],
   "portfolioAssumptions": {
-    "riskLevel": "custom",
-    "expectedReturn": 0.05,
-    "standardDeviation": 0
+    "portfolioBalance": "60_40",
+    "stockAllocation": 0.6,
+    "stockReturn": 0.05,
+    "stockStdDev": 0,
+    "bondReturn": 0.05,
+    "bondStdDev": 0
   },
   "inflationRate": 0,
+  "inflationStdDev": 0,
   "filingStatus": "single",
   "spouseAge": null,
   "stateTimeline": [

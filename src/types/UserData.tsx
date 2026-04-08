@@ -23,6 +23,7 @@ export interface UserData {
   portfolioAssumptions: PortfolioAssumptions;
   referenceYear: number;
   inflationRate: number;
+  inflationStdDev: number;
   simulationSettings: SimulationSettings;
   // Tax configuration
   filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh';

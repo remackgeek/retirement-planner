@@ -1,8 +1,8 @@
 {
-  "_description": "Realistic stochastic scenario with balanced portfolio, SS income, and taxes. The first scenario that exercises randomness.",
-  "_rationale": "800k savings, balanced portfolio (6.5% mean, 10.5% stddev), 5k/mo retirement spending = 60k/yr. MFJ in Virginia (5.75% state tax). SS at 67 for 30k/yr (before-tax, fixed COLA, subject to 2034 haircut to 23.1k). With 3% inflation, spending inflates to ~108k by age 75 and ~146k by age 85. After tax grossing-up, gross withdrawals grow much faster than the portfolio. Challenging scenario — see expected file for probability range.",
+  "_description": "80/20 stock/bond split with stocks 10%/15% stddev and bonds 3%/5% stddev. Same spending profile as balanced-realistic but more aggressive allocation. Verifies that higher allocation produces higher expected return and wider variance.",
+  "_rationale": "800k savings, 80/20 split (stocks 10%/15%, bonds 3%/5%). Blended return = 0.8*10% + 0.2*3% = 8.6% vs 7.2% for 60/40 equivalent. 60k/yr inflating spending (3%), MFJ Virginia, SS at 67 for 30k. Higher expected return should boost probability vs an equivalent 60/40 scenario, but higher stock stddev (15%) widens the spread between median and downside outcomes.",
   "_seed": 42,
-  "name": "Balanced Realistic",
+  "name": "Allocation 80/20",
   "currentAge": 55,
   "lifeExpectancy": 90,
   "referenceYear": 2026,
@@ -40,12 +40,12 @@
     }
   ],
   "portfolioAssumptions": {
-    "portfolioBalance": "60_40",
-    "stockAllocation": 0.6,
-    "stockReturn": 0.065,
-    "stockStdDev": 0.105,
-    "bondReturn": 0.065,
-    "bondStdDev": 0.105
+    "portfolioBalance": "80_20",
+    "stockAllocation": 0.8,
+    "stockReturn": 0.10,
+    "stockStdDev": 0.15,
+    "bondReturn": 0.03,
+    "bondStdDev": 0.05
   },
   "inflationRate": 0.03,
   "inflationStdDev": 0,

@@ -6,21 +6,35 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import type { Scenario } from '../types/Scenario';
 import type { SimulationSettings } from '../types/UserData';
-import type { PortfolioType } from '../types/IncomeEvent';
-import { PORTFOLIO_PRESETS } from '../utils/portfolioPresets';
-import { spacing, colors, fontSize } from '../styles/theme';
+import { spacing, colors, fontSize, border } from '../styles/theme';
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
   gap: ${spacing.md};
   padding: ${spacing.sm} 0;
+`;
 
-  .p-inputtext,
-  .p-dropdown,
-  .p-inputnumber {
-    width: 100%;
-  }
+const Section = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${spacing.sm};
+`;
+
+const SectionHeader = styled.div`
+  font-size: ${fontSize.sm};
+  font-weight: 600;
+  color: ${colors.textSecondary};
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: ${spacing.xs};
+  border-bottom: ${border.light};
+`;
+
+const FieldRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: ${spacing.md};
 `;
 
 const InputGroup = styled.div`
@@ -34,15 +48,37 @@ const InputGroup = styled.div`
   }
 `;
 
-const FieldRow = styled.div`
+const AssetRow = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: ${spacing.md};
+  grid-template-columns: 4rem 1fr 1fr;
+  gap: ${spacing.sm};
+  align-items: end;
 `;
 
-const HelpText = styled.small`
-  color: ${colors.textMuted};
+const AssetLabel = styled.div`
+  font-size: ${fontSize.sm};
+  color: ${colors.textSecondary};
+  padding-bottom: 0.4rem;
+`;
+
+const ColumnHeader = styled.div`
   font-size: ${fontSize.xs};
+  color: ${colors.textMuted};
+  text-align: center;
+`;
+
+const BlendedRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${spacing.xs};
+  font-size: ${fontSize.sm};
+  color: ${colors.textSecondary};
+  padding-top: ${spacing.xs};
+`;
+
+const BlendedValue = styled.span`
+  font-weight: 600;
+  color: ${colors.textPrimary};
 `;
 
 const simRunOptions = [
@@ -59,9 +95,12 @@ interface ModelingDialogProps {
 }
 
 interface FormState {
-  expectedReturn: number;
-  standardDeviation: number;
+  stockReturn: number;
+  stockStdDev: number;
+  bondReturn: number;
+  bondStdDev: number;
   inflationRate: number;
+  inflationStdDev: number;
   simulationSettings: SimulationSettings;
 }
 
@@ -72,39 +111,45 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
   onSave,
 }) => {
   const [form, setForm] = useState<FormState>({
-    expectedReturn: scenario.portfolioAssumptions.expectedReturn,
-    standardDeviation: scenario.portfolioAssumptions.standardDeviation,
+    stockReturn: scenario.portfolioAssumptions.stockReturn,
+    stockStdDev: scenario.portfolioAssumptions.stockStdDev,
+    bondReturn: scenario.portfolioAssumptions.bondReturn,
+    bondStdDev: scenario.portfolioAssumptions.bondStdDev,
     inflationRate: scenario.inflationRate,
+    inflationStdDev: scenario.inflationStdDev,
     simulationSettings: { ...scenario.simulationSettings },
   });
 
   useEffect(() => {
     if (visible) {
       setForm({
-        expectedReturn: scenario.portfolioAssumptions.expectedReturn,
-        standardDeviation: scenario.portfolioAssumptions.standardDeviation,
+        stockReturn: scenario.portfolioAssumptions.stockReturn,
+        stockStdDev: scenario.portfolioAssumptions.stockStdDev,
+        bondReturn: scenario.portfolioAssumptions.bondReturn,
+        bondStdDev: scenario.portfolioAssumptions.bondStdDev,
         inflationRate: scenario.inflationRate,
+        inflationStdDev: scenario.inflationStdDev,
         simulationSettings: { ...scenario.simulationSettings },
       });
     }
   }, [visible, scenario]);
 
+  const stockAllocation = scenario.portfolioAssumptions.stockAllocation;
+  const bondAllocation = 1 - stockAllocation;
+  const blendedReturn = stockAllocation * form.stockReturn + bondAllocation * form.bondReturn;
+
   const handleSave = () => {
-    const eps = 0.00001;
-    const matchingPreset = (Object.keys(PORTFOLIO_PRESETS) as PortfolioType[]).find(
-      (key) =>
-        Math.abs(PORTFOLIO_PRESETS[key].expectedReturn - form.expectedReturn) < eps &&
-        Math.abs(PORTFOLIO_PRESETS[key].standardDeviation - form.standardDeviation) < eps
-    );
-    const riskLevel = matchingPreset ?? 'custom';
     onSave({
       ...scenario,
       inflationRate: form.inflationRate,
+      inflationStdDev: form.inflationStdDev,
       simulationSettings: form.simulationSettings,
       portfolioAssumptions: {
-        riskLevel,
-        expectedReturn: form.expectedReturn,
-        standardDeviation: form.standardDeviation,
+        ...scenario.portfolioAssumptions,
+        stockReturn: form.stockReturn,
+        stockStdDev: form.stockStdDev,
+        bondReturn: form.bondReturn,
+        bondStdDev: form.bondStdDev,
       },
     });
     onHide();
@@ -117,69 +162,86 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     </div>
   );
 
+  const pctField = (
+    value: number,
+    onChange: (v: number) => void,
+    max = 50
+  ) => (
+    <InputNumber
+      value={value * 100}
+      onValueChange={(e) => onChange((e.value ?? 0) / 100)}
+      mode="decimal"
+      minFractionDigits={1}
+      maxFractionDigits={1}
+      min={0}
+      max={max}
+      suffix="%"
+      style={{ width: '100%' }}
+    />
+  );
+
   return (
     <Dialog
       header="Modeling"
       visible={visible}
-      style={{ width: '32rem' }}
+      style={{ width: '34rem' }}
       onHide={onHide}
       footer={dialogFooter}
     >
       <Form onSubmit={(e) => e.preventDefault()}>
-        <FieldRow>
+
+        <Section>
+          <SectionHeader>Portfolio Returns</SectionHeader>
+          <AssetRow>
+            <div />
+            <ColumnHeader>Expected Return</ColumnHeader>
+            <ColumnHeader>Std Dev</ColumnHeader>
+          </AssetRow>
+          <AssetRow>
+            <AssetLabel>Stocks</AssetLabel>
+            {pctField(form.stockReturn, (v) => setForm({ ...form, stockReturn: v }))}
+            {pctField(form.stockStdDev, (v) => setForm({ ...form, stockStdDev: v }))}
+          </AssetRow>
+          <AssetRow>
+            <AssetLabel>Bonds</AssetLabel>
+            {pctField(form.bondReturn, (v) => setForm({ ...form, bondReturn: v }))}
+            {pctField(form.bondStdDev, (v) => setForm({ ...form, bondStdDev: v }))}
+          </AssetRow>
+          <BlendedRow>
+            <span>Blended return ({Math.round(stockAllocation * 100)}/{Math.round(bondAllocation * 100)}):</span>
+            <BlendedValue>{(blendedReturn * 100).toFixed(1)}%</BlendedValue>
+          </BlendedRow>
+        </Section>
+
+        <Section>
+          <SectionHeader>Inflation</SectionHeader>
+          <FieldRow>
+            <InputGroup>
+              <label>Rate</label>
+              {pctField(form.inflationRate, (v) => setForm({ ...form, inflationRate: v }), 20)}
+            </InputGroup>
+            <InputGroup>
+              <label>Std Dev</label>
+              {pctField(form.inflationStdDev, (v) => setForm({ ...form, inflationStdDev: v }), 20)}
+            </InputGroup>
+          </FieldRow>
+        </Section>
+
+        <Section>
+          <SectionHeader>Simulation</SectionHeader>
           <InputGroup>
-            <label>Expected Return</label>
-            <InputNumber
-              value={form.expectedReturn * 100}
-              onValueChange={(e) => setForm({ ...form, expectedReturn: (e.value ?? 0) / 100 })}
-              mode="decimal"
-              minFractionDigits={2}
-              maxFractionDigits={2}
-              min={0}
-              max={30}
-              suffix="%"
+            <label>Runs</label>
+            <Dropdown
+              value={form.simulationSettings.numSimulations}
+              options={simRunOptions}
+              onChange={(e) =>
+                setForm({ ...form, simulationSettings: { ...form.simulationSettings, numSimulations: e.value } })
+              }
+              style={{ width: '100%' }}
             />
           </InputGroup>
-          <InputGroup>
-            <label>Standard Deviation</label>
-            <InputNumber
-              value={form.standardDeviation * 100}
-              onValueChange={(e) => setForm({ ...form, standardDeviation: (e.value ?? 0) / 100 })}
-              mode="decimal"
-              minFractionDigits={2}
-              maxFractionDigits={2}
-              min={0}
-              max={50}
-              suffix="%"
-            />
-          </InputGroup>
-        </FieldRow>
-        <HelpText>Real (inflation-adjusted) annual returns. Populated from Portfolio risk level — adjust here to fine-tune.</HelpText>
+        </Section>
 
-        <InputGroup>
-          <label>Inflation Rate</label>
-          <InputNumber
-            value={form.inflationRate * 100}
-            onValueChange={(e) => setForm({ ...form, inflationRate: (e.value ?? 0) / 100 })}
-            mode="decimal"
-            minFractionDigits={2}
-            maxFractionDigits={2}
-            min={0}
-            max={20}
-            suffix="%"
-          />
-        </InputGroup>
-
-        <InputGroup>
-          <label>Simulation Runs</label>
-          <Dropdown
-            value={form.simulationSettings.numSimulations}
-            options={simRunOptions}
-            onChange={(e) =>
-              setForm({ ...form, simulationSettings: { ...form.simulationSettings, numSimulations: e.value } })
-            }
-          />
-        </InputGroup>
       </Form>
     </Dialog>
   );
