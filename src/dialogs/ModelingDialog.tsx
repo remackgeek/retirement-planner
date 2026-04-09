@@ -29,11 +29,11 @@ const SectionHeader = styled.div`
   letter-spacing: 0.04em;
   padding-bottom: ${spacing.xs};
   border-bottom: ${border.light};
+  margin-bottom: ${spacing.xs};
 `;
 
 const FieldRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   gap: ${spacing.md};
 `;
 
@@ -49,22 +49,22 @@ const InputGroup = styled.div`
 `;
 
 const AssetRow = styled.div`
-  display: grid;
-  grid-template-columns: 4rem 1fr 1fr;
-  gap: ${spacing.sm};
-  align-items: end;
+  display: flex;
+  gap: ${spacing.md};
+  align-items: flex-end;
 `;
 
 const AssetLabel = styled.div`
+  flex: 0 0 4rem;
   font-size: ${fontSize.sm};
   color: ${colors.textSecondary};
   padding-bottom: 0.4rem;
 `;
 
 const ColumnHeader = styled.div`
-  font-size: ${fontSize.xs};
-  color: ${colors.textMuted};
-  text-align: center;
+  width: 8rem;
+  font-size: ${fontSize.sm};
+  color: ${colors.textPrimary};
 `;
 
 const BlendedRow = styled.div`
@@ -74,6 +74,7 @@ const BlendedRow = styled.div`
   font-size: ${fontSize.sm};
   color: ${colors.textSecondary};
   padding-top: ${spacing.xs};
+  margin-bottom: ${spacing.md};
 `;
 
 const BlendedValue = styled.span`
@@ -176,7 +177,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
       min={0}
       max={max}
       suffix="%"
-      style={{ width: '100%' }}
+      inputStyle={{ width: '8rem' }}
     />
   );
 
@@ -184,7 +185,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     <Dialog
       header="Modeling"
       visible={visible}
-      style={{ width: '34rem' }}
+      style={{ width: '28rem' }}
       onHide={onHide}
       footer={dialogFooter}
     >
@@ -193,7 +194,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
         <Section>
           <SectionHeader>Portfolio Returns</SectionHeader>
           <AssetRow>
-            <div />
+            <AssetLabel />
             <ColumnHeader>Expected Return</ColumnHeader>
             <ColumnHeader>Std Dev</ColumnHeader>
           </AssetRow>
@@ -227,7 +228,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
           </FieldRow>
         </Section>
 
-        <Section>
+        <Section style={{ marginTop: spacing.md }}>
           <SectionHeader>Simulation</SectionHeader>
           <InputGroup>
             <label>Runs</label>
