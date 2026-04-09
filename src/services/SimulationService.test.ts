@@ -548,6 +548,69 @@ describe('calculateAnnualCashFlow', () => {
   });
 });
 
+describe('runSimulation — per-path breakdowns', () => {
+  // Deterministic setup: 0% returns, 0% stddev → all runs identical.
+  // after_tax income avoids taxable withdrawal complications: $5k income, $20k spending,
+  // $15k/yr net withdrawal. With $50k savings and 0% growth over 5 years (ages 60–64):
+  //   Year 0: balance $50k → withdrawal $15k → balance $35k
+  //   Year 1: balance $35k → withdrawal $15k → balance $20k
+  //   Year 2: balance $20k → withdrawal $15k → balance $5k
+  //   Year 3: balance $5k  → need $15k, cap at $5k → balance $0  (partial depletion)
+  //   Year 4: balance $0   → need $15k, cap at $0  → balance $0  (full depletion)
+  const depletionUserData = makeUserData({
+    currentAge: 60,
+    lifeExpectancy: 64,
+    currentSavings: 50_000,
+    inflationRate: 0,
+    portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0 },
+    simulationSettings: { numSimulations: 10 },
+    spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 20_000, startAge: 60, inflationAdjusted: false }],
+    incomeEvents: [{ id: 'i1', name: 'Other Income 1', type: 'other_income', amount: 5_000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' }],
+  });
+
+  it('returns medianBreakdowns and downsideBreakdowns with one entry per year', () => {
+    const result = runSimulation(depletionUserData);
+    const totalYears = depletionUserData.lifeExpectancy - depletionUserData.currentAge + 1;
+    expect(result.medianBreakdowns).toHaveLength(totalYears);
+    expect(result.downsideBreakdowns).toHaveLength(totalYears);
+  });
+
+  it('non-depleted years show full withdrawal and correct tax', () => {
+    const { downsideBreakdowns } = runSimulation(depletionUserData);
+    // Years 0–2: $15k withdrawal, tax = 0 (after_tax income only, no taxable income)
+    for (let i = 0; i <= 2; i++) {
+      expect(downsideBreakdowns[i].portfolioWithdrawal).toBeCloseTo(15_000, 0);
+      expect(downsideBreakdowns[i].totalTax).toBe(0);
+      expect(downsideBreakdowns[i].netCashFlow).toBeCloseTo(-15_000, 0);
+    }
+  });
+
+  it('partially depleting year caps withdrawal at remaining balance', () => {
+    const { downsideBreakdowns } = runSimulation(depletionUserData);
+    // Year 3: only $5k left, so withdrawal is capped at $5k (not the $15k need)
+    expect(downsideBreakdowns[3].portfolioWithdrawal).toBeCloseTo(5_000, 0);
+    expect(downsideBreakdowns[3].totalTax).toBe(0); // $5k < standard deduction
+    expect(downsideBreakdowns[3].netCashFlow).toBeCloseTo(-5_000, 0);
+  });
+
+  it('fully depleted year shows zero withdrawal and correctly recomputed zero tax', () => {
+    const { downsideBreakdowns } = runSimulation(depletionUserData);
+    // Year 4: portfolio is $0, no withdrawal possible
+    expect(downsideBreakdowns[4].portfolioWithdrawal).toBe(0);
+    expect(downsideBreakdowns[4].totalTax).toBe(0);
+    expect(downsideBreakdowns[4].netCashFlow).toBe(0);
+  });
+
+  it('income and spending fields are unchanged by depletion', () => {
+    const { downsideBreakdowns } = runSimulation(depletionUserData);
+    // Income and spending are deterministic — same in all years for this scenario
+    for (const bd of downsideBreakdowns) {
+      expect(bd.afterTaxIncome).toBe(5_000);
+      expect(bd.totalSpendingNet).toBe(20_000);
+    }
+  });
+});
+
 describe('runSimulation — deterministic path', () => {
   const noFlowUserData = makeUserData({
     currentAge: 60,

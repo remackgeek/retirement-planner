@@ -130,6 +130,14 @@ rebalancing to target allocation is assumed. The median and downside paths are t
 simulation runs whose final balance is closest to the 50th/10th percentile of all final
 balances — coherent per-year paths with actual return factors, not year-by-year envelopes.
 
+**Per-path breakdowns:** `runSimulation()` returns `medianBreakdowns` and `downsideBreakdowns`
+(`AnnualCashFlowBreakdown[]`) alongside the path arrays. These are computed during the
+simulation loop (not post-hoc) and capture the effective per-year cash flow for each
+representative run — including portfolio depletion effects (when balance hits $0,
+`portfolioWithdrawal` is capped at the available balance and a spending shortfall is shown).
+The deterministic (Nominal) path uses `nominalBreakdowns` computed in `Chart.tsx`. The
+yearly data detail rows show the breakdown for whichever view is selected.
+
 Future direction:
 
 - Historical sequence-of-returns using real S&P 500 and interest rate data
@@ -159,6 +167,15 @@ Future direction:
 
 Both dialogs are disabled when no active scenario.
 
+### Implemented UX
+
+- **View selection**: radio control (Median / Deterministic / Downside) in the yearly
+  data header; selected path renders bold on the chart; portfolio balance, income/spending/
+  tax detail rows, and portfolio growth all reflect the selected path. Depleted years on
+  downside/median paths show a shortfall indicator in the detail row.
+- **CSV export**: download button in yearly data header exports all three portfolio paths
+  plus full income/spending/tax breakdown per year as a `.csv` file
+
 ### Planned UX
 
 - Side-by-side scenario comparison (visual, not just switching)
@@ -166,13 +183,6 @@ Both dialogs are disabled when no active scenario.
 - Monthly/annual input toggle for remaining spending goal and income event dialogs
   (the `amountPeriod` field is already on both `SpendingGoal` and `IncomeEvent` types;
   living expenses and Social Security dialogs already have the toggle)
-- **Nominal projection**: computed as `nominal: number[]` in `runSimulation()` — already
-  implemented and returned; not yet exposed in the chart or yearly data UI
-- **View selection**: radio control (Median / Nominal / Downside) in the yearly data
-  header; selected path renders bold on the chart; all three portfolio columns visible
-  in the yearly data table with the selected one highlighted
-- **CSV export**: download button in yearly data header exports all three portfolio
-  paths plus full income/spending/tax breakdown per year as a `.csv` file
 
 ### Other extensibility
 

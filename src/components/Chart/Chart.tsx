@@ -130,12 +130,12 @@ const Projections = ({
   if (!results) return null;
   const {
     probability, median, downside, nominal, years,
-    medianStockFactors, medianBondFactors,
-    downsideStockFactors, downsideBondFactors,
+    medianStockFactors, medianBondFactors, medianBreakdowns,
+    downsideStockFactors, downsideBondFactors, downsideBreakdowns,
   } = results;
 
-  // Pre-calculate annual cash flow breakdowns for all years
-  const annualBreakdowns: AnnualCashFlowBreakdown[] = useMemo(() => {
+  // Pre-calculate nominal (deterministic) annual cash flow breakdowns for all years
+  const nominalBreakdowns: AnnualCashFlowBreakdown[] = useMemo(() => {
     return years.map((year: number) => calculateAnnualCashFlow(userData, year, userData.inflationRate));
   }, [years, userData]);
 
@@ -269,7 +269,9 @@ const Projections = ({
               <button
                 onClick={e => {
                   e.stopPropagation();
-                  exportCsv(userData.name ?? 'scenario', years, nominal, median, downside, annualBreakdowns, userData.currentAge);
+                  exportCsv(userData.name ?? 'scenario', years, nominal, median, downside,
+                    view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns,
+                    userData.currentAge);
                 }}
                 style={{
                   marginLeft: spacing.sm,
@@ -315,7 +317,7 @@ const Projections = ({
               <tbody>
                 {years.map((year: number, index: number) => {
                   const age = userData.currentAge + index;
-                  const breakdown = annualBreakdowns[index];
+                  const breakdown = (view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns)[index];
 
                   const totalSpending = breakdown.baseSpendingNet + breakdown.otherSpendingGoalsNet;
                   const totalIncome = breakdown.totalGrossIncome;
@@ -491,7 +493,7 @@ const Projections = ({
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: spacing.md }}>
                               {breakdown.totalGrossIncome > 0 && (
                               <div>
-                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.income }}>Income (nominal)</div>
+                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.income }}>Income</div>
                                 {breakdown.ssGross > 0 && <div>SS Gross: ${fmt(breakdown.ssGross)}</div>}
                                 {breakdown.otherTaxableGross > 0 && <div>Other Taxable: ${fmt(breakdown.otherTaxableGross)}</div>}
                                 {breakdown.afterTaxIncome > 0 && <div>After-Tax: ${fmt(breakdown.afterTaxIncome)}</div>}
@@ -502,7 +504,7 @@ const Projections = ({
                               )}
                               {breakdown.totalSpendingNet > 0 && (
                               <div>
-                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.spending }}>Spending (nominal)</div>
+                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.spending }}>Spending</div>
                                 {breakdown.baseSpendingNet > 0 && <div>Base Spending: ${fmt(breakdown.baseSpendingNet)}</div>}
                                 {breakdown.otherSpendingGoalsNet > 0 && <div>Goals: ${fmt(breakdown.otherSpendingGoalsNet)}</div>}
                                 <div style={{ fontWeight: 'bold' }}>Total Need: ${fmt(breakdown.totalSpendingNet)}</div>
@@ -512,6 +514,14 @@ const Projections = ({
                                 <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textPrimary }}>Tax &amp; Withdrawal</div>
                                 {breakdown.totalTax > 0 && <div>Total Tax: ${fmt(breakdown.totalTax)}</div>}
                                 {breakdown.portfolioWithdrawal > 0 && <div>Portfolio Withdrawal: ${fmt(breakdown.portfolioWithdrawal)}</div>}
+                                {(() => {
+                                  const shortfall = nominalBreakdowns[index].portfolioWithdrawal - breakdown.portfolioWithdrawal;
+                                  return shortfall > 0 ? (
+                                    <div style={{ color: colors.danger, fontWeight: 'bold' }}>
+                                      Portfolio Depleted — Shortfall: ${fmt(shortfall)}
+                                    </div>
+                                  ) : null;
+                                })()}
                                 <div style={{ fontWeight: 'bold' }}>
                                   Net Cash Flow: {breakdown.netCashFlow >= 0 ? '' : '-'}${fmt(Math.abs(breakdown.netCashFlow))}
                                 </div>

@@ -222,7 +222,8 @@ function accumulateSpending(
 export function calculateAnnualCashFlow(
   userData: UserData,
   year: number,
-  inflationRate: number = 0.03
+  inflationRate: number = 0.03,
+  maxWithdrawal?: number  // if provided, caps portfolio withdrawal (used for depletion display)
 ): AnnualCashFlowBreakdown {
   const income = accumulateIncome(userData, year, inflationRate);
   const spending = accumulateSpending(userData, year, inflationRate);
@@ -234,11 +235,14 @@ export function calculateAnnualCashFlow(
   const stateTaxRate = getStateTaxRate(userData, year);
   const age = userData.currentAge + (year - userData.referenceYear);
 
+  const cap = maxWithdrawal ?? Infinity;
+
   // Iterative solver: withdrawal is taxable income, which increases tax,
-  // which increases the withdrawal needed
-  let withdrawal = Math.max(0, totalSpendingNet - availableCash);
+  // which increases the withdrawal needed. Cap is applied each iteration.
+  let withdrawal = Math.min(Math.max(0, totalSpendingNet - availableCash), cap);
   let totalTax = 0;
   let ssTaxableAmount = 0;
+  let capWasBinding = false;
 
   const MAX_ITERATIONS = 50;
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
@@ -257,7 +261,9 @@ export function calculateAnnualCashFlow(
       totalTax = 0;
     }
 
-    const newWithdrawal = Math.max(0, totalSpendingNet + totalTax - availableCash);
+    const uncappedNewWithdrawal = Math.max(0, totalSpendingNet + totalTax - availableCash);
+    const newWithdrawal = Math.min(uncappedNewWithdrawal, cap);
+    capWasBinding = uncappedNewWithdrawal > cap;
 
     if (Math.abs(newWithdrawal - withdrawal) < 0.01) {
       withdrawal = newWithdrawal;
@@ -266,7 +272,11 @@ export function calculateAnnualCashFlow(
     withdrawal = newWithdrawal;
   }
 
-  const netCashFlow = availableCash - totalTax - totalSpendingNet;
+  // When the cap is binding (spending need exceeds available portfolio), netCashFlow is the
+  // actual portfolio impact (-withdrawal). Otherwise use the standard formula, which equals
+  // -withdrawal when withdrawing and positive when income covers spending.
+  // Use `|| 0` to avoid -0 when withdrawal is 0 (e.g. fully depleted year with no income).
+  const netCashFlow = capWasBinding ? (-withdrawal || 0) : availableCash - totalTax - totalSpendingNet;
 
   return {
     ssGross,
@@ -287,6 +297,7 @@ interface SimRun {
   path: number[];
   stockFactors: number[];
   bondFactors: number[];
+  breakdowns: AnnualCashFlowBreakdown[];
   failed: boolean;
   failedYear: number; // index of first year balance hit zero; totalYears if never failed
 }
@@ -299,9 +310,11 @@ export function runSimulation(
   median: number[];
   medianStockFactors: number[];
   medianBondFactors: number[];
+  medianBreakdowns: AnnualCashFlowBreakdown[];
   downside: number[];
   downsideStockFactors: number[];
   downsideBondFactors: number[];
+  downsideBreakdowns: AnnualCashFlowBreakdown[];
   nominal: number[];
   years: number[];
 } {
@@ -322,6 +335,7 @@ export function runSimulation(
     const path: number[] = [];
     const stockFactors: number[] = [];
     const bondFactors: number[] = [];
+    const breakdowns: AnnualCashFlowBreakdown[] = [];
     let failed = false;
     let failedYear = totalYears;
     let cumulativeInflation = 1;
@@ -331,10 +345,25 @@ export function runSimulation(
 
       // Store starting balance for this year (before any changes), deflated to real dollars.
       // cumulativeInflation represents inflation accumulated through the START of year i.
+      const startBalance = balance;
       path.push(balance / cumulativeInflation);
 
       // Cash flows use deterministic mean inflationRate (stochastic inflation is deflation-only)
       const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
+
+      // Capture effective breakdown with correct tax and withdrawal for display.
+      // When the portfolio is depleted or depleting, cap the withdrawal at startBalance so
+      // totalTax is recomputed on the actual (capped) withdrawal — not the theoretical amount.
+      let effectiveCashFlow: AnnualCashFlowBreakdown;
+      if (startBalance <= 0) {
+        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, 0);
+      } else if (startBalance + cashFlow.netCashFlow < 0) {
+        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, startBalance);
+      } else {
+        effectiveCashFlow = cashFlow;
+      }
+      breakdowns.push(effectiveCashFlow);
+
       balance += cashFlow.netCashFlow;
       if (balance < 0) {
         if (!failed) failedYear = i;
@@ -357,7 +386,7 @@ export function runSimulation(
       cumulativeInflation *= (1 + yearInflation);
     }
 
-    allRuns.push({ path, stockFactors, bondFactors, failed, failedYear });
+    allRuns.push({ path, stockFactors, bondFactors, breakdowns, failed, failedYear });
     if (!failed) successCount++;
   }
 
@@ -398,9 +427,11 @@ export function runSimulation(
     median: medianRun.path,
     medianStockFactors: medianRun.stockFactors,
     medianBondFactors: medianRun.bondFactors,
+    medianBreakdowns: medianRun.breakdowns,
     downside: downsideRun.path,
     downsideStockFactors: downsideRun.stockFactors,
     downsideBondFactors: downsideRun.bondFactors,
+    downsideBreakdowns: downsideRun.breakdowns,
     nominal,
     years,
   };
