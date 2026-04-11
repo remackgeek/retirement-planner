@@ -103,9 +103,9 @@ export const colors = {
   spendingBg: palette.orange10,
 
   // Chart view lines
-  chartMedian:   palette.blue600,
+  chartMedian:   palette.green500,
   chartNominal:  palette.gray400,
-  chartDownside: palette.red700,
+  chartDownside: palette.sienna500,
 
   // Shadows & overlays (used in annotations and dialog hover states)
   shadowLight:  palette.black10,
