@@ -7,7 +7,7 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Checkbox } from 'primereact/checkbox';
 import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
-import { spacing } from '../styles/theme';
+import { spacing, colors } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, spendingGoalAgeRanges } from '../utils/ageOptions';
 
 const Form = styled.form`
@@ -59,7 +59,7 @@ interface SpendingGoalDialogProps {
   referenceYear: number;
 }
 
-import { goalTypeLabels, generateDefaultSpendingGoalName } from '../utils/defaultName';
+import { goalTypeLabels, goalTypeIcons, generateDefaultSpendingGoalName } from '../utils/defaultName';
 
 const periodOptions = [
   { label: 'Monthly', value: 'monthly' as const },
@@ -153,9 +153,12 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
     onHide();
   };
 
-  const headerLabel = isEditing
-    ? `Edit ${goalTypeLabels[formData.type]}`
-    : `Add ${goalTypeLabels[formData.type]}`;
+  const headerLabel = (
+    <>
+      <i className={goalTypeIcons[formData.type]} style={{ marginRight: spacing.sm, color: colors.primary }} />
+      {isEditing ? `Edit ${goalTypeLabels[formData.type]}` : `Add ${goalTypeLabels[formData.type]}`}
+    </>
+  );
 
   const dialogFooter = (
     <div>

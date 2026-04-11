@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import type { IncomeEventType, IncomeEvent } from '../types/IncomeEvent';
 import { spacing, colors, border, fontSize } from '../styles/theme';
-import { eventTypeLabels } from '../utils/defaultName';
+import { eventTypeLabels, eventTypeIcons } from '../utils/defaultName';
 
 const GridContainer = styled.div`
   display: grid;
@@ -63,17 +63,6 @@ interface EventTypeSelectionDialogProps {
 }
 
 
-const eventTypeSymbols: Record<IncomeEventType, string> = {
-  employment_savings: 'pi pi-wallet',
-  social_security: 'pi pi-shield',
-  annuity_income: 'pi pi-money-bill',
-  inheritance: 'pi pi-gift',
-  pension_income: 'pi pi-briefcase',
-  rental_income: 'pi pi-home',
-  sale_of_property: 'pi pi-arrow-right-arrow-left',
-  work_during_retirement: 'pi pi-cog',
-  other_income: 'pi pi-ellipsis-h',
-};
 
 const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
   visible,
@@ -113,7 +102,7 @@ const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
                 : undefined}
             >
               <IconCircle className='icon-circle'>
-                <i className={eventTypeSymbols[type as IncomeEventType]} />
+                <i className={eventTypeIcons[type as IncomeEventType]} />
               </IconCircle>
               {label}
             </TypeButton>

@@ -9,7 +9,7 @@ import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import { spacing, colors, fontSize } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
-import { generateDefaultIncomeEventName } from '../utils/defaultName';
+import { generateDefaultIncomeEventName, eventTypeIcons } from '../utils/defaultName';
 import { resolveOwnerAge } from '../utils/ownerAge';
 
 const Form = styled.form`
@@ -190,7 +190,12 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
 
   return (
     <Dialog
-      header={isEditing ? 'Edit Pension Income' : 'Add Pension Income'}
+      header={
+        <>
+          <i className={eventTypeIcons['pension_income']} style={{ marginRight: spacing.sm, color: colors.primary }} />
+          {isEditing ? 'Edit Pension Income' : 'Add Pension Income'}
+        </>
+      }
       visible={visible}
       style={{ width: '32rem' }}
       onHide={onHide}

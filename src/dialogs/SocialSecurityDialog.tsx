@@ -8,6 +8,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import { spacing, colors, fontSize } from '../styles/theme';
+import { eventTypeIcons } from '../utils/defaultName';
 import { buildAgeOptions } from '../utils/ageOptions';
 import { resolveOwnerAge } from '../utils/ownerAge';
 
@@ -226,7 +227,12 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
 
   return (
     <Dialog
-      header={isEditing ? 'Edit Social Security' : 'Add Social Security'}
+      header={
+        <>
+          <i className={eventTypeIcons['social_security']} style={{ marginRight: spacing.sm, color: colors.primary }} />
+          {isEditing ? 'Edit Social Security' : 'Add Social Security'}
+        </>
+      }
       visible={visible}
       style={{ width: '32rem' }}
       onHide={onHide}

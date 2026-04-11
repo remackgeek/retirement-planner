@@ -13,6 +13,32 @@ export const eventTypeLabels: Record<IncomeEventType, string> = {
   other_income: 'Other Income',
 };
 
+export const eventTypeIcons: Record<IncomeEventType, string> = {
+  employment_savings: 'pi pi-wallet',
+  social_security: 'pi pi-shield',
+  annuity_income: 'pi pi-money-bill',
+  inheritance: 'pi pi-gift',
+  pension_income: 'pi pi-briefcase',
+  rental_income: 'pi pi-home',
+  sale_of_property: 'pi pi-arrow-right-arrow-left',
+  work_during_retirement: 'pi pi-cog',
+  other_income: 'pi pi-ellipsis-h',
+};
+
+export const goalTypeIcons: Record<SpendingGoal['type'], string> = {
+  living_expenses: 'pi pi-dollar',
+  charity: 'pi pi-heart',
+  dependent_support: 'pi pi-users',
+  healthcare: 'pi pi-heart-fill',
+  home_purchase: 'pi pi-home',
+  education: 'pi pi-book',
+  renovation: 'pi pi-wrench',
+  vacation: 'pi pi-map',
+  vehicle: 'pi pi-car',
+  wedding: 'pi pi-star',
+  other: 'pi pi-ellipsis-h',
+};
+
 export const goalTypeLabels: Record<SpendingGoal['type'], string> = {
   living_expenses: 'Living Expenses',
   charity: 'Charity/Gift',

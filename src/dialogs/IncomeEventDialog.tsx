@@ -7,7 +7,7 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
-import { spacing } from '../styles/theme';
+import { spacing, colors } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 
 const Form = styled.form`
@@ -52,7 +52,7 @@ interface IncomeEventDialogProps {
   referenceYear: number;
 }
 
-import { eventTypeLabels, generateDefaultIncomeEventName } from '../utils/defaultName';
+import { eventTypeLabels, eventTypeIcons, generateDefaultIncomeEventName } from '../utils/defaultName';
 
 const getDefaultCOLA = (
   type: IncomeEventType
@@ -137,9 +137,12 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
     { label: 'After Tax', value: 'after_tax' },
   ];
 
-  const headerLabel = isEditing
-    ? `Edit ${eventTypeLabels[formData.type]}`
-    : `Add ${eventTypeLabels[formData.type]}`;
+  const headerLabel = (
+    <>
+      <i className={eventTypeIcons[formData.type]} style={{ marginRight: spacing.sm, color: colors.primary }} />
+      {isEditing ? `Edit ${eventTypeLabels[formData.type]}` : `Add ${eventTypeLabels[formData.type]}`}
+    </>
+  );
 
   const dialogFooter = (
     <div>

@@ -8,7 +8,7 @@ import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { spacing, colors, fontSize } from '../styles/theme';
 import { buildAgeOptions, spendingGoalAgeRanges } from '../utils/ageOptions';
-import { generateDefaultSpendingGoalName } from '../utils/defaultName';
+import { generateDefaultSpendingGoalName, goalTypeIcons } from '../utils/defaultName';
 
 const Form = styled.form`
   display: flex;
@@ -132,7 +132,12 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
 
   return (
     <Dialog
-      header={isEditing ? 'Edit Home Purchase' : 'Add Home Purchase'}
+      header={
+        <>
+          <i className={goalTypeIcons['home_purchase']} style={{ marginRight: spacing.sm, color: colors.primary }} />
+          {isEditing ? 'Edit Home Purchase' : 'Add Home Purchase'}
+        </>
+      }
       visible={visible}
       style={{ width: '32rem' }}
       onHide={onHide}
