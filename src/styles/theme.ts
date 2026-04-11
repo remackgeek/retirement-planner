@@ -50,6 +50,7 @@ const palette = {
   orange600: '#d2691e',
 
   // Semi-transparent
+  green25:  'rgba(61, 122, 95, 0.08)',
   green10:  'rgba(0, 128, 0, 0.1)',
   orange10: 'rgba(210, 105, 30, 0.1)',
   black10:  'rgba(0, 0, 0, 0.1)',
@@ -113,8 +114,8 @@ export const colors = {
   overlayLight: palette.white20,
 
   // Sidebar
-  activeRow: palette.gray150,
-  hoverRow:  palette.gray250,
+  activeRow: palette.green50,
+  hoverRow:  palette.green25,
   chipBg:    palette.green50,
   chipText:  palette.greenDark,
 } as const;
