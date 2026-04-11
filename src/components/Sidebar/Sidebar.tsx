@@ -134,7 +134,10 @@ const Sidebar: React.FC = () => {
         {isCollapsed ? '▶' : '◀'}
       </ToggleButton>
       <SidebarContent $isCollapsed={isCollapsed}>
-        <h3 style={{ margin: `0 0 ${spacing.sm}` }}>Scenarios</h3>
+        <h3 style={{ margin: `0 0 ${spacing.sm}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          Scenarios
+          <i className="pi pi-chart-bar" style={{ fontSize: fontSize.base, color: colors.primary }} />
+        </h3>
         <ScenarioList>
           {scenarios.map((scenario) => {
             const isActive = activeScenario?.id === scenario.id;

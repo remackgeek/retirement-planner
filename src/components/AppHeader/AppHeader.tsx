@@ -12,7 +12,7 @@ import type { Scenario } from '../../types/Scenario';
 const HeaderContainer = styled.header`
   display: flex;
   align-items: center;
-  padding: ${spacing.sm} ${spacing.lg};
+  padding: 7px ${spacing.lg};
   background-color: ${colors.bgLight};
   border-bottom: 1px solid #e9ecef;
 `;
@@ -20,14 +20,14 @@ const HeaderContainer = styled.header`
 const HeaderLeft = styled.div`
   flex: 1;
   font-weight: bold;
-  font-size: ${fontSize.xl};
+  font-size: ${fontSize.lg};
 `;
 
 const HeaderCenter = styled.div`
   flex: 1;
   text-align: center;
   font-weight: normal;
-  font-size: ${fontSize.base};
+  font-size: ${fontSize.lg};
   color: ${colors.textSecondary};
 `;
 
@@ -67,7 +67,14 @@ const AppHeader: React.FC = () => {
     <>
       <HeaderContainer>
         <HeaderLeft>Retirement Planner MVP</HeaderLeft>
-        <HeaderCenter>{scenarioName ?? ''}</HeaderCenter>
+        <HeaderCenter>
+          {scenarioName && (
+            <>
+              <i className="pi pi-chart-bar" style={{ marginRight: spacing.sm, fontSize: fontSize.base, color: colors.primary }} />
+              {scenarioName}
+            </>
+          )}
+        </HeaderCenter>
         <HeaderRight>
           <Menu model={menuItems} popup ref={menuRef} />
           <Button
@@ -75,6 +82,7 @@ const AppHeader: React.FC = () => {
             icon="pi pi-chevron-down"
             iconPos="right"
             className="p-button-text p-button-sm"
+            style={{ padding: '0.15rem 0.5rem' }}
             onClick={(e) => menuRef.current?.toggle(e)}
             disabled={!activeScenario}
           />

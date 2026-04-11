@@ -211,7 +211,12 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
 
   return (
     <Dialog
-      header={scenario ? 'Edit Scenario' : 'New Scenario'}
+      header={
+        <>
+          <i className="pi pi-chart-bar" style={{ marginRight: spacing.sm, color: colors.primary }} />
+          {scenario ? 'Edit Scenario' : 'New Scenario'}
+        </>
+      }
       visible={visible}
       style={{ width: '40rem' }}
       onHide={onHide}
