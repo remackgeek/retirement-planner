@@ -34,7 +34,7 @@ const TypeButton = styled.button`
   }
 
   &:hover .icon-circle {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: ${colors.overlayLight};
     color: inherit;
   }
 `;

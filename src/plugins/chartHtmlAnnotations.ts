@@ -1,5 +1,6 @@
 import { Chart } from 'chart.js';
 import type { Plugin, ChartType } from 'chart.js';
+import { colors } from '../styles/theme';
 
 // Extend Chart.js types to include our custom plugin
 declare module 'chart.js' {
@@ -97,11 +98,9 @@ function createIconElement(
     width: '24px',
     height: '24px',
     borderRadius: '50%',
-    backgroundColor: isIncome
-      ? 'rgba(0, 128, 0, 0.1)'
-      : 'rgba(210, 105, 30, 0.1)',
-    border: `2px solid ${isIncome ? 'green' : '#d2691e'}`,
-    color: isIncome ? 'green' : '#d2691e',
+    backgroundColor: isIncome ? colors.incomeBg : colors.spendingBg,
+    border: `2px solid ${isIncome ? colors.income : colors.spending}`,
+    color: isIncome ? colors.income : colors.spending,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -109,7 +108,7 @@ function createIconElement(
     cursor: 'pointer',
     pointerEvents: 'auto',
     transition: 'all 0.2s ease',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    boxShadow: `0 2px 4px ${colors.shadowLight}`,
     zIndex: '10',
   });
 
@@ -133,14 +132,14 @@ function createIconElement(
   if (onHover) {
     icon.addEventListener('mouseenter', () => {
       icon.style.transform = 'translate(-50%, -50%) scale(1.2)';
-      icon.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+      icon.style.boxShadow = `0 4px 8px ${colors.shadowMedium}`;
       icon.style.zIndex = '100';
       onHover(annotation);
     });
 
     icon.addEventListener('mouseleave', () => {
       icon.style.transform = 'translate(-50%, -50%) scale(1)';
-      icon.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+      icon.style.boxShadow = `0 2px 4px ${colors.shadowLight}`;
       icon.style.zIndex = '10';
       onHover(null);
     });

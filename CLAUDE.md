@@ -88,9 +88,15 @@ import { spacing, colors, fontSize, border } from '../styles/theme';
 
 - **`spacing`** — `xs` (0.25rem) through `xl` (1.25rem). Use these for all padding,
   margin, and gap values.
-- **`colors`** — surfaces (`bgLight`, `bgMedium`), text (`textPrimary`, `textSecondary`,
-  `textMuted`), actions (`primary`, `danger`), accents (`income`/`spending` with `Bg`
-  variants), sidebar (`activeRow`, `chipBg`).
+- **`colors`** — semantic aliases only; never reference raw hex values here directly.
+  Groups: surfaces (`bgLight`, `bgMedium`, `bgHover`), borders (`border`, `borderLight`,
+  `borderMedium`), text (`textPrimary`, `textSecondary`, `textMuted`), actions (`primary`,
+  `danger`), accents (`income`/`spending` with `Bg` variants), chart lines
+  (`chartMedian`, `chartNominal`, `chartDownside`), shadows/overlays (`shadowLight`,
+  `shadowMedium`, `overlayLight`), sidebar (`activeRow`, `chipBg`).
+  **Two-tier rule:** when adding a color, first add the hex to the private `palette`
+  object (named by hue + shade, e.g. `blue600`), then add a semantic alias in `colors`
+  that references it. Components always import from `colors`; never from `palette`.
 - **`fontSize`** — `xs` (0.65rem) through `xl` (1.1rem). `base` (0.85rem) for body text.
 - **`border`** — `standard` (`1px solid #ddd`), `light`, `medium`, plus `radius` (4px),
   `radiusRound` (8px), `radiusCircle` (50%).

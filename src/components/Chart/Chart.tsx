@@ -61,9 +61,9 @@ const goalTypeIcons: Record<string, string> = {
 type ViewMode = 'median' | 'nominal' | 'downside';
 
 const VIEW_COLORS: Record<ViewMode, string> = {
-  median: '#2563eb',
-  nominal: '#9ca3af',
-  downside: '#dc2626',
+  median: colors.chartMedian,
+  nominal: colors.chartNominal,
+  downside: colors.chartDownside,
 };
 
 const VIEW_LABELS: Record<ViewMode, string> = {

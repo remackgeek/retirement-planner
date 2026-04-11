@@ -14,7 +14,7 @@ const HeaderContainer = styled.header`
   align-items: center;
   padding: 7px ${spacing.lg};
   background-color: ${colors.bgLight};
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid ${colors.borderLight};
 `;
 
 const HeaderLeft = styled.div`
