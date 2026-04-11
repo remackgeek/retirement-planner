@@ -27,16 +27,20 @@ const palette = {
   gray600: '#666',
   gray900: '#333',
 
-  // Blues
-  blue50:  '#d8e8f8',
-  blue500: '#007bff',
+  // Blues (chart only)
   blue600: '#2563eb',
-  blue700: '#0056b3',
-  navy:    '#333355',
 
-  // Reds
-  red500:  '#dc3545',
-  red600:  '#c82333',
+  // Greens (primary action)
+  green50:   '#d8e6dd',
+  green500:  '#3d7a5f',
+  green700:  '#2f6049',
+  greenDark: '#2a4f3d',
+
+  // Siennas (danger action)
+  sienna500: '#b06b4f',
+  sienna600: '#965a42',
+
+  // Reds (chart only)
   red700:  '#dc2626',
 
   // Greens
@@ -87,10 +91,10 @@ export const colors = {
   textSeparator: palette.gray300,
 
   // Actions
-  primary:      palette.blue500,
-  primaryHover: palette.blue700,
-  danger:       palette.red500,
-  dangerHover:  palette.red600,
+  primary:      palette.green500,
+  primaryHover: palette.green700,
+  danger:       palette.sienna500,
+  dangerHover:  palette.sienna600,
 
   // Domain accents — income / spending
   income:     palette.green600,
@@ -111,8 +115,8 @@ export const colors = {
   // Sidebar
   activeRow: palette.gray150,
   hoverRow:  palette.gray250,
-  chipBg:    palette.blue50,
-  chipText:  palette.navy,
+  chipBg:    palette.green50,
+  chipText:  palette.greenDark,
 } as const;
 
 // --- Typography ---

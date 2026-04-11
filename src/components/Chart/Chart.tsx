@@ -261,7 +261,7 @@ const Projections = ({
                     value={mode}
                     checked={view === mode}
                     onChange={() => setView(mode)}
-                    style={{ accentColor: mode === 'nominal' ? colors.textPrimary : VIEW_COLORS[mode], margin: 0 }}
+                    style={{ accentColor: colors.primary, margin: 0 }}
                   />
                   {VIEW_LABELS[mode]}
                 </label>
