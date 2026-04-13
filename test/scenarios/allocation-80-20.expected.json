@@ -1,5 +1,5 @@
 {
-  "_rationale": "80/20 allocation (blended 8.6%) vs the equivalent 60/40 balanced-realistic scenario (blended ~6.5%). Higher expected return should push probability above the balanced-realistic range of 20-45%. However higher stock volatility (15% stddev) widens outcomes. Probability expected in the 35-65% range — better than balanced-realistic but with more spread. medianFinalBalance should be higher than balanced-realistic's range due to higher blended return.",
-  "probability": { "min": 35, "max": 70 },
+  "_rationale": "80/20 allocation (blended 8.6%) vs the equivalent 60/40 balanced-realistic scenario (blended ~6.5%). Higher expected return should push probability above the balanced-realistic range of 20-45%. However higher stock volatility (15% stddev) widens outcomes. Probability expected in the 35-75% range — better than balanced-realistic but with more spread. Growth-first simulation order boosts probability slightly. medianFinalBalance should be higher than balanced-realistic's range due to higher blended return.",
+  "probability": { "min": 35, "max": 75 },
   "medianFinalBalance": { "min": 0, "max": 5000000 }
 }

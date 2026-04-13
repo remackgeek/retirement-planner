@@ -296,6 +296,11 @@ const Projections = ({
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
+                <tr>
+                  <td colSpan={6} style={{ padding: `${spacing.xs} ${spacing.sm} 0`, fontSize: fontSize.xs, color: colors.textMuted, textAlign: 'right', border: 'none' }}>
+                    All values in today's dollars
+                  </td>
+                </tr>
                 <tr style={{ backgroundColor: colors.bgMedium }}>
                   <th style={{ padding: spacing.sm, border: border.standard, textAlign: 'left' }}>
                     Age (Year)
@@ -304,10 +309,13 @@ const Projections = ({
                     Portfolio
                   </th>
                   <th style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
+                    Income
+                  </th>
+                  <th style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                     Spending
                   </th>
                   <th style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
-                    Income
+                    Taxes
                   </th>
                   <th style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                     Cash Flow
@@ -318,9 +326,17 @@ const Projections = ({
                 {years.map((year: number, index: number) => {
                   const age = userData.currentAge + index;
                   const breakdown = (view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns)[index];
+                  const selectedPath = view === 'median' ? median : view === 'nominal' ? nominal : downside;
 
-                  const totalSpending = breakdown.baseSpendingNet + breakdown.otherSpendingGoalsNet;
-                  const totalIncome = breakdown.totalGrossIncome;
+                  // All display values in today's dollars
+                  const inflationFactor = Math.pow(1 + userData.inflationRate, index);
+                  const realIncome = breakdown.totalGrossIncome / inflationFactor;
+                  const realSpending = breakdown.totalSpendingNet / inflationFactor;
+                  const realTax = breakdown.totalTax / inflationFactor;
+                  // Cash Flow = total real delta: Portfolio[next] - Portfolio[current]
+                  const portfolio = selectedPath[index] ?? 0;
+                  const nextPortfolio = index < years.length - 1 ? (selectedPath[index + 1] ?? 0) : null;
+                  const cashFlow = nextPortfolio !== null ? nextPortfolio - portfolio : null;
 
                   const startingEvents = userData.incomeEvents.filter(
                     (event: any) => {
@@ -341,127 +357,75 @@ const Projections = ({
                     }
                   );
 
-                  // Cash flow deflated to today's dollars
-                  const inflationFactor = Math.pow(
-                    1 + userData.inflationRate,
-                    index
-                  );
-                  const cashFlow = breakdown.netCashFlow / inflationFactor;
-
                   const isExpanded = expandedRows.has(index);
                   const fmt = (v: number) => v.toLocaleString(undefined, {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 0,
                   });
 
+                  const iconChip = (key: string, icon: string, color: string, bgColor: string) => (
+                    <span
+                      key={key}
+                      style={{
+                        marginRight: spacing.xs,
+                        color,
+                        backgroundColor: bgColor,
+                        borderRadius: border.radiusCircle,
+                        padding: spacing.xs,
+                        fontSize: fontSize.md,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '1.5rem',
+                        height: '1.5rem',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      <i className={icon} />
+                    </span>
+                  );
+
                   return (
                     <React.Fragment key={year}>
                     <tr onClick={() => toggleRow(index)} style={{ cursor: 'pointer' }}>
-                      <td
-                        style={{ padding: spacing.sm, border: border.standard, whiteSpace: 'nowrap' }}
-                      >
+                      <td style={{ padding: spacing.sm, border: border.standard, whiteSpace: 'nowrap' }}>
                         <i className={isExpanded ? 'pi pi-chevron-down' : 'pi pi-chevron-right'}
                           style={{ fontSize: fontSize.xs, marginRight: spacing.xs, color: colors.textMuted }} />
                         {age} ({year})
                       </td>
                       <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
-                        {fmt((view === 'median' ? median : view === 'nominal' ? nominal : downside)[index] ?? 0)}
+                        {fmt(portfolio)}
                       </td>
-                      <td
-                        style={{
-                          padding: spacing.sm,
-                          border: border.standard,
-                          textAlign: 'right',
-                        }}
-                      >
-                        {startingGoals.length > 0 && (
-                          <div
-                            style={{
-                              marginBottom: spacing.xs,
-                              textAlign: 'left',
-                            }}
-                          >
-                            {startingGoals.map((goal: any) => (
-                              <span
-                                key={goal.id}
-                                style={{
-                                  marginRight: spacing.xs,
-                                  color: colors.spending,
-                                  backgroundColor: colors.spendingBg,
-                                  borderRadius: border.radiusCircle,
-                                  padding: spacing.xs,
-                                  fontSize: fontSize.md,
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  width: '1.5rem',
-                                  height: '1.5rem',
-                                  fontWeight: 'bold',
-                                }}
-                              >
-                                <i className={goalTypeIcons[goal.type]} />
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {totalSpending > 0
-                          ? `-${fmt(totalSpending)}`
-                          : fmt(totalSpending)}
-                      </td>
-                      <td
-                        style={{
-                          padding: spacing.sm,
-                          border: border.standard,
-                          textAlign: 'right',
-                        }}
-                      >
+                      <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                         {startingEvents.length > 0 && (
-                          <div
-                            style={{
-                              marginBottom: spacing.xs,
-                              textAlign: 'left',
-                            }}
-                          >
-                            {startingEvents.map((event: any) => (
-                              <span
-                                key={event.id}
-                                style={{
-                                  marginRight: spacing.xs,
-                                  color: colors.income,
-                                  backgroundColor: colors.incomeBg,
-                                  borderRadius: border.radiusCircle,
-                                  padding: spacing.xs,
-                                  fontSize: fontSize.md,
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  width: '1.5rem',
-                                  height: '1.5rem',
-                                  fontWeight: 'bold',
-                                }}
-                              >
-                                <i className={eventTypeIcons[event.type]} />
-                              </span>
-                            ))}
+                          <div style={{ marginBottom: spacing.xs, textAlign: 'left' }}>
+                            {startingEvents.map((event: any) =>
+                              iconChip(event.id, eventTypeIcons[event.type], colors.income, colors.incomeBg)
+                            )}
                           </div>
                         )}
-                        {fmt(totalIncome)}
+                        {fmt(realIncome)}
                       </td>
-                      <td
-                        style={{
-                          padding: spacing.sm,
-                          border: border.standard,
-                          textAlign: 'right',
-                        }}
-                      >
-                        {fmt(cashFlow)}
+                      <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
+                        {startingGoals.length > 0 && (
+                          <div style={{ marginBottom: spacing.xs, textAlign: 'left' }}>
+                            {startingGoals.map((goal: any) =>
+                              iconChip(goal.id, goalTypeIcons[goal.type], colors.spending, colors.spendingBg)
+                            )}
+                          </div>
+                        )}
+                        {realSpending > 0 ? `-${fmt(realSpending)}` : fmt(realSpending)}
+                      </td>
+                      <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
+                        {realTax > 0 ? `-${fmt(realTax)}` : fmt(realTax)}
+                      </td>
+                      <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
+                        {cashFlow !== null ? fmt(cashFlow) : '—'}
                       </td>
                     </tr>
                     {isExpanded && (() => {
                       const { stockAllocation, stockReturn, bondReturn } = userData.portfolioAssumptions;
                       const bondAllocation = 1 - stockAllocation;
-                      const selectedPath = view === 'median' ? median : view === 'nominal' ? nominal : downside;
-                      const startBalance = index === 0 ? userData.currentSavings : (selectedPath[index - 1] ?? 0);
 
                       let stockFactor: number;
                       let bondFactor: number;
@@ -476,62 +440,152 @@ const Projections = ({
                         bondFactor = downsideBondFactors?.[index] ?? (1 + bondReturn);
                       }
 
+                      // Growth computed on displayed start balance (today's $) — correct since growth happens first
+                      const startBalance = portfolio;
                       const stockGain = startBalance * stockAllocation * (stockFactor - 1);
                       const bondGain  = startBalance * bondAllocation  * (bondFactor  - 1);
                       const netGrowth = stockGain + bondGain;
+
+                      // All breakdown items deflated to today's $
+                      const realSS = breakdown.ssGross / inflationFactor;
+                      const realOtherTaxable = breakdown.otherTaxableGross / inflationFactor;
+                      const realAfterTax = breakdown.afterTaxIncome / inflationFactor;
+                      const realSSTaxable = breakdown.ssTaxableAmount / inflationFactor;
+                      const realBaseSpending = breakdown.baseSpendingNet / inflationFactor;
+                      const realGoalSpending = breakdown.otherSpendingGoalsNet / inflationFactor;
+                      const realWithdrawal = breakdown.portfolioWithdrawal / inflationFactor;
+
+                      // Inflation adjustment = residual that makes everything balance
+                      const inflationAdj = cashFlow !== null
+                        ? cashFlow - netGrowth - realIncome + realSpending + realTax
+                        : 0;
+
                       const fmtPct = (f: number) => `${((f - 1) * 100).toFixed(1)}%`;
                       const fmtSigned = (v: number) => `${v >= 0 ? '+' : '-'}$${fmt(Math.abs(v))}`;
 
+                      // Shortfall detection
+                      const nominalWithdrawal = nominalBreakdowns[index].portfolioWithdrawal / inflationFactor;
+                      const shortfall = nominalWithdrawal - realWithdrawal;
+
+                      const categoryStyle = { fontWeight: 'bold' as const, display: 'flex', justifyContent: 'space-between', padding: `${spacing.xs} 0` };
+                      const itemStyle = { display: 'flex', justifyContent: 'space-between', paddingLeft: '1.5rem', color: colors.textSecondary };
+                      const noteStyle = { paddingLeft: '2.5rem', color: colors.textMuted, fontSize: fontSize.xs };
+
                       return (
                         <tr key={`${year}-detail`}>
-                          <td colSpan={5} style={{
+                          <td colSpan={6} style={{
                             padding: `${spacing.xs} ${spacing.sm}`,
                             backgroundColor: colors.bgLight,
                             border: border.standard,
                             fontSize: fontSize.sm,
                           }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: spacing.md }}>
-                              {breakdown.totalGrossIncome > 0 && (
-                              <div>
-                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.income }}>Income</div>
-                                {breakdown.ssGross > 0 && <div>SS Gross: ${fmt(breakdown.ssGross)}</div>}
-                                {breakdown.otherTaxableGross > 0 && <div>Other Taxable: ${fmt(breakdown.otherTaxableGross)}</div>}
-                                {breakdown.afterTaxIncome > 0 && <div>After-Tax: ${fmt(breakdown.afterTaxIncome)}</div>}
-                                {breakdown.ssTaxableAmount > 0 && (
-                                  <div style={{ color: colors.textSecondary }}>SS Taxable Portion: ${fmt(breakdown.ssTaxableAmount)}</div>
-                                )}
+                            <div style={{ maxWidth: '32rem' }}>
+                              {/* Growth */}
+                              <div style={categoryStyle}>
+                                <span>Growth</span>
+                                <span>{fmtSigned(netGrowth)}</span>
                               </div>
-                              )}
-                              {breakdown.totalSpendingNet > 0 && (
-                              <div>
-                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.spending }}>Spending</div>
-                                {breakdown.baseSpendingNet > 0 && <div>Base Spending: ${fmt(breakdown.baseSpendingNet)}</div>}
-                                {breakdown.otherSpendingGoalsNet > 0 && <div>Goals: ${fmt(breakdown.otherSpendingGoalsNet)}</div>}
-                                <div style={{ fontWeight: 'bold' }}>Total Need: ${fmt(breakdown.totalSpendingNet)}</div>
+                              <div style={itemStyle}>
+                                <span>Stocks ({Math.round(stockAllocation * 100)}% @ {fmtPct(stockFactor)})</span>
+                                <span>{fmtSigned(stockGain)}</span>
                               </div>
-                              )}
-                              <div>
-                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textPrimary }}>Tax &amp; Withdrawal</div>
-                                {breakdown.totalTax > 0 && <div>Total Tax: ${fmt(breakdown.totalTax)}</div>}
-                                {breakdown.portfolioWithdrawal > 0 && <div>Portfolio Withdrawal: ${fmt(breakdown.portfolioWithdrawal)}</div>}
-                                {(() => {
-                                  const shortfall = nominalBreakdowns[index].portfolioWithdrawal - breakdown.portfolioWithdrawal;
-                                  return shortfall > 0 ? (
-                                    <div style={{ color: colors.danger, fontWeight: 'bold' }}>
-                                      Portfolio Depleted — Shortfall: ${fmt(shortfall)}
+                              <div style={itemStyle}>
+                                <span>Bonds ({Math.round(bondAllocation * 100)}% @ {fmtPct(bondFactor)})</span>
+                                <span>{fmtSigned(bondGain)}</span>
+                              </div>
+
+                              {/* Income */}
+                              {realIncome > 0 && (
+                                <>
+                                  <div style={{ ...categoryStyle, color: colors.income }}>
+                                    <span>Income</span>
+                                    <span>{fmtSigned(realIncome)}</span>
+                                  </div>
+                                  {realSS > 0 && (
+                                    <>
+                                      <div style={itemStyle}>
+                                        <span>Social Security</span>
+                                        <span>${fmt(realSS)}</span>
+                                      </div>
+                                      {realSSTaxable > 0 && (
+                                        <div style={noteStyle}>
+                                          Taxable portion: ${fmt(realSSTaxable)}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                  {realOtherTaxable > 0 && (
+                                    <div style={itemStyle}>
+                                      <span>Other Taxable</span>
+                                      <span>${fmt(realOtherTaxable)}</span>
                                     </div>
-                                  ) : null;
-                                })()}
-                                <div style={{ fontWeight: 'bold' }}>
-                                  Net Cash Flow: {breakdown.netCashFlow >= 0 ? '' : '-'}${fmt(Math.abs(breakdown.netCashFlow))}
+                                  )}
+                                  {realAfterTax > 0 && (
+                                    <div style={itemStyle}>
+                                      <span>After-Tax</span>
+                                      <span>${fmt(realAfterTax)}</span>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+
+                              {/* Spending */}
+                              {realSpending > 0 && (
+                                <>
+                                  <div style={{ ...categoryStyle, color: colors.spending }}>
+                                    <span>Spending</span>
+                                    <span>-${fmt(realSpending)}</span>
+                                  </div>
+                                  {realBaseSpending > 0 && (
+                                    <div style={itemStyle}>
+                                      <span>Living Expenses</span>
+                                      <span>${fmt(realBaseSpending)}</span>
+                                    </div>
+                                  )}
+                                  {realGoalSpending > 0 && (
+                                    <div style={itemStyle}>
+                                      <span>Goals</span>
+                                      <span>${fmt(realGoalSpending)}</span>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+
+                              {/* Taxes */}
+                              {realTax > 0 && (
+                                <div style={categoryStyle}>
+                                  <span>Taxes</span>
+                                  <span>-${fmt(realTax)}</span>
+                                </div>
+                              )}
+
+                              {/* Inflation Adjustment */}
+                              {Math.abs(inflationAdj) > 0.5 && (
+                                <div style={categoryStyle}>
+                                  <span>Inflation Adjustment</span>
+                                  <span>{fmtSigned(inflationAdj)}</span>
+                                </div>
+                              )}
+
+                              {/* Separator + Cash Flow total */}
+                              <div style={{ borderTop: border.medium, marginTop: spacing.xs, paddingTop: spacing.xs }}>
+                                <div style={{ ...categoryStyle, fontSize: fontSize.base }}>
+                                  <span>Cash Flow</span>
+                                  <span>{cashFlow !== null ? fmtSigned(cashFlow) : '—'}</span>
                                 </div>
                               </div>
-                              <div>
-                                <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textSecondary }}>Portfolio Growth</div>
-                                <div>Stocks ({Math.round(stockAllocation * 100)}%): {fmtPct(stockFactor)} → {fmtSigned(stockGain)}</div>
-                                <div>Bonds ({Math.round(bondAllocation * 100)}%): {fmtPct(bondFactor)} → {fmtSigned(bondGain)}</div>
-                                <div style={{ fontWeight: 'bold' }}>Net: {fmtSigned(netGrowth)}</div>
-                              </div>
+
+                              {/* Informational notes */}
+                              {realWithdrawal > 0 && (
+                                <div style={{ color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'right', paddingTop: spacing.xs }}>
+                                  Portfolio withdrawal: ${fmt(realWithdrawal)}
+                                </div>
+                              )}
+                              {shortfall > 0.5 && (
+                                <div style={{ color: colors.danger, fontWeight: 'bold', textAlign: 'right', paddingTop: spacing.xs }}>
+                                  Portfolio Depleted — Shortfall: ${fmt(shortfall)}
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>

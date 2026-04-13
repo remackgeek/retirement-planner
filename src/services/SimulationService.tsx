@@ -345,38 +345,41 @@ export function runSimulation(
 
       // Store starting balance for this year (before any changes), deflated to real dollars.
       // cumulativeInflation represents inflation accumulated through the START of year i.
-      const startBalance = balance;
       path.push(balance / cumulativeInflation);
 
-      // Cash flows use deterministic mean inflationRate (stochastic inflation is deflation-only)
-      const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
-
-      // Capture effective breakdown with correct tax and withdrawal for display.
-      // When the portfolio is depleted or depleting, cap the withdrawal at startBalance so
-      // totalTax is recomputed on the actual (capped) withdrawal — not the theoretical amount.
-      let effectiveCashFlow: AnnualCashFlowBreakdown;
-      if (startBalance <= 0) {
-        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, 0);
-      } else if (startBalance + cashFlow.netCashFlow < 0) {
-        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, startBalance);
-      } else {
-        effectiveCashFlow = cashFlow;
-      }
-      breakdowns.push(effectiveCashFlow);
-
-      balance += cashFlow.netCashFlow;
-      if (balance < 0) {
-        if (!failed) failedYear = i;
-        failed = true;
-        balance = 0;
-      }
-
-      // Per-asset log-normal return factors
+      // 1. Growth first: per-asset log-normal return factors applied to full starting balance
       const sf = generateReturnFactor(stockReturn, stockStdDev, random);
       const bf = generateReturnFactor(bondReturn, bondStdDev, random);
       stockFactors.push(sf);
       bondFactors.push(bf);
       balance *= stockAllocation * sf + bondAllocation * bf;
+
+      // 2. Cash flows: income, spending, taxes, withdrawal — applied to post-growth balance
+      const postGrowthBalance = balance;
+      const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
+
+      // Capture effective breakdown with correct tax and withdrawal for display.
+      // When the portfolio is depleted or depleting, cap the withdrawal at postGrowthBalance so
+      // totalTax is recomputed on the actual (capped) withdrawal — not the theoretical amount.
+      let effectiveCashFlow: AnnualCashFlowBreakdown;
+      const depleting = postGrowthBalance <= 0 || postGrowthBalance + cashFlow.netCashFlow < 0;
+      if (postGrowthBalance <= 0) {
+        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, 0);
+      } else if (depleting) {
+        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, postGrowthBalance);
+      } else {
+        effectiveCashFlow = cashFlow;
+      }
+      breakdowns.push(effectiveCashFlow);
+
+      // Detect failure: portfolio can't cover spending (uncapped cash flow would go negative)
+      if (depleting) {
+        if (!failed) failedYear = i;
+        failed = true;
+      }
+
+      balance += effectiveCashFlow.netCashFlow;
+      if (balance < 0) balance = 0;
 
       // Stochastic inflation: update cumulative inflation AFTER recording this year's balance.
       // Affects real-dollar deflation of future years only; cash flows remain deterministic.
@@ -415,10 +418,11 @@ export function runSimulation(
       const year = currentYear + i;
       const inflationFactor = Math.pow(1 + inflationRate, i);
       nominal.push(balance / inflationFactor);
+      // Growth first, then cash flow — matches MC loop order
+      balance *= 1 + nominalBlendedReturn;
       const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
       balance += cashFlow.netCashFlow;
       if (balance < 0) balance = 0;
-      balance *= 1 + nominalBlendedReturn;
     }
   }
 
