@@ -145,3 +145,29 @@ export const border = {
   radiusRound: '8px',
   radiusCircle: '50%',
 } as const;
+
+// --- Breakpoints ---
+export const breakpoints = {
+  /** 768px — phones below, tablet/desktop above */
+  mobile: 768,
+} as const;
+
+/** Pre-built media query strings for use inside styled-components template literals.
+ *  Always use these — never write raw @media strings in components. */
+export const mediaQuery = {
+  /** Targets screens 767px wide and below (phones) */
+  mobile: '@media (max-width: 767px)',
+  /** Targets screens 768px wide and above (tablet / desktop) */
+  desktop: '@media (min-width: 768px)',
+} as const;
+
+// --- Layout constants ---
+export const layout = {
+  /** Minimum width for manager panels before wrapping to next row.
+   *  With flex-wrap, adding a third panel just works — no media query update needed. */
+  managerMinWidth: '280px',
+  /** Expanded sidebar width on desktop */
+  sidebarExpanded: '300px',
+  /** Collapsed sidebar width on desktop (icon-only strip) */
+  sidebarCollapsed: '50px',
+} as const;

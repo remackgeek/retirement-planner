@@ -111,6 +111,45 @@ import { spacing, colors, fontSize, border } from '../styles/theme';
 - **General rule:** if a new element adds visible dead space, tighten it. The app should
   feel information-dense and efficient, not padded out.
 
+## Responsive Design
+
+Single breakpoint at **768px** — phones below, tablet/desktop above.
+
+### Tokens (all in `src/styles/theme.ts`)
+
+- `breakpoints.mobile` — raw pixel value (768) for JS use
+- `mediaQuery.mobile` / `mediaQuery.desktop` — pre-built strings for styled-components
+- `layout.sidebarExpanded` / `layout.sidebarCollapsed` — sidebar width constants
+- `layout.managerMinWidth` — minimum panel width before wrapping (280px)
+
+**Rule: always use `mediaQuery.mobile` / `mediaQuery.desktop` — never write raw `@media`
+strings in components.**
+
+### Sidebar
+
+- **Desktop (≥ 768px):** push layout. `isSidebarOpen=true` → 300px, `false` → 50px strip.
+  Toggle button (◀/▶) lives inside the sidebar.
+- **Mobile (< 768px):** fixed overlay (`position: fixed; z-index: 100`). `isSidebarOpen=true`
+  → slides in from left, `false` → hidden (`translateX(-100%)`). A hamburger button in
+  `AppHeader` opens it; a close button (✕) inside the sidebar closes it; tapping the
+  backdrop also closes it.
+
+`isSidebarOpen` state lives in `AppContent.tsx` and is passed as props to:
+- `AppHeader` via `onMenuToggle: () => void`
+- `Sidebar` via `isOpen: boolean` + `onToggle: () => void`
+
+### Income/Spending columns (and future third column)
+
+`ManagerSection` uses `flex: 1 1 ${layout.managerMinWidth}` inside a `flex-wrap: wrap`
+container. Columns stack automatically on phones (no explicit media query needed). To add a
+third column, just add a third `<ManagerSection>` — it auto-wraps at the right breakpoint.
+
+### Yearly Data table
+
+Intentionally **not** responsive — the expanded table only has horizontal scroll. If users
+want to examine yearly data on a phone, they should rotate or use a larger device. The
+accordion **header** (view selector + CSV button) does wrap on mobile via `flex-wrap`.
+
 ## Design Direction
 
 The app should be **modular and extensible**. Avoid hardcoded assumptions.

@@ -8,7 +8,7 @@ import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
 import type { SpendingGoal } from '../../types/SpendingGoal';
 import type { IncomeEvent } from '../../types/IncomeEvent';
-import { spacing, colors, border } from '../../styles/theme';
+import { spacing, colors, border, layout } from '../../styles/theme';
 
 const ContentContainer = styled.main`
   flex: 1;
@@ -25,13 +25,15 @@ const ContentBody = styled.div`
 
 const ManagersContainer = styled.div`
   display: flex;
+  flex-wrap: wrap;
   gap: ${spacing.xl};
   margin-top: ${spacing.lg};
   margin-bottom: ${spacing.sm};
 `;
 
 const ManagerSection = styled.div`
-  flex: 1;
+  flex: 1 1 ${layout.managerMinWidth};
+  min-width: 0;
   background: ${colors.bgLight};
   border: ${border.standard};
   border-radius: ${border.radiusRound};

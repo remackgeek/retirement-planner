@@ -6,20 +6,33 @@ import { ConfirmDialog } from 'primereact/confirmdialog';
 import ScenarioDialog from '../../dialogs/ScenarioDialog';
 import type { Scenario } from '../../types/Scenario';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, border, fontSize } from '../../styles/theme';
+import { spacing, colors, border, fontSize, mediaQuery, layout } from '../../styles/theme';
 
-interface SidebarContainerProps {
-  $isCollapsed: boolean;
+interface SidebarProps {
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
-const SidebarContainer = styled.aside<SidebarContainerProps>`
-  width: ${(props) => (props.$isCollapsed ? '50px' : '300px')};
+const SidebarContainer = styled.aside<{ $isOpen: boolean }>`
+  width: ${props => (props.$isOpen ? layout.sidebarExpanded : layout.sidebarCollapsed)};
   background-color: ${colors.bgMedium};
   border-right: ${border.standard};
   transition: width 0.3s ease;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+
+  ${mediaQuery.mobile} {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: ${layout.sidebarExpanded};
+    z-index: 100;
+    transform: translateX(${props => (props.$isOpen ? '0' : '-100%')});
+    transition: transform 0.3s ease;
+  }
 `;
 
 const ToggleButton = styled.button`
@@ -34,13 +47,38 @@ const ToggleButton = styled.button`
   &:hover {
     background-color: ${colors.primaryHover};
   }
+
+  ${mediaQuery.mobile} {
+    display: none;
+  }
 `;
 
-const SidebarContent = styled.div<SidebarContainerProps>`
-  padding: ${(props) => (props.$isCollapsed ? '0' : spacing.lg)};
-  opacity: ${(props) => (props.$isCollapsed ? '0' : '1')};
+const CloseMobileButton = styled.button`
+  display: none;
+  ${mediaQuery.mobile} {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: ${spacing.sm} ${spacing.md};
+    background-color: ${colors.primary};
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: ${fontSize.xl};
+    width: 100%;
+  }
+`;
+
+const SidebarContent = styled.div<{ $isOpen: boolean }>`
+  padding: ${props => (props.$isOpen ? spacing.lg : '0')};
+  opacity: ${props => (props.$isOpen ? '1' : '0')};
   transition: opacity 0.3s ease;
   overflow-y: auto;
+
+  ${mediaQuery.mobile} {
+    padding: ${spacing.lg};
+    opacity: 1;
+  }
 `;
 
 const ScenarioList = styled.ul`
@@ -90,8 +128,7 @@ const Chip = styled.span`
   line-height: 1.4;
 `;
 
-const Sidebar: React.FC = () => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
   const [dialogVisible, setDialogVisible] = useState(false);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const context = useContext(RetirementContext);
@@ -106,10 +143,6 @@ const Sidebar: React.FC = () => {
     exportScenario,
     importScenario,
   } = context;
-
-  const toggleSidebar = () => {
-    setIsCollapsed(!isCollapsed);
-  };
 
   const handleSave = (scenario: Scenario) => {
     if (editingScenario) {
@@ -129,11 +162,14 @@ const Sidebar: React.FC = () => {
   };
 
   return (
-    <SidebarContainer $isCollapsed={isCollapsed}>
-      <ToggleButton onClick={toggleSidebar}>
-        {isCollapsed ? '▶' : '◀'}
+    <SidebarContainer $isOpen={isOpen}>
+      <ToggleButton onClick={onToggle}>
+        {isOpen ? '◀' : '▶'}
       </ToggleButton>
-      <SidebarContent $isCollapsed={isCollapsed}>
+      <CloseMobileButton onClick={onToggle}>
+        <i className="pi pi-times" />
+      </CloseMobileButton>
+      <SidebarContent $isOpen={isOpen}>
         <h3 style={{ margin: `0 0 ${spacing.sm}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           Scenarios
           <i className="pi pi-chart-bar" style={{ fontSize: fontSize.base, color: colors.primary }} />
@@ -236,7 +272,6 @@ const Sidebar: React.FC = () => {
           onHide={handleDialogHide}
           onSave={handleSave}
           scenario={editingScenario || undefined}
-
         />
         <ConfirmDialog />
       </SidebarContent>

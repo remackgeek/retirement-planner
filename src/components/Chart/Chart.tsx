@@ -18,7 +18,8 @@ import {
   type AnnualCashFlowBreakdown,
 } from '../../services/SimulationService';
 import React, { useMemo, useState } from 'react';
-import { spacing, colors, border, fontSize } from '../../styles/theme';
+import styled from 'styled-components';
+import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
 
 ChartJS.register(
   CategoryScale,
@@ -71,6 +72,54 @@ const VIEW_LABELS: Record<ViewMode, string> = {
   nominal: 'Deterministic',
   downside: 'Downside',
 };
+
+const VIEW_LABELS_SHORT: Record<ViewMode, string> = {
+  median: 'Med',
+  nominal: 'Det',
+  downside: 'Down',
+};
+
+// --- Styled components ---
+
+const ChartHeading = styled.h2`
+  margin: 0 0 ${spacing.sm};
+  font-size: 1.25rem;
+  ${mediaQuery.mobile} { font-size: ${fontSize.xl}; }
+`;
+
+const YearlyDataHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: ${spacing.md};
+  flex-wrap: wrap;
+`;
+
+const YearlyDataControls = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${spacing.sm};
+  font-size: ${fontSize.sm};
+  flex-wrap: wrap;
+`;
+
+const ViewLabel = styled.label<{ $active: boolean; $color: string }>`
+  display: flex;
+  align-items: center;
+  gap: ${spacing.xs};
+  cursor: pointer;
+  font-weight: normal;
+  color: ${props => (props.$active ? props.$color : colors.textPrimary)};
+
+  .label-full  { display: inline; }
+  .label-short { display: none; }
+
+  ${mediaQuery.mobile} {
+    .label-full  { display: none; }
+    .label-short { display: inline; }
+  }
+`;
 
 function exportCsv(
   scenarioName: string,
@@ -219,13 +268,22 @@ const Projections = ({
     });
   });
 
+  const isMobile = window.matchMedia('(max-width: 767px)').matches;
+
   const options = {
     responsive: true,
     plugins: {
-      legend: { position: 'top' as const },
+      legend: {
+        position: 'top' as const,
+        labels: {
+          font: { size: isMobile ? 10 : 12 },
+          boxWidth: isMobile ? 12 : 20,
+        },
+      },
       title: {
         display: true,
         text: "Projected Portfolio Value (Today's Dollars)",
+        font: { size: isMobile ? 11 : 13 },
       },
       htmlAnnotations: {
         annotations: htmlAnnotations,
@@ -237,22 +295,36 @@ const Projections = ({
         },
       },
     },
+    scales: {
+      x: {
+        ticks: {
+          font: { size: isMobile ? 9 : 11 },
+          maxTicksLimit: isMobile ? 6 : undefined,
+        },
+      },
+      y: {
+        ticks: {
+          font: { size: isMobile ? 9 : 11 },
+        },
+      },
+    },
   };
 
 
   return (
     <div>
-      <h2 style={{ margin: `0 0 ${spacing.sm}` }}>Probability of Success: {probability}%</h2>
+      <ChartHeading>Probability of Success: {probability}%</ChartHeading>
       <Line options={options} data={chartData} />
       <Accordion style={{ marginTop: spacing.sm }}>
         <AccordionTab header={
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: spacing.md }}>
+          <YearlyDataHeader>
             <span>Yearly Data</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: spacing.sm, fontSize: fontSize.sm }}>
+            <YearlyDataControls>
               {(['median', 'nominal', 'downside'] as ViewMode[]).map(mode => (
-                <label
+                <ViewLabel
                   key={mode}
-                  style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, cursor: 'pointer', fontWeight: 'normal', color: view === mode ? (mode === 'nominal' ? colors.textPrimary : VIEW_COLORS[mode]) : colors.textPrimary }}
+                  $active={view === mode}
+                  $color={mode === 'nominal' ? colors.textPrimary : VIEW_COLORS[mode]}
                   onClick={e => e.stopPropagation()}
                 >
                   <input
@@ -263,8 +335,9 @@ const Projections = ({
                     onChange={() => setView(mode)}
                     style={{ accentColor: colors.primary, margin: 0 }}
                   />
-                  {VIEW_LABELS[mode]}
-                </label>
+                  <span className="label-full">{VIEW_LABELS[mode]}</span>
+                  <span className="label-short">{VIEW_LABELS_SHORT[mode]}</span>
+                </ViewLabel>
               ))}
               <button
                 onClick={e => {
@@ -290,8 +363,8 @@ const Projections = ({
                 <i className="pi pi-download" style={{ fontSize: fontSize.sm }} />
                 CSV
               </button>
-            </div>
-          </div>
+            </YearlyDataControls>
+          </YearlyDataHeader>
         }>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>

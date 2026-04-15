@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { Button } from 'primereact/button';
 import { Menu } from 'primereact/menu';
 import type { MenuItem } from 'primereact/menuitem';
-import { spacing, colors, fontSize } from '../../styles/theme';
+import { spacing, colors, fontSize, mediaQuery } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
 import PortfolioDialog from '../../dialogs/PortfolioDialog';
 import ModelingDialog from '../../dialogs/ModelingDialog';
@@ -19,8 +19,27 @@ const HeaderContainer = styled.header`
 
 const HeaderLeft = styled.div`
   flex: 1;
+  display: flex;
+  align-items: center;
   font-weight: bold;
   font-size: ${fontSize.lg};
+`;
+
+const HamburgerButton = styled.button`
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: ${spacing.xs} ${spacing.sm};
+  margin-right: ${spacing.sm};
+  color: ${colors.primary};
+  font-size: ${fontSize.xl};
+  line-height: 1;
+
+  ${mediaQuery.mobile} {
+    display: inline-flex;
+    align-items: center;
+  }
 `;
 
 const HeaderCenter = styled.div`
@@ -29,6 +48,13 @@ const HeaderCenter = styled.div`
   font-weight: normal;
   font-size: ${fontSize.lg};
   color: ${colors.textSecondary};
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  ${mediaQuery.mobile} {
+    font-size: ${fontSize.sm};
+  }
 `;
 
 const HeaderRight = styled.div`
@@ -37,7 +63,11 @@ const HeaderRight = styled.div`
   justify-content: flex-end;
 `;
 
-const AppHeader: React.FC = () => {
+interface AppHeaderProps {
+  onMenuToggle: () => void;
+}
+
+const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle }) => {
   const context = useContext(RetirementContext);
   const scenarioName = context?.activeScenario?.name;
   const activeScenario = context?.activeScenario ?? null;
@@ -66,7 +96,12 @@ const AppHeader: React.FC = () => {
   return (
     <>
       <HeaderContainer>
-        <HeaderLeft>Retirement Planner MVP</HeaderLeft>
+        <HeaderLeft>
+          <HamburgerButton onClick={onMenuToggle} aria-label="Toggle menu">
+            <i className="pi pi-bars" />
+          </HamburgerButton>
+          Retirement Planner MVP
+        </HeaderLeft>
         <HeaderCenter>
           {scenarioName && (
             <>
