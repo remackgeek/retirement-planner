@@ -3,6 +3,7 @@ import type {
   IncomeEvent,
   PortfolioAssumptions,
 } from './IncomeEvent';
+import type { Account } from './Account';
 
 export interface StateResidency {
   state: string;
@@ -17,7 +18,7 @@ export interface SimulationSettings {
 export interface UserData {
   currentAge: number;
   lifeExpectancy: number;
-  currentSavings: number;
+  accounts: Account[];
   spendingGoals: SpendingGoal[];
   incomeEvents: IncomeEvent[];
   portfolioAssumptions: PortfolioAssumptions;
@@ -29,4 +30,5 @@ export interface UserData {
   filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh';
   spouseAge: number | null;
   stateTimeline: StateResidency[];
+  longTermCapGainsRate: number; // flat rate applied to taxable-brokerage withdrawals
 }

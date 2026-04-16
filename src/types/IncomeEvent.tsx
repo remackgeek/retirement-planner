@@ -24,6 +24,7 @@ export interface IncomeEvent {
   ssHaircutPercent?: number; // SS only — reduction percentage (default 23)
   ssAmountBasis?: 'today' | 'future'; // SS only — today's dollars vs already-inflated (default 'today')
   amountPeriod?: 'monthly' | 'annual'; // UI hint for input/display period (default 'annual')
+  accountId?: string; // employment_savings only — which account contributions land in
 }
 
 export type PortfolioType = '80_20' | '60_40' | '50_50';

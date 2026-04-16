@@ -6,7 +6,6 @@
   "currentAge": 55,
   "lifeExpectancy": 75,
   "referenceYear": 2026,
-  "currentSavings": 100000,
   "spendingGoals": [],
   "incomeEvents": [
     {
@@ -39,5 +38,14 @@
   ],
   "simulationSettings": {
     "numSimulations": 5000
-  }
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 100000
+    }
+  ],
+  "longTermCapGainsRate": 0.15
 }

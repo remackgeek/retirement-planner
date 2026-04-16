@@ -1,0 +1,11 @@
+{
+  "_rationale": "After-tax employment savings of 50k/yr routed to Roth via accountId. No spending, no taxes (after_tax + Florida). netCashFlow = +50k/yr, deposited into Roth. After 5 years (age 60-64), portfolio should be 250k — all in Roth. At age 65 (index 5) portfolio = 250k with no further changes.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "value": 0, "tolerance": 1 },
+    { "index": 1, "value": 50000, "tolerance": 1 },
+    { "index": 2, "value": 100000, "tolerance": 1 },
+    { "index": 5, "value": 250000, "tolerance": 1 },
+    { "index": 6, "value": 250000, "tolerance": 1 }
+  ]
+}

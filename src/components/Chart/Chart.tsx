@@ -14,10 +14,9 @@ import htmlAnnotationsPlugin, {
   type AnnotationConfig,
 } from '../../plugins/chartHtmlAnnotations';
 import {
-  calculateAnnualCashFlow,
   type AnnualCashFlowBreakdown,
 } from '../../services/SimulationService';
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
 
@@ -135,7 +134,9 @@ function exportCsv(
     'Deterministic Portfolio ($)', 'Median Portfolio ($)', 'Downside Portfolio ($)',
     'SS Gross', 'Other Taxable Income', 'After-Tax Income', 'Total Gross Income',
     'Base Spending', 'Goal Spending', 'Total Spending',
-    'Total Tax', 'Portfolio Withdrawal', 'Net Cash Flow',
+    'Total Tax', 'Portfolio Withdrawal',
+    'Withdrawal — Taxable', 'Withdrawal — Traditional', 'Withdrawal — Roth',
+    'Net Cash Flow',
   ].join(',');
 
   const rows = years.map((year, i) => {
@@ -155,6 +156,9 @@ function exportCsv(
       Math.round(bd.totalSpendingNet),
       Math.round(bd.totalTax),
       Math.round(bd.portfolioWithdrawal),
+      Math.round(bd.withdrawalFromTaxable),
+      Math.round(bd.withdrawalFromTraditional),
+      Math.round(bd.withdrawalFromRoth),
       Math.round(bd.netCashFlow),
     ].join(',');
   });
@@ -178,15 +182,10 @@ const Projections = ({
 }) => {
   if (!results) return null;
   const {
-    probability, median, downside, nominal, years,
+    probability, median, downside, nominal, nominalBreakdowns, years,
     medianStockFactors, medianBondFactors, medianBreakdowns,
     downsideStockFactors, downsideBondFactors, downsideBreakdowns,
   } = results;
-
-  // Pre-calculate nominal (deterministic) annual cash flow breakdowns for all years
-  const nominalBreakdowns: AnnualCashFlowBreakdown[] = useMemo(() => {
-    return years.map((year: number) => calculateAnnualCashFlow(userData, year, userData.inflationRate));
-  }, [years, userData]);
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [view, setView] = useState<ViewMode>('median');
@@ -648,11 +647,31 @@ const Projections = ({
                                 </div>
                               </div>
 
-                              {/* Informational notes */}
+                              {/* Portfolio withdrawal breakdown */}
                               {realWithdrawal > 0 && (
+                                <>
                                 <div style={{ color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'right', paddingTop: spacing.xs }}>
                                   Portfolio withdrawal: ${fmt(realWithdrawal)}
                                 </div>
+                                {(() => {
+                                  const realFromTaxable = breakdown.withdrawalFromTaxable / inflationFactor;
+                                  const realFromTrad = breakdown.withdrawalFromTraditional / inflationFactor;
+                                  const realFromRoth = breakdown.withdrawalFromRoth / inflationFactor;
+                                  return (
+                                    <>
+                                      {realFromTaxable > 0.5 && (
+                                        <div style={noteStyle}>Taxable: ${fmt(realFromTaxable)}</div>
+                                      )}
+                                      {realFromTrad > 0.5 && (
+                                        <div style={noteStyle}>Traditional: ${fmt(realFromTrad)}</div>
+                                      )}
+                                      {realFromRoth > 0.5 && (
+                                        <div style={noteStyle}>Roth: ${fmt(realFromRoth)}</div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
+                                </>
                               )}
                               {shortfall > 0.5 && (
                                 <div style={{ color: colors.danger, fontWeight: 'bold', textAlign: 'right', paddingTop: spacing.xs }}>

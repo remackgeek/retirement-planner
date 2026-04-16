@@ -5,6 +5,7 @@ import IncomeEventDialog from '../dialogs/IncomeEventDialog';
 import SocialSecurityDialog from '../dialogs/SocialSecurityDialog';
 import PensionIncomeDialog from '../dialogs/PensionIncomeDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
+import type { Account } from '../types/Account';
 import { spacing, colors, border, fontSize } from '../styles/theme';
 
 const Container = styled.div``;
@@ -81,6 +82,7 @@ const eventTypeSymbols: Record<IncomeEventType, string> = {
 interface IncomeEventsManagerProps {
   events: IncomeEvent[];
   userData: any;
+  accounts: Account[];
   onAdd: (event: Omit<IncomeEvent, 'id'>) => void;
   onUpdate: (id: string, event: Partial<IncomeEvent>) => void;
   onDelete: (id: string) => void;
@@ -89,6 +91,7 @@ interface IncomeEventsManagerProps {
 export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
   events,
   userData,
+  accounts,
   onAdd,
   onUpdate,
   onDelete,
@@ -240,6 +243,7 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           initialType={selectedType || undefined}
           editEvent={editingEvent}
           existingEvents={events}
+          accounts={accounts}
           currentAge={userData.currentAge}
           referenceYear={userData.referenceYear}
         />

@@ -1,0 +1,42 @@
+{
+  "_rationale": "Taxable-only withdrawals are taxed at flat 15% LTCG rate. With no other income, there's no ordinary income tax — only the LTCG. Iterative solver: spending=50k, need withdrawal W where W = 50k + 0.15*W → W = 50k/0.85 ≈ 58,824. Tax = 0.15 * 58,824 ≈ 8,824. Balance after year 0: 500k - 58,824 ≈ 441,176.",
+  "probability": 0,
+  "pathValues": [
+    { "index": 0, "value": 500000, "tolerance": 1 }
+  ],
+  "breakdownChecks": [
+    {
+      "index": 0,
+      "field": "totalTax",
+      "value": 8824,
+      "tolerance": 5,
+      "_note": "15% LTCG on ~58,824 withdrawal"
+    },
+    {
+      "index": 0,
+      "field": "portfolioWithdrawal",
+      "value": 58824,
+      "tolerance": 5,
+      "_note": "50k spending + 8,824 tax = 58,824 gross withdrawal"
+    },
+    {
+      "index": 0,
+      "field": "withdrawalFromTaxable",
+      "value": 58824,
+      "tolerance": 5,
+      "_note": "All withdrawal from taxable account"
+    },
+    {
+      "index": 0,
+      "field": "withdrawalFromTraditional",
+      "value": 0,
+      "tolerance": 1
+    },
+    {
+      "index": 0,
+      "field": "withdrawalFromRoth",
+      "value": 0,
+      "tolerance": 1
+    }
+  ]
+}

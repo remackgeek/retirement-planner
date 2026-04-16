@@ -1,5 +1,6 @@
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import type { SpendingGoal } from '../types/SpendingGoal';
+import type { Account, AccountType } from '../types/Account';
 
 export const eventTypeLabels: Record<IncomeEventType, string> = {
   employment_savings: 'Employment Savings',
@@ -59,6 +60,33 @@ export function generateDefaultIncomeEventName(
 ): string {
   const label = eventTypeLabels[type];
   const sameTypeCount = existingEvents.filter((e) => e.type === type).length;
+  return `${label} ${sameTypeCount + 1}`;
+}
+
+export const accountTypeLabels: Record<AccountType, string> = {
+  traditional: 'Traditional IRA/401k',
+  roth: 'Roth IRA/401k',
+  taxable: 'Taxable Brokerage',
+};
+
+export const accountTypeIcons: Record<AccountType, string> = {
+  traditional: 'pi pi-building',
+  roth: 'pi pi-shield',
+  taxable: 'pi pi-chart-line',
+};
+
+export const accountTypeShortLabels: Record<AccountType, string> = {
+  traditional: 'Traditional',
+  roth: 'Roth',
+  taxable: 'Taxable',
+};
+
+export function generateDefaultAccountName(
+  type: AccountType,
+  existingAccounts: Account[]
+): string {
+  const label = accountTypeShortLabels[type];
+  const sameTypeCount = existingAccounts.filter((a) => a.type === type).length;
   return `${label} ${sameTypeCount + 1}`;
 }
 

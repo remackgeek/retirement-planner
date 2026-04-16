@@ -6,7 +6,7 @@ const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
   currentAge: 60,
   lifeExpectancy: 90,
   referenceYear: 2026,
-  currentSavings: 500000,
+  accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional', balance: 500000 }],
   spendingGoals: [],
   incomeEvents: [],
   portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0 },
@@ -16,6 +16,7 @@ const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
   filingStatus: 'single',
   spouseAge: null,
   stateTimeline: [{ state: 'Florida' }],
+  longTermCapGainsRate: 0.15,
   ...overrides,
 });
 
@@ -436,6 +437,104 @@ describe('calculateAnnualCashFlow', () => {
     });
   });
 
+  describe('account-aware withdrawal waterfall', () => {
+    it('computes LTCG tax on taxable withdrawal: 50k spending from 100k taxable → W≈58,824', () => {
+      const userData = makeUserData({
+        accounts: [{ id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 100000 }],
+        longTermCapGainsRate: 0.15,
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 50000, startAge: 60, inflationAdjusted: false }],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      // Solver: W = 50k + 0.15*W → W = 50k/0.85 ≈ 58,824; LTCG tax ≈ 8,824
+      expect(result.withdrawalFromTaxable).toBeCloseTo(58824, 0);
+      expect(result.withdrawalFromTraditional).toBe(0);
+      expect(result.withdrawalFromRoth).toBe(0);
+      expect(result.totalTax).toBeCloseTo(8824, 0);
+      // Consistency: withdrawal = spending + tax
+      expect(result.portfolioWithdrawal).toBeCloseTo(result.totalSpendingNet + result.totalTax, 0);
+    });
+
+    it('Roth withdrawal does not increase SS provisional income', () => {
+      // With SS income + Roth withdrawal: fromTrad=0 so provisionalIncome stays low → SS untaxed
+      const rothUserData = makeUserData({
+        accounts: [{ id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 500000 }],
+        longTermCapGainsRate: 0,
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+        ],
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 40000, startAge: 60, inflationAdjusted: false }],
+      });
+      const rothResult = calculateAnnualCashFlow(rothUserData, 2026, 0);
+      // 20k SS covers 20k, need 20k more from roth. provisionalIncome = fromTrad + 0.5*SS = 0 + 10k < 25k threshold.
+      expect(rothResult.withdrawalFromRoth).toBeGreaterThan(0);
+      expect(rothResult.withdrawalFromTraditional).toBe(0);
+      expect(rothResult.ssTaxableAmount).toBe(0);
+
+      // Same scenario with Traditional: fromTrad increases provisional income → SS becomes taxable
+      const tradUserData = makeUserData({
+        accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000 }],
+        longTermCapGainsRate: 0,
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+        ],
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 40000, startAge: 60, inflationAdjusted: false }],
+      });
+      const tradResult = calculateAnnualCashFlow(tradUserData, 2026, 0);
+      expect(tradResult.withdrawalFromTraditional).toBeGreaterThan(0);
+      expect(tradResult.ssTaxableAmount).toBeGreaterThan(0); // trad withdrawal pushed SS into taxable range
+    });
+
+    it('draws from taxable first, then traditional, with explicit accountBalances', () => {
+      const userData = makeUserData({
+        accounts: [
+          { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 30000 },
+          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 100000 },
+          { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 100000 },
+        ],
+        longTermCapGainsRate: 0,
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 60000, startAge: 60, inflationAdjusted: false }],
+      });
+      // Taxable only has 30k (0% LTCG). Remaining ~30k+ comes from traditional.
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.withdrawalFromTaxable).toBe(30000); // exhausted
+      expect(result.withdrawalFromTraditional).toBeGreaterThan(0);
+      expect(result.withdrawalFromRoth).toBe(0); // roth not touched yet
+      expect(result.portfolioWithdrawal).toBeCloseTo(
+        result.withdrawalFromTaxable + result.withdrawalFromTraditional + result.withdrawalFromRoth, 0
+      );
+    });
+
+    it('Roth-only account: zero tax regardless of withdrawal size', () => {
+      const userData = makeUserData({
+        accounts: [{ id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 500000 }],
+        longTermCapGainsRate: 0.15,
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 100000, startAge: 60, inflationAdjusted: false }],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      // Roth withdrawals are tax-free regardless of LTCG rate
+      expect(result.totalTax).toBe(0);
+      expect(result.withdrawalFromRoth).toBe(100000);
+      expect(result.withdrawalFromTaxable).toBe(0);
+      expect(result.withdrawalFromTraditional).toBe(0);
+    });
+
+    it('per-bucket withdrawals sum to portfolioWithdrawal', () => {
+      const userData = makeUserData({
+        accounts: [
+          { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 20000 },
+          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 20000 },
+          { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 20000 },
+        ],
+        longTermCapGainsRate: 0.15,
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 50000, startAge: 60, inflationAdjusted: false }],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.portfolioWithdrawal).toBeCloseTo(
+        result.withdrawalFromTaxable + result.withdrawalFromTraditional + result.withdrawalFromRoth, 0
+      );
+    });
+  });
+
   describe('breakdown field consistency', () => {
     it('totalGrossIncome equals sum of income components', () => {
       const userData = makeUserData({
@@ -560,7 +659,7 @@ describe('runSimulation — per-path breakdowns', () => {
   const depletionUserData = makeUserData({
     currentAge: 60,
     lifeExpectancy: 64,
-    currentSavings: 50_000,
+    accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 50_000 }],
     inflationRate: 0,
     portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0 },
     simulationSettings: { numSimulations: 10 },
@@ -615,7 +714,7 @@ describe('runSimulation — deterministic path', () => {
   const noFlowUserData = makeUserData({
     currentAge: 60,
     lifeExpectancy: 65,
-    currentSavings: 1_000_000,
+    accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 1_000_000 }],
     inflationRate: 0,
     portfolioAssumptions: { portfolioBalance: '60_40', stockAllocation: 0.6, stockReturn: 0.065, stockStdDev: 0.105, bondReturn: 0.065, bondStdDev: 0.105 },
     spendingGoals: [],
@@ -635,7 +734,8 @@ describe('runSimulation — deterministic path', () => {
     const { nominal } = runSimulation(noFlowUserData);
     const totalYears = noFlowUserData.lifeExpectancy - noFlowUserData.currentAge + 1;
     for (let i = 0; i < totalYears; i++) {
-      const expected = noFlowUserData.currentSavings * Math.pow(1 + mean, i);
+      const startBalance = noFlowUserData.accounts.reduce((s, a) => s + a.balance, 0);
+      const expected = startBalance * Math.pow(1 + mean, i);
       expect(nominal[i]).toBeCloseTo(expected, 0);
     }
   });

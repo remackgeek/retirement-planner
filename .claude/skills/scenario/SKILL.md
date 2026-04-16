@@ -28,14 +28,15 @@ Create a new scenario test pair in `test/scenarios/`. The scenario should test: 
    - `_rationale` — why the expected numbers are correct (the trust anchor)
    - `_seed` — PRNG seed (use 12345 for deterministic, pick something for stochastic)
    - **ALL fields from UserData** — every single one, no omissions:
-     - `name`, `currentAge`, `retirementAge`, `lifeExpectancy`, `referenceYear`
-     - `currentSavings`, `annualSavings`
-     - `retirementSpending` (with `monthlyAmount`, `startAge`)
+     - `name`, `currentAge`, `lifeExpectancy`, `referenceYear`
+     - `accounts` (array of `{ id, name, type, balance }` — types: `traditional`, `roth`, `taxable`)
+     - `longTermCapGainsRate` (default 0.15)
      - `spendingGoals` (array, can be empty)
-     - `incomeEvents` (array, can be empty)
-     - `portfolioAssumptions` (with `riskLevel`, `expectedReturn`, `standardDeviation`)
-     - `inflationRate`
-     - `filingStatus`, `spouseAge`, `state`
+     - `incomeEvents` (array, can be empty — `employment_savings` type supports `accountId`)
+     - `portfolioAssumptions` (with `portfolioBalance`, `stockAllocation`, `stockReturn`, `stockStdDev`, `bondReturn`, `bondStdDev`)
+     - `inflationRate`, `inflationStdDev`
+     - `simulationSettings` (with `numSimulations`)
+     - `filingStatus`, `spouseAge`, `stateTimeline`
 
 5. **Create the expected JSON** — must include:
    - `_rationale` — plain English explanation of WHY each number is what it is

@@ -1,0 +1,38 @@
+{
+  "_rationale": "Roth withdrawals are tax-free. 500k/50k = 10 years of runway. With 0% growth, balance decreases linearly by 50k/yr. No tax on any withdrawal. Probability 0% (runs out at age 70 vs life expectancy 75).",
+  "probability": 0,
+  "pathValues": [
+    { "index": 0, "value": 500000, "tolerance": 1 },
+    { "index": 1, "value": 450000, "tolerance": 1 },
+    { "index": 5, "value": 250000, "tolerance": 1 },
+    { "index": 10, "value": 0, "tolerance": 1 }
+  ],
+  "breakdownChecks": [
+    {
+      "index": 0,
+      "field": "totalTax",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Roth withdrawals are not taxable"
+    },
+    {
+      "index": 0,
+      "field": "withdrawalFromRoth",
+      "value": 50000,
+      "tolerance": 1,
+      "_note": "Full withdrawal comes from Roth"
+    },
+    {
+      "index": 0,
+      "field": "withdrawalFromTraditional",
+      "value": 0,
+      "tolerance": 1
+    },
+    {
+      "index": 0,
+      "field": "withdrawalFromTaxable",
+      "value": 0,
+      "tolerance": 1
+    }
+  ]
+}

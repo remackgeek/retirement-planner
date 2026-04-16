@@ -102,6 +102,7 @@ interface FormState {
   bondStdDev: number;
   inflationRate: number;
   inflationStdDev: number;
+  longTermCapGainsRate: number;
   simulationSettings: SimulationSettings;
 }
 
@@ -118,6 +119,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     bondStdDev: scenario.portfolioAssumptions.bondStdDev,
     inflationRate: scenario.inflationRate,
     inflationStdDev: scenario.inflationStdDev,
+    longTermCapGainsRate: scenario.longTermCapGainsRate,
     simulationSettings: { ...scenario.simulationSettings },
   });
 
@@ -130,6 +132,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
         bondStdDev: scenario.portfolioAssumptions.bondStdDev,
         inflationRate: scenario.inflationRate,
         inflationStdDev: scenario.inflationStdDev,
+        longTermCapGainsRate: scenario.longTermCapGainsRate,
         simulationSettings: { ...scenario.simulationSettings },
       });
     }
@@ -144,6 +147,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
       ...scenario,
       inflationRate: form.inflationRate,
       inflationStdDev: form.inflationStdDev,
+      longTermCapGainsRate: form.longTermCapGainsRate,
       simulationSettings: form.simulationSettings,
       portfolioAssumptions: {
         ...scenario.portfolioAssumptions,
@@ -226,6 +230,14 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
               {pctField(form.inflationStdDev, (v) => setForm({ ...form, inflationStdDev: v }), 20)}
             </InputGroup>
           </FieldRow>
+        </Section>
+
+        <Section>
+          <SectionHeader>Tax</SectionHeader>
+          <InputGroup>
+            <label>Long-term Capital Gains Rate</label>
+            {pctField(form.longTermCapGainsRate, (v) => setForm({ ...form, longTermCapGainsRate: v }), 40)}
+          </InputGroup>
         </Section>
 
         <Section style={{ marginTop: spacing.md }}>

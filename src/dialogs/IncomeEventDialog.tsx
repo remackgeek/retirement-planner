@@ -7,6 +7,7 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
+import type { Account } from '../types/Account';
 import { spacing, colors } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 
@@ -48,6 +49,7 @@ interface IncomeEventDialogProps {
   initialType?: IncomeEventType;
   editEvent?: IncomeEvent;
   existingEvents?: IncomeEvent[];
+  accounts?: Account[];
   currentAge: number;
   referenceYear: number;
 }
@@ -83,6 +85,7 @@ const makeDefaultFormData = (type: IncomeEventType = 'pension_income') => ({
   isOneTime: false,
   taxStatus: getDefaultTaxStatus(type),
   colaType: getDefaultCOLA(type),
+  accountId: undefined as string | undefined,
 });
 
 const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
@@ -92,6 +95,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
   initialType,
   editEvent,
   existingEvents = [],
+  accounts = [],
   currentAge,
   referenceYear,
 }) => {
@@ -116,6 +120,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
         isOneTime: editEvent.isOneTime || false,
         taxStatus: editEvent.taxStatus,
         colaType: editEvent.colaType,
+        accountId: editEvent.accountId,
       });
     } else if (initialType) {
       const defaults = makeDefaultFormData(initialType);
@@ -236,6 +241,22 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
               value={formData.taxStatus}
               options={taxStatusOptions}
               onChange={(e) => setFormData({ ...formData, taxStatus: e.value })}
+            />
+          </InputGroup>
+        )}
+
+        {formData.type === 'employment_savings' && accounts.length > 0 && (
+          <InputGroup>
+            <label>Target Account</label>
+            <Dropdown
+              value={formData.accountId ?? ''}
+              options={[
+                { label: 'Default (first Traditional)', value: '' },
+                ...accounts.map((a) => ({ label: a.name, value: a.id })),
+              ]}
+              onChange={(e) =>
+                setFormData({ ...formData, accountId: e.value || undefined })
+              }
             />
           </InputGroup>
         )}

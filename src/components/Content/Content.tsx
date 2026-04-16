@@ -6,8 +6,10 @@ import { clearTaxCalculationCache } from '../../services/TaxCalculator';
 import Projections from '../Chart/Chart';
 import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
+import { AccountsManager } from '../AccountsManager';
 import type { SpendingGoal } from '../../types/SpendingGoal';
 import type { IncomeEvent } from '../../types/IncomeEvent';
+import type { Account } from '../../types/Account';
 import { spacing, colors, border, layout } from '../../styles/theme';
 
 const ContentContainer = styled.main`
@@ -24,6 +26,7 @@ const ContentBody = styled.div`
 `;
 
 const ManagersContainer = styled.div`
+  container-type: inline-size;
   display: flex;
   flex-wrap: wrap;
   gap: ${spacing.xl};
@@ -38,6 +41,15 @@ const ManagerSection = styled.div`
   border: ${border.standard};
   border-radius: ${border.radiusRound};
   padding: ${spacing.md};
+`;
+
+// Accounts wraps to row 2 when only 2 columns fit (< 3×280px + 2 gaps ≈ 880px).
+// Income and Spending stay together on row 1 — they're more likely to be reviewed
+// side-by-side; Accounts is secondary context.
+const AccountsManagerSection = styled(ManagerSection)`
+  @container (max-width: 879px) {
+    order: 3;
+  }
 `;
 
 const Content: React.FC = () => {
@@ -118,6 +130,32 @@ const Content: React.FC = () => {
     updateScenario(updatedScenario);
   };
 
+  const handleAddAccount = (account: Omit<Account, 'id'>) => {
+    if (!activeScenario) return;
+    const newAccount: Account = { ...account, id: crypto.randomUUID() };
+    const updatedScenario = {
+      ...activeScenario,
+      accounts: [...activeScenario.accounts, newAccount],
+    };
+    updateScenario(updatedScenario);
+  };
+
+  const handleUpdateAccount = (id: string, updates: Partial<Account>) => {
+    if (!activeScenario) return;
+    const updatedAccounts = activeScenario.accounts.map((acct) =>
+      acct.id === id ? { ...acct, ...updates } : acct
+    );
+    const updatedScenario = { ...activeScenario, accounts: updatedAccounts };
+    updateScenario(updatedScenario);
+  };
+
+  const handleDeleteAccount = (id: string) => {
+    if (!activeScenario) return;
+    const updatedAccounts = activeScenario.accounts.filter((acct) => acct.id !== id);
+    const updatedScenario = { ...activeScenario, accounts: updatedAccounts };
+    updateScenario(updatedScenario);
+  };
+
   return (
     <ContentContainer>
       <ContentBody>
@@ -129,10 +167,19 @@ const Content: React.FC = () => {
         {results && activeScenario && <Projections results={results} userData={activeScenario} />}
         {activeScenario && (
           <ManagersContainer>
+            <AccountsManagerSection>
+              <AccountsManager
+                accounts={activeScenario.accounts}
+                onAdd={handleAddAccount}
+                onUpdate={handleUpdateAccount}
+                onDelete={handleDeleteAccount}
+              />
+            </AccountsManagerSection>
             <ManagerSection>
               <IncomeEventsManager
                 events={activeScenario.incomeEvents}
                 userData={activeScenario}
+                accounts={activeScenario.accounts}
                 onAdd={handleAddIncomeEvent}
                 onUpdate={handleUpdateIncomeEvent}
                 onDelete={handleDeleteIncomeEvent}

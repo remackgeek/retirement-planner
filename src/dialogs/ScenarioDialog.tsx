@@ -111,7 +111,7 @@ const makeDefaults = (): Scenario => ({
   name: '',
   currentAge: 40,
   lifeExpectancy: 92,
-  currentSavings: 100000,
+  accounts: [],
   spendingGoals: [],
   incomeEvents: [],
   portfolioAssumptions: {
@@ -129,6 +129,7 @@ const makeDefaults = (): Scenario => ({
   filingStatus: 'single' as const,
   spouseAge: null,
   stateTimeline: [{ state: 'California' }],
+  longTermCapGainsRate: 0.15,
 });
 
 interface ScenarioDialogProps {
@@ -175,7 +176,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     tempData.currentAge <= 100 &&
     tempData.lifeExpectancy > tempData.currentAge &&
     tempData.lifeExpectancy <= 120 &&
-    tempData.currentSavings >= 0 &&
     (!isMfj || (tempData.spouseAge !== null && tempData.spouseAge >= 18 && tempData.spouseAge <= 100));
 
   const handleSave = () => {
@@ -275,17 +275,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
             />
           </FieldGroup>
         )}
-
-        <FieldGroup>
-          <label>Current Savings</label>
-          <InputNumber
-            value={tempData.currentSavings}
-            onValueChange={(e) => handleChange('currentSavings', e.value)}
-            mode='currency'
-            currency='USD'
-            min={0}
-          />
-        </FieldGroup>
 
         {tempData.stateTimeline.length === 1 && (
           <FieldGroup>

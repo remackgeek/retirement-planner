@@ -6,7 +6,6 @@
   "currentAge": 55,
   "lifeExpectancy": 90,
   "referenceYear": 2026,
-  "currentSavings": 800000,
   "spendingGoals": [
     {
       "id": "base-spending-1",
@@ -42,7 +41,7 @@
   "portfolioAssumptions": {
     "portfolioBalance": "80_20",
     "stockAllocation": 0.8,
-    "stockReturn": 0.10,
+    "stockReturn": 0.1,
     "stockStdDev": 0.15,
     "bondReturn": 0.03,
     "bondStdDev": 0.05
@@ -58,5 +57,14 @@
   ],
   "simulationSettings": {
     "numSimulations": 5000
-  }
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 800000
+    }
+  ],
+  "longTermCapGainsRate": 0.15
 }

@@ -12,15 +12,27 @@ const scenarioFiles = readdirSync(scenariosDir)
 
 interface PathCheck {
   index: number;
-  age: number;
+  age?: number;
   value: number;
+  tolerance?: number;
   note?: string;
+}
+
+interface BreakdownCheck {
+  index: number;
+  field: string;
+  value?: number;
+  min?: number;
+  max?: number;
+  tolerance?: number;
+  _note?: string;
 }
 
 interface ExpectedExact {
   _rationale: string;
   probability: number;
   pathValues?: PathCheck[];
+  breakdownChecks?: BreakdownCheck[];
   tolerance?: number;
 }
 
@@ -93,13 +105,34 @@ describe('Scenario simulations', () => {
           });
 
           if (expected.pathValues) {
-            const tolerance = expected.tolerance ?? 0.01;
+            const globalTolerance = expected.tolerance ?? 0.01;
             expected.pathValues.forEach((check: PathCheck) => {
-              it(`age ${check.age} (index ${check.index}): median balance ≈ ${check.value}`, () => {
+              const tol = check.tolerance ?? globalTolerance;
+              const label = check.age ? `age ${check.age}` : `index ${check.index}`;
+              it(`${label} (index ${check.index}): median balance ≈ ${check.value}`, () => {
                 const actual = result.median[check.index];
-                expect(Math.abs(actual - check.value)).toBeLessThanOrEqual(
-                  tolerance
-                );
+                expect(Math.abs(actual - check.value)).toBeLessThanOrEqual(tol);
+              });
+            });
+          }
+
+          if (expected.breakdownChecks) {
+            expected.breakdownChecks.forEach((check: BreakdownCheck) => {
+              const note = check._note ?? `${check.field} at index ${check.index}`;
+              it(`breakdown: ${note}`, () => {
+                const bd = result.medianBreakdowns[check.index] as Record<string, number>;
+                const actual = bd[check.field];
+                expect(actual).toBeDefined();
+                if (check.value !== undefined) {
+                  const tol = check.tolerance ?? 1;
+                  expect(Math.abs(actual - check.value)).toBeLessThanOrEqual(tol);
+                }
+                if (check.min !== undefined) {
+                  expect(actual).toBeGreaterThanOrEqual(check.min);
+                }
+                if (check.max !== undefined) {
+                  expect(actual).toBeLessThanOrEqual(check.max);
+                }
               });
             });
           }

@@ -172,6 +172,12 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       if (!importedData.name || typeof importedData.currentAge !== 'number') {
         throw new Error('Invalid scenario: Missing name or currentAge.');
       }
+      if (!Array.isArray(importedData.accounts)) {
+        throw new Error('Invalid scenario: Missing accounts array.');
+      }
+      if (typeof importedData.longTermCapGainsRate !== 'number') {
+        importedData.longTermCapGainsRate = 0.15;
+      }
       const pa = importedData.portfolioAssumptions;
       if (!pa || typeof pa.stockAllocation !== 'number' || typeof pa.stockReturn !== 'number' ||
           typeof pa.bondReturn !== 'number') {

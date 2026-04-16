@@ -1,4 +1,5 @@
 import type { UserData } from '../types/UserData';
+import type { Account, AccountType } from '../types/Account';
 import {
   calculateNetFromGross,
   calculateSSTaxableAmount,
@@ -60,25 +61,20 @@ export const STATE_TAX_RATES: Record<string, number> = {
 };
 
 // Derive log-normal mu/sigma from arithmetic mean return and standard deviation.
-// For a log-normal where (1+r) ~ LogNormal(mu, sigma):
-//   E[1+r] = exp(mu + sigma²/2) = 1 + mean  →  mu = ln(1+mean) - sigma²/2
-//   Var[1+r] / E[1+r]² = exp(sigma²) - 1    →  sigma = sqrt(ln(1 + stdDev²/(1+mean)²))
 function lognormalParams(mean: number, stdDev: number): { mu: number; sigma: number } {
   const sigma = Math.sqrt(Math.log(1 + (stdDev * stdDev) / ((1 + mean) * (1 + mean))));
   const mu = Math.log(1 + mean) - (sigma * sigma) / 2;
   return { mu, sigma };
 }
 
-// Helper function to generate a standard normal random variable (Box-Muller transform)
 function standardNormalRandom(random: () => number = Math.random): number {
   let u = 0,
     v = 0;
-  while (u === 0) u = random(); // Converting [0,1) to (0,1)
+  while (u === 0) u = random();
   while (v === 0) v = random();
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
-// Generate a single year's log-normal return factor (1 + r)
 function generateReturnFactor(
   mean: number,
   stdDev: number,
@@ -103,7 +99,141 @@ function getStateTaxRate(userData: UserData, year: number): number {
   return STATE_TAX_RATES[effectiveState] || 0;
 }
 
+// ---------------- Account helpers ----------------
 
+export function initialAccountBalances(userData: UserData): Record<string, number> {
+  return Object.fromEntries(userData.accounts.map((a) => [a.id, a.balance]));
+}
+
+export function sumBalances(balances: Record<string, number>): number {
+  let sum = 0;
+  for (const id in balances) sum += balances[id];
+  return sum;
+}
+
+function sumBalancesOfType(
+  accounts: Account[],
+  balances: Record<string, number>,
+  type: AccountType
+): number {
+  let sum = 0;
+  for (const a of accounts) {
+    if (a.type === type) sum += balances[a.id] ?? 0;
+  }
+  return sum;
+}
+
+// Subtract `amount` from all accounts of a given type, proportional to their current balance.
+function subtractFromType(
+  accounts: Account[],
+  balances: Record<string, number>,
+  type: AccountType,
+  amount: number
+): void {
+  if (amount <= 0) return;
+  const typeAccounts = accounts.filter((a) => a.type === type);
+  const typeTotal = typeAccounts.reduce((s, a) => s + (balances[a.id] ?? 0), 0);
+  if (typeTotal <= 0) return;
+  const actual = Math.min(amount, typeTotal);
+  for (const a of typeAccounts) {
+    const bal = balances[a.id] ?? 0;
+    const share = (bal / typeTotal) * actual;
+    balances[a.id] = Math.max(0, bal - share);
+  }
+}
+
+function eventActiveInYear(
+  userData: UserData,
+  event: UserData['incomeEvents'][number],
+  year: number
+): boolean {
+  const ownerAge =
+    event.owner === 'spouse' && userData.spouseAge !== null
+      ? userData.spouseAge
+      : userData.currentAge;
+  const startYear = userData.referenceYear + (event.startAge - ownerAge);
+  const endYear = event.endAge
+    ? userData.referenceYear + (event.endAge - ownerAge)
+    : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
+  if (event.isOneTime) return year === startYear;
+  return year >= startYear && year <= endYear;
+}
+
+function resolveEmploymentSavingsAccountId(
+  userData: UserData,
+  accountId: string | undefined
+): string | null {
+  if (accountId && userData.accounts.some((a) => a.id === accountId)) return accountId;
+  const trad = userData.accounts.find((a) => a.type === 'traditional');
+  if (trad) return trad.id;
+  return userData.accounts[0]?.id ?? null;
+}
+
+// Distribute a positive net cash flow (surplus or savings contribution) into accounts.
+// If any employment_savings events are active this year, split proportionally by their
+// inflation-adjusted gross amounts; otherwise deposit into the first available
+// taxable → traditional → roth account.
+function distributeDeposit(
+  userData: UserData,
+  year: number,
+  amount: number,
+  balances: Record<string, number>,
+  inflationRate: number
+): void {
+  if (amount <= 0 || userData.accounts.length === 0) return;
+  const active = userData.incomeEvents.filter(
+    (e) => e.type === 'employment_savings' && eventActiveInYear(userData, e, year)
+  );
+  if (active.length > 0) {
+    // Use inflation-adjusted amounts so the proportional split matches actual event cash flows.
+    const adjustedAmounts = active.map((e) => {
+      let amt = Math.max(0, e.amount);
+      if (e.colaType === 'inflation_adjusted') {
+        const yearsFromBase = year - userData.referenceYear;
+        if (yearsFromBase > 0) amt *= Math.pow(1 + inflationRate, yearsFromBase);
+      }
+      return amt;
+    });
+    const totalGross = adjustedAmounts.reduce((s, a) => s + a, 0);
+    if (totalGross > 0) {
+      for (let i = 0; i < active.length; i++) {
+        const e = active[i];
+        const targetId = resolveEmploymentSavingsAccountId(userData, e.accountId);
+        if (!targetId) continue;
+        const share = (adjustedAmounts[i] / totalGross) * amount;
+        balances[targetId] = (balances[targetId] ?? 0) + share;
+      }
+      return;
+    }
+  }
+  const target =
+    userData.accounts.find((a) => a.type === 'taxable') ??
+    userData.accounts.find((a) => a.type === 'traditional') ??
+    userData.accounts.find((a) => a.type === 'roth') ??
+    userData.accounts[0];
+  if (target) {
+    balances[target.id] = (balances[target.id] ?? 0) + amount;
+  }
+}
+
+// Apply the per-bucket withdrawals from a cash-flow breakdown to the account balances,
+// then deposit any positive netCashFlow surplus.
+function applyCashFlow(
+  userData: UserData,
+  year: number,
+  breakdown: AnnualCashFlowBreakdown,
+  balances: Record<string, number>,
+  inflationRate: number
+): void {
+  subtractFromType(userData.accounts, balances, 'taxable', breakdown.withdrawalFromTaxable);
+  subtractFromType(userData.accounts, balances, 'traditional', breakdown.withdrawalFromTraditional);
+  subtractFromType(userData.accounts, balances, 'roth', breakdown.withdrawalFromRoth);
+  if (breakdown.netCashFlow > 0) {
+    distributeDeposit(userData, year, breakdown.netCashFlow, balances, inflationRate);
+  }
+}
+
+// ---------------- Cash-flow calculation ----------------
 
 export interface AnnualCashFlowBreakdown {
   ssGross: number;
@@ -115,6 +245,9 @@ export interface AnnualCashFlowBreakdown {
   otherSpendingGoalsNet: number;
   totalSpendingNet: number;
   portfolioWithdrawal: number;
+  withdrawalFromTaxable: number;
+  withdrawalFromTraditional: number;
+  withdrawalFromRoth: number;
   totalTax: number;
   netCashFlow: number;
 }
@@ -129,47 +262,37 @@ function accumulateIncome(
   let otherTaxableGross = 0;
 
   userData.incomeEvents.forEach((event) => {
-    const ownerAge = (event.owner === 'spouse' && userData.spouseAge !== null)
-      ? userData.spouseAge
-      : userData.currentAge;
-    const startYear =
-      userData.referenceYear + (event.startAge - ownerAge);
-    const endYear = event.endAge
-      ? userData.referenceYear + (event.endAge - ownerAge)
-      : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
+    if (!eventActiveInYear(userData, event, year)) return;
 
-    let shouldInclude = false;
-    if (event.isOneTime) {
-      shouldInclude = year === startYear;
-    } else {
-      shouldInclude = year >= startYear && year <= endYear;
+    const ownerAge =
+      event.owner === 'spouse' && userData.spouseAge !== null
+        ? userData.spouseAge
+        : userData.currentAge;
+    const startYear = userData.referenceYear + (event.startAge - ownerAge);
+
+    let amount = event.amount;
+    if (event.colaType === 'inflation_adjusted') {
+      let baseYear = userData.referenceYear;
+      if (event.type === 'social_security' && event.ssAmountBasis === 'future') {
+        baseYear = startYear;
+      }
+      const yearsFromBase = year - baseYear;
+      if (yearsFromBase > 0) {
+        amount *= Math.pow(1 + inflationRate, yearsFromBase);
+      }
     }
 
-    if (shouldInclude) {
-      let amount = event.amount;
-      if (event.colaType === 'inflation_adjusted') {
-        let baseYear = userData.referenceYear;
-        if (event.type === 'social_security' && event.ssAmountBasis === 'future') {
-          baseYear = startYear;
-        }
-        const yearsFromBase = year - baseYear;
-        if (yearsFromBase > 0) {
-          amount *= Math.pow(1 + inflationRate, yearsFromBase);
-        }
-      }
+    if (event.type === 'social_security' && event.ssHaircutEnabled !== false && year >= 2034) {
+      const reduction = (event.ssHaircutPercent ?? 23) / 100;
+      amount *= 1 - reduction;
+    }
 
-      if (event.type === 'social_security' && event.ssHaircutEnabled !== false && year >= 2034) {
-        const reduction = (event.ssHaircutPercent ?? 23) / 100;
-        amount *= (1 - reduction);
-      }
-
-      if (event.taxStatus === 'after_tax') {
-        afterTaxIncome += amount;
-      } else if (event.type === 'social_security') {
-        ssGross += amount;
-      } else {
-        otherTaxableGross += amount;
-      }
+    if (event.taxStatus === 'after_tax') {
+      afterTaxIncome += amount;
+    } else if (event.type === 'social_security') {
+      ssGross += amount;
+    } else {
+      otherTaxableGross += amount;
     }
   });
 
@@ -223,7 +346,8 @@ export function calculateAnnualCashFlow(
   userData: UserData,
   year: number,
   inflationRate: number = 0.03,
-  maxWithdrawal?: number  // if provided, caps portfolio withdrawal (used for depletion display)
+  accountBalances?: Record<string, number>,
+  maxWithdrawal?: number
 ): AnnualCashFlowBreakdown {
   const income = accumulateIncome(userData, year, inflationRate);
   const spending = accumulateSpending(userData, year, inflationRate);
@@ -234,32 +358,47 @@ export function calculateAnnualCashFlow(
 
   const stateTaxRate = getStateTaxRate(userData, year);
   const age = userData.currentAge + (year - userData.referenceYear);
+  const ltcgRate = userData.longTermCapGainsRate ?? 0;
 
-  const cap = maxWithdrawal ?? Infinity;
+  const balances = accountBalances ?? initialAccountBalances(userData);
+  const taxableBal = sumBalancesOfType(userData.accounts, balances, 'taxable');
+  const tradBal = sumBalancesOfType(userData.accounts, balances, 'traditional');
+  const rothBal = sumBalancesOfType(userData.accounts, balances, 'roth');
+  const totalBal = taxableBal + tradBal + rothBal;
+  const cap = Math.min(maxWithdrawal ?? Infinity, totalBal);
 
-  // Iterative solver: withdrawal is taxable income, which increases tax,
-  // which increases the withdrawal needed. Cap is applied each iteration.
   let withdrawal = Math.min(Math.max(0, totalSpendingNet - availableCash), cap);
   let totalTax = 0;
   let ssTaxableAmount = 0;
+  let fromTaxable = 0;
+  let fromTrad = 0;
+  let fromRoth = 0;
   let capWasBinding = false;
 
   const MAX_ITERATIONS = 50;
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    ssTaxableAmount = calculateSSTaxableAmount(
-      ssGross, otherTaxableGross + withdrawal, userData.filingStatus
-    );
-    const combinedTaxable = otherTaxableGross + withdrawal + ssTaxableAmount;
+    fromTaxable = Math.min(withdrawal, taxableBal);
+    fromTrad = Math.min(Math.max(0, withdrawal - fromTaxable), tradBal);
+    fromRoth = Math.max(0, withdrawal - fromTaxable - fromTrad);
 
+    const ordinaryGross = otherTaxableGross + fromTrad;
+    ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, userData.filingStatus);
+    const combinedTaxable = ordinaryGross + ssTaxableAmount;
+
+    let ordinaryTax = 0;
     if (combinedTaxable > 0) {
-      const netFromTaxable = calculateNetFromGross(
-        combinedTaxable, stateTaxRate, userData.filingStatus,
-        age, year, userData.spouseAge
+      const net = calculateNetFromGross(
+        combinedTaxable,
+        stateTaxRate,
+        userData.filingStatus,
+        age,
+        year,
+        userData.spouseAge
       );
-      totalTax = combinedTaxable - netFromTaxable;
-    } else {
-      totalTax = 0;
+      ordinaryTax = combinedTaxable - net;
     }
+    const ltcgTax = fromTaxable * ltcgRate;
+    totalTax = ordinaryTax + ltcgTax;
 
     const uncappedNewWithdrawal = Math.max(0, totalSpendingNet + totalTax - availableCash);
     const newWithdrawal = Math.min(uncappedNewWithdrawal, cap);
@@ -267,16 +406,17 @@ export function calculateAnnualCashFlow(
 
     if (Math.abs(newWithdrawal - withdrawal) < 0.01) {
       withdrawal = newWithdrawal;
+      fromTaxable = Math.min(withdrawal, taxableBal);
+      fromTrad = Math.min(Math.max(0, withdrawal - fromTaxable), tradBal);
+      fromRoth = Math.max(0, withdrawal - fromTaxable - fromTrad);
       break;
     }
     withdrawal = newWithdrawal;
   }
 
-  // When the cap is binding (spending need exceeds available portfolio), netCashFlow is the
-  // actual portfolio impact (-withdrawal). Otherwise use the standard formula, which equals
-  // -withdrawal when withdrawing and positive when income covers spending.
-  // Use `|| 0` to avoid -0 when withdrawal is 0 (e.g. fully depleted year with no income).
-  const netCashFlow = capWasBinding ? (-withdrawal || 0) : availableCash - totalTax - totalSpendingNet;
+  const netCashFlow = capWasBinding
+    ? -withdrawal || 0
+    : availableCash - totalTax - totalSpendingNet;
 
   return {
     ssGross,
@@ -288,6 +428,9 @@ export function calculateAnnualCashFlow(
     otherSpendingGoalsNet: spending.otherSpendingGoalsNet,
     totalSpendingNet,
     portfolioWithdrawal: withdrawal,
+    withdrawalFromTaxable: fromTaxable,
+    withdrawalFromTraditional: fromTrad,
+    withdrawalFromRoth: fromRoth,
     totalTax,
     netCashFlow,
   };
@@ -299,7 +442,7 @@ interface SimRun {
   bondFactors: number[];
   breakdowns: AnnualCashFlowBreakdown[];
   failed: boolean;
-  failedYear: number; // index of first year balance hit zero; totalYears if never failed
+  failedYear: number;
 }
 
 export function runSimulation(
@@ -316,6 +459,7 @@ export function runSimulation(
   downsideBondFactors: number[];
   downsideBreakdowns: AnnualCashFlowBreakdown[];
   nominal: number[];
+  nominalBreakdowns: AnnualCashFlowBreakdown[];
   years: number[];
 } {
   const currentYear = userData.referenceYear;
@@ -331,7 +475,7 @@ export function runSimulation(
   const allRuns: SimRun[] = [];
 
   for (let sim = 0; sim < numSims; sim++) {
-    let balance = userData.currentSavings;
+    const balances = initialAccountBalances(userData);
     const path: number[] = [];
     const stockFactors: number[] = [];
     const bondFactors: number[] = [];
@@ -343,50 +487,53 @@ export function runSimulation(
     for (let i = 0; i < totalYears; i++) {
       const year = currentYear + i;
 
-      // Store starting balance for this year (before any changes), deflated to real dollars.
-      // cumulativeInflation represents inflation accumulated through the START of year i.
-      path.push(balance / cumulativeInflation);
+      const startBalance = sumBalances(balances);
+      path.push(startBalance / cumulativeInflation);
 
-      // 1. Growth first: per-asset log-normal return factors applied to full starting balance
+      // 1. Growth: apply the same year factor uniformly to each bucket.
       const sf = generateReturnFactor(stockReturn, stockStdDev, random);
       const bf = generateReturnFactor(bondReturn, bondStdDev, random);
       stockFactors.push(sf);
       bondFactors.push(bf);
-      balance *= stockAllocation * sf + bondAllocation * bf;
+      const growthFactor = stockAllocation * sf + bondAllocation * bf;
+      for (const id in balances) balances[id] *= growthFactor;
 
-      // 2. Cash flows: income, spending, taxes, withdrawal — applied to post-growth balance
-      const postGrowthBalance = balance;
-      const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
+      // 2. Cash flow.
+      const postGrowth = sumBalances(balances);
+      const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate, balances);
 
-      // Capture effective breakdown with correct tax and withdrawal for display.
-      // When the portfolio is depleted or depleting, cap the withdrawal at postGrowthBalance so
-      // totalTax is recomputed on the actual (capped) withdrawal — not the theoretical amount.
       let effectiveCashFlow: AnnualCashFlowBreakdown;
-      const depleting = postGrowthBalance <= 0 || postGrowthBalance + cashFlow.netCashFlow < 0;
-      if (postGrowthBalance <= 0) {
-        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, 0);
+      const spendingExceedsIncome = cashFlow.totalSpendingNet > cashFlow.totalGrossIncome;
+      const depleting = spendingExceedsIncome && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
+      if (depleting && postGrowth <= 0) {
+        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, balances, 0);
       } else if (depleting) {
-        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, postGrowthBalance);
+        effectiveCashFlow = calculateAnnualCashFlow(
+          userData,
+          year,
+          inflationRate,
+          balances,
+          postGrowth
+        );
       } else {
         effectiveCashFlow = cashFlow;
       }
       breakdowns.push(effectiveCashFlow);
 
-      // Detect failure: portfolio can't cover spending (uncapped cash flow would go negative)
       if (depleting) {
         if (!failed) failedYear = i;
         failed = true;
       }
 
-      balance += effectiveCashFlow.netCashFlow;
-      if (balance < 0) balance = 0;
+      applyCashFlow(userData, year, effectiveCashFlow, balances, inflationRate);
+      // Clamp against float drift.
+      for (const id in balances) if (balances[id] < 0) balances[id] = 0;
 
-      // Stochastic inflation: update cumulative inflation AFTER recording this year's balance.
-      // Affects real-dollar deflation of future years only; cash flows remain deterministic.
-      const yearInflation = inflationStdDev > 0
-        ? generateReturnFactor(inflationRate, inflationStdDev, random) - 1
-        : inflationRate;
-      cumulativeInflation *= (1 + yearInflation);
+      const yearInflation =
+        inflationStdDev > 0
+          ? generateReturnFactor(inflationRate, inflationStdDev, random) - 1
+          : inflationRate;
+      cumulativeInflation *= 1 + yearInflation;
     }
 
     allRuns.push({ path, stockFactors, bondFactors, breakdowns, failed, failedYear });
@@ -395,34 +542,43 @@ export function runSimulation(
 
   const probability = Math.round((successCount / numSims) * 100);
 
-  // Select representative runs by ranking all runs from worst to best outcome:
-  //   - Failed runs: ranked by the year they first hit zero (earlier failure = worse)
-  //   - Successful runs: ranked by final balance above all failed runs
-  // This ensures median and downside are distinct even when many runs fail (all ending at $0).
   const sorted = [...allRuns].sort((a, b) => {
     const scoreA = a.failed ? a.failedYear : totalYears + a.path[totalYears - 1];
     const scoreB = b.failed ? b.failedYear : totalYears + b.path[totalYears - 1];
     return scoreA - scoreB;
   });
-  const medianRun   = sorted[Math.floor(numSims * 0.50)];
-  const downsideRun = sorted[Math.floor(numSims * 0.10)];
+  const medianRun = sorted[Math.floor(numSims * 0.5)];
+  const downsideRun = sorted[Math.floor(numSims * 0.1)];
 
   const years = Array.from({ length: totalYears }, (_, i) => currentYear + i);
 
-  // Deterministic nominal path: blended expected returns, no variance, mean inflation rate
+  // Deterministic nominal path
   const nominalBlendedReturn = stockAllocation * stockReturn + bondAllocation * bondReturn;
   const nominal: number[] = [];
+  const nominalBreakdowns: AnnualCashFlowBreakdown[] = [];
   {
-    let balance = userData.currentSavings;
+    const balances = initialAccountBalances(userData);
     for (let i = 0; i < totalYears; i++) {
       const year = currentYear + i;
       const inflationFactor = Math.pow(1 + inflationRate, i);
-      nominal.push(balance / inflationFactor);
-      // Growth first, then cash flow — matches MC loop order
-      balance *= 1 + nominalBlendedReturn;
-      const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate);
-      balance += cashFlow.netCashFlow;
-      if (balance < 0) balance = 0;
+      nominal.push(sumBalances(balances) / inflationFactor);
+
+      for (const id in balances) balances[id] *= 1 + nominalBlendedReturn;
+      const postGrowth = sumBalances(balances);
+      const cashFlow = calculateAnnualCashFlow(userData, year, inflationRate, balances);
+      let effectiveCashFlow: AnnualCashFlowBreakdown;
+      const spendExcInc = cashFlow.totalSpendingNet > cashFlow.totalGrossIncome;
+      const depleting = spendExcInc && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
+      if (depleting && postGrowth <= 0) {
+        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, balances, 0);
+      } else if (depleting) {
+        effectiveCashFlow = calculateAnnualCashFlow(userData, year, inflationRate, balances, postGrowth);
+      } else {
+        effectiveCashFlow = cashFlow;
+      }
+      nominalBreakdowns.push(effectiveCashFlow);
+      applyCashFlow(userData, year, effectiveCashFlow, balances, inflationRate);
+      for (const id in balances) if (balances[id] < 0) balances[id] = 0;
     }
   }
 
@@ -437,6 +593,7 @@ export function runSimulation(
     downsideBondFactors: downsideRun.bondFactors,
     downsideBreakdowns: downsideRun.breakdowns,
     nominal,
+    nominalBreakdowns,
     years,
   };
 }

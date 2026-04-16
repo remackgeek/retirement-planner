@@ -16,19 +16,24 @@ projections, and good tax awareness without overwhelming the user.
 
 ## Project Structure
 
-- `src/components/` — UI (Sidebar, Chart, SpendingGoalsManager, IncomeEventsManager)
+- `src/components/` — UI (Sidebar, Chart, AccountsManager, SpendingGoalsManager, IncomeEventsManager)
 - `src/context/RetirementContext.tsx` — global state, IndexedDB, schema migrations
 - `src/services/SimulationService.tsx` — Monte Carlo engine (5000 runs, log-normal)
 - `src/services/TaxCalculator.ts` — federal + state tax, memoized, 2024-2026 brackets
 - `src/dialogs/` — type-specific edit dialogs (e.g., `SocialSecurityDialog`),
   shared `IncomeEventDialog` for other types, type-selection pickers, import/export
-- `src/types/` — Scenario, UserData, IncomeEvent, SpendingGoal
+- `src/types/` — Scenario, UserData, Account, IncomeEvent, SpendingGoal
 - `src/utils/defaultName.ts` — `eventTypeLabels`, `goalTypeLabels`, default name generators
 
 ## Key Concepts
 
 - **Scenario** — top-level unit holding all user config, persisted to IndexedDB
 - **Monte Carlo** — median + 10th percentile portfolio paths, success probability
+- **Accounts** — 3 tax-profile types: `traditional` (withdrawals taxed as ordinary income),
+  `roth` (withdrawals tax-free), `taxable` (withdrawals taxed at flat LTCG rate).
+  Replaces the old single `currentSavings` field. All accounts share the scenario's
+  stock/bond allocation. Withdrawals follow a fixed waterfall: Taxable → Traditional → Roth.
+  Employment-savings income events target a specific account via `accountId`.
 - **Income events** — 9 types (including `employment_savings` for pre-retirement savings),
   each with a required `name` (auto-generated defaults like "Pension Income 1"),
   COLA, before/after-tax, SS 2034 haircut (configurable). All cash flow flows through
@@ -138,11 +143,11 @@ strings in components.**
 - `AppHeader` via `onMenuToggle: () => void`
 - `Sidebar` via `isOpen: boolean` + `onToggle: () => void`
 
-### Income/Spending columns (and future third column)
+### Accounts/Income/Spending columns
 
 `ManagerSection` uses `flex: 1 1 ${layout.managerMinWidth}` inside a `flex-wrap: wrap`
-container. Columns stack automatically on phones (no explicit media query needed). To add a
-third column, just add a third `<ManagerSection>` — it auto-wraps at the right breakpoint.
+container. Three columns (Accounts, Income, Spending) stack automatically on phones
+(no explicit media query needed).
 
 ### Yearly Data table
 
@@ -180,8 +185,9 @@ balances — coherent per-year paths with actual return factors, not year-by-yea
 simulation loop (not post-hoc) and capture the effective per-year cash flow for each
 representative run — including portfolio depletion effects (when balance hits $0,
 `portfolioWithdrawal` is capped at the available balance and a spending shortfall is shown).
-The deterministic (Nominal) path uses `nominalBreakdowns` computed in `Chart.tsx`. The
-yearly data detail rows show the breakdown for whichever view is selected.
+The deterministic (Nominal) path uses `nominalBreakdowns` returned by `runSimulation()`
+alongside the nominal path array. The yearly data detail rows show the breakdown for
+whichever view is selected.
 
 Future direction:
 
@@ -231,9 +237,14 @@ Both dialogs are disabled when no active scenario.
 
 ### Other extensibility
 
-- Portfolio: user-defined asset classes beyond stocks/bonds/cash
-- Tax: bracket updates as legislation changes; complex mechanics (RMDs, Roth
-  conversions, withdrawal ordering) may be added later but are not current goals
+- Portfolio: user-defined asset classes beyond stocks/bonds/cash; per-account
+  allocation (bonds-in-Traditional, stocks-in-Roth placement); cost-basis tracking
+  for taxable accounts with long-term capital gains brackets
+- Tax: bracket updates as legislation changes; Roth conversions; user-configurable
+  withdrawal ordering (currently hardcoded Taxable → Traditional → Roth)
+- RMD modeling: required minimum distributions from Traditional accounts at age 73+
+  per SECURE 2.0 tables; excess RMD (beyond spending need) should flow into a
+  designated taxable brokerage account rather than being discarded
 - Income/spending: new types without UI refactoring
 - State timeline: "Other" option with custom name + tax rate for international
   retirement (Mexico, Portugal, etc.)
@@ -268,6 +279,22 @@ Deterministic scenarios (0% stddev) use exact values with `pathValues` spot-chec
 Stochastic scenarios use range-based assertions (`{ "min": 70, "max": 85 }`).
 Every expected file **must** include a `_rationale` explaining in plain English why the
 numbers are what they are.
+
+Two assertion types are supported:
+
+- **`pathValues`** — checks `result.median[index]` (portfolio balance at that year):
+  ```json
+  { "index": 3, "age": 63, "value": 250000, "tolerance": 1, "note": "..." }
+  ```
+- **`breakdownChecks`** — checks any field of `result.medianBreakdowns[index]`:
+  ```json
+  { "index": 0, "field": "withdrawalFromRoth", "value": 50000, "tolerance": 5, "_note": "..." }
+  ```
+  Use `value` for exact checks (with optional `tolerance`), or `min`/`max` for range
+  checks. Valid fields: all keys of `AnnualCashFlowBreakdown` — `portfolioWithdrawal`,
+  `withdrawalFromTaxable`, `withdrawalFromTraditional`, `withdrawalFromRoth`, `totalTax`,
+  `netCashFlow`, `ssGross`, `otherTaxableGross`, `afterTaxIncome`, `ssTaxableAmount`,
+  `totalGrossIncome`, `baseSpendingNet`, `otherSpendingGoalsNet`, `totalSpendingNet`.
 
 #### Key rules
 
