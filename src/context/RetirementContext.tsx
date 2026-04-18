@@ -2,8 +2,6 @@ import { createContext, useState, useEffect, type ReactNode } from 'react';
 import type { Scenario } from '../types/Scenario';
 import { openDB } from 'idb';
 import { confirmDialog } from 'primereact/confirmdialog';
-import ExportScenarioDialog from '../dialogs/ExportScenarioDialog';
-import ImportScenarioDialog from '../dialogs/ImportScenarioDialog';
 
 declare global {
   interface FileSystemFileHandle {
@@ -23,20 +21,10 @@ declare global {
     }>;
   }
 
-  interface OpenFilePickerOptions {
-    types?: Array<{
-      description?: string;
-      accept: Record<string, string[]>;
-    }>;
-  }
-
   interface Window {
     showSaveFilePicker(
       options?: SaveFilePickerOptions
     ): Promise<FileSystemFileHandle>;
-    showOpenFilePicker(
-      options?: OpenFilePickerOptions
-    ): Promise<FileSystemFileHandle[]>;
   }
 }
 
@@ -50,7 +38,7 @@ export const RetirementContext = createContext<{
   addScenario: (data: Scenario) => Promise<void>;
   updateScenario: (data: Scenario) => Promise<void>;
   deleteScenario: (id: string) => Promise<void>;
-  exportScenario: (id: string) => void;
+  exportScenario: (id: string) => Promise<void>;
   importScenario: () => void;
   setActiveScenario: (id: string) => Promise<void>;
 } | null>(null);
@@ -61,12 +49,6 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     null
   );
   const [loading, setLoading] = useState(true);
-
-  const [exportDialogVisible, setExportDialogVisible] = useState(false);
-  const [selectedExportScenario, setSelectedExportScenario] =
-    useState<Scenario | null>(null);
-
-  const [importDialogVisible, setImportDialogVisible] = useState(false);
 
   useEffect(() => {
     const initDB = async () => {
@@ -116,137 +98,127 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const exportScenario = (id: string) => {
+  const exportScenario = async (id: string) => {
     const scenario = scenarios.find((s) => s.id === id);
-    if (scenario) {
-      setSelectedExportScenario(scenario);
-      setExportDialogVisible(true);
-    }
-  };
+    if (!scenario) return;
+    const dataStr = JSON.stringify(scenario, null, 2);
+    const suggestedName = `${scenario.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
 
-  const importScenario = () => {
-    setImportDialogVisible(true);
-  };
-
-  const confirmExport = async (filename: string) => {
-    const scenario = selectedExportScenario;
-    if (scenario) {
+    if (typeof window.showSaveFilePicker === 'function') {
       try {
-        const dataStr = JSON.stringify(scenario, null, 2);
         const fileHandle = await window.showSaveFilePicker({
-          suggestedName: filename,
-          types: [
-            {
-              description: 'JSON files',
-              accept: { 'application/json': ['.json'] },
-            },
-          ],
+          suggestedName,
+          types: [{ description: 'JSON files', accept: { 'application/json': ['.json'] } }],
         });
         const writable = await fileHandle.createWritable();
         await writable.write(dataStr);
         await writable.close();
-      } catch (err) {
-        // User cancelled or other error, do nothing
-        console.error('Export failed:', err);
+      } catch (err: unknown) {
+        if (!(err instanceof Error && err.name === 'AbortError')) {
+          console.error('Export failed:', err);
+        }
       }
+    } else {
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = suggestedName;
+      a.click();
+      URL.revokeObjectURL(url);
     }
-    setExportDialogVisible(false);
-    setSelectedExportScenario(null);
   };
 
-  const confirmImport = async () => {
-    try {
-      const [fileHandle] = await window.showOpenFilePicker({
-        types: [
-          {
-            description: 'JSON files',
-            accept: { 'application/json': ['.json'] },
-          },
-        ],
-      });
-      const file = await fileHandle.getFile();
-      const text = await file.text();
-      const importedData = JSON.parse(text) as Scenario;
+  const importScenario = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const importedData = JSON.parse(text) as Scenario;
 
-      // Basic validation
-      if (!importedData.name || typeof importedData.currentAge !== 'number') {
-        throw new Error('Invalid scenario: Missing name or currentAge.');
-      }
-      if (!Array.isArray(importedData.accounts)) {
-        throw new Error('Invalid scenario: Missing accounts array.');
-      }
-      if (typeof importedData.longTermCapGainsRate !== 'number') {
-        importedData.longTermCapGainsRate = 0.15;
-      }
-      const pa = importedData.portfolioAssumptions;
-      if (!pa || typeof pa.stockAllocation !== 'number' || typeof pa.stockReturn !== 'number' ||
-          typeof pa.bondReturn !== 'number') {
-        throw new Error('Invalid scenario: Missing or invalid portfolioAssumptions fields.');
-      }
-      if (typeof importedData.inflationStdDev !== 'number') {
-        importedData.inflationStdDev = 0;
-      }
+        if (!importedData.name || typeof importedData.currentAge !== 'number') {
+          throw new Error('Invalid scenario: Missing name or currentAge.');
+        }
+        if (!Array.isArray(importedData.accounts)) {
+          throw new Error('Invalid scenario: Missing accounts array.');
+        }
+        if (typeof importedData.longTermCapGainsRate !== 'number') {
+          importedData.longTermCapGainsRate = 0.15;
+        }
+        const pa = importedData.portfolioAssumptions;
+        if (!pa || typeof pa.stockAllocation !== 'number' || typeof pa.stockReturn !== 'number' ||
+            typeof pa.bondReturn !== 'number') {
+          throw new Error('Invalid scenario: Missing or invalid portfolioAssumptions fields.');
+        }
+        if (typeof importedData.inflationStdDev !== 'number') {
+          importedData.inflationStdDev = 0;
+        }
 
-      // Generate ID if missing
-      if (!importedData.id) {
-        importedData.id = crypto.randomUUID();
-      }
+        if (!importedData.id) {
+          importedData.id = crypto.randomUUID();
+        }
 
-      // Check if exists
-      const existingIndex = scenarios.findIndex(
-        (s) => s.id === importedData.id
-      );
+        const existingIndex = scenarios.findIndex((s) => s.id === importedData.id);
 
-      if (existingIndex !== -1) {
-        // Confirm overwrite
+        if (existingIndex !== -1) {
+          confirmDialog({
+            message: `"${importedData.name}" already exists. Overwrite it or import as a separate copy?`,
+            header: 'Scenario Already Exists',
+            icon: 'pi pi-exclamation-triangle',
+            acceptLabel: 'Overwrite',
+            rejectLabel: 'Import as Copy',
+            accept: async () => {
+              await updateScenario(importedData);
+              setActiveScenarioState(importedData);
+              confirmDialog({
+                message: 'Scenario imported successfully!',
+                header: 'Success',
+                icon: 'pi pi-check',
+                acceptLabel: 'OK',
+                reject: undefined,
+              });
+            },
+            reject: async () => {
+              const copy = { ...importedData, id: crypto.randomUUID() };
+              await addScenario(copy);
+              setActiveScenarioState(copy);
+              confirmDialog({
+                message: 'Scenario imported as a new copy.',
+                header: 'Success',
+                icon: 'pi pi-check',
+                acceptLabel: 'OK',
+                reject: undefined,
+              });
+            },
+          });
+        } else {
+          await addScenario(importedData);
+          setActiveScenarioState(importedData);
+          confirmDialog({
+            message: 'Scenario imported successfully!',
+            header: 'Success',
+            icon: 'pi pi-check',
+            acceptLabel: 'OK',
+            reject: undefined,
+          });
+        }
+      } catch (error: unknown) {
+        console.error('Import failed:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Invalid file.';
         confirmDialog({
-          message: `A scenario with ID '${importedData.id}' already exists. Importing will overwrite it. Are you sure?`,
-          header: 'Overwrite Scenario?',
+          message: `Import failed: ${errorMessage}`,
+          header: 'Error',
           icon: 'pi pi-exclamation-triangle',
-          acceptLabel: 'Yes',
-          rejectLabel: 'No',
-          accept: async () => {
-            await updateScenario(importedData);
-            setActiveScenarioState(importedData);
-            // Success message
-            confirmDialog({
-              message: 'Scenario imported successfully!',
-              header: 'Success',
-              icon: 'pi pi-check',
-              acceptLabel: 'OK',
-              reject: undefined,
-            });
-          },
-          reject: () => {
-            console.log('Import cancelled by user.');
-          },
-        });
-      } else {
-        await addScenario(importedData);
-        setActiveScenarioState(importedData);
-        // Success message
-        confirmDialog({
-          message: 'Scenario imported successfully!',
-          header: 'Success',
-          icon: 'pi pi-check',
           acceptLabel: 'OK',
           reject: undefined,
         });
       }
-    } catch (error: unknown) {
-      console.error('Import failed:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : 'Invalid file.';
-      confirmDialog({
-        message: `Import failed: ${errorMessage}`,
-        header: 'Error',
-        icon: 'pi pi-exclamation-triangle',
-        acceptLabel: 'OK',
-        reject: undefined,
-      });
-    } finally {
-      setImportDialogVisible(false);
-    }
+    };
+    input.click();
   };
 
   const setActiveScenario = async (id: string) => {
@@ -272,20 +244,6 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       }}
     >
       {children}
-      <ExportScenarioDialog
-        visible={exportDialogVisible}
-        onHide={() => {
-          setExportDialogVisible(false);
-          setSelectedExportScenario(null);
-        }}
-        scenario={selectedExportScenario}
-        onConfirm={confirmExport}
-      />
-      <ImportScenarioDialog
-        visible={importDialogVisible}
-        onHide={() => setImportDialogVisible(false)}
-        onConfirm={confirmImport}
-      />
     </RetirementContext.Provider>
   );
 };

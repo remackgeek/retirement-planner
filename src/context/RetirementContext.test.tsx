@@ -1,62 +1,99 @@
 import React from 'react';
-import { render, waitFor, fireEvent, act } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { Mock } from 'vitest';
+import { render, waitFor, act } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RetirementProvider, RetirementContext } from './RetirementContext';
 import { confirmDialog } from 'primereact/confirmdialog';
 import type { Scenario } from '../types/Scenario';
 import { openDB } from 'idb';
 
-// Mock idb
 vi.mock('idb', () => ({
   openDB: vi.fn(),
 }));
 
-// Mock confirmDialog
 vi.mock('primereact/confirmdialog', () => ({
   confirmDialog: vi.fn(),
 }));
 
-// Mock crypto.randomUUID
 vi.stubGlobal('crypto', {
   getRandomValues: vi.fn(() => new Uint8Array(16)),
   randomUUID: vi.fn(() => 'mock-uuid'),
 });
 
-// Mock window.showOpenFilePicker
-const mockFileHandle = {
-  kind: 'file' as const,
-  getFile: vi.fn(),
-  createWritable: vi.fn(),
-  name: 'test.json',
-  isSameEntry: vi.fn(),
-} as Partial<FileSystemFileHandle> & { getFile: typeof vi.fn };
-const mockFile = new File(['{"name": "Test", "currentAge": 30}'], 'test.json', {
-  type: 'application/json',
-});
-(mockFileHandle.getFile as Mock).mockResolvedValue(mockFile);
-vi.stubGlobal(
-  'showOpenFilePicker',
-  vi.fn().mockResolvedValue([mockFileHandle as any])
-);
+// ---- helpers ----
 
-// Mock window.showSaveFilePicker for completeness
-vi.stubGlobal('showSaveFilePicker', vi.fn());
+function makeScenarioJson(overrides: Record<string, unknown> = {}) {
+  return JSON.stringify({
+    name: 'New Scenario',
+    currentAge: 40,
+    inflationStdDev: 0,
+    accounts: [],
+    longTermCapGainsRate: 0.15,
+    portfolioAssumptions: {
+      portfolioBalance: '60_40',
+      stockAllocation: 0.6,
+      stockReturn: 0.07,
+      stockStdDev: 0.15,
+      bondReturn: 0.03,
+      bondStdDev: 0.05,
+    },
+    ...overrides,
+  });
+}
+
+function makeFile(text: string, name = 'scenario.json') {
+  const file = new File([text], name, { type: 'application/json' });
+  file.text = vi.fn().mockResolvedValue(text);
+  return file;
+}
+
+// Intercepts document.createElement('input'), prevents click(), returns the element
+function spyOnFileInput() {
+  let capturedInput: HTMLInputElement | null = null;
+  const originalCreate = document.createElement.bind(document);
+  const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string, ...args) => {
+    if (tag === 'input') {
+      const el = originalCreate('input') as HTMLInputElement;
+      el.click = vi.fn();
+      capturedInput = el;
+      return el;
+    }
+    return originalCreate(tag, ...(args as []));
+  });
+  return {
+    spy,
+    getInput: () => capturedInput,
+    restore: () => spy.mockRestore(),
+  };
+}
+
+async function triggerFileSelection(input: HTMLInputElement, file: File) {
+  Object.defineProperty(input, 'files', {
+    value: { 0: file, length: 1, item: (i: number) => (i === 0 ? file : null) },
+    configurable: true,
+  });
+  await act(async () => {
+    input.onchange!(new Event('change'));
+  });
+}
 
 const TestComponent = () => {
   const context = React.useContext(RetirementContext)!;
   React.useEffect(() => {
-    context.importScenario();
-  }, []);
+    if (!context.loading) {
+      context.importScenario();
+    }
+  }, [context.loading]);
   return <div data-testid='test'>Test</div>;
 };
+
+// ---- tests ----
 
 describe('RetirementContext Import Tests', () => {
   let mockPut: ReturnType<typeof vi.fn>;
   let mockGetAll: ReturnType<typeof vi.fn>;
   let mockDelete: ReturnType<typeof vi.fn>;
   let mockGet: ReturnType<typeof vi.fn>;
-  let mockOpenDB: ReturnType<typeof vi.fn>;
+  let inputSpy: ReturnType<typeof spyOnFileInput>;
 
   beforeEach(() => {
     mockPut = vi.fn().mockResolvedValue(undefined);
@@ -64,56 +101,42 @@ describe('RetirementContext Import Tests', () => {
     mockDelete = vi.fn();
     mockGet = vi.fn();
 
-    mockOpenDB = vi.fn().mockResolvedValue({
+    vi.mocked(openDB).mockResolvedValue({
       getAll: mockGetAll,
       put: mockPut,
       delete: mockDelete,
       get: mockGet,
     } as any);
 
-    // Set the mock on the module
-    const idbModule = vi.mocked(openDB);
-    idbModule.mockImplementation(mockOpenDB);
-
-    // Reset mocks
     vi.mocked(confirmDialog).mockClear();
-    vi.mocked(window.showOpenFilePicker).mockClear();
     vi.mocked(crypto.randomUUID).mockClear();
-    (mockFileHandle.getFile as Mock).mockClear();
+
+    inputSpy = spyOnFileInput();
+  });
+
+  afterEach(() => {
+    inputSpy.restore();
   });
 
   it('imports new scenario successfully', async () => {
-    const mockText = '{"name": "New Scenario", "currentAge": 40, "inflationStdDev": 0, "accounts": [], "longTermCapGainsRate": 0.15, "portfolioAssumptions": {"portfolioBalance": "60_40", "stockAllocation": 0.6, "stockReturn": 0.07, "stockStdDev": 0.15, "bondReturn": 0.03, "bondStdDev": 0.05}}';
-    const newFile = new File([mockText], 'new.json', {
-      type: 'application/json',
-    });
-    newFile.text = vi.fn().mockResolvedValue(mockText);
-    (mockFileHandle.getFile as Mock).mockResolvedValue(newFile);
-    vi.mocked(crypto.randomUUID).mockReturnValue(
-      '123e4567-e89b-12d3-a456-426614174000'
-    );
-    vi.mocked(window.showOpenFilePicker).mockResolvedValue([
-      mockFileHandle as any,
-    ]);
+    const text = makeScenarioJson();
+    vi.mocked(crypto.randomUUID).mockReturnValue('123e4567-e89b-12d3-a456-426614174000');
 
-    const { getByLabelText } = render(
+    render(
       <RetirementProvider>
         <TestComponent />
       </RetirementProvider>
     );
 
-    // Wait for dialog to open
-    await waitFor(() => {
-      expect(getByLabelText('Choose JSON File')).toBeInTheDocument();
+    const input = await waitFor(() => {
+      const el = inputSpy.getInput();
+      if (!el) throw new Error('no input captured');
+      return el;
     });
 
-    // Click the button to trigger confirmImport
-    await act(async () => {
-      fireEvent.click(getByLabelText('Choose JSON File'));
-    });
+    await triggerFileSelection(input, makeFile(text));
 
     await waitFor(() => {
-      expect(vi.mocked(window.showOpenFilePicker)).toHaveBeenCalled();
       expect(mockPut).toHaveBeenCalledWith(
         'scenarios',
         expect.objectContaining({
@@ -132,54 +155,37 @@ describe('RetirementContext Import Tests', () => {
   });
 
   it('imports and overwrites existing scenario when accepted', async () => {
-    const existingScenario: Scenario = {
-      id: 'existing-id',
-      name: 'Existing',
-      currentAge: 50,
-    } as Scenario;
+    const existingScenario: Scenario = { id: 'existing-id', name: 'Existing', currentAge: 50 } as Scenario;
     mockGetAll.mockResolvedValue([existingScenario]);
 
-    const mockText =
-      '{"id": "existing-id", "name": "Updated", "currentAge": 50, "inflationStdDev": 0, "accounts": [], "longTermCapGainsRate": 0.15, "portfolioAssumptions": {"portfolioBalance": "60_40", "stockAllocation": 0.6, "stockReturn": 0.07, "stockStdDev": 0.15, "bondReturn": 0.03, "bondStdDev": 0.05}}';
-    const updateFile = new File([mockText], 'update.json', {
-      type: 'application/json',
-    });
-    updateFile.text = vi.fn().mockResolvedValue(mockText);
-    (mockFileHandle.getFile as Mock).mockResolvedValue(updateFile);
-    vi.mocked(window.showOpenFilePicker).mockResolvedValue([
-      mockFileHandle as any,
-    ]);
+    const text = makeScenarioJson({ id: 'existing-id', name: 'Updated', currentAge: 50 });
 
-    const { getByLabelText } = render(
+    render(
       <RetirementProvider>
         <TestComponent />
       </RetirementProvider>
     );
 
-    await waitFor(() => {
-      expect(getByLabelText('Choose JSON File')).toBeInTheDocument();
+    const input = await waitFor(() => {
+      const el = inputSpy.getInput();
+      if (!el) throw new Error('no input captured');
+      return el;
     });
 
-    await act(async () => {
-      fireEvent.click(getByLabelText('Choose JSON File'));
-    });
+    await triggerFileSelection(input, makeFile(text));
 
-    // Now confirmDialog for overwrite is called
     await waitFor(() => {
       expect(vi.mocked(confirmDialog)).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: `A scenario with ID 'existing-id' already exists. Importing will overwrite it. Are you sure?`,
-          header: 'Overwrite Scenario?',
+          message: `"Updated" already exists. Overwrite it or import as a separate copy?`,
+          header: 'Scenario Already Exists',
         })
       );
     });
 
-    // Call accept callback
-    const confirmMock = vi.mocked(confirmDialog);
-    const overwriteOptions = confirmMock.mock.calls[0][0];
-    const acceptCallback = overwriteOptions.accept as () => Promise<void>;
+    const overwriteCall = vi.mocked(confirmDialog).mock.calls[0][0];
     await act(async () => {
-      await acceptCallback();
+      await (overwriteCall.accept as () => Promise<void>)();
     });
 
     await waitFor(() => {
@@ -189,106 +195,76 @@ describe('RetirementContext Import Tests', () => {
         'existing-id'
       );
       expect(vi.mocked(confirmDialog)).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          message: 'Scenario imported successfully!',
-          header: 'Success',
-        })
+        expect.objectContaining({ message: 'Scenario imported successfully!', header: 'Success' })
       );
     });
   });
 
-  it('cancels import when overwrite is rejected', async () => {
-    const existingScenario: Scenario = {
-      id: 'existing-id',
-      name: 'Existing',
-      currentAge: 50,
-    } as Scenario;
+  it('imports as copy when duplicate is chosen', async () => {
+    const existingScenario: Scenario = { id: 'existing-id', name: 'Existing', currentAge: 50 } as Scenario;
     mockGetAll.mockResolvedValue([existingScenario]);
 
-    const mockText =
-      '{"id": "existing-id", "name": "Updated", "currentAge": 50, "inflationStdDev": 0, "accounts": [], "longTermCapGainsRate": 0.15, "portfolioAssumptions": {"portfolioBalance": "60_40", "stockAllocation": 0.6, "stockReturn": 0.07, "stockStdDev": 0.15, "bondReturn": 0.03, "bondStdDev": 0.05}}';
-    const updateFile = new File([mockText], 'update.json', {
-      type: 'application/json',
-    });
-    updateFile.text = vi.fn().mockResolvedValue(mockText);
-    (mockFileHandle.getFile as Mock).mockResolvedValue(updateFile);
-    vi.mocked(window.showOpenFilePicker).mockResolvedValue([
-      mockFileHandle as any,
-    ]);
+    const text = makeScenarioJson({ id: 'existing-id', name: 'Updated', currentAge: 50 });
+    vi.mocked(crypto.randomUUID).mockReturnValue('00000000-0000-0000-0000-000000000001');
 
-    const { getByLabelText } = render(
+    render(
       <RetirementProvider>
         <TestComponent />
       </RetirementProvider>
     );
 
-    await waitFor(() => {
-      expect(getByLabelText('Choose JSON File')).toBeInTheDocument();
+    const input = await waitFor(() => {
+      const el = inputSpy.getInput();
+      if (!el) throw new Error('no input captured');
+      return el;
     });
 
-    await act(async () => {
-      fireEvent.click(getByLabelText('Choose JSON File'));
-    });
+    await triggerFileSelection(input, makeFile(text));
 
     await waitFor(() => {
       expect(vi.mocked(confirmDialog)).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: `A scenario with ID 'existing-id' already exists. Importing will overwrite it. Are you sure?`,
-          header: 'Overwrite Scenario?',
-        })
+        expect.objectContaining({ header: 'Scenario Already Exists' })
       );
     });
 
-    // Call reject callback
-    const confirmMock = vi.mocked(confirmDialog);
-    const overwriteOptions = confirmMock.mock.calls[0][0];
-    const rejectCallback = overwriteOptions.reject as () => void;
+    const overwriteCall = vi.mocked(confirmDialog).mock.calls[0][0];
     await act(async () => {
-      rejectCallback();
+      await (overwriteCall.reject as () => Promise<void>)();
     });
 
     await waitFor(() => {
-      expect(mockPut).not.toHaveBeenCalledWith(
+      expect(mockPut).toHaveBeenCalledWith(
         'scenarios',
-        expect.objectContaining({ id: 'existing-id', name: 'Updated' }),
-        'existing-id'
+        expect.objectContaining({ id: '00000000-0000-0000-0000-000000000001', name: 'Updated' }),
+        '00000000-0000-0000-0000-000000000001'
       );
-      expect(vi.mocked(confirmDialog)).not.toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Scenario imported successfully!' })
+      expect(vi.mocked(confirmDialog)).toHaveBeenLastCalledWith(
+        expect.objectContaining({ message: 'Scenario imported as a new copy.' })
       );
     });
   });
 
   it('shows error for invalid scenario import', async () => {
-    const mockText = '{"name": "Invalid"}'; // Missing currentAge
-    const invalidFile = new File([mockText], 'invalid.json', {
-      type: 'application/json',
-    });
-    invalidFile.text = vi.fn().mockResolvedValue(mockText);
-    (mockFileHandle.getFile as Mock).mockResolvedValue(invalidFile);
-    vi.mocked(window.showOpenFilePicker).mockResolvedValue([
-      mockFileHandle as any,
-    ]);
+    const text = JSON.stringify({ name: 'Invalid' }); // missing currentAge
 
-    const { getByLabelText } = render(
+    render(
       <RetirementProvider>
         <TestComponent />
       </RetirementProvider>
     );
 
-    await waitFor(() => {
-      expect(getByLabelText('Choose JSON File')).toBeInTheDocument();
+    const input = await waitFor(() => {
+      const el = inputSpy.getInput();
+      if (!el) throw new Error('no input captured');
+      return el;
     });
 
-    await act(async () => {
-      fireEvent.click(getByLabelText('Choose JSON File'));
-    });
+    await triggerFileSelection(input, makeFile(text));
 
     await waitFor(() => {
       expect(vi.mocked(confirmDialog)).toHaveBeenCalledWith(
         expect.objectContaining({
-          message:
-            'Import failed: Invalid scenario: Missing name or currentAge.',
+          message: 'Import failed: Invalid scenario: Missing name or currentAge.',
           header: 'Error',
         })
       );
