@@ -1,0 +1,14 @@
+{
+  "_rationale": "No taxable account in UserData. ensureRMDReinvestmentAccount adds a $0 'RMD Reinvestment' taxable account before the sim loop. With Traditional $500k and RMD at 73 = 500000/26.5 ≈ 18868, all RMD is excess and deposits into the auto-created account. Results are identical to rmd-excess-to-existing-taxable.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rmdRequired", "value": 18867.92, "tolerance": 1, "_note": "500000/26.5 = 18867.924..." },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 18867.92, "tolerance": 1, "_note": "Full RMD taken from Traditional" },
+    { "index": 0, "field": "rmdExcess", "min": 15000, "max": 18900, "_note": "Most of the RMD is excess; deposited to auto-created taxable" }
+  ],
+  "pathValues": [
+    { "index": 1, "age": 74, "value": 500000, "tolerance": 1,
+      "_note": "0% return + 0 tax (deductions exceed RMD) → Traditional $481,132 + Auto-Taxable $18,868 = $500,000 exactly. Fails at ~$481,132 if deposit is broken." }
+  ]
+}

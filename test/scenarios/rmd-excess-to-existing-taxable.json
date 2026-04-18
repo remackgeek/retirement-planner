@@ -1,0 +1,30 @@
+{
+  "_description": "Age 73, Traditional $500k + Taxable $100k, no spending. RMD is forced entirely as excess and reinvested into the existing taxable account.",
+  "_rationale": "RMD at 73 = 500000/26.5 = 18867.92. With $0 spending but RMD forced, the withdrawal from Traditional is ~18868. The RMD is taxable ordinary income; taxes are paid from the withdrawal itself (the spending-based withdrawal converges to cover the tax). The remainder (rmdExcess = rmdRequired - taxPortionWithdrawal) is deposited to the taxable account. Florida, no state tax, single filer.",
+  "_seed": 12345,
+  "name": "RMD Excess to Existing Taxable",
+  "currentAge": 73,
+  "lifeExpectancy": 78,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "portfolioBalance": "custom",
+    "stockAllocation": 0.6,
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    { "id": "trad-1", "name": "Traditional 1", "type": "traditional", "balance": 500000 },
+    { "id": "taxable-1", "name": "Taxable 1", "type": "taxable", "balance": 100000 }
+  ],
+  "longTermCapGainsRate": 0.15
+}

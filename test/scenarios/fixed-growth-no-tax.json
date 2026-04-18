@@ -40,8 +40,8 @@
   "accounts": [
     {
       "id": "acct-1",
-      "name": "Traditional 1",
-      "type": "traditional",
+      "name": "Roth 1",
+      "type": "roth",
       "balance": 500000
     }
   ],

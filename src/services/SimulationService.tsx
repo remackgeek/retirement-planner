@@ -60,6 +60,25 @@ export const STATE_TAX_RATES: Record<string, number> = {
   'Washington, DC': 0.085,
 };
 
+// IRS Uniform Lifetime Table (SECURE 2.0 / 2022 tables) — divisors by age.
+// Used to compute Required Minimum Distributions from Traditional accounts at age 73+.
+export const IRS_UNIFORM_LIFETIME_TABLE: Record<number, number> = {
+  72: 27.4, 73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9,
+  78: 22.0, 79: 21.1, 80: 20.2, 81: 19.4, 82: 18.5, 83: 17.7,
+  84: 16.8, 85: 16.0, 86: 15.2, 87: 14.4, 88: 13.7, 89: 12.9,
+  90: 12.2, 91: 11.5, 92: 10.8, 93: 10.1, 94:  9.5, 95:  8.9,
+  96:  8.4, 97:  7.8, 98:  7.3, 99:  6.8, 100:  6.4, 101:  6.0,
+  102:  5.6, 103:  5.2, 104:  4.9, 105:  4.6, 106:  4.3, 107:  4.1,
+  108:  3.9, 109:  3.7, 110:  3.5, 111:  3.4, 112:  3.3, 113:  3.1,
+  114:  3.0,
+};
+
+export function calculateRMD(tradBalance: number, age: number): number {
+  if (age < 73) return 0;
+  const divisor = IRS_UNIFORM_LIFETIME_TABLE[Math.min(age, 114)] ?? 2.9;
+  return tradBalance / divisor;
+}
+
 // Derive log-normal mu/sigma from arithmetic mean return and standard deviation.
 function lognormalParams(mean: number, stdDev: number): { mu: number; sigma: number } {
   const sigma = Math.sqrt(Math.log(1 + (stdDev * stdDev) / ((1 + mean) * (1 + mean))));
@@ -228,9 +247,32 @@ function applyCashFlow(
   subtractFromType(userData.accounts, balances, 'taxable', breakdown.withdrawalFromTaxable);
   subtractFromType(userData.accounts, balances, 'traditional', breakdown.withdrawalFromTraditional);
   subtractFromType(userData.accounts, balances, 'roth', breakdown.withdrawalFromRoth);
+  // Deposit RMD excess into the first taxable account (already ensured to exist by caller).
+  if (breakdown.rmdExcess > 0) {
+    const taxableTarget = userData.accounts.find((a) => a.type === 'taxable');
+    if (taxableTarget) {
+      balances[taxableTarget.id] = (balances[taxableTarget.id] ?? 0) + breakdown.rmdExcess;
+    }
+  }
   if (breakdown.netCashFlow > 0) {
     distributeDeposit(userData, year, breakdown.netCashFlow, balances, inflationRate);
   }
+}
+
+// If Traditional accounts exist and the user will reach age 73, ensure a taxable account
+// exists to receive excess RMD reinvestment. Returns a shallow copy with the account added.
+function ensureRMDReinvestmentAccount(userData: UserData): UserData {
+  if (!userData.accounts.some((a) => a.type === 'traditional')) return userData;
+  const totalYears = userData.lifeExpectancy - userData.currentAge;
+  if (73 - userData.currentAge > totalYears) return userData; // never reaches RMD age
+  if (userData.accounts.some((a) => a.type === 'taxable')) return userData;
+  const rmdAccount: Account = {
+    id: 'rmd-reinvestment-auto',
+    name: 'RMD Reinvestment',
+    type: 'taxable',
+    balance: 0,
+  };
+  return { ...userData, accounts: [...userData.accounts, rmdAccount] };
 }
 
 // ---------------- Cash-flow calculation ----------------
@@ -249,7 +291,11 @@ export interface AnnualCashFlowBreakdown {
   withdrawalFromTraditional: number;
   withdrawalFromRoth: number;
   totalTax: number;
+  ordinaryTax: number;      // ordinary income tax (federal + state) on Traditional + SS + other taxable
+  capitalGainsTax: number;  // LTCG tax on taxable account withdrawals
   netCashFlow: number;
+  rmdRequired: number;  // IRS-mandated minimum from Traditional; 0 if age < 73
+  rmdExcess: number;    // rmdRequired beyond spending need; reinvested to taxable
 }
 
 function accumulateIncome(
@@ -367,25 +413,34 @@ export function calculateAnnualCashFlow(
   const totalBal = taxableBal + tradBal + rothBal;
   const cap = Math.min(maxWithdrawal ?? Infinity, totalBal);
 
+  const rmdRequired = calculateRMD(tradBal, age);
   let withdrawal = Math.min(Math.max(0, totalSpendingNet - availableCash), cap);
   let totalTax = 0;
   let ssTaxableAmount = 0;
   let fromTaxable = 0;
   let fromTrad = 0;
   let fromRoth = 0;
+  let spendingFromTrad = 0;
+  let rmdExcess = 0;
   let capWasBinding = false;
+  let ordinaryTax = 0;
+  let ltcgTax = 0;
 
   const MAX_ITERATIONS = 50;
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     fromTaxable = Math.min(withdrawal, taxableBal);
-    fromTrad = Math.min(Math.max(0, withdrawal - fromTaxable), tradBal);
-    fromRoth = Math.max(0, withdrawal - fromTaxable - fromTrad);
+    spendingFromTrad = Math.min(Math.max(0, withdrawal - fromTaxable), tradBal);
+    fromRoth = Math.max(0, withdrawal - fromTaxable - spendingFromTrad);
+    // Force Traditional withdrawal to satisfy RMD even if spending need is lower.
+    const forcedTrad = Math.min(Math.max(spendingFromTrad, rmdRequired), tradBal);
+    rmdExcess = Math.max(0, forcedTrad - spendingFromTrad);
+    fromTrad = forcedTrad;
 
     const ordinaryGross = otherTaxableGross + fromTrad;
     ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, userData.filingStatus);
     const combinedTaxable = ordinaryGross + ssTaxableAmount;
 
-    let ordinaryTax = 0;
+    ordinaryTax = 0;
     if (combinedTaxable > 0) {
       const net = calculateNetFromGross(
         combinedTaxable,
@@ -397,7 +452,7 @@ export function calculateAnnualCashFlow(
       );
       ordinaryTax = combinedTaxable - net;
     }
-    const ltcgTax = fromTaxable * ltcgRate;
+    ltcgTax = fromTaxable * ltcgRate;
     totalTax = ordinaryTax + ltcgTax;
 
     const uncappedNewWithdrawal = Math.max(0, totalSpendingNet + totalTax - availableCash);
@@ -407,8 +462,11 @@ export function calculateAnnualCashFlow(
     if (Math.abs(newWithdrawal - withdrawal) < 0.01) {
       withdrawal = newWithdrawal;
       fromTaxable = Math.min(withdrawal, taxableBal);
-      fromTrad = Math.min(Math.max(0, withdrawal - fromTaxable), tradBal);
-      fromRoth = Math.max(0, withdrawal - fromTaxable - fromTrad);
+      spendingFromTrad = Math.min(Math.max(0, withdrawal - fromTaxable), tradBal);
+      fromRoth = Math.max(0, withdrawal - fromTaxable - spendingFromTrad);
+      const finalForcedTrad = Math.min(Math.max(spendingFromTrad, rmdRequired), tradBal);
+      rmdExcess = Math.max(0, finalForcedTrad - spendingFromTrad);
+      fromTrad = finalForcedTrad;
       break;
     }
     withdrawal = newWithdrawal;
@@ -427,12 +485,16 @@ export function calculateAnnualCashFlow(
     baseSpendingNet: spending.baseSpendingNet,
     otherSpendingGoalsNet: spending.otherSpendingGoalsNet,
     totalSpendingNet,
-    portfolioWithdrawal: withdrawal,
+    portfolioWithdrawal: fromTaxable + fromTrad + fromRoth,
     withdrawalFromTaxable: fromTaxable,
     withdrawalFromTraditional: fromTrad,
     withdrawalFromRoth: fromRoth,
     totalTax,
+    ordinaryTax,
+    capitalGainsTax: ltcgTax,
     netCashFlow,
+    rmdRequired,
+    rmdExcess,
   };
 }
 
@@ -446,7 +508,7 @@ interface SimRun {
 }
 
 export function runSimulation(
-  userData: UserData,
+  rawUserData: UserData,
   random: () => number = Math.random
 ): {
   probability: number;
@@ -462,6 +524,7 @@ export function runSimulation(
   nominalBreakdowns: AnnualCashFlowBreakdown[];
   years: number[];
 } {
+  const userData = ensureRMDReinvestmentAccount(rawUserData);
   const currentYear = userData.referenceYear;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const inflationRate = userData.inflationRate;

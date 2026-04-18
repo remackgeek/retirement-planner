@@ -134,8 +134,9 @@ function exportCsv(
     'Deterministic Portfolio ($)', 'Median Portfolio ($)', 'Downside Portfolio ($)',
     'SS Gross', 'Other Taxable Income', 'After-Tax Income', 'Total Gross Income',
     'Base Spending', 'Goal Spending', 'Total Spending',
-    'Total Tax', 'Portfolio Withdrawal',
+    'Total Tax', 'Ordinary Income Tax', 'Capital Gains Tax', 'Portfolio Withdrawal',
     'Withdrawal — Taxable', 'Withdrawal — Traditional', 'Withdrawal — Roth',
+    'RMD Required', 'RMD Reinvested',
     'Net Cash Flow',
   ].join(',');
 
@@ -155,10 +156,14 @@ function exportCsv(
       Math.round(bd.otherSpendingGoalsNet),
       Math.round(bd.totalSpendingNet),
       Math.round(bd.totalTax),
+      Math.round(bd.ordinaryTax),
+      Math.round(bd.capitalGainsTax),
       Math.round(bd.portfolioWithdrawal),
       Math.round(bd.withdrawalFromTaxable),
       Math.round(bd.withdrawalFromTraditional),
       Math.round(bd.withdrawalFromRoth),
+      Math.round(bd.rmdRequired),
+      Math.round(bd.rmdExcess),
       Math.round(bd.netCashFlow),
     ].join(',');
   });
@@ -624,12 +629,30 @@ const Projections = ({
                               )}
 
                               {/* Taxes */}
-                              {realTax > 0 && (
-                                <div style={categoryStyle}>
-                                  <span>Taxes</span>
-                                  <span>-${fmt(realTax)}</span>
-                                </div>
-                              )}
+                              {realTax > 0 && (() => {
+                                const realOrdinaryTax = breakdown.ordinaryTax / inflationFactor;
+                                const realCapGainsTax = breakdown.capitalGainsTax / inflationFactor;
+                                return (
+                                  <>
+                                    <div style={categoryStyle}>
+                                      <span>Taxes</span>
+                                      <span>-${fmt(realTax)}</span>
+                                    </div>
+                                    {realOrdinaryTax > 0.5 && (
+                                      <div style={itemStyle}>
+                                        <span>Ordinary Income</span>
+                                        <span>${fmt(realOrdinaryTax)}</span>
+                                      </div>
+                                    )}
+                                    {realCapGainsTax > 0.5 && (
+                                      <div style={itemStyle}>
+                                        <span>Capital Gains</span>
+                                        <span>${fmt(realCapGainsTax)}</span>
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
 
                               {/* Inflation Adjustment */}
                               {Math.abs(inflationAdj) > 0.5 && (
@@ -673,6 +696,21 @@ const Projections = ({
                                 })()}
                                 </>
                               )}
+                              {/* RMD */}
+                              {breakdown.rmdRequired > 0.5 && (() => {
+                                const realRmdRequired = breakdown.rmdRequired / inflationFactor;
+                                const realRmdExcess = breakdown.rmdExcess / inflationFactor;
+                                return (
+                                  <>
+                                    <div style={{ color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'right', paddingTop: spacing.xs }}>
+                                      RMD required: ${fmt(realRmdRequired)}
+                                    </div>
+                                    {realRmdExcess > 0.5 && (
+                                      <div style={noteStyle}>Reinvested to Taxable: ${fmt(realRmdExcess)}</div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                               {shortfall > 0.5 && (
                                 <div style={{ color: colors.danger, fontWeight: 'bold', textAlign: 'right', paddingTop: spacing.xs }}>
                                   Portfolio Depleted — Shortfall: ${fmt(shortfall)}

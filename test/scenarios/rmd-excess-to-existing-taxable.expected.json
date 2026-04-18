@@ -1,0 +1,14 @@
+{
+  "_rationale": "RMD at 73 = 500000/26.5 = 18867.92. With $0 spending, the full RMD is forced excess. The iteration loop converges on a spending-based withdrawal that covers only the tax on the RMD (since the RMD is ordinary income). The full 18867.92 is taken from Traditional; rmdExcess = rmdRequired minus the tax-covering portion, and the remainder deposits to Taxable. rmdRequired ≈ 18868. Traditional drops by ~18868; Taxable grows by rmdExcess. Total portfolio shrinks only by the tax (~$0 due to standard deduction absorbing most of the RMD amount).",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rmdRequired", "value": 18867.92, "tolerance": 1, "_note": "500000/26.5 = 18867.924..." },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 18867.92, "tolerance": 1, "_note": "Full RMD taken from Traditional" },
+    { "index": 0, "field": "rmdExcess", "min": 15000, "max": 18900, "_note": "Most of the RMD is excess (spending ≈ tax-only amount)" }
+  ],
+  "pathValues": [
+    { "index": 1, "age": 74, "value": 600000, "tolerance": 1,
+      "_note": "0% return + 0 tax (deductions exceed RMD) → Traditional $481,132 + Taxable $118,868 = $600,000 exactly. Fails at ~$581,132 if deposit is broken." }
+  ]
+}

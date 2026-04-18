@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateAnnualCashFlow, runSimulation } from './SimulationService';
+import { calculateAnnualCashFlow, calculateRMD, IRS_UNIFORM_LIFETIME_TABLE, runSimulation } from './SimulationService';
 import type { UserData } from '../types/UserData';
 
 const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
@@ -738,5 +738,67 @@ describe('runSimulation — deterministic path', () => {
       const expected = startBalance * Math.pow(1 + mean, i);
       expect(nominal[i]).toBeCloseTo(expected, 0);
     }
+  });
+});
+
+describe('calculateRMD', () => {
+  it('returns 0 for age below 73', () => {
+    expect(calculateRMD(500000, 72)).toBe(0);
+    expect(calculateRMD(500000, 65)).toBe(0);
+    expect(calculateRMD(500000, 0)).toBe(0);
+  });
+
+  it('returns 0 for zero balance regardless of age', () => {
+    expect(calculateRMD(0, 73)).toBe(0);
+    expect(calculateRMD(0, 80)).toBe(0);
+  });
+
+  it('uses divisor 26.5 at age 73', () => {
+    expect(calculateRMD(265000, 73)).toBeCloseTo(10000, 2);
+    expect(IRS_UNIFORM_LIFETIME_TABLE[73]).toBe(26.5);
+  });
+
+  it('uses decreasing divisors at higher ages (larger RMD %)', () => {
+    const rmd73 = calculateRMD(500000, 73);
+    const rmd80 = calculateRMD(500000, 80);
+    const rmd90 = calculateRMD(500000, 90);
+    expect(rmd80).toBeGreaterThan(rmd73);
+    expect(rmd90).toBeGreaterThan(rmd80);
+  });
+
+  it('uses age 114 divisor for ages 115 and above', () => {
+    expect(calculateRMD(100000, 115)).toBeCloseTo(calculateRMD(100000, 114), 10);
+    expect(calculateRMD(100000, 120)).toBeCloseTo(calculateRMD(100000, 114), 10);
+  });
+
+  it('rmdRequired appears in calculateAnnualCashFlow breakdown at age 73+', () => {
+    const userData = makeUserData({
+      currentAge: 73,
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 265000 }],
+    });
+    const breakdown = calculateAnnualCashFlow(userData, 2026, 0);
+    expect(breakdown.rmdRequired).toBeCloseTo(10000, 2); // 265000 / 26.5
+  });
+
+  it('rmdRequired is 0 in calculateAnnualCashFlow below age 73', () => {
+    const userData = makeUserData({
+      currentAge: 72,
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000 }],
+    });
+    const breakdown = calculateAnnualCashFlow(userData, 2026, 0);
+    expect(breakdown.rmdRequired).toBe(0);
+    expect(breakdown.rmdExcess).toBe(0);
+  });
+
+  it('rmdExcess is 0 when spending already exceeds RMD', () => {
+    const userData = makeUserData({
+      currentAge: 73,
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 200000 }],
+      spendingGoals: [{ id: 'sp-1', name: 'Living Expenses 1', type: 'living_expenses', amount: 50000, startAge: 73, inflationAdjusted: false }],
+    });
+    const breakdown = calculateAnnualCashFlow(userData, 2026, 0);
+    // RMD = 200000/26.5 ≈ 7547, spending = 50000 >> RMD
+    expect(breakdown.rmdExcess).toBe(0);
+    expect(breakdown.rmdRequired).toBeCloseTo(7547, 0);
   });
 });

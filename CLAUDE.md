@@ -34,6 +34,12 @@ projections, and good tax awareness without overwhelming the user.
   Replaces the old single `currentSavings` field. All accounts share the scenario's
   stock/bond allocation. Withdrawals follow a fixed waterfall: Taxable → Traditional → Roth.
   Employment-savings income events target a specific account via `accountId`.
+  **RMD:** Traditional accounts trigger Required Minimum Distributions at age 73+ (SECURE 2.0,
+  IRS Uniform Lifetime Table). The simulation forces `withdrawalFromTraditional ≥ rmdRequired`
+  each year. Excess RMD beyond the spending need is reinvested into the first taxable account;
+  if none exists, `ensureRMDReinvestmentAccount` auto-creates a `"RMD Reinvestment"` taxable
+  account in the working simulation copy (not persisted to UserData). Roth accounts are exempt.
+  RMD amounts are taxed as ordinary income like all Traditional withdrawals.
 - **Income events** — 9 types (including `employment_savings` for pre-retirement savings),
   each with a required `name` (auto-generated defaults like "Pension Income 1"),
   COLA, before/after-tax, SS 2034 haircut (configurable). All cash flow flows through
@@ -242,9 +248,8 @@ Both dialogs are disabled when no active scenario.
   for taxable accounts with long-term capital gains brackets
 - Tax: bracket updates as legislation changes; Roth conversions; user-configurable
   withdrawal ordering (currently hardcoded Taxable → Traditional → Roth)
-- RMD modeling: required minimum distributions from Traditional accounts at age 73+
-  per SECURE 2.0 tables; excess RMD (beyond spending need) should flow into a
-  designated taxable brokerage account rather than being discarded
+- RMD modeling: ✓ implemented — see Accounts section above. Future: spouse-owned
+  Traditional accounts (accounts have no `owner` field); user-configurable RMD start age
 - Income/spending: new types without UI refactoring
 - State timeline: "Other" option with custom name + tax rate for international
   retirement (Mexico, Portugal, etc.)
@@ -294,7 +299,8 @@ Two assertion types are supported:
   checks. Valid fields: all keys of `AnnualCashFlowBreakdown` — `portfolioWithdrawal`,
   `withdrawalFromTaxable`, `withdrawalFromTraditional`, `withdrawalFromRoth`, `totalTax`,
   `netCashFlow`, `ssGross`, `otherTaxableGross`, `afterTaxIncome`, `ssTaxableAmount`,
-  `totalGrossIncome`, `baseSpendingNet`, `otherSpendingGoalsNet`, `totalSpendingNet`.
+  `totalGrossIncome`, `baseSpendingNet`, `otherSpendingGoalsNet`, `totalSpendingNet`,
+  `rmdRequired`, `rmdExcess`, `ordinaryTax`, `capitalGainsTax`.
 
 #### Key rules
 

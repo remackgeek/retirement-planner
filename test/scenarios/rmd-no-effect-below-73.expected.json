@@ -1,0 +1,14 @@
+{
+  "_rationale": "At age 72, SECURE 2.0 RMD does not yet apply (starts at 73). With 0% return, no spending, and no RMD, the portfolio is exactly $500,000 at the start of both age-72 and age-73 years. rmdRequired and rmdExcess are 0 for the age-72 year.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "pathValues": [
+    { "index": 0, "age": 72, "value": 500000, "note": "Start of age-72 year — no RMD, balance unchanged" },
+    { "index": 1, "age": 73, "value": 500000, "note": "Start of age-73 year — balance unchanged from prior year because RMD applies during this year, not before it" }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "rmdRequired", "value": 0, "tolerance": 1, "_note": "Age 72 — RMD not triggered" },
+    { "index": 0, "field": "rmdExcess", "value": 0, "tolerance": 1, "_note": "Age 72 — no excess" },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 0, "tolerance": 1, "_note": "No spending and no RMD at age 72" }
+  ]
+}
