@@ -1,4 +1,4 @@
-import { useContext, useState, useEffect } from 'react';
+import { useContext, useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { RetirementContext } from '../../context/RetirementContext';
 import { runSimulation } from '../../services/SimulationService';
@@ -57,15 +57,28 @@ const Content: React.FC = () => {
   if (!context) return null;
   const { activeScenario, updateScenario } = context;
   const [results, setResults] = useState<any>(null);
+  const pendingRun = useRef<number | null>(null);
 
+  // Debounce simulation so rapid edits (each keystroke updates activeScenario)
+  // don't fire a full Monte Carlo every time. Keep the previous results visible
+  // while a new run is pending to avoid chart flicker.
   useEffect(() => {
-    if (activeScenario) {
-      // Clear tax calculation cache when scenario changes to avoid stale results
+    if (!activeScenario) {
+      setResults(null);
+      return;
+    }
+    if (pendingRun.current != null) window.clearTimeout(pendingRun.current);
+    pendingRun.current = window.setTimeout(() => {
       clearTaxCalculationCache();
       setResults(runSimulation(activeScenario));
-    } else {
-      setResults(null);
-    }
+      pendingRun.current = null;
+    }, 250);
+    return () => {
+      if (pendingRun.current != null) {
+        window.clearTimeout(pendingRun.current);
+        pendingRun.current = null;
+      }
+    };
   }, [activeScenario]);
 
   const handleAddSpendingGoal = (goal: Omit<SpendingGoal, 'id'>) => {

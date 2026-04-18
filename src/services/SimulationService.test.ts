@@ -741,6 +741,61 @@ describe('runSimulation — deterministic path', () => {
   });
 });
 
+describe('runSimulation — hoisted precomputation equivalence', () => {
+  // Verify that the MC loop's precomputed per-year arrays produce the same
+  // breakdown as the public calculateAnnualCashFlow wrapper for a reference year.
+  // If calculateAnnualCashFlowCore ever drifts from calculateAnnualCashFlow, this catches it.
+  it('per-year income/spending in a deterministic run matches calculateAnnualCashFlow', () => {
+    const userData = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 62,
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 300_000 }],
+      inflationRate: 0.03,
+      portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 1, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0 },
+      simulationSettings: { numSimulations: 1 },
+      incomeEvents: [
+        { id: 'i1', name: 'SS 1', type: 'social_security', amount: 24_000, startAge: 60, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false },
+      ],
+      spendingGoals: [
+        { id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 40_000, startAge: 60, inflationAdjusted: true },
+      ],
+      stateTimeline: [{ state: 'California' }],
+    });
+
+    const { nominalBreakdowns } = runSimulation(userData);
+
+    // The nominal path calls calculateAnnualCashFlowCore with the same precomputed
+    // arrays. Cross-check year 1 (index 1, year 2027) against the public wrapper.
+    const refYear = userData.referenceYear + 1;
+    const refBalances = { 'acct-1': 300_000 }; // approximate; exact value doesn't matter for income/spending check
+    const direct = calculateAnnualCashFlow(userData, refYear, userData.inflationRate, refBalances);
+
+    // ssGross, otherTaxableGross, afterTaxIncome, baseSpendingNet, and otherSpendingGoalsNet
+    // come purely from accumulateIncome/accumulateSpending — balance-independent.
+    expect(nominalBreakdowns[1].ssGross).toBeCloseTo(direct.ssGross, 2);
+    expect(nominalBreakdowns[1].afterTaxIncome).toBe(direct.afterTaxIncome);
+    expect(nominalBreakdowns[1].baseSpendingNet).toBeCloseTo(direct.baseSpendingNet, 2);
+    expect(nominalBreakdowns[1].otherSpendingGoalsNet).toBe(direct.otherSpendingGoalsNet);
+  });
+
+  it('stochastic inflation (inflationStdDev > 0) runs without error and produces valid output', () => {
+    const userData = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 65,
+      inflationRate: 0.03,
+      inflationStdDev: 0.01,
+      portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.03, bondStdDev: 0.05 },
+      simulationSettings: { numSimulations: 100 },
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000 }],
+    });
+    const result = runSimulation(userData);
+    expect(result.probability).toBeGreaterThanOrEqual(0);
+    expect(result.probability).toBeLessThanOrEqual(100);
+    expect(result.median.length).toBe(6); // ages 60–65 inclusive
+    expect(result.nominal.every(v => Number.isFinite(v))).toBe(true);
+  });
+});
+
 describe('calculateRMD', () => {
   it('returns 0 for age below 73', () => {
     expect(calculateRMD(500000, 72)).toBe(0);

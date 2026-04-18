@@ -195,6 +195,17 @@ The deterministic (Nominal) path uses `nominalBreakdowns` returned by `runSimula
 alongside the nominal path array. The yearly data detail rows show the breakdown for
 whichever view is selected.
 
+**Performance architecture:** `runSimulation()` precomputes balance-independent inputs
+once before the Monte Carlo loop — `lognormalParams` for stock/bond/inflation, and
+per-year arrays (`stateTaxRateByYear`, `ageByYear`, `incomeByYear`, `spendingByYear`).
+The inner hot loop calls `calculateAnnualCashFlowCore` (internal fast-path) with these
+arrays instead of recomputing them 5000× per year. The public `calculateAnnualCashFlow`
+signature is unchanged — it is a thin wrapper that recomputes inputs inline; use it in
+tests and any call-site that doesn't have precomputed values. The simulation trigger in
+`Content.tsx` is debounced 250ms so rapid field edits don't fire redundant Monte Carlo
+runs. Chart.js props (`chartData`, `options`, `htmlAnnotations`) are wrapped in `useMemo`
+with precise deps; `Projections` is wrapped in `React.memo`.
+
 Future direction:
 
 - Historical sequence-of-returns using real S&P 500 and interest rate data

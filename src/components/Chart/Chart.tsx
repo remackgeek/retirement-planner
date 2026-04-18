@@ -16,7 +16,7 @@ import htmlAnnotationsPlugin, {
 import {
   type AnnualCashFlowBreakdown,
 } from '../../services/SimulationService';
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
 
@@ -120,6 +120,18 @@ const ViewLabel = styled.label<{ $active: boolean; $color: string }>`
   }
 `;
 
+function useIsMobile(): boolean {
+  const query = '(max-width: 767px)';
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = () => setIsMobile(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return isMobile;
+}
+
 function exportCsv(
   scenarioName: string,
   years: number[],
@@ -203,78 +215,81 @@ const Projections = ({
     });
   };
 
-  const labels = years.map(
-    (_: number, index: number) =>
-      `${userData.currentAge + index} (${years[index]})`
+  const isMobile = useIsMobile();
+
+  const labels = useMemo(
+    () => years.map((_: number, index: number) => `${userData.currentAge + index} (${years[index]})`),
+    [years, userData.currentAge]
   );
 
-  const makeDataset = (label: string, mode: ViewMode, data: number[]) => {
-    const isSelected = view === mode;
-    return {
+  const chartData = useMemo(() => {
+    const makeDataset = (label: string, mode: ViewMode, data: number[]) => ({
       label,
       data,
       borderColor: VIEW_COLORS[mode],
       backgroundColor: VIEW_COLORS[mode],
-      borderWidth: isSelected ? 4 : 1.5,
+      borderWidth: view === mode ? 4 : 1.5,
       pointRadius: 0,
+    });
+    return {
+      labels,
+      datasets: [
+        makeDataset('Median', 'median', median),
+        makeDataset('Deterministic', 'nominal', nominal),
+        makeDataset('Downside (10th percentile)', 'downside', downside),
+      ],
     };
-  };
+  }, [labels, median, nominal, downside, view]);
 
-  const chartData = {
-    labels,
-    datasets: [
-      makeDataset('Median', 'median', median),
-      makeDataset('Deterministic', 'nominal', nominal),
-      makeDataset('Downside (10th percentile)', 'downside', downside),
-    ],
-  };
-
-  // Generate HTML annotations for income events and spending goals
-  const htmlAnnotations: AnnotationConfig[] = [];
-  years.forEach((year: number, index: number) => {
-    const startingEvents = userData.incomeEvents.filter((event: any) => {
+  // Group income events / spending goals by their start year once, then iterate
+  // years to build the annotation list. Avoids N × M filter passes per render.
+  const htmlAnnotations = useMemo<AnnotationConfig[]>(() => {
+    const eventsByYear = new Map<number, any[]>();
+    for (const event of userData.incomeEvents) {
       const ownerAge = (event.owner === 'spouse' && userData.spouseAge != null)
         ? userData.spouseAge : userData.currentAge;
       const startYear = userData.referenceYear + (event.startAge - ownerAge);
-      return startYear === year;
-    });
+      const list = eventsByYear.get(startYear);
+      if (list) list.push(event); else eventsByYear.set(startYear, [event]);
+    }
+    const goalsByYear = new Map<number, any[]>();
+    for (const goal of userData.spendingGoals) {
+      const startYear = userData.referenceYear + (goal.startAge - userData.currentAge);
+      const list = goalsByYear.get(startYear);
+      if (list) list.push(goal); else goalsByYear.set(startYear, [goal]);
+    }
 
-    const startingGoals = userData.spendingGoals.filter((goal: any) => {
-      const startYear =
-        userData.referenceYear + (goal.startAge - userData.currentAge);
-      return startYear === year;
-    });
-
-    // Add income events
-    startingEvents.forEach((event: any, eventIndex: number) => {
-      htmlAnnotations.push({
-        id: `income_${event.id}_${year}`,
-        type: 'income' as const,
-        eventType: event.type,
-        xValue: index,
-        yValue: 0,
-        stackIndex: eventIndex,
-        data: event,
+    const result: AnnotationConfig[] = [];
+    years.forEach((year: number, index: number) => {
+      const startingEvents = eventsByYear.get(year) ?? [];
+      const startingGoals = goalsByYear.get(year) ?? [];
+      startingEvents.forEach((event, eventIndex) => {
+        result.push({
+          id: `income_${event.id}_${year}`,
+          type: 'income' as const,
+          eventType: event.type,
+          xValue: index,
+          yValue: 0,
+          stackIndex: eventIndex,
+          data: event,
+        });
+      });
+      startingGoals.forEach((goal, goalIndex) => {
+        result.push({
+          id: `spending_${goal.id}_${year}`,
+          type: 'spending' as const,
+          eventType: goal.type,
+          xValue: index,
+          yValue: 0,
+          stackIndex: startingEvents.length + goalIndex,
+          data: goal,
+        });
       });
     });
+    return result;
+  }, [years, userData.incomeEvents, userData.spendingGoals, userData.referenceYear, userData.currentAge, userData.spouseAge]);
 
-    // Add spending goals (stack after income events)
-    startingGoals.forEach((goal: any, goalIndex: number) => {
-      htmlAnnotations.push({
-        id: `spending_${goal.id}_${year}`,
-        type: 'spending' as const,
-        eventType: goal.type,
-        xValue: index,
-        yValue: 0,
-        stackIndex: startingEvents.length + goalIndex,
-        data: goal,
-      });
-    });
-  });
-
-  const isMobile = window.matchMedia('(max-width: 767px)').matches;
-
-  const options = {
+  const options = useMemo(() => ({
     responsive: true,
     plugins: {
       legend: {
@@ -312,7 +327,7 @@ const Projections = ({
         },
       },
     },
-  };
+  }), [isMobile, htmlAnnotations]);
 
 
   return (
@@ -733,4 +748,4 @@ const Projections = ({
   );
 };
 
-export default Projections;
+export default React.memo(Projections);
