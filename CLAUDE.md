@@ -84,6 +84,16 @@ or data structures are renamed or removed, just change them cleanly. Do not leav
 deprecated aliases, re-exports, compatibility shims, or migration code for old field names.
 Old data in IndexedDB can be wiped; users will re-enter it.
 
+**Modeling parameters belong on the scenario, not in global settings.** Any knob that
+affects simulation behavior — returns, volatility, distribution choice, withdrawal
+ordering, RMD start age, tax assumptions, etc. — must live on `UserData` / `Scenario`
+and flow through `runSimulation()` as data. Do not add app-level toggles, module-level
+constants, or environment flags that change modeling. This keeps scenarios self-contained
+and reproducible: experimenting in one scenario cannot silently alter another,
+import/export round-trips stay honest, and scenario tests remain authoritative. When a
+genuinely cross-scenario preference is needed (UI state, feature flags for the harness),
+keep it outside `UserData` and ensure it has no effect on simulation output.
+
 ## Styling Guidelines
 
 Keep the UI **compact and dense**. Prefer tight spacing over generous whitespace — this
