@@ -40,6 +40,9 @@ projections, and good tax awareness without overwhelming the user.
   if none exists, `ensureRMDReinvestmentAccount` auto-creates a `"RMD Reinvestment"` taxable
   account in the working simulation copy (not persisted to UserData). Roth accounts are exempt.
   RMD amounts are taxed as ordinary income like all Traditional withdrawals.
+  RMD is calculated on the beginning-of-year (pre-growth) Traditional balance,
+  matching the IRS Dec 31 prior-year rule. The simulation captures this balance
+  before applying growth in each loop iteration.
 - **Income events** — 9 types (including `employment_savings` for pre-retirement savings),
   each with a required `name` (auto-generated defaults like "Pension Income 1"),
   COLA, before/after-tax, SS 2034 haircut (configurable). All cash flow flows through

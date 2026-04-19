@@ -1,0 +1,30 @@
+{
+  "_description": "Age 73, Traditional $500k + Taxable $100k, 10% deterministic stock return, no spending. Verifies RMD is calculated on the beginning-of-year (pre-growth) Traditional balance per the IRS Dec 31 prior-year rule.",
+  "_rationale": "RMD = beginning Traditional / IRS divisor = 500000 / 26.5 = 18867.92. The 10% growth is applied first in the simulation loop, so the post-growth Traditional balance is $550,000. If RMD were calculated post-growth (the bug this test guards against), it would be 550000/26.5 = 20754.72 — ~$1887 too high. The correct value is 18867.92.",
+  "_seed": 42042,
+  "name": "RMD Timing Positive Return",
+  "currentAge": 73,
+  "lifeExpectancy": 78,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "portfolioBalance": "custom",
+    "stockAllocation": 1.0,
+    "stockReturn": 0.1,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    { "id": "trad-1", "name": "Traditional 1", "type": "traditional", "balance": 500000 },
+    { "id": "taxable-1", "name": "Taxable 1", "type": "taxable", "balance": 100000 }
+  ],
+  "longTermCapGainsRate": 0.15
+}

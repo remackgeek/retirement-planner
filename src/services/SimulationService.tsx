@@ -392,7 +392,8 @@ export function calculateAnnualCashFlow(
   year: number,
   inflationRate: number = 0.03,
   accountBalances?: Record<string, number>,
-  maxWithdrawal?: number
+  maxWithdrawal?: number,
+  beginningTradBalance?: number
 ): AnnualCashFlowBreakdown {
   return calculateAnnualCashFlowCore(
     userData,
@@ -402,6 +403,7 @@ export function calculateAnnualCashFlow(
     getStateTaxRate(userData, year),
     userData.currentAge + (year - userData.referenceYear),
     accountBalances ?? initialAccountBalances(userData),
+    beginningTradBalance,
     maxWithdrawal
   );
 }
@@ -417,6 +419,9 @@ function calculateAnnualCashFlowCore(
   stateTaxRate: number,
   age: number,
   balances: Record<string, number>,
+  // IRS rule: RMD for year N uses Dec 31 of year N-1 (beginning-of-year) balance.
+  // Pass pre-growth balance from the simulation loop; falls back to current tradBal.
+  beginningTradBalance?: number,
   maxWithdrawal?: number
 ): AnnualCashFlowBreakdown {
   const { ssGross, otherTaxableGross, afterTaxIncome } = income;
@@ -431,7 +436,7 @@ function calculateAnnualCashFlowCore(
   const totalBal = taxableBal + tradBal + rothBal;
   const cap = Math.min(maxWithdrawal ?? Infinity, totalBal);
 
-  const rmdRequired = calculateRMD(tradBal, age);
+  const rmdRequired = calculateRMD(beginningTradBalance ?? tradBal, age);
   let withdrawal = Math.min(Math.max(0, totalSpendingNet - availableCash), cap);
   let totalTax = 0;
   let ssTaxableAmount = 0;
@@ -601,6 +606,9 @@ export function runSimulation(
       const startBalance = sumBalances(balances);
       path.push(startBalance / cumulativeInflation);
 
+      // IRS rule: RMD uses Dec 31 of prior year (beginning-of-year) balance.
+      const beginningTradBalance = sumBalancesOfType(userData.accounts, balances, 'traditional');
+
       // 1. Growth: apply the same year factor uniformly to each bucket.
       const sf = drawFactor(stockParams, random);
       const bf = drawFactor(bondParams, random);
@@ -612,7 +620,7 @@ export function runSimulation(
       // 2. Cash flow.
       const postGrowth = sumBalances(balances);
       const cashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances
+        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance
       );
 
       let effectiveCashFlow: AnnualCashFlowBreakdown;
@@ -620,11 +628,11 @@ export function runSimulation(
       const depleting = spendingExceedsIncome && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
       if (depleting && postGrowth <= 0) {
         effectiveCashFlow = calculateAnnualCashFlowCore(
-          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, 0
+          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, 0
         );
       } else if (depleting) {
         effectiveCashFlow = calculateAnnualCashFlowCore(
-          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, postGrowth
+          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, postGrowth
         );
       } else {
         effectiveCashFlow = cashFlow;
@@ -678,21 +686,23 @@ export function runSimulation(
       const inflationFactor = Math.pow(1 + inflationRate, i);
       nominal.push(sumBalances(balances) / inflationFactor);
 
+      const beginningTradBalance = sumBalancesOfType(userData.accounts, balances, 'traditional');
+
       for (const id in balances) balances[id] *= 1 + nominalBlendedReturn;
       const postGrowth = sumBalances(balances);
       const cashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances
+        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance
       );
       let effectiveCashFlow: AnnualCashFlowBreakdown;
       const spendExcInc = cashFlow.totalSpendingNet > cashFlow.totalGrossIncome;
       const depleting = spendExcInc && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
       if (depleting && postGrowth <= 0) {
         effectiveCashFlow = calculateAnnualCashFlowCore(
-          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, 0
+          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, 0
         );
       } else if (depleting) {
         effectiveCashFlow = calculateAnnualCashFlowCore(
-          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, postGrowth
+          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, postGrowth
         );
       } else {
         effectiveCashFlow = cashFlow;
