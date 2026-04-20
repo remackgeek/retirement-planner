@@ -1,0 +1,42 @@
+{
+  "_description": "Perfect negative stock/bond correlation with matched volatility. Each year the bond shock exactly mirrors the stock shock in log-return space, so the two lognormal factors combine to a very tight portfolio factor (cosh-shaped around the mean). Dispersion of final balances collapses near the deterministic path.",
+  "_rationale": "50/50 allocation with stockReturn = bondReturn = 0.05 and stockStdDev = bondStdDev = 0.10. With correlation enabled and rho = -1, yearly return variance at the portfolio level is (sigma^2/2) * (1 + rho) = 0 (to first order), so median and downside paths should converge near the deterministic expected balance of 500000 * 1.05^10 ≈ 814447. Log-normal Jensen gives a tiny upward bias. Tight range around deterministic confirms correlation is being applied.",
+  "_seed": 42,
+  "name": "Correlation: Perfect Negative",
+  "currentAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "portfolioBalance": "custom",
+    "stockAllocation": 0.5,
+    "stockReturn": 0.05,
+    "stockStdDev": 0.10,
+    "bondReturn": 0.05,
+    "bondStdDev": 0.10,
+    "stockBondCorrelationEnabled": true,
+    "stockBondCorrelation": -1.0
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Taxable 1",
+      "type": "taxable",
+      "balance": 500000
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

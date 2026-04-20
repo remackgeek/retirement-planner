@@ -188,16 +188,23 @@ parameters are per-scenario in `UserData`:
 - `portfolioAssumptions.stockAllocation` — fraction in stocks (0.0–1.0); bonds = 1 - stock
 - `portfolioAssumptions.stockReturn` / `stockStdDev` — stock log-normal return params
 - `portfolioAssumptions.bondReturn` / `bondStdDev` — bond log-normal return params
+- `portfolioAssumptions.stockBondCorrelationEnabled` / `stockBondCorrelation` — when
+  enabled, stock and bond normals are drawn as a correlated bivariate pair via
+  two-variable Cholesky decomposition (ρ clamped to `[-1, 1]`); when disabled, draws
+  are independent
 - `simulationSettings.numSimulations` — run count (1000 / 5000 / 10000)
 - `inflationRate` — annual inflation, affects cash flow inflation-adjustment
 - `inflationStdDev` — inflation volatility; affects portfolio deflation (real vs nominal)
   in the MC loop only; cash flows always use the deterministic mean `inflationRate`
 
-**Monte Carlo path construction:** each year draws independent stock and bond return factors;
-portfolio return = `stockAllocation × stockFactor + bondAllocation × bondFactor`. Annual
-rebalancing to target allocation is assumed. The median and downside paths are the single
-simulation runs whose final balance is closest to the 50th/10th percentile of all final
-balances — coherent per-year paths with actual return factors, not year-by-year envelopes.
+**Monte Carlo path construction:** each year draws a stock and bond return factor;
+portfolio return = `stockAllocation × stockFactor + bondAllocation × bondFactor`. When
+`stockBondCorrelationEnabled` is true, the two underlying normals are generated as a
+bivariate pair using Cholesky (stock = `z1`, bond = `ρ·z1 + √(1-ρ²)·z2`); otherwise they
+are drawn independently. Annual rebalancing to target allocation is assumed. The median
+and downside paths are the single simulation runs whose final balance is closest to the
+50th/10th percentile of all final balances — coherent per-year paths with actual return
+factors, not year-by-year envelopes.
 
 **Per-path breakdowns:** `runSimulation()` returns `medianBreakdowns` and `downsideBreakdowns`
 (`AnnualCashFlowBreakdown[]`) alongside the path arrays. These are computed during the
@@ -225,9 +232,6 @@ Future direction:
 - Fat-tail / no-tail distribution options
 - New strategies drop in without changing the rest of the app (`modelType` placeholder
   reserved in `SimulationSettings`)
-- **Stock/bond correlation**: returns are currently drawn independently per year. Real
-  negative correlation (~-0.2) slightly understates diversification benefit. Future: inject
-  a correlation matrix into the return generation step.
 - **Full stochastic inflation**: `inflationStdDev` currently only affects portfolio deflation
   (real vs nominal balance). Future: propagate per-run cumulative inflation to cash flow
   adjustments (income/spending), which requires rethinking whether users enter amounts in

@@ -4,6 +4,7 @@ import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
+import { Checkbox } from 'primereact/checkbox';
 import type { Scenario } from '../types/Scenario';
 import type { SimulationSettings } from '../types/UserData';
 import { spacing, colors, fontSize, border } from '../styles/theme';
@@ -100,6 +101,8 @@ interface FormState {
   stockStdDev: number;
   bondReturn: number;
   bondStdDev: number;
+  stockBondCorrelationEnabled: boolean;
+  stockBondCorrelation: number;
   inflationRate: number;
   inflationStdDev: number;
   longTermCapGainsRate: number;
@@ -117,6 +120,8 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     stockStdDev: scenario.portfolioAssumptions.stockStdDev,
     bondReturn: scenario.portfolioAssumptions.bondReturn,
     bondStdDev: scenario.portfolioAssumptions.bondStdDev,
+    stockBondCorrelationEnabled: scenario.portfolioAssumptions.stockBondCorrelationEnabled,
+    stockBondCorrelation: scenario.portfolioAssumptions.stockBondCorrelation,
     inflationRate: scenario.inflationRate,
     inflationStdDev: scenario.inflationStdDev,
     longTermCapGainsRate: scenario.longTermCapGainsRate,
@@ -130,6 +135,8 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
         stockStdDev: scenario.portfolioAssumptions.stockStdDev,
         bondReturn: scenario.portfolioAssumptions.bondReturn,
         bondStdDev: scenario.portfolioAssumptions.bondStdDev,
+        stockBondCorrelationEnabled: scenario.portfolioAssumptions.stockBondCorrelationEnabled,
+        stockBondCorrelation: scenario.portfolioAssumptions.stockBondCorrelation,
         inflationRate: scenario.inflationRate,
         inflationStdDev: scenario.inflationStdDev,
         longTermCapGainsRate: scenario.longTermCapGainsRate,
@@ -155,6 +162,8 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
         stockStdDev: form.stockStdDev,
         bondReturn: form.bondReturn,
         bondStdDev: form.bondStdDev,
+        stockBondCorrelationEnabled: form.stockBondCorrelationEnabled,
+        stockBondCorrelation: form.stockBondCorrelation,
       },
     });
     onHide();
@@ -216,6 +225,43 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
             <span>Blended return ({Math.round(stockAllocation * 100)}/{Math.round(bondAllocation * 100)}):</span>
             <BlendedValue>{(blendedReturn * 100).toFixed(1)}%</BlendedValue>
           </BlendedRow>
+        </Section>
+
+        <Section>
+          <SectionHeader>Asset Correlation</SectionHeader>
+          <AssetRow>
+            <Checkbox
+              inputId="stock-bond-correlation-enabled"
+              checked={form.stockBondCorrelationEnabled}
+              onChange={(e) =>
+                setForm({ ...form, stockBondCorrelationEnabled: !!e.checked })
+              }
+            />
+            <label
+              htmlFor="stock-bond-correlation-enabled"
+              style={{ fontSize: fontSize.sm, cursor: 'pointer' }}
+            >
+              Apply stock/bond correlation
+            </label>
+          </AssetRow>
+          {form.stockBondCorrelationEnabled && (
+            <AssetRow>
+              <AssetLabel>Stocks vs Bonds</AssetLabel>
+              <InputNumber
+                value={form.stockBondCorrelation}
+                onValueChange={(e) =>
+                  setForm({ ...form, stockBondCorrelation: e.value ?? 0 })
+                }
+                mode="decimal"
+                minFractionDigits={2}
+                maxFractionDigits={2}
+                min={-1}
+                max={1}
+                step={0.05}
+                inputStyle={{ width: '8rem' }}
+              />
+            </AssetRow>
+          )}
         </Section>
 
         <Section>

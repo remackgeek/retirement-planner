@@ -553,8 +553,15 @@ export function runSimulation(
   const inflationRate = userData.inflationRate;
   const inflationStdDev = userData.inflationStdDev;
   const numSims = userData.simulationSettings.numSimulations;
-  const { stockAllocation, stockReturn, stockStdDev, bondReturn, bondStdDev } =
-    userData.portfolioAssumptions;
+  const {
+    stockAllocation,
+    stockReturn,
+    stockStdDev,
+    bondReturn,
+    bondStdDev,
+    stockBondCorrelationEnabled,
+    stockBondCorrelation,
+  } = userData.portfolioAssumptions;
   const bondAllocation = 1 - stockAllocation;
 
   // Precompute balance-independent inputs once. These are shared across every
@@ -563,6 +570,12 @@ export function runSimulation(
   const bondParams = lognormalParams(bondReturn, bondStdDev);
   const inflationParams =
     inflationStdDev > 0 ? lognormalParams(inflationRate, inflationStdDev) : null;
+
+  // Cholesky factors for bivariate-normal stock/bond draws. When disabled or
+  // rho=0 we fall through to the independent-draw fast path below.
+  const rho = stockBondCorrelationEnabled ? stockBondCorrelation : 0;
+  const useCorrelation = stockBondCorrelationEnabled && rho !== 0;
+  const rhoComplement = useCorrelation ? Math.sqrt(Math.max(0, 1 - rho * rho)) : 1;
 
   const stateTaxRateByYear: number[] = new Array(totalYears);
   const ageByYear: number[] = new Array(totalYears);
@@ -610,8 +623,17 @@ export function runSimulation(
       const beginningTradBalance = sumBalancesOfType(userData.accounts, balances, 'traditional');
 
       // 1. Growth: apply the same year factor uniformly to each bucket.
-      const sf = drawFactor(stockParams, random);
-      const bf = drawFactor(bondParams, random);
+      let sf: number;
+      let bf: number;
+      if (useCorrelation) {
+        const z1 = standardNormalRandom(random);
+        const z2 = standardNormalRandom(random);
+        sf = Math.exp(stockParams.mu + stockParams.sigma * z1);
+        bf = Math.exp(bondParams.mu + bondParams.sigma * (rho * z1 + rhoComplement * z2));
+      } else {
+        sf = drawFactor(stockParams, random);
+        bf = drawFactor(bondParams, random);
+      }
       stockFactors.push(sf);
       bondFactors.push(bf);
       const growthFactor = stockAllocation * sf + bondAllocation * bf;

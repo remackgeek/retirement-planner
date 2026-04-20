@@ -1,0 +1,5 @@
+{
+  "_rationale": "Perfect positive correlation collapses to a single-asset model. Median final balance tracks the lognormal median around 500000 * exp(0.04428 * 10) ≈ 778000. Wide range reflects substantial dispersion: with sigma_ln ≈ 0.0951 per year, the 10-year cumulative log-return stddev is ~0.301, so balances can realistically span a wide band. Range is loose on purpose — the scenario confirms the correlation code path runs with rho = 1 and produces a valid distribution, not a specific number.",
+  "probability": { "min": 100, "max": 100 },
+  "medianFinalBalance": { "min": 600000, "max": 1000000 }
+}

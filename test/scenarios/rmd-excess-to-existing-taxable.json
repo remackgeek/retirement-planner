@@ -14,17 +14,35 @@
     "stockReturn": 0,
     "stockStdDev": 0,
     "bondReturn": 0,
-    "bondStdDev": 0
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2
   },
   "inflationRate": 0,
   "inflationStdDev": 0,
   "filingStatus": "single",
   "spouseAge": null,
-  "stateTimeline": [{ "state": "Florida" }],
-  "simulationSettings": { "numSimulations": 100 },
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
   "accounts": [
-    { "id": "trad-1", "name": "Traditional 1", "type": "traditional", "balance": 500000 },
-    { "id": "taxable-1", "name": "Taxable 1", "type": "taxable", "balance": 100000 }
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000
+    },
+    {
+      "id": "taxable-1",
+      "name": "Taxable 1",
+      "type": "taxable",
+      "balance": 100000
+    }
   ],
   "longTermCapGainsRate": 0.15
 }

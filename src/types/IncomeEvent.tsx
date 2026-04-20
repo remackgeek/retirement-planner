@@ -36,4 +36,6 @@ export interface PortfolioAssumptions {
   stockStdDev: number;
   bondReturn: number;
   bondStdDev: number;
+  stockBondCorrelationEnabled: boolean;
+  stockBondCorrelation: number; // -1.0 to 1.0
 }

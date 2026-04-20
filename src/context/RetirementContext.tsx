@@ -154,6 +154,13 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
             typeof pa.bondReturn !== 'number') {
           throw new Error('Invalid scenario: Missing or invalid portfolioAssumptions fields.');
         }
+        if (typeof pa.stockBondCorrelationEnabled !== 'boolean') {
+          pa.stockBondCorrelationEnabled = false;
+        }
+        if (typeof pa.stockBondCorrelation !== 'number') {
+          pa.stockBondCorrelation = -0.2;
+        }
+        pa.stockBondCorrelation = Math.max(-1, Math.min(1, pa.stockBondCorrelation));
         if (typeof importedData.inflationStdDev !== 'number') {
           importedData.inflationStdDev = 0;
         }

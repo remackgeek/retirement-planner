@@ -44,7 +44,9 @@
     "stockReturn": 0.065,
     "stockStdDev": 0.105,
     "bondReturn": 0.065,
-    "bondStdDev": 0.105
+    "bondStdDev": 0.105,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2
   },
   "inflationRate": 0.03,
   "inflationStdDev": 0,

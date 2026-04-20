@@ -1,0 +1,5 @@
+{
+  "_rationale": "Portfolio yearly variance collapses to ~0 under perfect negative correlation with matched sigma. After 10 years the median real balance should land within a narrow band around the deterministic 500000 * 1.05^10 = 814447. We set a tight range to confirm the correlation is being applied — a range this tight would fail under the current (independent draws) behavior, since 10% stock/bond stddev on a 10-year horizon would produce ~5-10% final-balance dispersion.",
+  "probability": { "min": 100, "max": 100 },
+  "medianFinalBalance": { "min": 810000, "max": 825000 }
+}
