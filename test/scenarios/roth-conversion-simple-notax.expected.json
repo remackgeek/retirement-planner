@@ -1,0 +1,10 @@
+{
+  "_rationale": "MFJ both 65+ has standard deduction ≈ $30,000 + senior extras. $50k conversion yields ~$50k ordinary gross. After deduction ~$20k remains taxable, so there IS some federal tax. To achieve zero federal tax we test only that conversion happens correctly (balance moves) and let ordinaryTax be whatever falls out. We focus on structural verifications: rothConversionGross=50000, withdrawalFromTraditional covers conversion+any tax withdrawal, final Roth balance = 50000 + 0 (growth=0), Traditional = 200000-50000 = 150000 minus tax paid out of Traditional if any (none — tax paid from Taxable but there is no Taxable, so... hmm). Actually with no Taxable account, tax on conversion must come from somewhere — it'll pull from Traditional (next in waterfall after Taxable). So withdrawalFromTraditional = conversion + small tax amount, and the net effect is Trad drops by (50k+tax) and Roth gains 50k. Verify rothConversionGross = 50000 exactly.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Full $50k conversion executed" },
+    { "index": 1, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "One-time: no conversion in year 1" },
+    { "index": 0, "field": "withdrawalFromTraditional", "min": 50000, "max": 56000, "_note": "Conversion (50k) plus any tax covered by waterfall" }
+  ]
+}

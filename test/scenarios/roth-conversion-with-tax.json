@@ -1,0 +1,63 @@
+{
+  "_description": "$100k one-time Roth conversion at age 65 with California 5% state tax, MFJ standard deduction. Verifies conversion fully executes and tax is drawn from the Taxable account.",
+  "_rationale": "Age 65, MFJ. $100k Traditional conversion. No other income. California ~5% state tax (flat approximation in STATE_TAX_RATES). MFJ standard deduction 2026 ≈ $31k + senior extras. $100k ordinary gross - ~$33k deduction ≈ $67k taxable → falls into 10% + 12% brackets. Federal tax ~$7,500; state 5% × $67k ≈ $3,300 → total tax ~$10,000-12,000. Taxable account has $50k to absorb the tax; it should drop by that much. Traditional should drop by exactly 100k (the conversion). Roth should rise by 100k.",
+  "_seed": 12345,
+  "name": "Roth Conversion — With Tax",
+  "currentAge": 65,
+  "lifeExpectancy": 68,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "conv-1",
+      "type": "roth_conversion",
+      "name": "Big Conversion",
+      "amount": 100000,
+      "startAge": 65,
+      "isOneTime": true,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "portfolioBalance": "custom",
+    "stockAllocation": 0.6,
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": 0
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "mfj",
+  "spouseAge": 65,
+  "stateTimeline": [
+    { "state": "California" }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 300000
+    },
+    {
+      "id": "roth-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 0
+    },
+    {
+      "id": "tax-1",
+      "name": "Taxable 1",
+      "type": "taxable",
+      "balance": 50000
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

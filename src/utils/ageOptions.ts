@@ -37,6 +37,7 @@ export const incomeEventAgeRanges: Record<IncomeEventType, { min: number; max: n
   inheritance: { min: 20, max: 100 },
   pension_income: { min: 50, max: 100 },
   rental_income: { min: 20, max: 100 },
+  roth_conversion: { min: 50, max: 100 },
   sale_of_property: { min: 20, max: 100 },
   work_during_retirement: { min: 55, max: 90 },
   other_income: { min: 18, max: 100 },

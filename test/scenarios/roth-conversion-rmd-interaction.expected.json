@@ -1,0 +1,11 @@
+{
+  "_rationale": "Age 73, Trad $500k → RMD = 500000/26.5 ≈ 18,867.92. Conversion adds $50k to withdrawalFromTraditional. Ordinary gross = 68,867.92. Minus senior single deduction (~$17k) leaves ~$51,868 taxable, producing tax in the 10%/12% brackets (~$5,800 federal). With no Taxable account, tax pulls from the existing Traditional withdrawal via the waterfall. rmdRequired = 18,867.92, rothConversionGross = 50,000.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rmdRequired", "value": 18867.92, "tolerance": 1, "_note": "500000/26.5 = 18,867.924..." },
+    { "index": 0, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Full conversion, trad balance far exceeds RMD+conversion" },
+    { "index": 0, "field": "withdrawalFromTraditional", "min": 68000, "max": 80000, "_note": "RMD (18,868) + conversion (50,000) + tax draw" },
+    { "index": 1, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "One-time event, no conversion in year 1" }
+  ]
+}

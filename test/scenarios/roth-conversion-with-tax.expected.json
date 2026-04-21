@@ -1,0 +1,12 @@
+{
+  "_rationale": "Conversion executes: rothConversionGross=100000, withdrawalFromTraditional=100000 (conversion only, since tax is absorbed by the Taxable account). ordinaryTax > 0 (federal + state on ~$67k taxable after MFJ senior deduction). Taxable account handles tax via waterfall, so withdrawalFromTaxable > 0. CA tax + federal on $100k gross for MFJ senior comes out in the $10-20k range.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rothConversionGross", "value": 100000, "tolerance": 1, "_note": "Full $100k conversion" },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 100000, "tolerance": 1, "_note": "Trad outflow is exactly conversion; tax drawn from Taxable first in waterfall" },
+    { "index": 0, "field": "ordinaryTax", "min": 5000, "max": 25000, "_note": "Federal + CA state tax on ~$67k taxable after MFJ senior deduction" },
+    { "index": 0, "field": "withdrawalFromTaxable", "min": 5000, "max": 25000, "_note": "Taxable absorbs the tax via waterfall" },
+    { "index": 1, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "One-time: no conversion in year 1" }
+  ]
+}

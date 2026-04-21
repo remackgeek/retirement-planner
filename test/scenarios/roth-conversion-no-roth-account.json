@@ -1,0 +1,51 @@
+{
+  "_description": "Traditional-only starting portfolio with an active Roth conversion. Verifies ensureRothConversionAccount auto-creates a receiving Roth account.",
+  "_rationale": "Age 60. Only Traditional account ($100k). Conversion of $20k at year 0. Without ensureRothConversionAccount, addToType would no-op on Roth deposit. With it, a Roth account is injected and receives the converted funds. rothConversionGross should be 20,000 and the simulation should complete without error.",
+  "_seed": 12345,
+  "name": "Roth Conversion — Auto-Create Roth Account",
+  "currentAge": 60,
+  "lifeExpectancy": 63,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "conv-1",
+      "type": "roth_conversion",
+      "name": "Small Conversion",
+      "amount": 20000,
+      "startAge": 60,
+      "isOneTime": true,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "portfolioBalance": "custom",
+    "stockAllocation": 0.6,
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": 0
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    { "state": "Florida" }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 100000
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

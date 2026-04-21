@@ -149,6 +149,7 @@ function exportCsv(
     'Total Tax', 'Ordinary Income Tax', 'Capital Gains Tax', 'Portfolio Withdrawal',
     'Withdrawal — Taxable', 'Withdrawal — Traditional', 'Withdrawal — Roth',
     'RMD Required', 'RMD Reinvested',
+    'Roth Conversion',
     'Net Cash Flow',
   ].join(',');
 
@@ -176,6 +177,7 @@ function exportCsv(
       Math.round(bd.withdrawalFromRoth),
       Math.round(bd.rmdRequired),
       Math.round(bd.rmdExcess),
+      Math.round(bd.rothConversionGross),
       Math.round(bd.netCashFlow),
     ].join(',');
   });
@@ -724,6 +726,15 @@ const Projections = ({
                                       <div style={noteStyle}>Reinvested to Taxable: ${fmt(realRmdExcess)}</div>
                                     )}
                                   </>
+                                );
+                              })()}
+                              {/* Roth Conversion */}
+                              {breakdown.rothConversionGross > 0.5 && (() => {
+                                const realConv = breakdown.rothConversionGross / inflationFactor;
+                                return (
+                                  <div style={{ color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'right', paddingTop: spacing.xs }}>
+                                    Roth conversion: ${fmt(realConv)} <span style={{ color: colors.textMuted }}>(Trad → Roth)</span>
+                                  </div>
                                 );
                               })()}
                               {shortfall > 0.5 && (

@@ -5,6 +5,7 @@ export type IncomeEventType =
   | 'inheritance'
   | 'pension_income'
   | 'rental_income'
+  | 'roth_conversion'
   | 'sale_of_property'
   | 'work_during_retirement'
   | 'other_income';

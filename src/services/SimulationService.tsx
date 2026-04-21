@@ -160,6 +160,30 @@ function subtractFromType(
   }
 }
 
+// Add `amount` to all accounts of a given type, proportional to their current balance.
+// If no balances exist in the type, deposits to the first account of that type (if any).
+function addToType(
+  accounts: Account[],
+  balances: Record<string, number>,
+  type: AccountType,
+  amount: number
+): void {
+  if (amount <= 0) return;
+  const typeAccounts = accounts.filter((a) => a.type === type);
+  if (typeAccounts.length === 0) return;
+  const typeTotal = typeAccounts.reduce((s, a) => s + (balances[a.id] ?? 0), 0);
+  if (typeTotal <= 0) {
+    const first = typeAccounts[0];
+    balances[first.id] = (balances[first.id] ?? 0) + amount;
+    return;
+  }
+  for (const a of typeAccounts) {
+    const bal = balances[a.id] ?? 0;
+    const share = (bal / typeTotal) * amount;
+    balances[a.id] = bal + share;
+  }
+}
+
 function eventActiveInYear(
   userData: UserData,
   event: UserData['incomeEvents'][number],
@@ -246,6 +270,11 @@ function applyCashFlow(
   subtractFromType(userData.accounts, balances, 'taxable', breakdown.withdrawalFromTaxable);
   subtractFromType(userData.accounts, balances, 'traditional', breakdown.withdrawalFromTraditional);
   subtractFromType(userData.accounts, balances, 'roth', breakdown.withdrawalFromRoth);
+  // Deposit Roth conversion into Roth accounts (pro-rata). A receiving Roth is
+  // guaranteed by ensureRothConversionAccount when any conversion event exists.
+  if (breakdown.rothConversionGross > 0) {
+    addToType(userData.accounts, balances, 'roth', breakdown.rothConversionGross);
+  }
   // Deposit RMD excess into the first taxable account (already ensured to exist by caller).
   if (breakdown.rmdExcess > 0) {
     const taxableTarget = userData.accounts.find((a) => a.type === 'taxable');
@@ -274,6 +303,21 @@ function ensureRMDReinvestmentAccount(userData: UserData): UserData {
   return { ...userData, accounts: [...userData.accounts, rmdAccount] };
 }
 
+// If any Roth conversion events exist but there is no Roth account to receive
+// the converted funds, inject a zero-balance "Roth Conversion" Roth account.
+function ensureRothConversionAccount(userData: UserData): UserData {
+  const hasConversion = userData.incomeEvents.some((e) => e.type === 'roth_conversion');
+  if (!hasConversion) return userData;
+  if (userData.accounts.some((a) => a.type === 'roth')) return userData;
+  const rothAccount: Account = {
+    id: 'roth-conversion-auto',
+    name: 'Roth Conversion',
+    type: 'roth',
+    balance: 0,
+  };
+  return { ...userData, accounts: [...userData.accounts, rothAccount] };
+}
+
 // ---------------- Cash-flow calculation ----------------
 
 export interface AnnualCashFlowBreakdown {
@@ -287,7 +331,7 @@ export interface AnnualCashFlowBreakdown {
   totalSpendingNet: number;
   portfolioWithdrawal: number;
   withdrawalFromTaxable: number;
-  withdrawalFromTraditional: number;
+  withdrawalFromTraditional: number;  // total Traditional outflow: spending + RMD + Roth conversion
   withdrawalFromRoth: number;
   totalTax: number;
   ordinaryTax: number;      // ordinary income tax (federal + state) on Traditional + SS + other taxable
@@ -295,16 +339,18 @@ export interface AnnualCashFlowBreakdown {
   netCashFlow: number;
   rmdRequired: number;  // IRS-mandated minimum from Traditional; 0 if age < 73
   rmdExcess: number;    // rmdRequired beyond spending need; reinvested to taxable
+  rothConversionGross: number;  // amount converted from Traditional to Roth this year
 }
 
 function accumulateIncome(
   userData: UserData,
   year: number,
   inflationRate: number
-): { ssGross: number; otherTaxableGross: number; afterTaxIncome: number } {
+): { ssGross: number; otherTaxableGross: number; afterTaxIncome: number; conversionGross: number } {
   let afterTaxIncome = 0;
   let ssGross = 0;
   let otherTaxableGross = 0;
+  let conversionGross = 0;
 
   userData.incomeEvents.forEach((event) => {
     if (!eventActiveInYear(userData, event, year)) return;
@@ -332,6 +378,14 @@ function accumulateIncome(
       amount *= 1 - reduction;
     }
 
+    // Roth conversions are a Trad->Roth transfer: taxed as ordinary income but
+    // NOT added to cash available for spending. Tracked separately and applied
+    // in calculateAnnualCashFlowCore.
+    if (event.type === 'roth_conversion') {
+      conversionGross += Math.max(0, amount);
+      return;
+    }
+
     if (event.taxStatus === 'after_tax') {
       afterTaxIncome += amount;
     } else if (event.type === 'social_security') {
@@ -341,7 +395,7 @@ function accumulateIncome(
     }
   });
 
-  return { ssGross, otherTaxableGross, afterTaxIncome };
+  return { ssGross, otherTaxableGross, afterTaxIncome, conversionGross };
 }
 
 function accumulateSpending(
@@ -414,7 +468,12 @@ export function calculateAnnualCashFlow(
 function calculateAnnualCashFlowCore(
   userData: UserData,
   year: number,
-  income: { ssGross: number; otherTaxableGross: number; afterTaxIncome: number },
+  income: {
+    ssGross: number;
+    otherTaxableGross: number;
+    afterTaxIncome: number;
+    conversionGross: number;
+  },
   spending: { baseSpendingNet: number; otherSpendingGoalsNet: number },
   stateTaxRate: number,
   age: number,
@@ -424,7 +483,7 @@ function calculateAnnualCashFlowCore(
   beginningTradBalance?: number,
   maxWithdrawal?: number
 ): AnnualCashFlowBreakdown {
-  const { ssGross, otherTaxableGross, afterTaxIncome } = income;
+  const { ssGross, otherTaxableGross, afterTaxIncome, conversionGross } = income;
   const totalSpendingNet = spending.baseSpendingNet + spending.otherSpendingGoalsNet;
   const totalGrossIncome = ssGross + otherTaxableGross + afterTaxIncome;
   const availableCash = afterTaxIncome + ssGross + otherTaxableGross;
@@ -445,6 +504,7 @@ function calculateAnnualCashFlowCore(
   let fromRoth = 0;
   let spendingFromTrad = 0;
   let rmdExcess = 0;
+  let rothConversion = 0;
   let capWasBinding = false;
   let ordinaryTax = 0;
   let ltcgTax = 0;
@@ -457,7 +517,13 @@ function calculateAnnualCashFlowCore(
     // Force Traditional withdrawal to satisfy RMD even if spending need is lower.
     const forcedTrad = Math.min(Math.max(spendingFromTrad, rmdRequired), tradBal);
     rmdExcess = Math.max(0, forcedTrad - spendingFromTrad);
-    fromTrad = forcedTrad;
+    // Roth conversion: taken from Traditional balance remaining after RMD/spending,
+    // routed to Roth. Taxed as ordinary income (added to fromTrad for tax calc).
+    // IRS rule: RMD must be satisfied first (not eligible for conversion) — handled
+    // implicitly because forcedTrad is already reserved here.
+    const availableForConversion = Math.max(0, tradBal - forcedTrad);
+    rothConversion = Math.min(Math.max(0, conversionGross), availableForConversion);
+    fromTrad = forcedTrad + rothConversion;
 
     const ordinaryGross = otherTaxableGross + fromTrad;
     ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, userData.filingStatus);
@@ -489,7 +555,9 @@ function calculateAnnualCashFlowCore(
       fromRoth = Math.max(0, withdrawal - fromTaxable - spendingFromTrad);
       const finalForcedTrad = Math.min(Math.max(spendingFromTrad, rmdRequired), tradBal);
       rmdExcess = Math.max(0, finalForcedTrad - spendingFromTrad);
-      fromTrad = finalForcedTrad;
+      const finalAvailableForConversion = Math.max(0, tradBal - finalForcedTrad);
+      rothConversion = Math.min(Math.max(0, conversionGross), finalAvailableForConversion);
+      fromTrad = finalForcedTrad + rothConversion;
       break;
     }
     withdrawal = newWithdrawal;
@@ -518,6 +586,7 @@ function calculateAnnualCashFlowCore(
     netCashFlow,
     rmdRequired,
     rmdExcess,
+    rothConversionGross: rothConversion,
   };
 }
 
@@ -547,7 +616,7 @@ export function runSimulation(
   nominalBreakdowns: AnnualCashFlowBreakdown[];
   years: number[];
 } {
-  const userData = ensureRMDReinvestmentAccount(rawUserData);
+  const userData = ensureRothConversionAccount(ensureRMDReinvestmentAccount(rawUserData));
   const currentYear = userData.referenceYear;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const inflationRate = userData.inflationRate;
@@ -583,6 +652,7 @@ export function runSimulation(
     ssGross: number;
     otherTaxableGross: number;
     afterTaxIncome: number;
+    conversionGross: number;
   }> = new Array(totalYears);
   const spendingByYear: Array<{
     baseSpendingNet: number;

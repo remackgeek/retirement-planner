@@ -43,10 +43,20 @@ projections, and good tax awareness without overwhelming the user.
   RMD is calculated on the beginning-of-year (pre-growth) Traditional balance,
   matching the IRS Dec 31 prior-year rule. The simulation captures this balance
   before applying growth in each loop iteration.
-- **Income events** — 9 types (including `employment_savings` for pre-retirement savings),
-  each with a required `name` (auto-generated defaults like "Pension Income 1"),
-  COLA, before/after-tax, SS 2034 haircut (configurable). All cash flow flows through
-  events/goals — no special-cased fields on UserData
+- **Income events** — 10 types (including `employment_savings` for pre-retirement savings
+  and `roth_conversion` for Traditional→Roth transfers), each with a required `name`
+  (auto-generated defaults like "Pension Income 1"), COLA, before/after-tax, SS 2034 haircut
+  (configurable). All cash flow flows through events/goals — no special-cased fields on UserData.
+  **Roth Conversions:** A `roth_conversion` event models Traditional → Roth transfers. Unlike
+  other income types, the amount does NOT contribute to cash available for spending —
+  it is taxed as ordinary income, withdrawn pro-rata from Traditional accounts, and deposited
+  pro-rata into Roth accounts. RMD is enforced first (IRS rule: RMD is not eligible for
+  conversion); conversion is capped at the Traditional balance remaining after the forced
+  RMD/spending withdrawal. Tax is paid implicitly by the withdrawal waterfall — with a
+  Taxable account present, the added tax pulls from Taxable first; without one, tax pulls
+  from Traditional and effectively reduces the convertible amount. `ensureRothConversionAccount`
+  auto-creates a `"Roth Conversion"` Roth account when conversions exist but no Roth accounts
+  do. Per-year conversion amount is captured in `AnnualCashFlowBreakdown.rothConversionGross`.
 - **Spending goals** — 11 categories, each with a required `name` (auto-generated defaults
   like "Vacation 1"), inflation adjustment, age-based activation.
   `living_expenses` goals support optional `yearlyDecreasePercent` for spending decay
@@ -274,8 +284,10 @@ Both dialogs are disabled when no active scenario.
 - Portfolio: user-defined asset classes beyond stocks/bonds/cash; per-account
   allocation (bonds-in-Traditional, stocks-in-Roth placement); cost-basis tracking
   for taxable accounts with long-term capital gains brackets
-- Tax: bracket updates as legislation changes; Roth conversions; user-configurable
-  withdrawal ordering (currently hardcoded Taxable → Traditional → Roth)
+- Tax: bracket updates as legislation changes; user-configurable withdrawal ordering
+  (currently hardcoded Taxable → Traditional → Roth). Roth conversions ✓ implemented —
+  see Income events section above; future: fill-to-bracket and percentage-of-balance
+  amount modes, explicit tax-withholding source selection
 - RMD modeling: ✓ implemented — see Accounts section above. Future: spouse-owned
   Traditional accounts (accounts have no `owner` field); user-configurable RMD start age
 - Income/spending: new types without UI refactoring
@@ -328,7 +340,7 @@ Two assertion types are supported:
   `withdrawalFromTaxable`, `withdrawalFromTraditional`, `withdrawalFromRoth`, `totalTax`,
   `netCashFlow`, `ssGross`, `otherTaxableGross`, `afterTaxIncome`, `ssTaxableAmount`,
   `totalGrossIncome`, `baseSpendingNet`, `otherSpendingGoalsNet`, `totalSpendingNet`,
-  `rmdRequired`, `rmdExcess`, `ordinaryTax`, `capitalGainsTax`.
+  `rmdRequired`, `rmdExcess`, `rothConversionGross`, `ordinaryTax`, `capitalGainsTax`.
 
 #### Key rules
 

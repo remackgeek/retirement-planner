@@ -4,6 +4,7 @@ import EventTypeSelectionDialog from '../dialogs/EventTypeSelectionDialog';
 import IncomeEventDialog from '../dialogs/IncomeEventDialog';
 import SocialSecurityDialog from '../dialogs/SocialSecurityDialog';
 import PensionIncomeDialog from '../dialogs/PensionIncomeDialog';
+import RothConversionDialog from '../dialogs/RothConversionDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import type { Account } from '../types/Account';
 import { spacing, colors, border, fontSize } from '../styles/theme';
@@ -74,6 +75,7 @@ const eventTypeSymbols: Record<IncomeEventType, string> = {
   inheritance: '⬇',
   pension_income: '⚒',
   rental_income: '⌂',
+  roth_conversion: '↻',
   sale_of_property: '⇄',
   work_during_retirement: '⚙',
   other_income: '●',
@@ -165,6 +167,21 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
                     {eventTypeSymbols[event.type]}
                   </span>
                   {event.name}
+                  {event.type === 'roth_conversion' && (
+                    <span
+                      style={{
+                        marginLeft: spacing.xs,
+                        padding: `0 ${spacing.xs}`,
+                        backgroundColor: colors.chipBg,
+                        color: colors.textSecondary,
+                        borderRadius: border.radius,
+                        fontSize: fontSize.xs,
+                        fontWeight: 'normal',
+                      }}
+                    >
+                      Conversion
+                    </span>
+                  )}
                 </strong>
               </div>
               ${event.amount.toLocaleString()}
@@ -177,6 +194,8 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
               <br />
               {event.type === 'social_security'
                 ? (event.ssAmountBasis === 'future' ? 'Future dollars' : "Today's dollars")
+                : event.type === 'roth_conversion'
+                ? <>Trad → Roth • {event.colaType === 'fixed' ? 'Fixed amount' : 'Inflation adjusted'}</>
                 : <>
                     {event.taxStatus === 'before_tax' ? 'Before tax' : 'After tax'} •{' '}
                     {event.colaType === 'fixed' ? 'Fixed amount' : 'Inflation adjusted'}
@@ -230,6 +249,19 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           spouseAge={userData.spouseAge}
           filingStatus={userData.filingStatus}
           referenceYear={userData.referenceYear}
+        />
+      ) : (selectedType === 'roth_conversion' || editingEvent?.type === 'roth_conversion') ? (
+        <RothConversionDialog
+          visible={dialogVisible}
+          onHide={() => {
+            setDialogVisible(false);
+            setSelectedType(null);
+            setEditingEvent(undefined);
+          }}
+          onSave={handleSave}
+          editEvent={editingEvent}
+          existingEvents={events}
+          userData={userData}
         />
       ) : (
         <IncomeEventDialog

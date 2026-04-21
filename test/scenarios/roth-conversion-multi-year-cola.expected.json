@@ -1,0 +1,11 @@
+{
+  "_rationale": "5-year conversion 65-69, $30k base amount with 3% annual inflation COLA. Year 0: $30,000. Year 2: $30,000 × 1.03^2 = $31,827. Year 4 (age 69, last year): $30,000 × 1.03^4 = $33,764.20. Year 5 (age 70): conversion ended → 0.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rothConversionGross", "value": 30000, "tolerance": 1, "_note": "Year 0 base amount" },
+    { "index": 2, "field": "rothConversionGross", "value": 31827, "tolerance": 5, "_note": "Year 2: 30000 × 1.03^2" },
+    { "index": 4, "field": "rothConversionGross", "value": 33764.2, "tolerance": 5, "_note": "Year 4 (age 69): 30000 × 1.03^4" },
+    { "index": 5, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "Year 5 (age 70): past endAge, no conversion" }
+  ]
+}
