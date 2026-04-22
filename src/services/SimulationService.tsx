@@ -94,6 +94,28 @@ function standardNormalRandom(random: () => number = Math.random): number {
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
+// Student's t variate with `df` integer degrees of freedom (UI enforces df in 3..12).
+// Ratio-of-normals construction: Z / sqrt(V / df), V ~ chi-squared(df) built as sum
+// of `df` squared standard normals. Variance of raw t is df/(df-2); see standardized
+// variant below for a unit-variance shock suitable as a drop-in N(0,1) replacement.
+export function studentTRandom(df: number, random: () => number): number {
+  const z = standardNormalRandom(random);
+  let chiSq = 0;
+  for (let i = 0; i < df; i++) {
+    const n = standardNormalRandom(random);
+    chiSq += n * n;
+  }
+  return z / Math.sqrt(chiSq / df);
+}
+
+// Unit-variance Student's t: scale by sqrt((df-2)/df) so realized variance = 1.
+// Substituted for standardNormalRandom() in the log-normal return formula when
+// `returnDistribution === 'student_t'`; preserves the user's stockStdDev/bondStdDev
+// input meaning. Fat tails come from kurtosis, not inflated variance.
+export function standardizedTRandom(df: number, random: () => number): number {
+  return studentTRandom(df, random) * Math.sqrt((df - 2) / df);
+}
+
 // Draw a log-normal return factor from precomputed {mu, sigma}. Same algebra
 // as Math.exp(mu + sigma * N(0,1)); lognormalParams is hoisted out of the hot loop.
 function drawFactor(
@@ -630,6 +652,8 @@ export function runSimulation(
     bondStdDev,
     stockBondCorrelationEnabled,
     stockBondCorrelation,
+    returnDistribution,
+    degreesOfFreedom,
   } = userData.portfolioAssumptions;
   const bondAllocation = 1 - stockAllocation;
 
@@ -645,6 +669,16 @@ export function runSimulation(
   const rho = stockBondCorrelationEnabled ? stockBondCorrelation : 0;
   const useCorrelation = stockBondCorrelationEnabled && rho !== 0;
   const rhoComplement = useCorrelation ? Math.sqrt(Math.max(0, 1 - rho * rho)) : 1;
+
+  // Shock sampler: standard normal by default, standardized Student's t when
+  // the scenario opts in. Standardized-t has unit variance, so stockStdDev/bondStdDev
+  // retain their meaning; fat tails come from kurtosis alone. The lognormal branch
+  // calls standardNormalRandom directly with the same cadence as before, so existing
+  // scenarios produce byte-identical results.
+  const drawShock: (r: () => number) => number =
+    returnDistribution === 'student_t'
+      ? (r) => standardizedTRandom(degreesOfFreedom, r)
+      : (r) => standardNormalRandom(r);
 
   const stateTaxRateByYear: number[] = new Array(totalYears);
   const ageByYear: number[] = new Array(totalYears);
@@ -696,13 +730,15 @@ export function runSimulation(
       let sf: number;
       let bf: number;
       if (useCorrelation) {
-        const z1 = standardNormalRandom(random);
-        const z2 = standardNormalRandom(random);
+        const z1 = drawShock(random);
+        const z2 = drawShock(random);
         sf = Math.exp(stockParams.mu + stockParams.sigma * z1);
         bf = Math.exp(bondParams.mu + bondParams.sigma * (rho * z1 + rhoComplement * z2));
       } else {
-        sf = drawFactor(stockParams, random);
-        bf = drawFactor(bondParams, random);
+        const zs = drawShock(random);
+        const zb = drawShock(random);
+        sf = Math.exp(stockParams.mu + stockParams.sigma * zs);
+        bf = Math.exp(bondParams.mu + bondParams.sigma * zb);
       }
       stockFactors.push(sf);
       bondFactors.push(bf);

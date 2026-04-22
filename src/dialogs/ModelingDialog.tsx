@@ -7,6 +7,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { Scenario } from '../types/Scenario';
 import type { SimulationSettings } from '../types/UserData';
+import type { ReturnDistribution } from '../types/IncomeEvent';
 import { spacing, colors, fontSize, border } from '../styles/theme';
 
 const Form = styled.form`
@@ -83,10 +84,20 @@ const BlendedValue = styled.span`
   color: ${colors.textPrimary};
 `;
 
+const HelpText = styled.div`
+  font-size: ${fontSize.xs};
+  color: ${colors.textSecondary};
+`;
+
 const simRunOptions = [
   { label: '1,000 (fast)', value: 1000 },
   { label: '5,000 (standard)', value: 5000 },
   { label: '10,000 (accurate)', value: 10000 },
+];
+
+const distributionOptions: { label: string; value: ReturnDistribution }[] = [
+  { label: 'Log-normal', value: 'lognormal' },
+  { label: "Student's t (fat tails)", value: 'student_t' },
 ];
 
 interface ModelingDialogProps {
@@ -103,6 +114,8 @@ interface FormState {
   bondStdDev: number;
   stockBondCorrelationEnabled: boolean;
   stockBondCorrelation: number;
+  returnDistribution: ReturnDistribution;
+  degreesOfFreedom: number;
   inflationRate: number;
   inflationStdDev: number;
   longTermCapGainsRate: number;
@@ -115,34 +128,25 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
   scenario,
   onSave,
 }) => {
-  const [form, setForm] = useState<FormState>({
-    stockReturn: scenario.portfolioAssumptions.stockReturn,
-    stockStdDev: scenario.portfolioAssumptions.stockStdDev,
-    bondReturn: scenario.portfolioAssumptions.bondReturn,
-    bondStdDev: scenario.portfolioAssumptions.bondStdDev,
-    stockBondCorrelationEnabled: scenario.portfolioAssumptions.stockBondCorrelationEnabled,
-    stockBondCorrelation: scenario.portfolioAssumptions.stockBondCorrelation,
-    inflationRate: scenario.inflationRate,
-    inflationStdDev: scenario.inflationStdDev,
-    longTermCapGainsRate: scenario.longTermCapGainsRate,
-    simulationSettings: { ...scenario.simulationSettings },
+  const formFromScenario = (s: Scenario): FormState => ({
+    stockReturn: s.portfolioAssumptions.stockReturn,
+    stockStdDev: s.portfolioAssumptions.stockStdDev,
+    bondReturn: s.portfolioAssumptions.bondReturn,
+    bondStdDev: s.portfolioAssumptions.bondStdDev,
+    stockBondCorrelationEnabled: s.portfolioAssumptions.stockBondCorrelationEnabled,
+    stockBondCorrelation: s.portfolioAssumptions.stockBondCorrelation,
+    returnDistribution: s.portfolioAssumptions.returnDistribution,
+    degreesOfFreedom: s.portfolioAssumptions.degreesOfFreedom,
+    inflationRate: s.inflationRate,
+    inflationStdDev: s.inflationStdDev,
+    longTermCapGainsRate: s.longTermCapGainsRate,
+    simulationSettings: { ...s.simulationSettings },
   });
 
+  const [form, setForm] = useState<FormState>(() => formFromScenario(scenario));
+
   useEffect(() => {
-    if (visible) {
-      setForm({
-        stockReturn: scenario.portfolioAssumptions.stockReturn,
-        stockStdDev: scenario.portfolioAssumptions.stockStdDev,
-        bondReturn: scenario.portfolioAssumptions.bondReturn,
-        bondStdDev: scenario.portfolioAssumptions.bondStdDev,
-        stockBondCorrelationEnabled: scenario.portfolioAssumptions.stockBondCorrelationEnabled,
-        stockBondCorrelation: scenario.portfolioAssumptions.stockBondCorrelation,
-        inflationRate: scenario.inflationRate,
-        inflationStdDev: scenario.inflationStdDev,
-        longTermCapGainsRate: scenario.longTermCapGainsRate,
-        simulationSettings: { ...scenario.simulationSettings },
-      });
-    }
+    if (visible) setForm(formFromScenario(scenario));
   }, [visible, scenario]);
 
   const stockAllocation = scenario.portfolioAssumptions.stockAllocation;
@@ -164,6 +168,8 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
         bondStdDev: form.bondStdDev,
         stockBondCorrelationEnabled: form.stockBondCorrelationEnabled,
         stockBondCorrelation: form.stockBondCorrelation,
+        returnDistribution: form.returnDistribution,
+        degreesOfFreedom: form.degreesOfFreedom,
       },
     });
     onHide();
@@ -225,6 +231,37 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
             <span>Blended return ({Math.round(stockAllocation * 100)}/{Math.round(bondAllocation * 100)}):</span>
             <BlendedValue>{(blendedReturn * 100).toFixed(1)}%</BlendedValue>
           </BlendedRow>
+        </Section>
+
+        <Section>
+          <SectionHeader>Return Distribution</SectionHeader>
+          <InputGroup>
+            <label>Distribution</label>
+            <Dropdown
+              value={form.returnDistribution}
+              options={distributionOptions}
+              onChange={(e) => setForm({ ...form, returnDistribution: e.value })}
+              style={{ width: '100%' }}
+            />
+          </InputGroup>
+          {form.returnDistribution === 'student_t' && (
+            <InputGroup>
+              <label>Degrees of Freedom</label>
+              <InputNumber
+                value={form.degreesOfFreedom}
+                onValueChange={(e) =>
+                  setForm({ ...form, degreesOfFreedom: e.value ?? 4 })
+                }
+                min={3}
+                max={12}
+                showButtons
+                inputStyle={{ width: '8rem' }}
+              />
+              <HelpText>
+                Lower values = fatter tails (more extreme events). 4 is a common professional setting.
+              </HelpText>
+            </InputGroup>
+          )}
         </Section>
 
         <Section>

@@ -1,0 +1,44 @@
+{
+  "_description": "Student's t return distribution with df=6 (moderate fat tails). Accumulation-only scenario with no cash flow, so the portfolio balance at year 15 is purely a product of 15 yearly growth factors. With standardized-t (scaled to unit variance) the expected value and volatility match the log-normal case; only kurtosis differs, producing slightly wider tail behavior but a similar median.",
+  "_rationale": "60/40 portfolio starting at $500,000, stockReturn=7% stockStdDev=15%, bondReturn=3% bondStdDev=5%, no correlation, no withdrawals, 15 years. Blended expected return ≈ 5.4%, so deterministic growth is 500000 * 1.054^15 ≈ $1,100,000. With standardized-t (df=6) realized log-space variance matches the log-normal case, so the median should land close to the same range (mid-six-figure to low-seven-figure band). The test simply checks that the t-distribution path runs, produces a sane positive balance, and 100% success over a no-withdrawal run.",
+  "_seed": 42,
+  "name": "Fat Tail: Moderate (df=6)",
+  "currentAge": 60,
+  "lifeExpectancy": 75,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "portfolioBalance": "60_40",
+    "stockAllocation": 0.6,
+    "stockReturn": 0.07,
+    "stockStdDev": 0.15,
+    "bondReturn": 0.03,
+    "bondStdDev": 0.05,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "student_t",
+    "degreesOfFreedom": 6
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Taxable 1",
+      "type": "taxable",
+      "balance": 500000
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

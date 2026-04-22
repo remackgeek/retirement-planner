@@ -30,6 +30,8 @@ export interface IncomeEvent {
 
 export type PortfolioType = '80_20' | '60_40' | '50_50';
 
+export type ReturnDistribution = 'lognormal' | 'student_t';
+
 export interface PortfolioAssumptions {
   portfolioBalance: PortfolioType | 'custom';
   stockAllocation: number; // 0.0–1.0
@@ -39,4 +41,6 @@ export interface PortfolioAssumptions {
   bondStdDev: number;
   stockBondCorrelationEnabled: boolean;
   stockBondCorrelation: number; // -1.0 to 1.0
+  returnDistribution: ReturnDistribution;
+  degreesOfFreedom: number; // used when returnDistribution === 'student_t' (integer 3–12)
 }

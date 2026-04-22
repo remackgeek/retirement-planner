@@ -123,6 +123,8 @@ const makeDefaults = (): Scenario => ({
     bondStdDev: 0.05,
     stockBondCorrelationEnabled: true,
     stockBondCorrelation: -0.2,
+    returnDistribution: 'lognormal' as const,
+    degreesOfFreedom: 4,
   },
   referenceYear: new Date().getFullYear(),
   inflationRate: 0.035,

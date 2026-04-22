@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { calculateAnnualCashFlow, calculateRMD, IRS_UNIFORM_LIFETIME_TABLE, runSimulation } from './SimulationService';
+import {
+  calculateAnnualCashFlow,
+  calculateRMD,
+  IRS_UNIFORM_LIFETIME_TABLE,
+  runSimulation,
+  studentTRandom,
+  standardizedTRandom,
+} from './SimulationService';
 import type { UserData } from '../types/UserData';
+import { createSeededRandom } from '../../test/utils/seededRandom';
 
 const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
   currentAge: 60,
@@ -9,7 +17,7 @@ const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
   accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional', balance: 500000 }],
   spendingGoals: [],
   incomeEvents: [],
-  portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2 },
+  portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
   inflationRate: 0,
   inflationStdDev: 0,
   simulationSettings: { numSimulations: 5000 },
@@ -661,7 +669,7 @@ describe('runSimulation — per-path breakdowns', () => {
     lifeExpectancy: 64,
     accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 50_000 }],
     inflationRate: 0,
-    portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2 },
+    portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
     simulationSettings: { numSimulations: 10 },
     spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 20_000, startAge: 60, inflationAdjusted: false }],
     incomeEvents: [{ id: 'i1', name: 'Other Income 1', type: 'other_income', amount: 5_000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' }],
@@ -716,7 +724,7 @@ describe('runSimulation — deterministic path', () => {
     lifeExpectancy: 65,
     accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 1_000_000 }],
     inflationRate: 0,
-    portfolioAssumptions: { portfolioBalance: '60_40', stockAllocation: 0.6, stockReturn: 0.065, stockStdDev: 0.105, bondReturn: 0.065, bondStdDev: 0.105, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2 },
+    portfolioAssumptions: { portfolioBalance: '60_40', stockAllocation: 0.6, stockReturn: 0.065, stockStdDev: 0.105, bondReturn: 0.065, bondStdDev: 0.105, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
     spendingGoals: [],
     incomeEvents: [],
   });
@@ -751,7 +759,7 @@ describe('runSimulation — hoisted precomputation equivalence', () => {
       lifeExpectancy: 62,
       accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 300_000 }],
       inflationRate: 0.03,
-      portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 1, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2 },
+      portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 1, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
       simulationSettings: { numSimulations: 1 },
       incomeEvents: [
         { id: 'i1', name: 'SS 1', type: 'social_security', amount: 24_000, startAge: 60, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false },
@@ -784,7 +792,7 @@ describe('runSimulation — hoisted precomputation equivalence', () => {
       lifeExpectancy: 65,
       inflationRate: 0.03,
       inflationStdDev: 0.01,
-      portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.03, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2 },
+      portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.03, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
       simulationSettings: { numSimulations: 100 },
       accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000 }],
     });
@@ -855,5 +863,114 @@ describe('calculateRMD', () => {
     // RMD = 200000/26.5 ≈ 7547, spending = 50000 >> RMD
     expect(breakdown.rmdExcess).toBe(0);
     expect(breakdown.rmdRequired).toBeCloseTo(7547, 0);
+  });
+});
+
+describe('Student\'s t samplers', () => {
+  // Compute sample variance of N draws from a sampler.
+  const sampleVariance = (draws: number[]): { mean: number; variance: number } => {
+    const n = draws.length;
+    const mean = draws.reduce((s, x) => s + x, 0) / n;
+    const variance = draws.reduce((s, x) => s + (x - mean) * (x - mean), 0) / (n - 1);
+    return { mean, variance };
+  };
+
+  it('studentTRandom has approximate theoretical variance df/(df-2)', () => {
+    const df = 6;
+    const expectedVar = df / (df - 2); // = 1.5
+    const rng = createSeededRandom(12345);
+    const N = 50000;
+    const draws: number[] = [];
+    for (let i = 0; i < N; i++) draws.push(studentTRandom(df, rng));
+    const { mean, variance } = sampleVariance(draws);
+    // Mean should be near 0 (t is symmetric)
+    expect(Math.abs(mean)).toBeLessThan(0.05);
+    // Variance close to df/(df-2) within ±10% over 50k draws
+    expect(variance).toBeGreaterThan(expectedVar * 0.9);
+    expect(variance).toBeLessThan(expectedVar * 1.1);
+  });
+
+  it('standardizedTRandom has unit variance regardless of df', () => {
+    const rng = createSeededRandom(777);
+    const N = 50000;
+    for (const df of [4, 6, 10]) {
+      const draws: number[] = [];
+      for (let i = 0; i < N; i++) draws.push(standardizedTRandom(df, rng));
+      const { mean, variance } = sampleVariance(draws);
+      expect(Math.abs(mean)).toBeLessThan(0.05);
+      // Unit variance within ±10% tolerance
+      expect(variance).toBeGreaterThan(0.9);
+      expect(variance).toBeLessThan(1.1);
+    }
+  });
+});
+
+describe('runSimulation — Student\'s t return distribution', () => {
+  it('zero-variance scenario produces identical results under lognormal and student_t', () => {
+    // With stockStdDev=0 and bondStdDev=0 the shock is multiplied by zero,
+    // so the distribution choice is irrelevant and paths must match exactly.
+    const baseUserData = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 65,
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 500_000 }],
+      spendingGoals: [],
+      incomeEvents: [],
+      inflationRate: 0,
+      portfolioAssumptions: {
+        portfolioBalance: 'custom', stockAllocation: 0.6,
+        stockReturn: 0.05, stockStdDev: 0,
+        bondReturn: 0.03, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+      },
+    });
+    const tUserData = {
+      ...baseUserData,
+      portfolioAssumptions: {
+        ...baseUserData.portfolioAssumptions,
+        returnDistribution: 'student_t' as const,
+        degreesOfFreedom: 4,
+      },
+    };
+    const logResult = runSimulation(baseUserData, createSeededRandom(42));
+    const tResult = runSimulation(tUserData, createSeededRandom(42));
+    expect(tResult.nominal).toEqual(logResult.nominal);
+    expect(tResult.median).toEqual(logResult.median);
+  });
+
+  it('student_t produces different results than lognormal when stddev is non-zero', () => {
+    // Sanity check that the t-distribution path is actually engaged and produces
+    // distinct output from the log-normal path. The mathematical correctness of
+    // the "heavier tails" claim is verified by the sampler-variance tests above
+    // and by the fat-tail scenarios in test/scenarios/.
+    const portfolioAssumptionsBase = {
+      portfolioBalance: 'custom' as const, stockAllocation: 0.6,
+      stockReturn: 0.07, stockStdDev: 0.15,
+      bondReturn: 0.03, bondStdDev: 0.05,
+      stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+    };
+    const shared = {
+      currentAge: 60, lifeExpectancy: 80,
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000 }],
+      spendingGoals: [],
+      incomeEvents: [],
+      inflationRate: 0, inflationStdDev: 0,
+      simulationSettings: { numSimulations: 1000 },
+    };
+    const lognormal = makeUserData({
+      ...shared,
+      portfolioAssumptions: { ...portfolioAssumptionsBase, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+    });
+    const tDist = makeUserData({
+      ...shared,
+      portfolioAssumptions: { ...portfolioAssumptionsBase, returnDistribution: 'student_t', degreesOfFreedom: 4 },
+    });
+    const logResult = runSimulation(lognormal, createSeededRandom(99));
+    const tResult = runSimulation(tDist, createSeededRandom(99));
+    // Both should produce valid results
+    expect(tResult.probability).toBeGreaterThanOrEqual(0);
+    expect(tResult.probability).toBeLessThanOrEqual(100);
+    // And they must not be identical (the t path is doing something)
+    expect(tResult.median).not.toEqual(logResult.median);
   });
 });

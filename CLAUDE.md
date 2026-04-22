@@ -202,6 +202,14 @@ parameters are per-scenario in `UserData`:
   enabled, stock and bond normals are drawn as a correlated bivariate pair via
   two-variable Cholesky decomposition (ρ clamped to `[-1, 1]`); when disabled, draws
   are independent
+- `portfolioAssumptions.returnDistribution` — `'lognormal' | 'student_t'`; default
+  `'lognormal'`. When `'student_t'`, the N(0,1) shock feeding the log-normal formula
+  is replaced with a **standardized** Student's t draw — scaled by `√((df-2)/df)` so
+  realized log-space variance still matches `stockStdDev` / `bondStdDev`. Fat tails
+  come from excess kurtosis, not inflated variance. Inflation shocks remain log-normal
+  regardless of this setting.
+- `portfolioAssumptions.degreesOfFreedom` — integer 3–12; default `4`; ignored when
+  `returnDistribution === 'lognormal'`. Lower values produce fatter tails.
 - `simulationSettings.numSimulations` — run count (1000 / 5000 / 10000)
 - `inflationRate` — annual inflation, affects cash flow inflation-adjustment
 - `inflationStdDev` — inflation volatility; affects portfolio deflation (real vs nominal)
@@ -209,9 +217,12 @@ parameters are per-scenario in `UserData`:
 
 **Monte Carlo path construction:** each year draws a stock and bond return factor;
 portfolio return = `stockAllocation × stockFactor + bondAllocation × bondFactor`. When
-`stockBondCorrelationEnabled` is true, the two underlying normals are generated as a
+`stockBondCorrelationEnabled` is true, the two underlying shocks are generated as a
 bivariate pair using Cholesky (stock = `z1`, bond = `ρ·z1 + √(1-ρ²)·z2`); otherwise they
-are drawn independently. Annual rebalancing to target allocation is assumed. The median
+are drawn independently. Each shock is an N(0,1) draw when `returnDistribution ===
+'lognormal'` or a standardized Student's t draw (unit variance, `df` degrees of
+freedom) when `returnDistribution === 'student_t'` — the same Cholesky construction
+applies either way. Annual rebalancing to target allocation is assumed. The median
 and downside paths are the single simulation runs whose final balance is closest to the
 50th/10th percentile of all final balances — coherent per-year paths with actual return
 factors, not year-by-year envelopes.
@@ -239,7 +250,8 @@ with precise deps; `Projections` is wrapped in `React.memo`.
 Future direction:
 
 - Historical sequence-of-returns using real S&P 500 and interest rate data
-- Fat-tail / no-tail distribution options
+- Fat-tail distributions: Student's t ✓ implemented (standardized, unit variance, df
+  configurable per scenario). Future: skewed-t, no-tail / bounded distributions.
 - New strategies drop in without changing the rest of the app (`modelType` placeholder
   reserved in `SimulationSettings`)
 - **Full stochastic inflation**: `inflationStdDev` currently only affects portfolio deflation

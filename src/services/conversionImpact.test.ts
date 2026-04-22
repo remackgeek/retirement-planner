@@ -22,6 +22,8 @@ function baseUserData(overrides: Partial<UserData> = {}): UserData {
       bondStdDev: 0,
       stockBondCorrelationEnabled: false,
       stockBondCorrelation: 0,
+      returnDistribution: 'lognormal',
+      degreesOfFreedom: 4,
     },
     referenceYear: 2026,
     inflationRate: 0,

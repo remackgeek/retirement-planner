@@ -27,14 +27,18 @@
     "bondReturn": 0,
     "bondStdDev": 0,
     "stockBondCorrelationEnabled": false,
-    "stockBondCorrelation": 0
+    "stockBondCorrelation": 0,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4
   },
   "inflationRate": 0,
   "inflationStdDev": 0,
   "filingStatus": "mfj",
   "spouseAge": 65,
   "stateTimeline": [
-    { "state": "Florida" }
+    {
+      "state": "Florida"
+    }
   ],
   "simulationSettings": {
     "numSimulations": 100

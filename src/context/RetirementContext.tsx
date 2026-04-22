@@ -161,6 +161,13 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           pa.stockBondCorrelation = -0.2;
         }
         pa.stockBondCorrelation = Math.max(-1, Math.min(1, pa.stockBondCorrelation));
+        if (pa.returnDistribution !== 'student_t') {
+          pa.returnDistribution = 'lognormal';
+        }
+        if (typeof pa.degreesOfFreedom !== 'number') {
+          pa.degreesOfFreedom = 4;
+        }
+        pa.degreesOfFreedom = Math.max(3, Math.min(12, Math.round(pa.degreesOfFreedom)));
         if (typeof importedData.inflationStdDev !== 'number') {
           importedData.inflationStdDev = 0;
         }

@@ -12,11 +12,13 @@
     "portfolioBalance": "custom",
     "stockAllocation": 0.5,
     "stockReturn": 0.05,
-    "stockStdDev": 0.10,
+    "stockStdDev": 0.1,
     "bondReturn": 0.05,
-    "bondStdDev": 0.10,
+    "bondStdDev": 0.1,
     "stockBondCorrelationEnabled": true,
-    "stockBondCorrelation": 1.0
+    "stockBondCorrelation": 1,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4
   },
   "inflationRate": 0,
   "inflationStdDev": 0,
