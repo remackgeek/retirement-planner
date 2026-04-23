@@ -152,7 +152,8 @@ function exportCsv(
   displayCurrency: DisplayCurrency,
 ) {
   const modeLabel = displayCurrency === 'real' ? "today's dollars" : 'nominal dollars';
-  const comment = `# values in ${modeLabel}`;
+  const timestamp = new Date().toISOString();
+  const comment = `# scenario: ${scenarioName} | exported: ${timestamp} | values in ${modeLabel}`;
   const header = [
     'Age', 'Year',
     'Deterministic Portfolio ($)', 'Median Portfolio ($)', 'Downside Portfolio ($)',
