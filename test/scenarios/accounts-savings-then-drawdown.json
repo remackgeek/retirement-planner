@@ -50,7 +50,8 @@
     "stockBondCorrelationEnabled": false,
     "stockBondCorrelation": -0.2,
     "returnDistribution": "lognormal",
-    "degreesOfFreedom": 4
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
   },
   "inflationRate": 0,
   "inflationStdDev": 0,

@@ -32,6 +32,18 @@ export type PortfolioType = '80_20' | '60_40' | '50_50';
 
 export type ReturnDistribution = 'lognormal' | 'student_t';
 
+// Selects the top-level return-generation strategy for a scenario.
+// 'parametric' uses draws from the configured ReturnDistribution.
+// 'historical_single' walks one fixed slice of recorded history.
+// 'historical_rolling' iterates one run per valid start year (Trinity-style).
+export type ReturnModel = 'parametric' | 'historical_single' | 'historical_rolling';
+
+export interface BlackSwanEvent {
+  year: number;
+  stockMultiplier: number; // e.g. 0.60 applied to drawn stock factor ⇒ -40% overlay
+  bondMultiplier: number;
+}
+
 export interface PortfolioAssumptions {
   portfolioBalance: PortfolioType | 'custom';
   stockAllocation: number; // 0.0–1.0
@@ -43,4 +55,8 @@ export interface PortfolioAssumptions {
   stockBondCorrelation: number; // -1.0 to 1.0
   returnDistribution: ReturnDistribution;
   degreesOfFreedom: number; // used when returnDistribution === 'student_t' (integer 3–12)
+  returnModel?: ReturnModel; // defaults to 'parametric' when absent
+  historicalStartYear?: number;    // required when returnModel === 'historical_single'
+  historicalWrapEnabled?: boolean; // if true, horizon wraps to series start when data runs out
+  blackSwanEvents?: BlackSwanEvent[];
 }

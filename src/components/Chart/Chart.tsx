@@ -13,6 +13,7 @@ import { Accordion, AccordionTab } from 'primereact/accordion';
 import htmlAnnotationsPlugin, {
   type AnnotationConfig,
 } from '../../plugins/chartHtmlAnnotations';
+import chartBlackSwanShadingPlugin from '../../plugins/chartBlackSwanShading';
 import {
   type AnnualCashFlowBreakdown,
 } from '../../services/SimulationService';
@@ -28,7 +29,8 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  htmlAnnotationsPlugin
+  htmlAnnotationsPlugin,
+  chartBlackSwanShadingPlugin
 );
 
 // PrimeReact icons for chart annotations and table
@@ -315,6 +317,10 @@ const Projections = ({
           console.log('Hovered annotation:', annotation);
         },
       },
+      blackSwanShading: {
+        events: userData.portfolioAssumptions?.blackSwanEvents ?? [],
+        years,
+      },
     },
     scales: {
       x: {
@@ -329,7 +335,7 @@ const Projections = ({
         },
       },
     },
-  }), [isMobile, htmlAnnotations]);
+  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years]);
 
 
   return (

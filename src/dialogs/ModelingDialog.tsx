@@ -7,8 +7,9 @@ import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { Scenario } from '../types/Scenario';
 import type { SimulationSettings } from '../types/UserData';
-import type { ReturnDistribution } from '../types/IncomeEvent';
+import type { ReturnDistribution, BlackSwanEvent } from '../types/IncomeEvent';
 import { spacing, colors, fontSize, border } from '../styles/theme';
+import BlackSwanEventsEditor from './BlackSwanEventsEditor';
 
 const Form = styled.form`
   display: flex;
@@ -120,6 +121,7 @@ interface FormState {
   inflationStdDev: number;
   longTermCapGainsRate: number;
   simulationSettings: SimulationSettings;
+  blackSwanEvents: BlackSwanEvent[];
 }
 
 const ModelingDialog: React.FC<ModelingDialogProps> = ({
@@ -141,6 +143,9 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     inflationStdDev: s.inflationStdDev,
     longTermCapGainsRate: s.longTermCapGainsRate,
     simulationSettings: { ...s.simulationSettings },
+    blackSwanEvents: s.portfolioAssumptions.blackSwanEvents
+      ? s.portfolioAssumptions.blackSwanEvents.map((e) => ({ ...e }))
+      : [],
   });
 
   const [form, setForm] = useState<FormState>(() => formFromScenario(scenario));
@@ -170,6 +175,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
         stockBondCorrelation: form.stockBondCorrelation,
         returnDistribution: form.returnDistribution,
         degreesOfFreedom: form.degreesOfFreedom,
+        blackSwanEvents: form.blackSwanEvents.length > 0 ? form.blackSwanEvents : undefined,
       },
     });
     onHide();
@@ -321,6 +327,18 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
             <label>Long-term Capital Gains Rate</label>
             {pctField(form.longTermCapGainsRate, (v) => setForm({ ...form, longTermCapGainsRate: v }), 40)}
           </InputGroup>
+        </Section>
+
+        <Section>
+          <SectionHeader>Black Swan Events</SectionHeader>
+          <BlackSwanEventsEditor
+            events={form.blackSwanEvents}
+            onChange={(blackSwanEvents) =>
+              setForm((prev) => ({ ...prev, blackSwanEvents }))
+            }
+            yearMin={scenario.referenceYear}
+            yearMax={scenario.referenceYear + scenario.lifeExpectancy - scenario.currentAge}
+          />
         </Section>
 
         <Section style={{ marginTop: spacing.md }}>

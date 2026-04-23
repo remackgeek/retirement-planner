@@ -27,7 +27,8 @@
     "stockBondCorrelationEnabled": false,
     "stockBondCorrelation": -0.2,
     "returnDistribution": "student_t",
-    "degreesOfFreedom": 3
+    "degreesOfFreedom": 3,
+    "returnModel": "parametric"
   },
   "inflationRate": 0,
   "inflationStdDev": 0,

@@ -168,6 +168,15 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           pa.degreesOfFreedom = 4;
         }
         pa.degreesOfFreedom = Math.max(3, Math.min(12, Math.round(pa.degreesOfFreedom)));
+        if (pa.returnModel !== 'historical_single' && pa.returnModel !== 'historical_rolling') {
+          pa.returnModel = 'parametric';
+        }
+        if (pa.historicalWrapEnabled !== undefined && typeof pa.historicalWrapEnabled !== 'boolean') {
+          pa.historicalWrapEnabled = false;
+        }
+        if (pa.blackSwanEvents !== undefined && !Array.isArray(pa.blackSwanEvents)) {
+          pa.blackSwanEvents = [];
+        }
         if (typeof importedData.inflationStdDev !== 'number') {
           importedData.inflationStdDev = 0;
         }

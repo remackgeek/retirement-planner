@@ -1,0 +1,46 @@
+{
+  "_description": "Historical single-sequence mode starting 1966. Tests that returnModel='historical_single' walks the recorded S&P 500 / 10-yr Treasury series in calendar order, paired with that year's CPI. 1966-1970 captures the start of the late-60s/early-70s stagflation that historically destroyed early-Trinity-era retirees.",
+  "_rationale": "Pure accumulation: $500k Roth (tax-free), no spending, no income, no inflation in the cash-flow path. Each year's portfolio factor is `0.6 * stockFactor + 0.4 * bondFactor` from HISTORICAL_RETURNS for 1966-1970. With no withdrawals, the path is the running product of those blended factors. probability=100 because nothing can deplete a balance with zero spending.",
+  "_seed": 12345,
+  "name": "Historical 1966 Stagflation Start",
+  "currentAge": 60,
+  "lifeExpectancy": 64,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "portfolioBalance": "60_40",
+    "stockAllocation": 0.6,
+    "stockReturn": 0.07,
+    "stockStdDev": 0.15,
+    "bondReturn": 0.03,
+    "bondStdDev": 0.05,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "historical_single",
+    "historicalStartYear": 1966
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 500000
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

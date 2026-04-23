@@ -4,6 +4,22 @@ import {
   calculateNetFromGross,
   calculateSSTaxableAmount,
 } from './TaxCalculator';
+import {
+  createReturnGenerator,
+  createNominalGenerator,
+  buildBlackSwanLookup,
+  applyBlackSwan,
+  type ReturnGenerator,
+} from './ReturnGenerator';
+
+// Re-export math primitives for tests/consumers that pulled them from this module
+// before the ReturnGenerator extraction.
+export {
+  lognormalParams,
+  standardNormalRandom,
+  studentTRandom,
+  standardizedTRandom,
+} from './ReturnGenerator';
 
 // State tax rates (from user's table, converted to decimal)
 export const STATE_TAX_RATES: Record<string, number> = {
@@ -77,52 +93,6 @@ export function calculateRMD(tradBalance: number, age: number): number {
   if (age < 73) return 0;
   const divisor = IRS_UNIFORM_LIFETIME_TABLE[Math.min(age, 114)] ?? 2.9;
   return tradBalance / divisor;
-}
-
-// Derive log-normal mu/sigma from arithmetic mean return and standard deviation.
-function lognormalParams(mean: number, stdDev: number): { mu: number; sigma: number } {
-  const sigma = Math.sqrt(Math.log(1 + (stdDev * stdDev) / ((1 + mean) * (1 + mean))));
-  const mu = Math.log(1 + mean) - (sigma * sigma) / 2;
-  return { mu, sigma };
-}
-
-function standardNormalRandom(random: () => number = Math.random): number {
-  let u = 0,
-    v = 0;
-  while (u === 0) u = random();
-  while (v === 0) v = random();
-  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-}
-
-// Student's t variate with `df` integer degrees of freedom (UI enforces df in 3..12).
-// Ratio-of-normals construction: Z / sqrt(V / df), V ~ chi-squared(df) built as sum
-// of `df` squared standard normals. Variance of raw t is df/(df-2); see standardized
-// variant below for a unit-variance shock suitable as a drop-in N(0,1) replacement.
-export function studentTRandom(df: number, random: () => number): number {
-  const z = standardNormalRandom(random);
-  let chiSq = 0;
-  for (let i = 0; i < df; i++) {
-    const n = standardNormalRandom(random);
-    chiSq += n * n;
-  }
-  return z / Math.sqrt(chiSq / df);
-}
-
-// Unit-variance Student's t: scale by sqrt((df-2)/df) so realized variance = 1.
-// Substituted for standardNormalRandom() in the log-normal return formula when
-// `returnDistribution === 'student_t'`; preserves the user's stockStdDev/bondStdDev
-// input meaning. Fat tails come from kurtosis, not inflated variance.
-export function standardizedTRandom(df: number, random: () => number): number {
-  return studentTRandom(df, random) * Math.sqrt((df - 2) / df);
-}
-
-// Draw a log-normal return factor from precomputed {mu, sigma}. Same algebra
-// as Math.exp(mu + sigma * N(0,1)); lognormalParams is hoisted out of the hot loop.
-function drawFactor(
-  params: { mu: number; sigma: number },
-  random: () => number
-): number {
-  return Math.exp(params.mu + params.sigma * standardNormalRandom(random));
 }
 
 function getStateTaxRate(userData: UserData, year: number): number {
@@ -621,6 +591,109 @@ interface SimRun {
   failedYear: number;
 }
 
+// Per-year precomputes shared across every run. Pulled out of the hot loop and
+// passed by reference into simulateOneRun.
+interface Precomputes {
+  stateTaxRateByYear: number[];
+  ageByYear: number[];
+  incomeByYear: Array<{
+    ssGross: number;
+    otherTaxableGross: number;
+    afterTaxIncome: number;
+    conversionGross: number;
+  }>;
+  spendingByYear: Array<{
+    baseSpendingNet: number;
+    otherSpendingGoalsNet: number;
+  }>;
+}
+
+// Execute a single simulation run (Monte Carlo sim, historical slice, or nominal
+// projection) against the provided ReturnGenerator. Applies the black-swan overlay
+// after the base draw. Structure is identical across all generators — only the
+// factor source differs.
+function simulateOneRun(
+  userData: UserData,
+  precomputes: Precomputes,
+  generator: ReturnGenerator,
+  runIndex: number,
+  random: () => number,
+  blackSwanLookup: Map<number, { stockMultiplier: number; bondMultiplier: number }>
+): SimRun {
+  const currentYear = userData.referenceYear;
+  const totalYears = precomputes.ageByYear.length;
+  const inflationRate = userData.inflationRate;
+  const stockAllocation = userData.portfolioAssumptions.stockAllocation;
+  const bondAllocation = 1 - stockAllocation;
+
+  const balances = initialAccountBalances(userData);
+  const path: number[] = [];
+  const stockFactors: number[] = [];
+  const bondFactors: number[] = [];
+  const breakdowns: AnnualCashFlowBreakdown[] = [];
+  let failed = false;
+  let failedYear = totalYears;
+  let cumulativeInflation = 1;
+
+  for (let i = 0; i < totalYears; i++) {
+    const year = currentYear + i;
+    const yearIncome = precomputes.incomeByYear[i];
+    const yearSpending = precomputes.spendingByYear[i];
+    const yearStateTaxRate = precomputes.stateTaxRateByYear[i];
+    const yearAge = precomputes.ageByYear[i];
+
+    const startBalance = sumBalances(balances);
+    path.push(startBalance / cumulativeInflation);
+
+    // IRS rule: RMD uses Dec 31 of prior year (beginning-of-year) balance.
+    const beginningTradBalance = sumBalancesOfType(userData.accounts, balances, 'traditional');
+
+    // 1. Growth: draw base factors, apply black-swan overlay, blend by allocation.
+    const base = generator.drawFactors(runIndex, i, random);
+    const { stockFactor: sf, bondFactor: bf } = applyBlackSwan(base, year, blackSwanLookup);
+    stockFactors.push(sf);
+    bondFactors.push(bf);
+    const growthFactor = stockAllocation * sf + bondAllocation * bf;
+    for (const id in balances) balances[id] *= growthFactor;
+
+    // 2. Cash flow.
+    const postGrowth = sumBalances(balances);
+    const cashFlow = calculateAnnualCashFlowCore(
+      userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance
+    );
+
+    let effectiveCashFlow: AnnualCashFlowBreakdown;
+    const spendingExceedsIncome = cashFlow.totalSpendingNet > cashFlow.totalGrossIncome;
+    const depleting = spendingExceedsIncome && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
+    if (depleting && postGrowth <= 0) {
+      effectiveCashFlow = calculateAnnualCashFlowCore(
+        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, 0
+      );
+    } else if (depleting) {
+      effectiveCashFlow = calculateAnnualCashFlowCore(
+        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, postGrowth
+      );
+    } else {
+      effectiveCashFlow = cashFlow;
+    }
+    breakdowns.push(effectiveCashFlow);
+
+    if (depleting) {
+      if (!failed) failedYear = i;
+      failed = true;
+    }
+
+    applyCashFlow(userData, year, effectiveCashFlow, balances, inflationRate);
+    // Clamp against float drift.
+    for (const id in balances) if (balances[id] < 0) balances[id] = 0;
+
+    const yearInflation = generator.drawInflation(runIndex, i, random);
+    cumulativeInflation *= 1 + yearInflation;
+  }
+
+  return { path, stockFactors, bondFactors, breakdowns, failed, failedYear };
+}
+
 export function runSimulation(
   rawUserData: UserData,
   random: () => number = Math.random
@@ -642,56 +715,12 @@ export function runSimulation(
   const currentYear = userData.referenceYear;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const inflationRate = userData.inflationRate;
-  const inflationStdDev = userData.inflationStdDev;
-  const numSims = userData.simulationSettings.numSimulations;
-  const {
-    stockAllocation,
-    stockReturn,
-    stockStdDev,
-    bondReturn,
-    bondStdDev,
-    stockBondCorrelationEnabled,
-    stockBondCorrelation,
-    returnDistribution,
-    degreesOfFreedom,
-  } = userData.portfolioAssumptions;
-  const bondAllocation = 1 - stockAllocation;
 
-  // Precompute balance-independent inputs once. These are shared across every
-  // simulation run and every `calculateAnnualCashFlowCore` call within a year.
-  const stockParams = lognormalParams(stockReturn, stockStdDev);
-  const bondParams = lognormalParams(bondReturn, bondStdDev);
-  const inflationParams =
-    inflationStdDev > 0 ? lognormalParams(inflationRate, inflationStdDev) : null;
-
-  // Cholesky factors for bivariate-normal stock/bond draws. When disabled or
-  // rho=0 we fall through to the independent-draw fast path below.
-  const rho = stockBondCorrelationEnabled ? stockBondCorrelation : 0;
-  const useCorrelation = stockBondCorrelationEnabled && rho !== 0;
-  const rhoComplement = useCorrelation ? Math.sqrt(Math.max(0, 1 - rho * rho)) : 1;
-
-  // Shock sampler: standard normal by default, standardized Student's t when
-  // the scenario opts in. Standardized-t has unit variance, so stockStdDev/bondStdDev
-  // retain their meaning; fat tails come from kurtosis alone. The lognormal branch
-  // calls standardNormalRandom directly with the same cadence as before, so existing
-  // scenarios produce byte-identical results.
-  const drawShock: (r: () => number) => number =
-    returnDistribution === 'student_t'
-      ? (r) => standardizedTRandom(degreesOfFreedom, r)
-      : (r) => standardNormalRandom(r);
-
+  // Precompute balance-independent inputs once. Shared across every run.
   const stateTaxRateByYear: number[] = new Array(totalYears);
   const ageByYear: number[] = new Array(totalYears);
-  const incomeByYear: Array<{
-    ssGross: number;
-    otherTaxableGross: number;
-    afterTaxIncome: number;
-    conversionGross: number;
-  }> = new Array(totalYears);
-  const spendingByYear: Array<{
-    baseSpendingNet: number;
-    otherSpendingGoalsNet: number;
-  }> = new Array(totalYears);
+  const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
+  const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
   for (let i = 0; i < totalYears; i++) {
     const year = currentYear + i;
     stateTaxRateByYear[i] = getStateTaxRate(userData, year);
@@ -699,147 +728,43 @@ export function runSimulation(
     incomeByYear[i] = accumulateIncome(userData, year, inflationRate);
     spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
   }
+  const precomputes: Precomputes = {
+    stateTaxRateByYear, ageByYear, incomeByYear, spendingByYear,
+  };
+
+  const generator = createReturnGenerator(userData);
+  const blackSwanLookup = buildBlackSwanLookup(userData);
+  const numRuns = generator.getNumRuns();
 
   let successCount = 0;
-  const allRuns: SimRun[] = [];
-
-  for (let sim = 0; sim < numSims; sim++) {
-    const balances = initialAccountBalances(userData);
-    const path: number[] = [];
-    const stockFactors: number[] = [];
-    const bondFactors: number[] = [];
-    const breakdowns: AnnualCashFlowBreakdown[] = [];
-    let failed = false;
-    let failedYear = totalYears;
-    let cumulativeInflation = 1;
-
-    for (let i = 0; i < totalYears; i++) {
-      const year = currentYear + i;
-      const yearIncome = incomeByYear[i];
-      const yearSpending = spendingByYear[i];
-      const yearStateTaxRate = stateTaxRateByYear[i];
-      const yearAge = ageByYear[i];
-
-      const startBalance = sumBalances(balances);
-      path.push(startBalance / cumulativeInflation);
-
-      // IRS rule: RMD uses Dec 31 of prior year (beginning-of-year) balance.
-      const beginningTradBalance = sumBalancesOfType(userData.accounts, balances, 'traditional');
-
-      // 1. Growth: apply the same year factor uniformly to each bucket.
-      let sf: number;
-      let bf: number;
-      if (useCorrelation) {
-        const z1 = drawShock(random);
-        const z2 = drawShock(random);
-        sf = Math.exp(stockParams.mu + stockParams.sigma * z1);
-        bf = Math.exp(bondParams.mu + bondParams.sigma * (rho * z1 + rhoComplement * z2));
-      } else {
-        const zs = drawShock(random);
-        const zb = drawShock(random);
-        sf = Math.exp(stockParams.mu + stockParams.sigma * zs);
-        bf = Math.exp(bondParams.mu + bondParams.sigma * zb);
-      }
-      stockFactors.push(sf);
-      bondFactors.push(bf);
-      const growthFactor = stockAllocation * sf + bondAllocation * bf;
-      for (const id in balances) balances[id] *= growthFactor;
-
-      // 2. Cash flow.
-      const postGrowth = sumBalances(balances);
-      const cashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance
-      );
-
-      let effectiveCashFlow: AnnualCashFlowBreakdown;
-      const spendingExceedsIncome = cashFlow.totalSpendingNet > cashFlow.totalGrossIncome;
-      const depleting = spendingExceedsIncome && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
-      if (depleting && postGrowth <= 0) {
-        effectiveCashFlow = calculateAnnualCashFlowCore(
-          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, 0
-        );
-      } else if (depleting) {
-        effectiveCashFlow = calculateAnnualCashFlowCore(
-          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, postGrowth
-        );
-      } else {
-        effectiveCashFlow = cashFlow;
-      }
-      breakdowns.push(effectiveCashFlow);
-
-      if (depleting) {
-        if (!failed) failedYear = i;
-        failed = true;
-      }
-
-      applyCashFlow(userData, year, effectiveCashFlow, balances, inflationRate);
-      // Clamp against float drift.
-      for (const id in balances) if (balances[id] < 0) balances[id] = 0;
-
-      const yearInflation =
-        inflationParams !== null
-          ? drawFactor(inflationParams, random) - 1
-          : inflationRate;
-      cumulativeInflation *= 1 + yearInflation;
-    }
-
-    allRuns.push({ path, stockFactors, bondFactors, breakdowns, failed, failedYear });
-    if (!failed) successCount++;
+  const allRuns: SimRun[] = new Array(numRuns);
+  for (let r = 0; r < numRuns; r++) {
+    const run = simulateOneRun(userData, precomputes, generator, r, random, blackSwanLookup);
+    allRuns[r] = run;
+    if (!run.failed) successCount++;
   }
 
-  const probability = Math.round((successCount / numSims) * 100);
+  const probability = Math.round((successCount / numRuns) * 100);
 
   const sorted = [...allRuns].sort((a, b) => {
     const scoreA = a.failed ? a.failedYear : totalYears + a.path[totalYears - 1];
     const scoreB = b.failed ? b.failedYear : totalYears + b.path[totalYears - 1];
     return scoreA - scoreB;
   });
-  const medianRun = sorted[Math.floor(numSims * 0.5)];
-  const downsideRun = sorted[Math.floor(numSims * 0.1)];
+  const medianRun = sorted[Math.floor(numRuns * 0.5)];
+  const downsideRun = sorted[Math.floor(numRuns * 0.1)];
 
   const years = Array.from({ length: totalYears }, (_, i) => currentYear + i);
 
-  // Deterministic nominal path
-  const nominalBlendedReturn = stockAllocation * stockReturn + bondAllocation * bondReturn;
-  const nominal: number[] = [];
-  const nominalBreakdowns: AnnualCashFlowBreakdown[] = [];
-  {
-    const balances = initialAccountBalances(userData);
-    for (let i = 0; i < totalYears; i++) {
-      const year = currentYear + i;
-      const yearIncome = incomeByYear[i];
-      const yearSpending = spendingByYear[i];
-      const yearStateTaxRate = stateTaxRateByYear[i];
-      const yearAge = ageByYear[i];
-      const inflationFactor = Math.pow(1 + inflationRate, i);
-      nominal.push(sumBalances(balances) / inflationFactor);
-
-      const beginningTradBalance = sumBalancesOfType(userData.accounts, balances, 'traditional');
-
-      for (const id in balances) balances[id] *= 1 + nominalBlendedReturn;
-      const postGrowth = sumBalances(balances);
-      const cashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance
-      );
-      let effectiveCashFlow: AnnualCashFlowBreakdown;
-      const spendExcInc = cashFlow.totalSpendingNet > cashFlow.totalGrossIncome;
-      const depleting = spendExcInc && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
-      if (depleting && postGrowth <= 0) {
-        effectiveCashFlow = calculateAnnualCashFlowCore(
-          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, 0
-        );
-      } else if (depleting) {
-        effectiveCashFlow = calculateAnnualCashFlowCore(
-          userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, postGrowth
-        );
-      } else {
-        effectiveCashFlow = cashFlow;
-      }
-      nominalBreakdowns.push(effectiveCashFlow);
-      applyCashFlow(userData, year, effectiveCashFlow, balances, inflationRate);
-      for (const id in balances) if (balances[id] < 0) balances[id] = 0;
-    }
-  }
+  // Deterministic nominal projection: blended mean return every year, deterministic
+  // inflation. Runs through the same simulateOneRun path with a NominalGenerator —
+  // no duplicated loop body. Black-swan overlay applies here too: it's a user-defined
+  // override of what happens in a given year, so the deterministic projection should
+  // reflect it just like the stochastic runs do.
+  const nominalGenerator = createNominalGenerator(userData);
+  const nominalRun = simulateOneRun(
+    userData, precomputes, nominalGenerator, 0, random, blackSwanLookup
+  );
 
   return {
     probability,
@@ -851,8 +776,8 @@ export function runSimulation(
     downsideStockFactors: downsideRun.stockFactors,
     downsideBondFactors: downsideRun.bondFactors,
     downsideBreakdowns: downsideRun.breakdowns,
-    nominal,
-    nominalBreakdowns,
+    nominal: nominalRun.path,
+    nominalBreakdowns: nominalRun.breakdowns,
     years,
   };
 }
