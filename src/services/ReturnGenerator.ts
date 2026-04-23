@@ -247,6 +247,11 @@ export function buildBlackSwanLookup(
   return lookup;
 }
 
+// Black swan events REPLACE the drawn factor (rather than scale it), so the
+// prescribed historical return is applied consistently across every run and
+// every return distribution — a "1929 happens here" overlay, not a random
+// modifier on top of a random draw. Without replacement, a year where the base
+// draw happened to be high would dampen the crash and vice versa.
 export function applyBlackSwan(
   factors: { stockFactor: number; bondFactor: number },
   year: number,

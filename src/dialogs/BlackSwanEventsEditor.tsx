@@ -133,8 +133,8 @@ const BlackSwanEventsEditor: React.FC<Props> = ({ events, onChange, yearMin, yea
   return (
     <Wrapper>
       <HelpText>
-        Multipliers scale the simulated return for that year — e.g. a stock multiplier of 0.63
-        turns a typical +5% year into roughly &minus;34%.
+        Multipliers replace the simulated return for that year — e.g. a stock multiplier of 0.63
+        locks in a &minus;37% stock return regardless of what the base draw would have been.
       </HelpText>
 
       <AddRow>

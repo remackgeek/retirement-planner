@@ -10,6 +10,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { Accordion, AccordionTab } from 'primereact/accordion';
+import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import htmlAnnotationsPlugin, {
   type AnnotationConfig,
 } from '../../plugins/chartHtmlAnnotations';
@@ -20,6 +21,8 @@ import {
 import React, { useState, useMemo, useEffect } from 'react';
 import styled from 'styled-components';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
+import { useUIState } from '../../context/UIStateContext';
+import { toDisplay, pathToDisplay, type DisplayCurrency } from '../../utils/displayCurrency';
 
 ChartJS.register(
   CategoryScale,
@@ -140,9 +143,16 @@ function exportCsv(
   nominal: number[],
   median: number[],
   downside: number[],
+  nominalInflation: number[],
+  medianInflation: number[],
+  downsideInflation: number[],
+  breakdownInflation: number[],
   annualBreakdowns: AnnualCashFlowBreakdown[],
-  currentAge: number
+  currentAge: number,
+  displayCurrency: DisplayCurrency,
 ) {
+  const modeLabel = displayCurrency === 'real' ? "today's dollars" : 'nominal dollars';
+  const comment = `# values in ${modeLabel}`;
   const header = [
     'Age', 'Year',
     'Deterministic Portfolio ($)', 'Median Portfolio ($)', 'Downside Portfolio ($)',
@@ -157,34 +167,35 @@ function exportCsv(
 
   const rows = years.map((year, i) => {
     const bd = annualBreakdowns[i];
+    const bdF = breakdownInflation[i] ?? 1;
     return [
       currentAge + i,
       year,
-      Math.round(nominal[i] ?? 0),
-      Math.round(median[i] ?? 0),
-      Math.round(downside[i] ?? 0),
-      Math.round(bd.ssGross),
-      Math.round(bd.otherTaxableGross),
-      Math.round(bd.afterTaxIncome),
-      Math.round(bd.totalGrossIncome),
-      Math.round(bd.baseSpendingNet),
-      Math.round(bd.otherSpendingGoalsNet),
-      Math.round(bd.totalSpendingNet),
-      Math.round(bd.totalTax),
-      Math.round(bd.ordinaryTax),
-      Math.round(bd.capitalGainsTax),
-      Math.round(bd.portfolioWithdrawal),
-      Math.round(bd.withdrawalFromTaxable),
-      Math.round(bd.withdrawalFromTraditional),
-      Math.round(bd.withdrawalFromRoth),
-      Math.round(bd.rmdRequired),
-      Math.round(bd.rmdExcess),
-      Math.round(bd.rothConversionGross),
-      Math.round(bd.netCashFlow),
+      Math.round(pathToDisplay(nominal[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)),
+      Math.round(pathToDisplay(median[i] ?? 0, medianInflation[i] ?? 1, displayCurrency)),
+      Math.round(pathToDisplay(downside[i] ?? 0, downsideInflation[i] ?? 1, displayCurrency)),
+      Math.round(toDisplay(bd.ssGross, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.otherTaxableGross, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.afterTaxIncome, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.totalGrossIncome, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.baseSpendingNet, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.otherSpendingGoalsNet, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.totalSpendingNet, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.totalTax, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.ordinaryTax, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.capitalGainsTax, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.portfolioWithdrawal, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.withdrawalFromTaxable, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.withdrawalFromTraditional, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.withdrawalFromRoth, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.rmdRequired, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.rmdExcess, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.rothConversionGross, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.netCashFlow, bdF, displayCurrency)),
     ].join(',');
   });
 
-  const csv = [header, ...rows].join('\n');
+  const csv = [comment, header, ...rows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -206,7 +217,10 @@ const Projections = ({
     probability, median, downside, nominal, nominalBreakdowns, years,
     medianStockFactors, medianBondFactors, medianBreakdowns,
     downsideStockFactors, downsideBondFactors, downsideBreakdowns,
+    medianInflation, downsideInflation, nominalInflation,
   } = results;
+
+  const { displayCurrency, setDisplayCurrency } = useUIState();
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [view, setView] = useState<ViewMode>('median');
@@ -227,6 +241,8 @@ const Projections = ({
   );
 
   const chartData = useMemo(() => {
+    const toDisplayPath = (path: number[], infArr: number[]) =>
+      path.map((v, i) => pathToDisplay(v, infArr[i] ?? 1, displayCurrency));
     const makeDataset = (label: string, mode: ViewMode, data: number[]) => ({
       label,
       data,
@@ -238,12 +254,12 @@ const Projections = ({
     return {
       labels,
       datasets: [
-        makeDataset('Median', 'median', median),
-        makeDataset('Deterministic', 'nominal', nominal),
-        makeDataset('Downside (10th percentile)', 'downside', downside),
+        makeDataset('Median', 'median', toDisplayPath(median, medianInflation)),
+        makeDataset('Deterministic', 'nominal', toDisplayPath(nominal, nominalInflation)),
+        makeDataset('Downside (10th percentile)', 'downside', toDisplayPath(downside, downsideInflation)),
       ],
     };
-  }, [labels, median, nominal, downside, view]);
+  }, [labels, median, nominal, downside, medianInflation, nominalInflation, downsideInflation, displayCurrency, view]);
 
   // Group income events / spending goals by their start year once, then iterate
   // years to build the annotation list. Avoids N × M filter passes per render.
@@ -305,7 +321,7 @@ const Projections = ({
       },
       title: {
         display: true,
-        text: "Projected Portfolio Value (Today's Dollars)",
+        text: `Projected Portfolio Value (${displayCurrency === 'real' ? "Today's" : 'Nominal'} Dollars)`,
         font: { size: isMobile ? 11 : 13 },
       },
       htmlAnnotations: {
@@ -335,7 +351,7 @@ const Projections = ({
         },
       },
     },
-  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years]);
+  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years, displayCurrency]);
 
 
   return (
@@ -347,6 +363,48 @@ const Projections = ({
           <YearlyDataHeader>
             <span>Yearly Data</span>
             <YearlyDataControls>
+              <PrimeTooltip
+                target=".currency-toggle-group"
+                position="bottom"
+                showDelay={150}
+              >
+                <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                  <div style={{ marginBottom: spacing.xs }}>
+                    <strong>Today's Dollars</strong>: Values adjusted for inflation (what your money can actually buy today).
+                  </div>
+                  <div>
+                    <strong>Nominal Dollars</strong>: Raw future dollar amounts with no inflation adjustment.
+                  </div>
+                </div>
+              </PrimeTooltip>
+              <span
+                className="currency-toggle-group"
+                style={{ display: 'flex', alignItems: 'center', gap: spacing.xs }}
+                onClick={e => e.stopPropagation()}
+              >
+                {(['real', 'nominal'] as DisplayCurrency[]).map(mode => {
+                  const active = displayCurrency === mode;
+                  return (
+                    <ViewLabel
+                      key={mode}
+                      $active={active}
+                      $color={colors.primary}
+                    >
+                      <input
+                        type="radio"
+                        name="displayCurrency"
+                        value={mode}
+                        checked={active}
+                        onChange={() => setDisplayCurrency(mode)}
+                        style={{ accentColor: colors.primary, margin: 0 }}
+                      />
+                      <span className="label-full">{mode === 'real' ? "Today's $" : 'Nominal $'}</span>
+                      <span className="label-short">{mode === 'real' ? "Today" : 'Nom'}</span>
+                    </ViewLabel>
+                  );
+                })}
+              </span>
+              <span style={{ color: colors.borderMedium }}>|</span>
               {(['median', 'nominal', 'downside'] as ViewMode[]).map(mode => (
                 <ViewLabel
                   key={mode}
@@ -369,9 +427,16 @@ const Projections = ({
               <button
                 onClick={e => {
                   e.stopPropagation();
-                  exportCsv(userData.name ?? 'scenario', years, nominal, median, downside,
-                    view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns,
-                    userData.currentAge);
+                  const bdInflation = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
+                  const bdBreakdowns = view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns;
+                  exportCsv(
+                    userData.name ?? 'scenario',
+                    years, nominal, median, downside,
+                    nominalInflation, medianInflation, downsideInflation,
+                    bdInflation, bdBreakdowns,
+                    userData.currentAge,
+                    displayCurrency,
+                  );
                 }}
                 style={{
                   marginLeft: spacing.sm,
@@ -398,7 +463,7 @@ const Projections = ({
               <thead>
                 <tr>
                   <td colSpan={6} style={{ padding: `${spacing.xs} ${spacing.sm} 0`, fontSize: fontSize.xs, color: colors.textMuted, textAlign: 'right', border: 'none' }}>
-                    All values in today's dollars
+                    All values in {displayCurrency === 'real' ? "today's" : 'nominal'} dollars
                   </td>
                 </tr>
                 <tr style={{ backgroundColor: colors.bgMedium }}>
@@ -427,15 +492,21 @@ const Projections = ({
                   const age = userData.currentAge + index;
                   const breakdown = (view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns)[index];
                   const selectedPath = view === 'median' ? median : view === 'nominal' ? nominal : downside;
+                  const selectedInflation: number[] = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
 
-                  // All display values in today's dollars
-                  const inflationFactor = Math.pow(1 + userData.inflationRate, index);
-                  const realIncome = breakdown.totalGrossIncome / inflationFactor;
-                  const realSpending = breakdown.totalSpendingNet / inflationFactor;
-                  const realTax = breakdown.totalTax / inflationFactor;
-                  // Cash Flow = total real delta: Portfolio[next] - Portfolio[current]
-                  const portfolio = selectedPath[index] ?? 0;
-                  const nextPortfolio = index < years.length - 1 ? (selectedPath[index + 1] ?? 0) : null;
+                  // Inflation factor for the selected path at this year. Drives both
+                  // portfolio (real → display) and breakdown (nominal → display) conversion.
+                  const pathFactor = selectedInflation[index] ?? 1;
+                  const nextPathFactor = index < years.length - 1 ? (selectedInflation[index + 1] ?? pathFactor) : pathFactor;
+
+                  const dispIncome = toDisplay(breakdown.totalGrossIncome, pathFactor, displayCurrency);
+                  const dispSpending = toDisplay(breakdown.totalSpendingNet, pathFactor, displayCurrency);
+                  const dispTax = toDisplay(breakdown.totalTax, pathFactor, displayCurrency);
+                  // Portfolio values in display currency
+                  const portfolio = pathToDisplay(selectedPath[index] ?? 0, pathFactor, displayCurrency);
+                  const nextPortfolio = index < years.length - 1
+                    ? pathToDisplay(selectedPath[index + 1] ?? 0, nextPathFactor, displayCurrency)
+                    : null;
                   const cashFlow = nextPortfolio !== null ? nextPortfolio - portfolio : null;
 
                   const startingEvents = userData.incomeEvents.filter(
@@ -504,7 +575,7 @@ const Projections = ({
                             )}
                           </div>
                         )}
-                        {fmt(realIncome)}
+                        {fmt(dispIncome)}
                       </td>
                       <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                         {startingGoals.length > 0 && (
@@ -514,10 +585,10 @@ const Projections = ({
                             )}
                           </div>
                         )}
-                        {realSpending > 0 ? `-${fmt(realSpending)}` : fmt(realSpending)}
+                        {dispSpending > 0 ? `-${fmt(dispSpending)}` : fmt(dispSpending)}
                       </td>
                       <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
-                        {realTax > 0 ? `-${fmt(realTax)}` : fmt(realTax)}
+                        {dispTax > 0 ? `-${fmt(dispTax)}` : fmt(dispTax)}
                       </td>
                       <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                         {cashFlow !== null ? fmt(cashFlow) : '—'}
@@ -540,32 +611,39 @@ const Projections = ({
                         bondFactor = downsideBondFactors?.[index] ?? (1 + bondReturn);
                       }
 
-                      // Growth computed on displayed start balance (today's $) — correct since growth happens first
+                      // Growth computed on displayed start balance — works for both modes since
+                      // `portfolio` is already in display currency.
                       const startBalance = portfolio;
                       const stockGain = startBalance * stockAllocation * (stockFactor - 1);
                       const bondGain  = startBalance * bondAllocation  * (bondFactor  - 1);
                       const netGrowth = stockGain + bondGain;
 
-                      // All breakdown items deflated to today's $
-                      const realSS = breakdown.ssGross / inflationFactor;
-                      const realOtherTaxable = breakdown.otherTaxableGross / inflationFactor;
-                      const realAfterTax = breakdown.afterTaxIncome / inflationFactor;
-                      const realSSTaxable = breakdown.ssTaxableAmount / inflationFactor;
-                      const realBaseSpending = breakdown.baseSpendingNet / inflationFactor;
-                      const realGoalSpending = breakdown.otherSpendingGoalsNet / inflationFactor;
-                      const realWithdrawal = breakdown.portfolioWithdrawal / inflationFactor;
+                      // Breakdown items in display currency
+                      const dispSS = toDisplay(breakdown.ssGross, pathFactor, displayCurrency);
+                      const dispOtherTaxable = toDisplay(breakdown.otherTaxableGross, pathFactor, displayCurrency);
+                      const dispAfterTax = toDisplay(breakdown.afterTaxIncome, pathFactor, displayCurrency);
+                      const dispSSTaxable = toDisplay(breakdown.ssTaxableAmount, pathFactor, displayCurrency);
+                      const dispBaseSpending = toDisplay(breakdown.baseSpendingNet, pathFactor, displayCurrency);
+                      const dispGoalSpending = toDisplay(breakdown.otherSpendingGoalsNet, pathFactor, displayCurrency);
+                      const dispWithdrawal = toDisplay(breakdown.portfolioWithdrawal, pathFactor, displayCurrency);
 
-                      // Inflation adjustment = residual that makes everything balance
+                      // Inflation adjustment = residual that makes the real-mode accounting balance.
+                      // In nominal mode this collapses to ~0 and is suppressed.
                       const inflationAdj = cashFlow !== null
-                        ? cashFlow - netGrowth - realIncome + realSpending + realTax
+                        ? cashFlow - netGrowth - dispIncome + dispSpending + dispTax
                         : 0;
 
                       const fmtPct = (f: number) => `${((f - 1) * 100).toFixed(1)}%`;
                       const fmtSigned = (v: number) => `${v >= 0 ? '+' : '-'}$${fmt(Math.abs(v))}`;
 
-                      // Shortfall detection
-                      const nominalWithdrawal = nominalBreakdowns[index].portfolioWithdrawal / inflationFactor;
-                      const shortfall = nominalWithdrawal - realWithdrawal;
+                      // Shortfall detection: compare planned (deterministic) vs actual withdrawal
+                      // for the selected run, both in display currency.
+                      const plannedWithdrawal = toDisplay(
+                        nominalBreakdowns[index].portfolioWithdrawal,
+                        pathFactor,
+                        displayCurrency,
+                      );
+                      const shortfall = plannedWithdrawal - dispWithdrawal;
 
                       const categoryStyle = { fontWeight: 'bold' as const, display: 'flex', justifyContent: 'space-between', padding: `${spacing.xs} 0` };
                       const itemStyle = { display: 'flex', justifyContent: 'space-between', paddingLeft: '1.5rem', color: colors.textSecondary };
@@ -595,90 +673,90 @@ const Projections = ({
                               </div>
 
                               {/* Income */}
-                              {realIncome > 0 && (
+                              {dispIncome > 0 && (
                                 <>
                                   <div style={{ ...categoryStyle, color: colors.income }}>
                                     <span>Income</span>
-                                    <span>{fmtSigned(realIncome)}</span>
+                                    <span>{fmtSigned(dispIncome)}</span>
                                   </div>
-                                  {realSS > 0 && (
+                                  {dispSS > 0 && (
                                     <>
                                       <div style={itemStyle}>
                                         <span>Social Security</span>
-                                        <span>${fmt(realSS)}</span>
+                                        <span>${fmt(dispSS)}</span>
                                       </div>
-                                      {realSSTaxable > 0 && (
+                                      {dispSSTaxable > 0 && (
                                         <div style={noteStyle}>
-                                          Taxable portion: ${fmt(realSSTaxable)}
+                                          Taxable portion: ${fmt(dispSSTaxable)}
                                         </div>
                                       )}
                                     </>
                                   )}
-                                  {realOtherTaxable > 0 && (
+                                  {dispOtherTaxable > 0 && (
                                     <div style={itemStyle}>
                                       <span>Other Taxable</span>
-                                      <span>${fmt(realOtherTaxable)}</span>
+                                      <span>${fmt(dispOtherTaxable)}</span>
                                     </div>
                                   )}
-                                  {realAfterTax > 0 && (
+                                  {dispAfterTax > 0 && (
                                     <div style={itemStyle}>
                                       <span>After-Tax</span>
-                                      <span>${fmt(realAfterTax)}</span>
+                                      <span>${fmt(dispAfterTax)}</span>
                                     </div>
                                   )}
                                 </>
                               )}
 
                               {/* Spending */}
-                              {realSpending > 0 && (
+                              {dispSpending > 0 && (
                                 <>
                                   <div style={{ ...categoryStyle, color: colors.spending }}>
                                     <span>Spending</span>
-                                    <span>-${fmt(realSpending)}</span>
+                                    <span>-${fmt(dispSpending)}</span>
                                   </div>
-                                  {realBaseSpending > 0 && (
+                                  {dispBaseSpending > 0 && (
                                     <div style={itemStyle}>
                                       <span>Living Expenses</span>
-                                      <span>${fmt(realBaseSpending)}</span>
+                                      <span>${fmt(dispBaseSpending)}</span>
                                     </div>
                                   )}
-                                  {realGoalSpending > 0 && (
+                                  {dispGoalSpending > 0 && (
                                     <div style={itemStyle}>
                                       <span>Goals</span>
-                                      <span>${fmt(realGoalSpending)}</span>
+                                      <span>${fmt(dispGoalSpending)}</span>
                                     </div>
                                   )}
                                 </>
                               )}
 
                               {/* Taxes */}
-                              {realTax > 0 && (() => {
-                                const realOrdinaryTax = breakdown.ordinaryTax / inflationFactor;
-                                const realCapGainsTax = breakdown.capitalGainsTax / inflationFactor;
+                              {dispTax > 0 && (() => {
+                                const dispOrdinaryTax = toDisplay(breakdown.ordinaryTax, pathFactor, displayCurrency);
+                                const dispCapGainsTax = toDisplay(breakdown.capitalGainsTax, pathFactor, displayCurrency);
                                 return (
                                   <>
                                     <div style={categoryStyle}>
                                       <span>Taxes</span>
-                                      <span>-${fmt(realTax)}</span>
+                                      <span>-${fmt(dispTax)}</span>
                                     </div>
-                                    {realOrdinaryTax > 0.5 && (
+                                    {dispOrdinaryTax > 0.5 && (
                                       <div style={itemStyle}>
                                         <span>Ordinary Income</span>
-                                        <span>${fmt(realOrdinaryTax)}</span>
+                                        <span>${fmt(dispOrdinaryTax)}</span>
                                       </div>
                                     )}
-                                    {realCapGainsTax > 0.5 && (
+                                    {dispCapGainsTax > 0.5 && (
                                       <div style={itemStyle}>
                                         <span>Capital Gains</span>
-                                        <span>${fmt(realCapGainsTax)}</span>
+                                        <span>${fmt(dispCapGainsTax)}</span>
                                       </div>
                                     )}
                                   </>
                                 );
                               })()}
 
-                              {/* Inflation Adjustment */}
-                              {Math.abs(inflationAdj) > 0.5 && (
+                              {/* Inflation Adjustment — real mode only */}
+                              {displayCurrency === 'real' && Math.abs(inflationAdj) > 0.5 && (
                                 <div style={categoryStyle}>
                                   <span>Inflation Adjustment</span>
                                   <span>{fmtSigned(inflationAdj)}</span>
@@ -694,25 +772,25 @@ const Projections = ({
                               </div>
 
                               {/* Portfolio withdrawal breakdown */}
-                              {realWithdrawal > 0 && (
+                              {dispWithdrawal > 0 && (
                                 <>
                                 <div style={{ color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'right', paddingTop: spacing.xs }}>
-                                  Portfolio withdrawal: ${fmt(realWithdrawal)}
+                                  Portfolio withdrawal: ${fmt(dispWithdrawal)}
                                 </div>
                                 {(() => {
-                                  const realFromTaxable = breakdown.withdrawalFromTaxable / inflationFactor;
-                                  const realFromTrad = breakdown.withdrawalFromTraditional / inflationFactor;
-                                  const realFromRoth = breakdown.withdrawalFromRoth / inflationFactor;
+                                  const dispFromTaxable = toDisplay(breakdown.withdrawalFromTaxable, pathFactor, displayCurrency);
+                                  const dispFromTrad = toDisplay(breakdown.withdrawalFromTraditional, pathFactor, displayCurrency);
+                                  const dispFromRoth = toDisplay(breakdown.withdrawalFromRoth, pathFactor, displayCurrency);
                                   return (
                                     <>
-                                      {realFromTaxable > 0.5 && (
-                                        <div style={noteStyle}>Taxable: ${fmt(realFromTaxable)}</div>
+                                      {dispFromTaxable > 0.5 && (
+                                        <div style={noteStyle}>Taxable: ${fmt(dispFromTaxable)}</div>
                                       )}
-                                      {realFromTrad > 0.5 && (
-                                        <div style={noteStyle}>Traditional: ${fmt(realFromTrad)}</div>
+                                      {dispFromTrad > 0.5 && (
+                                        <div style={noteStyle}>Traditional: ${fmt(dispFromTrad)}</div>
                                       )}
-                                      {realFromRoth > 0.5 && (
-                                        <div style={noteStyle}>Roth: ${fmt(realFromRoth)}</div>
+                                      {dispFromRoth > 0.5 && (
+                                        <div style={noteStyle}>Roth: ${fmt(dispFromRoth)}</div>
                                       )}
                                     </>
                                   );
@@ -721,25 +799,25 @@ const Projections = ({
                               )}
                               {/* RMD */}
                               {breakdown.rmdRequired > 0.5 && (() => {
-                                const realRmdRequired = breakdown.rmdRequired / inflationFactor;
-                                const realRmdExcess = breakdown.rmdExcess / inflationFactor;
+                                const dispRmdRequired = toDisplay(breakdown.rmdRequired, pathFactor, displayCurrency);
+                                const dispRmdExcess = toDisplay(breakdown.rmdExcess, pathFactor, displayCurrency);
                                 return (
                                   <>
                                     <div style={{ color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'right', paddingTop: spacing.xs }}>
-                                      RMD required: ${fmt(realRmdRequired)}
+                                      RMD required: ${fmt(dispRmdRequired)}
                                     </div>
-                                    {realRmdExcess > 0.5 && (
-                                      <div style={noteStyle}>Reinvested to Taxable: ${fmt(realRmdExcess)}</div>
+                                    {dispRmdExcess > 0.5 && (
+                                      <div style={noteStyle}>Reinvested to Taxable: ${fmt(dispRmdExcess)}</div>
                                     )}
                                   </>
                                 );
                               })()}
                               {/* Roth Conversion */}
                               {breakdown.rothConversionGross > 0.5 && (() => {
-                                const realConv = breakdown.rothConversionGross / inflationFactor;
+                                const dispConv = toDisplay(breakdown.rothConversionGross, pathFactor, displayCurrency);
                                 return (
                                   <div style={{ color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'right', paddingTop: spacing.xs }}>
-                                    Roth conversion: ${fmt(realConv)} <span style={{ color: colors.textMuted }}>(Trad → Roth)</span>
+                                    Roth conversion: ${fmt(dispConv)} <span style={{ color: colors.textMuted }}>(Trad → Roth)</span>
                                   </div>
                                 );
                               })()}

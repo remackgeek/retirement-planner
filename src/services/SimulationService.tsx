@@ -587,6 +587,7 @@ interface SimRun {
   stockFactors: number[];
   bondFactors: number[];
   breakdowns: AnnualCashFlowBreakdown[];
+  inflation: number[];
   failed: boolean;
   failedYear: number;
 }
@@ -631,6 +632,7 @@ function simulateOneRun(
   const stockFactors: number[] = [];
   const bondFactors: number[] = [];
   const breakdowns: AnnualCashFlowBreakdown[] = [];
+  const inflation: number[] = [];
   let failed = false;
   let failedYear = totalYears;
   let cumulativeInflation = 1;
@@ -644,6 +646,7 @@ function simulateOneRun(
 
     const startBalance = sumBalances(balances);
     path.push(startBalance / cumulativeInflation);
+    inflation.push(cumulativeInflation);
 
     // IRS rule: RMD uses Dec 31 of prior year (beginning-of-year) balance.
     const beginningTradBalance = sumBalancesOfType(userData.accounts, balances, 'traditional');
@@ -691,7 +694,7 @@ function simulateOneRun(
     cumulativeInflation *= 1 + yearInflation;
   }
 
-  return { path, stockFactors, bondFactors, breakdowns, failed, failedYear };
+  return { path, stockFactors, bondFactors, breakdowns, inflation, failed, failedYear };
 }
 
 export function runSimulation(
@@ -703,12 +706,15 @@ export function runSimulation(
   medianStockFactors: number[];
   medianBondFactors: number[];
   medianBreakdowns: AnnualCashFlowBreakdown[];
+  medianInflation: number[];
   downside: number[];
   downsideStockFactors: number[];
   downsideBondFactors: number[];
   downsideBreakdowns: AnnualCashFlowBreakdown[];
+  downsideInflation: number[];
   nominal: number[];
   nominalBreakdowns: AnnualCashFlowBreakdown[];
+  nominalInflation: number[];
   years: number[];
 } {
   const userData = ensureRothConversionAccount(ensureRMDReinvestmentAccount(rawUserData));
@@ -772,12 +778,15 @@ export function runSimulation(
     medianStockFactors: medianRun.stockFactors,
     medianBondFactors: medianRun.bondFactors,
     medianBreakdowns: medianRun.breakdowns,
+    medianInflation: medianRun.inflation,
     downside: downsideRun.path,
     downsideStockFactors: downsideRun.stockFactors,
     downsideBondFactors: downsideRun.bondFactors,
     downsideBreakdowns: downsideRun.breakdowns,
+    downsideInflation: downsideRun.inflation,
     nominal: nominalRun.path,
     nominalBreakdowns: nominalRun.breakdowns,
+    nominalInflation: nominalRun.inflation,
     years,
   };
 }

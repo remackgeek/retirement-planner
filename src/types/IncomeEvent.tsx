@@ -40,7 +40,7 @@ export type ReturnModel = 'parametric' | 'historical_single' | 'historical_rolli
 
 export interface BlackSwanEvent {
   year: number;
-  stockMultiplier: number; // e.g. 0.60 applied to drawn stock factor ⇒ -40% overlay
+  stockMultiplier: number; // replaces the drawn stock factor, e.g. 0.60 ⇒ -40% stock return
   bondMultiplier: number;
 }
 

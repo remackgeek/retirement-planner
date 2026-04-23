@@ -6,11 +6,14 @@ import 'primereact/resources/primereact.min.css'
 import 'primeicons/primeicons.css'
 import App from './App.tsx'
 import { RetirementProvider } from './context/RetirementContext'
+import { UIStateProvider } from './context/UIStateContext'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <RetirementProvider>
-      <App />
+      <UIStateProvider>
+        <App />
+      </UIStateProvider>
     </RetirementProvider>
   </StrictMode>,
 )
