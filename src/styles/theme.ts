@@ -44,7 +44,7 @@ const palette = {
   red700:  '#dc2626',
 
   // Black swan shading (semi-transparent red band on chart)
-  red500Alpha15: 'rgba(220, 38, 38, 0.15)',
+  red500Alpha08: 'rgba(220, 38, 38, 0.08)',
 
   // Greens
   green600: '#008000',
@@ -112,7 +112,7 @@ export const colors = {
   chartDownside: palette.sienna500,
 
   // Black swan event shading (semi-transparent vertical band)
-  blackSwanShade: palette.red500Alpha15,
+  blackSwanShade: palette.red500Alpha08,
 
   // Shadows & overlays (used in annotations and dialog hover states)
   shadowLight:  palette.black10,
