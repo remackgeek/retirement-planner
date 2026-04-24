@@ -8,6 +8,7 @@ import RothConversionDialog from '../dialogs/RothConversionDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import type { Account } from '../types/Account';
 import { spacing, colors, border, fontSize } from '../styles/theme';
+import { ManagerRow, SlatList, AddButton } from './ManagerRow';
 
 const Container = styled.div``;
 
@@ -21,51 +22,13 @@ const Header = styled.div`
   }
 `;
 
-const EventItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: ${spacing.sm};
-  border: ${border.standard};
-  margin-bottom: ${spacing.sm};
+const ConversionChip = styled.span`
+  padding: 0 ${spacing.xs};
+  background: ${colors.chipBg};
+  color: ${colors.textSecondary};
   border-radius: ${border.radius};
-`;
-
-const EventInfo = styled.div`
-  flex: 1;
-`;
-
-const Actions = styled.div`
-  display: flex;
-  gap: ${spacing.xs};
-  align-self: flex-end;
-`;
-
-const Button = styled.button`
-  padding: ${spacing.xs} ${spacing.sm};
-  border: none;
-  border-radius: ${border.radius};
-  cursor: pointer;
-  background: ${colors.primary};
-  color: white;
-  font-size: ${fontSize.sm};
-
-  &:hover {
-    background: ${colors.primaryHover};
-  }
-`;
-
-const LargeButton = styled(Button)`
-  padding: ${spacing.sm} ${spacing.lg};
-  font-size: ${fontSize.xl};
-`;
-
-const DeleteButton = styled(Button)`
-  background: ${colors.danger};
-
-  &:hover {
-    background: ${colors.dangerHover};
-  }
+  font-size: ${fontSize.xs};
+  font-weight: normal;
 `;
 
 const eventTypeSymbols: Record<IncomeEventType, string> = {
@@ -129,86 +92,56 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
   return (
     <Container>
       <Header>
-        <h3>Income Events</h3>
-        <LargeButton onClick={() => setSelectionDialogVisible(true)}>
-          Add Event
-        </LargeButton>
+        <h3>Income</h3>
+        <AddButton onClick={() => setSelectionDialogVisible(true)}>
+          Add
+        </AddButton>
       </Header>
 
-      {[...events]
-        .sort((a, b) => {
-          const aAge = (a.owner === 'spouse' && userData.spouseAge !== null) ? userData.spouseAge : userData.currentAge;
-          const bAge = (b.owner === 'spouse' && userData.spouseAge !== null) ? userData.spouseAge : userData.currentAge;
-          const aStartYear = userData.referenceYear + (a.startAge - aAge);
-          const bStartYear = userData.referenceYear + (b.startAge - bAge);
-          return aStartYear - bStartYear;
-        })
-        .map((event) => (
-          <EventItem key={event.id}>
-            <EventInfo>
-              <div style={{ marginBottom: spacing.xs }}>
-                <strong>
-                  <span
-                    style={{
-                      marginRight: spacing.xs,
-                      color: colors.income,
-                      backgroundColor: colors.incomeBg,
-                      borderRadius: border.radiusCircle,
-                      padding: spacing.xs,
-                      fontSize: fontSize.md,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '1.5rem',
-                      height: '1.5rem',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    {eventTypeSymbols[event.type]}
-                  </span>
-                  {event.name}
-                  {event.type === 'roth_conversion' && (
-                    <span
-                      style={{
-                        marginLeft: spacing.xs,
-                        padding: `0 ${spacing.xs}`,
-                        backgroundColor: colors.chipBg,
-                        color: colors.textSecondary,
-                        borderRadius: border.radius,
-                        fontSize: fontSize.xs,
-                        fontWeight: 'normal',
-                      }}
-                    >
-                      Conversion
-                    </span>
-                  )}
-                </strong>
-              </div>
-              ${event.amount.toLocaleString()}
-              {event.isOneTime
-                ? ' one-time at age '
-                : ' annually starting at age '}
-              {event.startAge}
-              {event.endAge && !event.isOneTime && ` until age ${event.endAge}`}
-              {event.isOneTime && ' (one-time event)'}
-              <br />
-              {event.type === 'social_security'
-                ? (event.ssAmountBasis === 'future' ? 'Future dollars' : "Today's dollars")
-                : event.type === 'roth_conversion'
-                ? <>Trad → Roth • {event.colaType === 'fixed' ? 'Fixed amount' : 'Inflation adjusted'}</>
-                : <>
-                    {event.taxStatus === 'before_tax' ? 'Before tax' : 'After tax'} •{' '}
-                    {event.colaType === 'fixed' ? 'Fixed amount' : 'Inflation adjusted'}
-                  </>}
-            </EventInfo>
-            <Actions>
-              <Button onClick={() => startEdit(event)}>Edit</Button>
-              <DeleteButton onClick={() => onDelete(event.id)}>
-                Delete
-              </DeleteButton>
-            </Actions>
-          </EventItem>
-        ))}
+      <SlatList>
+        {[...events]
+          .sort((a, b) => {
+            const aAge = (a.owner === 'spouse' && userData.spouseAge !== null) ? userData.spouseAge : userData.currentAge;
+            const bAge = (b.owner === 'spouse' && userData.spouseAge !== null) ? userData.spouseAge : userData.currentAge;
+            const aStartYear = userData.referenceYear + (a.startAge - aAge);
+            const bStartYear = userData.referenceYear + (b.startAge - bAge);
+            return aStartYear - bStartYear;
+          })
+          .map((event) => (
+            <ManagerRow
+              key={event.id}
+              icon={eventTypeSymbols[event.type]}
+              iconBg={colors.incomeBg}
+              iconColor={colors.income}
+              name={event.name}
+              badge={event.type === 'roth_conversion' && (
+                <ConversionChip>Conversion</ConversionChip>
+              )}
+              secondary={
+                <>
+                  <div>
+                    ${event.amount.toLocaleString()}
+                    {event.isOneTime
+                      ? ' one-time at age '
+                      : ' annually starting at age '}
+                    {event.startAge}
+                    {event.endAge && !event.isOneTime && ` until age ${event.endAge}`}
+                    {event.isOneTime && ' (one-time event)'}
+                  </div>
+                  <div>
+                    {event.type === 'social_security'
+                      ? (event.ssAmountBasis === 'future' ? 'Future dollars' : "Today's dollars")
+                      : event.type === 'roth_conversion'
+                      ? `Trad → Roth • ${event.colaType === 'fixed' ? 'Fixed amount' : 'Inflation adjusted'}`
+                      : `${event.taxStatus === 'before_tax' ? 'Before tax' : 'After tax'} • ${event.colaType === 'fixed' ? 'Fixed amount' : 'Inflation adjusted'}`}
+                  </div>
+                </>
+              }
+              onEdit={() => startEdit(event)}
+              onDelete={() => onDelete(event.id)}
+            />
+          ))}
+      </SlatList>
 
       <EventTypeSelectionDialog
         visible={selectionDialogVisible}

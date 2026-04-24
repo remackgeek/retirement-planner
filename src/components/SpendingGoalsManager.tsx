@@ -4,7 +4,9 @@ import SpendingGoalTypeSelectionDialog from '../dialogs/SpendingGoalTypeSelectio
 import SpendingGoalDialog from '../dialogs/SpendingGoalDialog';
 import HomePurchaseDialog from '../dialogs/HomePurchaseDialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
-import { spacing, colors, border, fontSize } from '../styles/theme';
+import { spacing, colors } from '../styles/theme';
+import { goalTypeIcons } from '../utils/defaultName';
+import { ManagerRow, SlatList, AddButton } from './ManagerRow';
 
 const Container = styled.div``;
 
@@ -17,67 +19,6 @@ const Header = styled.div`
     margin: 0;
   }
 `;
-
-const GoalItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: ${spacing.sm};
-  border: ${border.standard};
-  margin-bottom: ${spacing.sm};
-  border-radius: ${border.radius};
-`;
-
-const GoalInfo = styled.div`
-  flex: 1;
-`;
-
-const Actions = styled.div`
-  display: flex;
-  gap: ${spacing.xs};
-  align-self: flex-end;
-`;
-
-const Button = styled.button`
-  padding: ${spacing.xs} ${spacing.sm};
-  border: none;
-  border-radius: ${border.radius};
-  cursor: pointer;
-  background: ${colors.primary};
-  color: white;
-  font-size: ${fontSize.sm};
-
-  &:hover {
-    background: ${colors.primaryHover};
-  }
-`;
-
-const LargeButton = styled(Button)`
-  padding: ${spacing.sm} ${spacing.lg};
-  font-size: ${fontSize.xl};
-`;
-
-const DeleteButton = styled(Button)`
-  background: ${colors.danger};
-
-  &:hover {
-    background: ${colors.dangerHover};
-  }
-`;
-
-const goalTypeIcons: Record<SpendingGoal['type'], string> = {
-  living_expenses: 'pi pi-dollar',
-  charity: 'pi pi-heart',
-  dependent_support: 'pi pi-users',
-  healthcare: 'pi pi-heart-fill',
-  home_purchase: 'pi pi-home',
-  education: 'pi pi-book',
-  renovation: 'pi pi-wrench',
-  vacation: 'pi pi-plane',
-  vehicle: 'pi pi-car',
-  wedding: 'pi pi-heart',
-  other: 'pi pi-circle',
-};
 
 interface SpendingGoalsManagerProps {
   goals: SpendingGoal[];
@@ -125,78 +66,58 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
   return (
     <Container>
       <Header>
-        <h3>Spending Goals</h3>
-        <LargeButton onClick={() => setSelectionDialogVisible(true)}>
-          Add Goal
-        </LargeButton>
+        <h3>Spending</h3>
+        <AddButton onClick={() => setSelectionDialogVisible(true)}>
+          Add
+        </AddButton>
       </Header>
 
-      {[...goals]
-        .sort((a, b) => a.startAge - b.startAge)
-        .map((goal) => (
-          <GoalItem key={goal.id}>
-            <GoalInfo>
-              <div style={{ marginBottom: spacing.xs }}>
-                <strong>
-                  <span
-                    style={{
-                      marginRight: spacing.xs,
-                      color: colors.spending,
-                      backgroundColor: colors.spendingBg,
-                      borderRadius: border.radiusCircle,
-                      padding: spacing.xs,
-                      fontSize: fontSize.md,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '1.5rem',
-                      height: '1.5rem',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    <i className={goalTypeIcons[goal.type]} />
-                  </span>
-                  {goal.name}
-                </strong>
-              </div>
-              {goal.type === 'home_purchase' ? (
-                <>
-                  ${goal.amount.toLocaleString()}{' '}
-                  {goal.amountType === 'down_payment' ? 'down payment' : 'full purchase'}{' '}
-                  at age {goal.startAge}
-                  {goal.inflationAdjusted && ' (today\'s dollars)'}
-                </>
-              ) : goal.type === 'living_expenses' ? (
-                <>
-                  {(goal.amountPeriod ?? 'monthly') === 'monthly'
-                    ? `$${Math.round(goal.amount / 12).toLocaleString()}/mo`
-                    : `$${goal.amount.toLocaleString()}/yr`}
-                  {' '}starting at age {goal.startAge}
-                  {goal.endAge && ` until age ${goal.endAge}`}
-                  {goal.inflationAdjusted && ' (inflation adjusted)'}
-                  {goal.yearlyDecreasePercent != null && goal.yearlyDecreasePercent > 0 && ` (-${goal.yearlyDecreasePercent}%/yr)`}
-                </>
-              ) : (
-                <>
-                  ${goal.amount.toLocaleString()}
-                  {goal.isOneTime
-                    ? ' one-time at age '
-                    : ' annually starting at age '}
-                  {goal.startAge}
-                  {goal.endAge && !goal.isOneTime && ` until age ${goal.endAge}`}
-                  {goal.isOneTime && ' (one-time event)'}
-                  {goal.inflationAdjusted && ' (inflation adjusted)'}
-                </>
-              )}
-            </GoalInfo>
-            <Actions>
-              <Button onClick={() => startEdit(goal)}>Edit</Button>
-              <DeleteButton onClick={() => onDelete(goal.id)}>
-                Delete
-              </DeleteButton>
-            </Actions>
-          </GoalItem>
-        ))}
+      <SlatList>
+        {[...goals]
+          .sort((a, b) => a.startAge - b.startAge)
+          .map((goal) => (
+            <ManagerRow
+              key={goal.id}
+              icon={<i className={goalTypeIcons[goal.type]} />}
+              iconBg={colors.spendingBg}
+              iconColor={colors.spending}
+              name={goal.name}
+              secondary={
+                goal.type === 'home_purchase' ? (
+                  <>
+                    ${goal.amount.toLocaleString()}{' '}
+                    {goal.amountType === 'down_payment' ? 'down payment' : 'full purchase'}{' '}
+                    at age {goal.startAge}
+                    {goal.inflationAdjusted && " (today's dollars)"}
+                  </>
+                ) : goal.type === 'living_expenses' ? (
+                  <>
+                    {(goal.amountPeriod ?? 'monthly') === 'monthly'
+                      ? `$${Math.round(goal.amount / 12).toLocaleString()}/mo`
+                      : `$${goal.amount.toLocaleString()}/yr`}
+                    {' '}starting at age {goal.startAge}
+                    {goal.endAge && ` until age ${goal.endAge}`}
+                    {goal.inflationAdjusted && ' (inflation adjusted)'}
+                    {goal.yearlyDecreasePercent != null && goal.yearlyDecreasePercent > 0 && ` (-${goal.yearlyDecreasePercent}%/yr)`}
+                  </>
+                ) : (
+                  <>
+                    ${goal.amount.toLocaleString()}
+                    {goal.isOneTime
+                      ? ' one-time at age '
+                      : ' annually starting at age '}
+                    {goal.startAge}
+                    {goal.endAge && !goal.isOneTime && ` until age ${goal.endAge}`}
+                    {goal.isOneTime && ' (one-time event)'}
+                    {goal.inflationAdjusted && ' (inflation adjusted)'}
+                  </>
+                )
+              }
+              onEdit={() => startEdit(goal)}
+              onDelete={() => onDelete(goal.id)}
+            />
+          ))}
+      </SlatList>
 
       <SpendingGoalTypeSelectionDialog
         visible={selectionDialogVisible}

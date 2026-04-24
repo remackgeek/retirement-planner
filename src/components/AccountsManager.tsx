@@ -3,8 +3,9 @@ import styled from 'styled-components';
 import AccountTypeSelectionDialog from '../dialogs/AccountTypeSelectionDialog';
 import AccountDialog from '../dialogs/AccountDialog';
 import type { Account, AccountType } from '../types/Account';
-import { spacing, colors, border, fontSize } from '../styles/theme';
+import { spacing, colors } from '../styles/theme';
 import { accountTypeShortLabels, accountTypeIcons } from '../utils/defaultName';
+import { ManagerRow, SlatList, AddButton } from './ManagerRow';
 
 const Container = styled.div``;
 
@@ -16,68 +17,6 @@ const Header = styled.div`
   h3 {
     margin: 0;
   }
-`;
-
-const AccountItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: ${spacing.sm};
-  border: ${border.standard};
-  margin-bottom: ${spacing.sm};
-  border-radius: ${border.radius};
-`;
-
-const AccountInfo = styled.div`
-  flex: 1;
-`;
-
-const Actions = styled.div`
-  display: flex;
-  gap: ${spacing.xs};
-  align-self: flex-end;
-`;
-
-const Button = styled.button`
-  padding: ${spacing.xs} ${spacing.sm};
-  border: none;
-  border-radius: ${border.radius};
-  cursor: pointer;
-  background: ${colors.primary};
-  color: white;
-  font-size: ${fontSize.sm};
-
-  &:hover {
-    background: ${colors.primaryHover};
-  }
-`;
-
-const LargeButton = styled(Button)`
-  padding: ${spacing.sm} ${spacing.lg};
-  font-size: ${fontSize.xl};
-`;
-
-const DeleteButton = styled(Button)`
-  background: ${colors.danger};
-
-  &:hover {
-    background: ${colors.dangerHover};
-  }
-`;
-
-const IconCircle = styled.span`
-  margin-right: ${spacing.xs};
-  color: ${colors.primary};
-  background-color: ${colors.bgMedium};
-  border-radius: ${border.radiusCircle};
-  padding: ${spacing.xs};
-  font-size: ${fontSize.md};
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  font-weight: bold;
 `;
 
 interface AccountsManagerProps {
@@ -126,35 +65,32 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
     <Container>
       <Header>
         <h3>Accounts</h3>
-        <LargeButton onClick={() => setSelectionDialogVisible(true)}>
-          Add Account
-        </LargeButton>
+        <AddButton onClick={() => setSelectionDialogVisible(true)}>
+          Add
+        </AddButton>
       </Header>
 
-      {accounts.map((account) => (
-        <AccountItem key={account.id}>
-          <AccountInfo>
-            <div style={{ marginBottom: spacing.xs }}>
-              <strong>
-                <IconCircle>
-                  <i className={accountTypeIcons[account.type]} />
-                </IconCircle>
-                {account.name}
-              </strong>
-            </div>
-            ${account.balance.toLocaleString()} • {accountTypeShortLabels[account.type]}
-            {account.type === 'traditional' && account.owner === 'spouse' && spouseAge !== null && (
-              <span style={{ color: colors.textMuted }}> • Spouse</span>
-            )}
-          </AccountInfo>
-          <Actions>
-            <Button onClick={() => startEdit(account)}>Edit</Button>
-            <DeleteButton onClick={() => onDelete(account.id)}>
-              Delete
-            </DeleteButton>
-          </Actions>
-        </AccountItem>
-      ))}
+      <SlatList>
+        {accounts.map((account) => (
+          <ManagerRow
+            key={account.id}
+            icon={<i className={accountTypeIcons[account.type]} />}
+            iconBg={colors.bgMedium}
+            iconColor={colors.primary}
+            name={account.name}
+            secondary={
+              <>
+                ${account.balance.toLocaleString()} • {accountTypeShortLabels[account.type]}
+                {account.type === 'traditional' && account.owner === 'spouse' && spouseAge !== null && (
+                  <> • Spouse</>
+                )}
+              </>
+            }
+            onEdit={() => startEdit(account)}
+            onDelete={() => onDelete(account.id)}
+          />
+        ))}
+      </SlatList>
 
       <AccountTypeSelectionDialog
         visible={selectionDialogVisible}
