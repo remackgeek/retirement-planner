@@ -133,6 +133,19 @@ function sumBalancesOfType(
   return sum;
 }
 
+function sumBalancesOfTypeAndOwner(
+  accounts: Account[],
+  balances: Record<string, number>,
+  type: AccountType,
+  owner: 'self' | 'spouse'
+): number {
+  let sum = 0;
+  for (const a of accounts) {
+    if (a.type === type && (a.owner ?? 'self') === owner) sum += balances[a.id] ?? 0;
+  }
+  return sum;
+}
+
 // Subtract `amount` from all accounts of a given type, proportional to their current balance.
 function subtractFromType(
   accounts: Account[],
@@ -284,7 +297,12 @@ function applyCashFlow(
 function ensureRMDReinvestmentAccount(userData: UserData): UserData {
   if (!userData.accounts.some((a) => a.type === 'traditional')) return userData;
   const totalYears = userData.lifeExpectancy - userData.currentAge;
-  if (73 - userData.currentAge > totalYears) return userData; // never reaches RMD age
+  const selfReaches73 = 73 - userData.currentAge <= totalYears;
+  const spouseReaches73 =
+    userData.spouseAge !== null &&
+    userData.accounts.some((a) => a.type === 'traditional' && (a.owner ?? 'self') === 'spouse') &&
+    73 - userData.spouseAge <= totalYears;
+  if (!selfReaches73 && !spouseReaches73) return userData;
   if (userData.accounts.some((a) => a.type === 'taxable')) return userData;
   const rmdAccount: Account = {
     id: 'rmd-reinvestment-auto',
@@ -332,6 +350,7 @@ export interface AnnualCashFlowBreakdown {
   rmdRequired: number;  // IRS-mandated minimum from Traditional; 0 if age < 73
   rmdExcess: number;    // rmdRequired beyond spending need; reinvested to taxable
   rothConversionGross: number;  // amount converted from Traditional to Roth this year
+  spendingShortfall: number;  // unmet spending+tax need when portfolio cap was binding; 0 otherwise
 }
 
 function accumulateIncome(
@@ -441,15 +460,30 @@ export function calculateAnnualCashFlow(
   maxWithdrawal?: number,
   beginningTradBalance?: number
 ): AnnualCashFlowBreakdown {
+  const i = year - userData.referenceYear;
+  const spouseAge = userData.spouseAge !== null ? userData.spouseAge + i : null;
+  const balances = accountBalances ?? initialAccountBalances(userData);
+
+  let beginningTradBalances: { self: number; spouse: number } | undefined;
+  if (beginningTradBalance !== undefined) {
+    const selfBal = sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self');
+    const spouseBal = sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'spouse');
+    const total = selfBal + spouseBal;
+    beginningTradBalances = total > 0
+      ? { self: beginningTradBalance * (selfBal / total), spouse: beginningTradBalance * (spouseBal / total) }
+      : { self: beginningTradBalance, spouse: 0 };
+  }
+
   return calculateAnnualCashFlowCore(
     userData,
     year,
     accumulateIncome(userData, year, inflationRate),
     accumulateSpending(userData, year, inflationRate),
     getStateTaxRate(userData, year),
-    userData.currentAge + (year - userData.referenceYear),
-    accountBalances ?? initialAccountBalances(userData),
-    beginningTradBalance,
+    userData.currentAge + i,
+    spouseAge,
+    balances,
+    beginningTradBalances,
     maxWithdrawal
   );
 }
@@ -469,10 +503,11 @@ function calculateAnnualCashFlowCore(
   spending: { baseSpendingNet: number; otherSpendingGoalsNet: number },
   stateTaxRate: number,
   age: number,
+  spouseAge: number | null,
   balances: Record<string, number>,
   // IRS rule: RMD for year N uses Dec 31 of year N-1 (beginning-of-year) balance.
   // Pass pre-growth balance from the simulation loop; falls back to current tradBal.
-  beginningTradBalance?: number,
+  beginningTradBalances?: { self: number; spouse: number },
   maxWithdrawal?: number
 ): AnnualCashFlowBreakdown {
   const { ssGross, otherTaxableGross, afterTaxIncome, conversionGross } = income;
@@ -487,7 +522,13 @@ function calculateAnnualCashFlowCore(
   const totalBal = taxableBal + tradBal + rothBal;
   const cap = Math.min(maxWithdrawal ?? Infinity, totalBal);
 
-  const rmdRequired = calculateRMD(beginningTradBalance ?? tradBal, age);
+  const selfTradBal = beginningTradBalances?.self
+    ?? sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self');
+  const spouseTradBal = beginningTradBalances?.spouse
+    ?? sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'spouse');
+  const selfRmd = calculateRMD(selfTradBal, age);
+  const spouseRmd = spouseAge !== null ? calculateRMD(spouseTradBal, spouseAge) : 0;
+  const rmdRequired = selfRmd + spouseRmd;
   let withdrawal = Math.min(Math.max(0, totalSpendingNet - availableCash), cap);
   let totalTax = 0;
   let ssTaxableAmount = 0;
@@ -559,6 +600,9 @@ function calculateAnnualCashFlowCore(
     ? -withdrawal || 0
     : availableCash - totalTax - totalSpendingNet;
 
+  const uncappedNeed = Math.max(0, totalSpendingNet + totalTax - availableCash);
+  const spendingShortfall = capWasBinding ? Math.max(0, uncappedNeed - withdrawal) : 0;
+
   return {
     ssGross,
     otherTaxableGross,
@@ -579,6 +623,7 @@ function calculateAnnualCashFlowCore(
     rmdRequired,
     rmdExcess,
     rothConversionGross: rothConversion,
+    spendingShortfall,
   };
 }
 
@@ -597,6 +642,7 @@ interface SimRun {
 interface Precomputes {
   stateTaxRateByYear: number[];
   ageByYear: number[];
+  spouseAgeByYear: Array<number | null>;
   incomeByYear: Array<{
     ssGross: number;
     otherTaxableGross: number;
@@ -643,13 +689,17 @@ function simulateOneRun(
     const yearSpending = precomputes.spendingByYear[i];
     const yearStateTaxRate = precomputes.stateTaxRateByYear[i];
     const yearAge = precomputes.ageByYear[i];
+    const yearSpouseAge = precomputes.spouseAgeByYear[i];
 
     const startBalance = sumBalances(balances);
     path.push(startBalance / cumulativeInflation);
     inflation.push(cumulativeInflation);
 
-    // IRS rule: RMD uses Dec 31 of prior year (beginning-of-year) balance.
-    const beginningTradBalance = sumBalancesOfType(userData.accounts, balances, 'traditional');
+    // IRS rule: RMD uses Dec 31 of prior year (beginning-of-year) balance, split by owner.
+    const beginningTradBalances = {
+      self: sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self'),
+      spouse: sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'spouse'),
+    };
 
     // 1. Growth: draw base factors, apply black-swan overlay, blend by allocation.
     const base = generator.drawFactors(runIndex, i, random);
@@ -662,7 +712,7 @@ function simulateOneRun(
     // 2. Cash flow.
     const postGrowth = sumBalances(balances);
     const cashFlow = calculateAnnualCashFlowCore(
-      userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance
+      userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances
     );
 
     let effectiveCashFlow: AnnualCashFlowBreakdown;
@@ -670,11 +720,11 @@ function simulateOneRun(
     const depleting = spendingExceedsIncome && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
     if (depleting && postGrowth <= 0) {
       effectiveCashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, 0
+        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, 0
       );
     } else if (depleting) {
       effectiveCashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, balances, beginningTradBalance, postGrowth
+        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, postGrowth
       );
     } else {
       effectiveCashFlow = cashFlow;
@@ -725,17 +775,19 @@ export function runSimulation(
   // Precompute balance-independent inputs once. Shared across every run.
   const stateTaxRateByYear: number[] = new Array(totalYears);
   const ageByYear: number[] = new Array(totalYears);
+  const spouseAgeByYear: Array<number | null> = new Array(totalYears);
   const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
   const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
   for (let i = 0; i < totalYears; i++) {
     const year = currentYear + i;
     stateTaxRateByYear[i] = getStateTaxRate(userData, year);
     ageByYear[i] = userData.currentAge + i;
+    spouseAgeByYear[i] = userData.spouseAge !== null ? userData.spouseAge + i : null;
     incomeByYear[i] = accumulateIncome(userData, year, inflationRate);
     spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
   }
   const precomputes: Precomputes = {
-    stateTaxRateByYear, ageByYear, incomeByYear, spendingByYear,
+    stateTaxRateByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
   };
 
   const generator = createReturnGenerator(userData);

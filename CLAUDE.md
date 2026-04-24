@@ -43,6 +43,11 @@ projections, and good tax awareness without overwhelming the user.
   RMD is calculated on the beginning-of-year (pre-growth) Traditional balance,
   matching the IRS Dec 31 prior-year rule. The simulation captures this balance
   before applying growth in each loop iteration.
+  **Per-owner RMD:** `Account` has an optional `owner?: 'self' | 'spouse'` field (defaults to
+  `'self'`). The simulation splits Traditional balances by owner and calls `calculateRMD`
+  separately for each group using the correct age (`userData.currentAge` for self,
+  `userData.spouseAge` for spouse); the total `rmdRequired` is their sum. The `AccountDialog`
+  shows an Owner dropdown (Self / Spouse) for Traditional accounts when `spouseAge` is set.
 - **Income events** — 10 types (including `employment_savings` for pre-retirement savings
   and `roth_conversion` for Traditional→Roth transfers), each with a required `name`
   (auto-generated defaults like "Pension Income 1"), COLA, before/after-tax, SS 2034 haircut
@@ -300,8 +305,8 @@ Both dialogs are disabled when no active scenario.
   (currently hardcoded Taxable → Traditional → Roth). Roth conversions ✓ implemented —
   see Income events section above; future: fill-to-bracket and percentage-of-balance
   amount modes, explicit tax-withholding source selection
-- RMD modeling: ✓ implemented — see Accounts section above. Future: spouse-owned
-  Traditional accounts (accounts have no `owner` field); user-configurable RMD start age
+- RMD modeling: ✓ implemented — see Accounts section above. Per-owner RMD ✓ implemented
+  (`owner?: 'self' | 'spouse'` on Account). Future: user-configurable RMD start age
 - Income/spending: new types without UI refactoring
 - State timeline: "Other" option with custom name + tax rate for international
   retirement (Mexico, Portugal, etc.)

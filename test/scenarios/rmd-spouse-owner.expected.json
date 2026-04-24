@@ -1,0 +1,17 @@
+{
+  "_rationale": "Year 0: primary is 70 (selfRmd=0), spouse is 73 (spouseRmd=200000/26.5=7547.17). Only the spouse account triggers an RMD — proves the per-owner split is working. Year 3: primary reaches 73 so both fire: selfRmd=300000/26.5=11320.75 plus spouseRmd from the now-smaller spouse balance (≈7484) for a combined ≈18805. MFJ standard deduction absorbs the small RMD each year so no tax, and 0% return means the total portfolio stays at $500k throughout (money just moves from Traditional to auto-created Taxable).",
+  "probability": 100,
+  "tolerance": 1.0,
+  "pathValues": [
+    { "index": 0, "age": 70, "value": 500000, "tolerance": 1, "_note": "Start of simulation — full $500k before any growth or RMD" },
+    { "index": 1, "age": 71, "value": 500000, "tolerance": 1, "_note": "0% return + no tax → RMD just moves Trad→Taxable, total unchanged" },
+    { "index": 4, "age": 74, "value": 500000, "tolerance": 1, "_note": "Total portfolio stays flat throughout (0% return, no spending, no tax)" }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "rmdRequired", "value": 7547.17, "tolerance": 1, "_note": "Only spouse RMD at 73: 200000/26.5=7547.17. Primary is 70 so selfRmd=0." },
+    { "index": 0, "field": "rmdExcess", "value": 7547.17, "tolerance": 1, "_note": "No spending → full RMD is excess, reinvested to auto-created Taxable" },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 7547.17, "tolerance": 1, "_note": "Forced Traditional withdrawal equals spouse RMD only" },
+    { "index": 0, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "MFJ standard deduction (~$29k) far exceeds RMD of $7547 — no tax" },
+    { "index": 3, "field": "rmdRequired", "min": 18000, "max": 20000, "_note": "Primary now 73 (selfRmd≈11321) + spouse 76 (spouseRmd≈7484) ≈ 18805" }
+  ]
+}

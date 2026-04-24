@@ -5,4 +5,5 @@ export interface Account {
   name: string;
   type: AccountType;
   balance: number;
+  owner?: 'self' | 'spouse';
 }

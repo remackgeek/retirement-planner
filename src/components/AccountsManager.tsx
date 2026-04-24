@@ -85,6 +85,7 @@ interface AccountsManagerProps {
   onAdd: (account: Omit<Account, 'id'>) => void;
   onUpdate: (id: string, account: Partial<Account>) => void;
   onDelete: (id: string) => void;
+  spouseAge: number | null;
 }
 
 export const AccountsManager: React.FC<AccountsManagerProps> = ({
@@ -92,6 +93,7 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
   onAdd,
   onUpdate,
   onDelete,
+  spouseAge,
 }) => {
   const [selectionDialogVisible, setSelectionDialogVisible] = useState(false);
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -141,6 +143,9 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
               </strong>
             </div>
             ${account.balance.toLocaleString()} • {accountTypeShortLabels[account.type]}
+            {account.type === 'traditional' && account.owner === 'spouse' && spouseAge !== null && (
+              <span style={{ color: colors.textMuted }}> • Spouse</span>
+            )}
           </AccountInfo>
           <Actions>
             <Button onClick={() => startEdit(account)}>Edit</Button>
@@ -167,6 +172,7 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
         accountType={editingAccount?.type ?? selectedType}
         editAccount={editingAccount}
         existingAccounts={accounts}
+        spouseAge={spouseAge}
       />
     </Container>
   );

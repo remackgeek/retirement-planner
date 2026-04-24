@@ -637,14 +637,10 @@ const Projections = ({
                       const fmtPct = (f: number) => `${((f - 1) * 100).toFixed(1)}%`;
                       const fmtSigned = (v: number) => `${v >= 0 ? '+' : '-'}$${fmt(Math.abs(v))}`;
 
-                      // Shortfall detection: compare planned (deterministic) vs actual withdrawal
-                      // for the selected run, both in display currency.
-                      const plannedWithdrawal = toDisplay(
-                        nominalBreakdowns[index].portfolioWithdrawal,
-                        pathFactor,
-                        displayCurrency,
-                      );
-                      const shortfall = plannedWithdrawal - dispWithdrawal;
+                      // Shortfall: only when portfolio cap was binding (couldn't cover spending+tax).
+                      // RMD withdrawals scale with balance, so lower-balance paths legitimately
+                      // withdraw less — that is NOT a shortfall.
+                      const shortfall = toDisplay(breakdown.spendingShortfall, pathFactor, displayCurrency);
 
                       const categoryStyle = { fontWeight: 'bold' as const, display: 'flex', justifyContent: 'space-between', padding: `${spacing.xs} 0` };
                       const itemStyle = { display: 'flex', justifyContent: 'space-between', paddingLeft: '1.5rem', color: colors.textSecondary };

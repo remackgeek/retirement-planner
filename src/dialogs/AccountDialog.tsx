@@ -4,6 +4,7 @@ import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
+import { Dropdown } from 'primereact/dropdown';
 import type { Account, AccountType } from '../types/Account';
 import { spacing, colors, fontSize } from '../styles/theme';
 import {
@@ -42,7 +43,13 @@ interface AccountDialogProps {
   accountType: AccountType;
   editAccount?: Account;
   existingAccounts: Account[];
+  spouseAge: number | null;
 }
+
+const ownerOptions = [
+  { label: 'Self', value: 'self' },
+  { label: 'Spouse', value: 'spouse' },
+];
 
 const AccountDialog: React.FC<AccountDialogProps> = ({
   visible,
@@ -51,18 +58,24 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   accountType,
   editAccount,
   existingAccounts,
+  spouseAge,
 }) => {
   const [name, setName] = useState('');
   const [balance, setBalance] = useState<number>(0);
+  const [owner, setOwner] = useState<'self' | 'spouse'>('self');
+
+  const showOwnerField = accountType === 'traditional' && spouseAge !== null;
 
   useEffect(() => {
     if (visible) {
       if (editAccount) {
         setName(editAccount.name);
         setBalance(editAccount.balance);
+        setOwner(editAccount.owner ?? 'self');
       } else {
         setName(generateDefaultAccountName(accountType, existingAccounts));
         setBalance(0);
+        setOwner('self');
       }
     }
   }, [visible, editAccount, accountType, existingAccounts]);
@@ -71,7 +84,13 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
 
   const handleSave = () => {
     if (!isValid) return;
-    onSave({ type: accountType, name: name.trim(), balance });
+    const account: Omit<Account, 'id'> = {
+      type: accountType,
+      name: name.trim(),
+      balance,
+      ...(showOwnerField ? { owner } : {}),
+    };
+    onSave(account);
     onHide();
   };
 
@@ -107,6 +126,16 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
             className={name.trim().length === 0 ? 'p-invalid' : ''}
           />
         </InputGroup>
+        {showOwnerField && (
+          <InputGroup>
+            <label>Owner</label>
+            <Dropdown
+              value={owner}
+              options={ownerOptions}
+              onChange={(e) => setOwner(e.value)}
+            />
+          </InputGroup>
+        )}
         <InputGroup>
           <label>Current Balance</label>
           <InputNumber

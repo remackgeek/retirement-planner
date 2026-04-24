@@ -186,6 +186,7 @@ const Content: React.FC = () => {
                 onAdd={handleAddAccount}
                 onUpdate={handleUpdateAccount}
                 onDelete={handleDeleteAccount}
+                spouseAge={activeScenario.spouseAge}
               />
             </AccountsManagerSection>
             <ManagerSection>
