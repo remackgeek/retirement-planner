@@ -1,6 +1,7 @@
 import { Chart } from 'chart.js';
 import type { Plugin, ChartType } from 'chart.js';
 import { colors } from '../styles/theme';
+import { eventTypeIcons as incomeEventTypeIcons, goalTypeIcons } from '../utils/defaultName';
 
 // Extend Chart.js types to include our custom plugin
 declare module 'chart.js' {
@@ -26,29 +27,8 @@ interface HtmlAnnotationsOptions {
 }
 
 const eventTypeIcons: Record<string, string> = {
-  // Income events
-  employment_savings: 'pi pi-wallet',
-  social_security: 'pi pi-shield',
-  annuity_income: 'pi pi-money-bill',
-  inheritance: 'pi pi-gift',
-  pension_income: 'pi pi-briefcase',
-  rental_income: 'pi pi-home',
-  sale_of_property: 'pi pi-arrow-right-arrow-left',
-  work_during_retirement: 'pi pi-cog',
-  other_income: 'pi pi-ellipsis-h',
-
-  // Spending goals
-  living_expenses: 'pi pi-dollar',
-  charity: 'pi pi-heart',
-  dependent_support: 'pi pi-users',
-  healthcare: 'pi pi-heart-fill',
-  home_purchase: 'pi pi-home',
-  education: 'pi pi-book',
-  renovation: 'pi pi-wrench',
-  vacation: 'pi pi-plane',
-  vehicle: 'pi pi-car',
-  wedding: 'pi pi-heart',
-  other: 'pi pi-circle',
+  ...incomeEventTypeIcons,
+  ...goalTypeIcons,
 };
 
 function updateIconPositions(chart: Chart, annotations: AnnotationConfig[]) {

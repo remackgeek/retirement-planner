@@ -23,6 +23,7 @@ import styled from 'styled-components';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
 import { useUIState } from '../../context/UIStateContext';
 import { toDisplay, pathToDisplay, type DisplayCurrency } from '../../utils/displayCurrency';
+import { eventTypeIcons, goalTypeIcons } from '../../utils/defaultName';
 
 ChartJS.register(
   CategoryScale,
@@ -35,33 +36,6 @@ ChartJS.register(
   htmlAnnotationsPlugin,
   chartBlackSwanShadingPlugin
 );
-
-// PrimeReact icons for chart annotations and table
-const eventTypeIcons: Record<string, string> = {
-  employment_savings: 'pi pi-wallet',
-  social_security: 'pi pi-shield',
-  annuity_income: 'pi pi-money-bill',
-  inheritance: 'pi pi-gift',
-  pension_income: 'pi pi-briefcase',
-  rental_income: 'pi pi-home',
-  sale_of_property: 'pi pi-arrow-right-arrow-left',
-  work_during_retirement: 'pi pi-cog',
-  other_income: 'pi pi-ellipsis-h',
-};
-
-const goalTypeIcons: Record<string, string> = {
-  living_expenses: 'pi pi-dollar',
-  charity: 'pi pi-heart',
-  dependent_support: 'pi pi-users',
-  healthcare: 'pi pi-heart-fill',
-  home_purchase: 'pi pi-home',
-  education: 'pi pi-book',
-  renovation: 'pi pi-wrench',
-  vacation: 'pi pi-plane',
-  vehicle: 'pi pi-car',
-  wedding: 'pi pi-heart',
-  other: 'pi pi-circle',
-};
 
 type ViewMode = 'median' | 'nominal' | 'downside';
 
@@ -572,7 +546,7 @@ const Projections = ({
                         {startingEvents.length > 0 && (
                           <div style={{ marginBottom: spacing.xs, textAlign: 'left' }}>
                             {startingEvents.map((event: any) =>
-                              iconChip(event.id, eventTypeIcons[event.type], colors.income, colors.incomeBg)
+                              iconChip(event.id, (eventTypeIcons as Record<string, string>)[event.type], colors.income, colors.incomeBg)
                             )}
                           </div>
                         )}
@@ -582,7 +556,7 @@ const Projections = ({
                         {startingGoals.length > 0 && (
                           <div style={{ marginBottom: spacing.xs, textAlign: 'left' }}>
                             {startingGoals.map((goal: any) =>
-                              iconChip(goal.id, goalTypeIcons[goal.type], colors.spending, colors.spendingBg)
+                              iconChip(goal.id, (goalTypeIcons as Record<string, string>)[goal.type], colors.spending, colors.spendingBg)
                             )}
                           </div>
                         )}

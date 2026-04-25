@@ -9,6 +9,7 @@ import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import type { Account } from '../types/Account';
 import { spacing, colors, border, fontSize } from '../styles/theme';
 import { ManagerRow, RightAmount, SlatList, PlusButton, Header, HeaderLeft, HeaderRight } from './ManagerRow';
+import { eventTypeIcons } from '../utils/defaultName';
 
 const Container = styled.div``;
 
@@ -20,19 +21,6 @@ const ConversionChip = styled.span`
   font-size: ${fontSize.xs};
   font-weight: normal;
 `;
-
-const eventTypeSymbols: Record<IncomeEventType, string> = {
-  employment_savings: '💰',
-  social_security: '🛡',
-  annuity_income: '$',
-  inheritance: '⬇',
-  pension_income: '⚒',
-  rental_income: '⌂',
-  roth_conversion: '↻',
-  sale_of_property: '⇄',
-  work_during_retirement: '⚙',
-  other_income: '●',
-};
 
 interface IncomeEventsManagerProps {
   events: IncomeEvent[];
@@ -104,7 +92,7 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           .map((event) => (
             <ManagerRow
               key={event.id}
-              icon={eventTypeSymbols[event.type]}
+              icon={<i className={eventTypeIcons[event.type]} />}
               iconBg={colors.incomeBg}
               iconColor={colors.income}
               name={event.name}
