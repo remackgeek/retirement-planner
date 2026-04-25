@@ -6,7 +6,7 @@ import HomePurchaseDialog from '../dialogs/HomePurchaseDialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { colors, fontSize } from '../styles/theme';
 import { goalTypeIcons } from '../utils/defaultName';
-import { ManagerRow, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
+import { ManagerRow, RightAmount, RightLabel, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
 
 const Container = styled.div``;
 
@@ -76,31 +76,53 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
               secondary={
                 goal.type === 'home_purchase' ? (
                   <>
-                    ${goal.amount.toLocaleString()}{' '}
-                    {goal.amountType === 'down_payment' ? 'down payment' : 'full purchase'}{' '}
-                    at age {goal.startAge}
-                    {goal.inflationAdjusted && " (today's dollars)"}
+                    <div>
+                      {goal.amountType === 'down_payment' ? 'Down payment' : 'Full purchase'} at age {goal.startAge}
+                    </div>
+                    {goal.inflationAdjusted && <div>Today's dollars</div>}
                   </>
                 ) : goal.type === 'living_expenses' ? (
                   <>
-                    {(goal.amountPeriod ?? 'monthly') === 'monthly'
-                      ? `$${Math.round(goal.amount / 12).toLocaleString()}/mo`
-                      : `$${goal.amount.toLocaleString()}/yr`}
-                    {' '}starting at age {goal.startAge}
-                    {goal.endAge && ` until age ${goal.endAge}`}
-                    {goal.inflationAdjusted && ' (inflation adjusted)'}
-                    {goal.yearlyDecreasePercent != null && goal.yearlyDecreasePercent > 0 && ` (-${goal.yearlyDecreasePercent}%/yr)`}
+                    <div>
+                      Age {goal.startAge}{goal.endAge && `–${goal.endAge}`}
+                    </div>
+                    {(goal.inflationAdjusted || (goal.yearlyDecreasePercent ?? 0) > 0) && (
+                      <div>
+                        {[
+                          goal.inflationAdjusted && 'Inflation adjusted',
+                          (goal.yearlyDecreasePercent ?? 0) > 0 && `-${goal.yearlyDecreasePercent}%/yr`,
+                        ].filter(Boolean).join(' • ')}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>
-                    ${goal.amount.toLocaleString()}
-                    {goal.isOneTime
-                      ? ' one-time at age '
-                      : ' annually starting at age '}
-                    {goal.startAge}
-                    {goal.endAge && !goal.isOneTime && ` until age ${goal.endAge}`}
-                    {goal.isOneTime && ' (one-time event)'}
-                    {goal.inflationAdjusted && ' (inflation adjusted)'}
+                    <div>
+                      Age {goal.startAge}{goal.endAge && !goal.isOneTime && `–${goal.endAge}`}
+                    </div>
+                    {goal.inflationAdjusted && <div>Inflation adjusted</div>}
+                  </>
+                )
+              }
+              right={
+                goal.type === 'home_purchase' ? (
+                  <>
+                    <RightAmount>${goal.amount.toLocaleString()}</RightAmount>
+                    <RightLabel>one-time</RightLabel>
+                  </>
+                ) : goal.type === 'living_expenses' ? (
+                  <>
+                    <RightAmount>
+                      ${(goal.amountPeriod ?? 'monthly') === 'monthly'
+                        ? Math.round(goal.amount / 12).toLocaleString()
+                        : goal.amount.toLocaleString()}
+                    </RightAmount>
+                    <RightLabel>{(goal.amountPeriod ?? 'monthly') === 'monthly' ? 'monthly' : 'annual'}</RightLabel>
+                  </>
+                ) : (
+                  <>
+                    <RightAmount>${goal.amount.toLocaleString()}</RightAmount>
+                    <RightLabel>{goal.isOneTime ? 'one-time' : 'annual'}</RightLabel>
                   </>
                 )
               }

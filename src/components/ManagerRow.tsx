@@ -2,6 +2,19 @@ import React from 'react';
 import styled from 'styled-components';
 import { spacing, colors, border, fontSize, layout } from '../styles/theme';
 
+export const RightAmount = styled.div`
+  font-size: ${fontSize.base};
+  font-weight: 600;
+  color: ${colors.textPrimary};
+  text-align: right;
+`;
+
+export const RightLabel = styled.div`
+  font-size: ${fontSize.sm};
+  color: ${colors.textSecondary};
+  text-align: right;
+`;
+
 export interface ManagerRowProps {
   icon: React.ReactNode;
   iconBg?: string;
@@ -9,6 +22,7 @@ export interface ManagerRowProps {
   name: string;
   secondary: React.ReactNode;
   badge?: React.ReactNode;
+  right?: React.ReactNode;
   onEdit: () => void;
 }
 
@@ -70,6 +84,14 @@ const SecondaryLine = styled.div`
   color: ${colors.textSecondary};
 `;
 
+const RightBlock = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  margin-left: ${spacing.sm};
+`;
+
 export const ManagerRow: React.FC<ManagerRowProps> = ({
   icon,
   iconBg = colors.bgMedium,
@@ -77,6 +99,7 @@ export const ManagerRow: React.FC<ManagerRowProps> = ({
   name,
   secondary,
   badge,
+  right,
   onEdit,
 }) => (
   <Slat onClick={onEdit}>
@@ -92,6 +115,7 @@ export const ManagerRow: React.FC<ManagerRowProps> = ({
         <SecondaryLine>{secondary}</SecondaryLine>
       </InfoBlock>
     </Left>
+    {right && <RightBlock>{right}</RightBlock>}
   </Slat>
 );
 

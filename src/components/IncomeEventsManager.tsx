@@ -8,7 +8,7 @@ import RothConversionDialog from '../dialogs/RothConversionDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import type { Account } from '../types/Account';
 import { spacing, colors, border, fontSize } from '../styles/theme';
-import { ManagerRow, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
+import { ManagerRow, RightAmount, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
 
 const Container = styled.div``;
 
@@ -111,13 +111,8 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
               secondary={
                 <>
                   <div>
-                    ${event.amount.toLocaleString()}
-                    {event.isOneTime
-                      ? ' one-time at age '
-                      : ' annually starting at age '}
-                    {event.startAge}
-                    {event.endAge && !event.isOneTime && ` until age ${event.endAge}`}
-                    {event.isOneTime && ' (one-time event)'}
+                    Age {event.startAge}
+                    {event.endAge && !event.isOneTime && `–${event.endAge}`}
                   </div>
                   <div>
                     {event.type === 'social_security'
@@ -128,6 +123,7 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
                   </div>
                 </>
               }
+              right={<RightAmount>${event.amount.toLocaleString()}</RightAmount>}
               onEdit={() => startEdit(event)}
             />
           ))}

@@ -5,7 +5,7 @@ import AccountDialog from '../dialogs/AccountDialog';
 import type { Account, AccountType } from '../types/Account';
 import { colors, fontSize } from '../styles/theme';
 import { accountTypeShortLabels, accountTypeIcons } from '../utils/defaultName';
-import { ManagerRow, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
+import { ManagerRow, RightAmount, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
 
 const Container = styled.div``;
 
@@ -75,12 +75,13 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
             name={account.name}
             secondary={
               <>
-                ${account.balance.toLocaleString()} • {accountTypeShortLabels[account.type]}
+                {accountTypeShortLabels[account.type]}
                 {account.type === 'traditional' && account.owner === 'spouse' && spouseAge !== null && (
                   <> • Spouse</>
                 )}
               </>
             }
+            right={<RightAmount>${account.balance.toLocaleString()}</RightAmount>}
             onEdit={() => startEdit(account)}
           />
         ))}
