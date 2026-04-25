@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { spacing, colors, border, fontSize, layout } from '../styles/theme';
+import { spacing, colors, border, fontSize } from '../styles/theme';
 
 export const RightAmount = styled.div`
   font-size: ${fontSize.base};
@@ -126,13 +126,13 @@ export const SlatList = styled.div`
   border-bottom: ${border.standard};
 `;
 
-/** Shared header bar for manager panels — enforces uniform height across all three. */
+/** Shared header bar for manager panels. */
 export const Header = styled.div`
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: ${spacing.md};
-  min-height: ${layout.managerHeaderHeight};
+  align-items: center;
+  margin-top: -0.1rem;
+  margin-bottom: ${spacing.xs};
 `;
 
 /** Left column of a manager header — stacks title and optional subtitle. */
@@ -146,17 +146,30 @@ export const HeaderLeft = styled.div`
   }
 `;
 
-/** Large green Add button for manager panel headers. */
-export const AddButton = styled.button`
-  padding: ${spacing.sm} ${spacing.lg};
+/** Circular green plus button for manager panel headers. */
+export const PlusButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
   border: none;
-  border-radius: ${border.radius};
+  border-radius: ${border.radiusCircle};
   cursor: pointer;
   background: ${colors.primary};
   color: white;
-  font-size: ${fontSize.xl};
+  font-size: ${fontSize.lg};
+  margin-bottom: ${spacing.xs};
 
   &:hover {
     background: ${colors.primaryHover};
   }
+`;
+
+/** Right column of a manager header — stacks plus button and optional amount/label. */
+export const HeaderRight = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: ${spacing.xs};
 `;

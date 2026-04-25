@@ -5,7 +5,7 @@ import AccountDialog from '../dialogs/AccountDialog';
 import type { Account, AccountType } from '../types/Account';
 import { colors, fontSize } from '../styles/theme';
 import { accountTypeShortLabels, accountTypeIcons } from '../utils/defaultName';
-import { ManagerRow, RightAmount, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
+import { ManagerRow, RightAmount, SlatList, PlusButton, Header, HeaderLeft, HeaderRight } from './ManagerRow';
 
 const Container = styled.div``;
 
@@ -57,12 +57,18 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
     <Container>
       <Header>
         <HeaderLeft>
-          <h3>Accounts</h3>
-          <div style={{ fontSize: fontSize.sm, color: colors.textSecondary }}>
-            ${totalBalance.toLocaleString()}
-          </div>
+          <h3>
+            Accounts{' '}
+            <span style={{ fontSize: fontSize.sm, fontWeight: 'normal', color: colors.textSecondary }}>
+              (<span style={{ fontWeight: 600 }}>${totalBalance.toLocaleString()}</span> total)
+            </span>
+          </h3>
         </HeaderLeft>
-        <AddButton onClick={() => setSelectionDialogVisible(true)}>Add</AddButton>
+        <HeaderRight>
+          <PlusButton onClick={() => setSelectionDialogVisible(true)}>
+            <i className="pi pi-plus" />
+          </PlusButton>
+        </HeaderRight>
       </Header>
 
       <SlatList>

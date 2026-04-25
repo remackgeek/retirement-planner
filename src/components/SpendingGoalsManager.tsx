@@ -4,9 +4,9 @@ import SpendingGoalTypeSelectionDialog from '../dialogs/SpendingGoalTypeSelectio
 import SpendingGoalDialog from '../dialogs/SpendingGoalDialog';
 import HomePurchaseDialog from '../dialogs/HomePurchaseDialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
-import { colors, fontSize } from '../styles/theme';
+import { colors } from '../styles/theme';
 import { goalTypeIcons } from '../utils/defaultName';
-import { ManagerRow, RightAmount, RightLabel, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
+import { ManagerRow, RightAmount, RightLabel, SlatList, PlusButton, Header, HeaderLeft, HeaderRight } from './ManagerRow';
 
 const Container = styled.div``;
 
@@ -58,9 +58,12 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
       <Header>
         <HeaderLeft>
           <h3>Spending</h3>
-          <div style={{ fontSize: fontSize.sm, visibility: 'hidden' }}>&nbsp;</div>
         </HeaderLeft>
-        <AddButton onClick={() => setSelectionDialogVisible(true)}>Add</AddButton>
+        <HeaderRight>
+          <PlusButton onClick={() => setSelectionDialogVisible(true)}>
+            <i className="pi pi-plus" />
+          </PlusButton>
+        </HeaderRight>
       </Header>
 
       <SlatList>
