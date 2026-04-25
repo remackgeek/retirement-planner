@@ -7,7 +7,8 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
-import { spacing, colors, fontSize } from '../styles/theme';
+import { confirmDialog } from 'primereact/confirmdialog';
+import { spacing, colors, fontSize, border } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 import { generateDefaultIncomeEventName, eventTypeIcons } from '../utils/defaultName';
 import { resolveOwnerAge } from '../utils/ownerAge';
@@ -55,10 +56,29 @@ const HelpText = styled.small`
   font-size: ${fontSize.xs};
 `;
 
+const TrashButton = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: ${spacing.xs};
+  border-radius: ${border.radius};
+  color: ${colors.danger};
+  font-size: ${fontSize.xl};
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    color: ${colors.dangerHover};
+    background: ${colors.bgMedium};
+  }
+`;
+
 interface PensionIncomeDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (event: Omit<IncomeEvent, 'id'>) => void;
+  onDelete?: () => void;
   editEvent?: IncomeEvent;
   existingEvents: IncomeEvent[];
   currentAge: number;
@@ -82,6 +102,7 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
   visible,
   onHide,
   onSave,
+  onDelete,
   editEvent,
   existingEvents,
   currentAge,
@@ -188,17 +209,35 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
     </div>
   );
 
+  const handleDeleteClick = () => {
+    confirmDialog({
+      message: `Are you sure you want to delete "${formData.name}"?`,
+      header: 'Confirm Delete',
+      icon: 'pi pi-exclamation-triangle',
+      accept: onDelete,
+    });
+  };
+
   return (
     <Dialog
       header={
-        <>
-          <i className={eventTypeIcons['pension_income']} style={{ marginRight: spacing.sm, color: colors.primary }} />
-          {isEditing ? 'Edit Pension Income' : 'Add Pension Income'}
-        </>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <span>
+            <i className={eventTypeIcons['pension_income']} style={{ marginRight: spacing.sm, color: colors.primary }} />
+            {isEditing ? 'Edit Pension Income' : 'Add Pension Income'}
+          </span>
+          {onDelete && (
+            <TrashButton onClick={handleDeleteClick} title="Delete">
+              <i className="pi pi-trash" />
+            </TrashButton>
+          )}
+        </div>
       }
       visible={visible}
       style={{ width: '32rem' }}
       onHide={onHide}
+      closable={false}
+      closeOnEscape={true}
       footer={dialogFooter}
     >
       <Form onSubmit={handleSubmit}>

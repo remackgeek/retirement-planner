@@ -8,7 +8,8 @@ import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import type { Account } from '../types/Account';
-import { spacing, colors } from '../styles/theme';
+import { confirmDialog } from 'primereact/confirmdialog';
+import { spacing, colors, fontSize, border } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 
 const Form = styled.form`
@@ -42,10 +43,29 @@ const CheckboxGroup = styled.div`
   gap: ${spacing.sm};
 `;
 
+const TrashButton = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: ${spacing.xs};
+  border-radius: ${border.radius};
+  color: ${colors.danger};
+  font-size: ${fontSize.xl};
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    color: ${colors.dangerHover};
+    background: ${colors.bgMedium};
+  }
+`;
+
 interface IncomeEventDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (event: Omit<IncomeEvent, 'id'>) => void;
+  onDelete?: () => void;
   initialType?: IncomeEventType;
   editEvent?: IncomeEvent;
   existingEvents?: IncomeEvent[];
@@ -92,6 +112,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
   visible,
   onHide,
   onSave,
+  onDelete,
   initialType,
   editEvent,
   existingEvents = [],
@@ -142,11 +163,27 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
     { label: 'After Tax', value: 'after_tax' },
   ];
 
+  const handleDeleteClick = () => {
+    confirmDialog({
+      message: `Are you sure you want to delete "${formData.name}"?`,
+      header: 'Confirm Delete',
+      icon: 'pi pi-exclamation-triangle',
+      accept: onDelete,
+    });
+  };
+
   const headerLabel = (
-    <>
-      <i className={eventTypeIcons[formData.type]} style={{ marginRight: spacing.sm, color: colors.primary }} />
-      {isEditing ? `Edit ${eventTypeLabels[formData.type]}` : `Add ${eventTypeLabels[formData.type]}`}
-    </>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+      <span>
+        <i className={eventTypeIcons[formData.type]} style={{ marginRight: spacing.sm, color: colors.primary }} />
+        {isEditing ? `Edit ${eventTypeLabels[formData.type]}` : `Add ${eventTypeLabels[formData.type]}`}
+      </span>
+      {onDelete && (
+        <TrashButton onClick={handleDeleteClick} title="Delete">
+          <i className="pi pi-trash" />
+        </TrashButton>
+      )}
+    </div>
   );
 
   const dialogFooter = (
@@ -172,6 +209,8 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
       visible={visible}
       style={{ width: '32rem' }}
       onHide={onHide}
+      closable={false}
+      closeOnEscape={true}
       footer={dialogFooter}
     >
       <Form onSubmit={handleSubmit}>

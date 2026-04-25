@@ -7,7 +7,8 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Checkbox } from 'primereact/checkbox';
 import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
-import { spacing, colors } from '../styles/theme';
+import { confirmDialog } from 'primereact/confirmdialog';
+import { spacing, colors, fontSize, border } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, spendingGoalAgeRanges } from '../utils/ageOptions';
 
 const Form = styled.form`
@@ -48,10 +49,29 @@ const CheckboxGroup = styled.div`
   gap: ${spacing.sm};
 `;
 
+const TrashButton = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: ${spacing.xs};
+  border-radius: ${border.radius};
+  color: ${colors.danger};
+  font-size: ${fontSize.xl};
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    color: ${colors.dangerHover};
+    background: ${colors.bgMedium};
+  }
+`;
+
 interface SpendingGoalDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (goal: Omit<SpendingGoal, 'id'>) => void;
+  onDelete?: () => void;
   initialType?: SpendingGoal['type'];
   editGoal?: SpendingGoal;
   existingGoals?: SpendingGoal[];
@@ -82,6 +102,7 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
   visible,
   onHide,
   onSave,
+  onDelete,
   initialType,
   editGoal,
   existingGoals = [],
@@ -153,11 +174,27 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
     onHide();
   };
 
+  const handleDeleteClick = () => {
+    confirmDialog({
+      message: `Are you sure you want to delete "${formData.name}"?`,
+      header: 'Confirm Delete',
+      icon: 'pi pi-exclamation-triangle',
+      accept: onDelete,
+    });
+  };
+
   const headerLabel = (
-    <>
-      <i className={goalTypeIcons[formData.type]} style={{ marginRight: spacing.sm, color: colors.primary }} />
-      {isEditing ? `Edit ${goalTypeLabels[formData.type]}` : `Add ${goalTypeLabels[formData.type]}`}
-    </>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+      <span>
+        <i className={goalTypeIcons[formData.type]} style={{ marginRight: spacing.sm, color: colors.primary }} />
+        {isEditing ? `Edit ${goalTypeLabels[formData.type]}` : `Add ${goalTypeLabels[formData.type]}`}
+      </span>
+      {onDelete && (
+        <TrashButton onClick={handleDeleteClick} title="Delete">
+          <i className="pi pi-trash" />
+        </TrashButton>
+      )}
+    </div>
   );
 
   const dialogFooter = (
@@ -183,6 +220,8 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
       visible={visible}
       style={{ width: '32rem' }}
       onHide={onHide}
+      closable={false}
+      closeOnEscape={true}
       footer={dialogFooter}
     >
       <Form onSubmit={handleSubmit}>

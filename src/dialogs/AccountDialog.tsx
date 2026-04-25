@@ -6,7 +6,8 @@ import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import type { Account, AccountType } from '../types/Account';
-import { spacing, colors, fontSize } from '../styles/theme';
+import { confirmDialog } from 'primereact/confirmdialog';
+import { spacing, colors, fontSize, border } from '../styles/theme';
 import {
   accountTypeLabels,
   accountTypeIcons,
@@ -36,10 +37,29 @@ const InputGroup = styled.div`
   }
 `;
 
+const TrashButton = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: ${spacing.xs};
+  border-radius: ${border.radius};
+  color: ${colors.danger};
+  font-size: ${fontSize.xl};
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    color: ${colors.dangerHover};
+    background: ${colors.bgMedium};
+  }
+`;
+
 interface AccountDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (account: Omit<Account, 'id'>) => void;
+  onDelete?: () => void;
   accountType: AccountType;
   editAccount?: Account;
   existingAccounts: Account[];
@@ -55,6 +75,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   visible,
   onHide,
   onSave,
+  onDelete,
   accountType,
   editAccount,
   existingAccounts,
@@ -104,17 +125,35 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   const typeLabel = accountTypeLabels[accountType];
   const typeIcon = accountTypeIcons[accountType];
 
+  const handleDeleteClick = () => {
+    confirmDialog({
+      message: `Are you sure you want to delete "${name}"?`,
+      header: 'Confirm Delete',
+      icon: 'pi pi-exclamation-triangle',
+      accept: onDelete,
+    });
+  };
+
   return (
     <Dialog
       header={
-        <>
-          <i className={typeIcon} style={{ marginRight: spacing.sm, color: colors.primary }} />
-          {editAccount ? `Edit ${typeLabel}` : `New ${typeLabel}`}
-        </>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <span>
+            <i className={typeIcon} style={{ marginRight: spacing.sm, color: colors.primary }} />
+            {editAccount ? `Edit ${typeLabel}` : `New ${typeLabel}`}
+          </span>
+          {onDelete && (
+            <TrashButton onClick={handleDeleteClick} title="Delete">
+              <i className="pi pi-trash" />
+            </TrashButton>
+          )}
+        </div>
       }
       visible={visible}
       style={{ width: '24rem' }}
       onHide={onHide}
+      closable={false}
+      closeOnEscape={true}
       footer={dialogFooter}
     >
       <Form onSubmit={(e) => e.preventDefault()}>

@@ -105,7 +105,6 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
                 )
               }
               onEdit={() => startEdit(goal)}
-              onDelete={() => onDelete(goal.id)}
             />
           ))}
       </SlatList>
@@ -125,6 +124,7 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
             setEditingGoal(undefined);
           }}
           onSave={handleSave}
+          onDelete={editingGoal ? () => { onDelete(editingGoal.id); setDialogVisible(false); setSelectedType(null); setEditingGoal(undefined); } : undefined}
           editGoal={editingGoal?.type === 'home_purchase' ? editingGoal : undefined}
           existingGoals={goals}
           currentAge={userData.currentAge}
@@ -139,6 +139,7 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
             setEditingGoal(undefined);
           }}
           onSave={handleSave}
+          onDelete={editingGoal ? () => { onDelete(editingGoal.id); setDialogVisible(false); setSelectedType(null); setEditingGoal(undefined); } : undefined}
           initialType={selectedType || undefined}
           editGoal={editingGoal}
           existingGoals={goals}

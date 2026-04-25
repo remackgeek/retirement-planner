@@ -129,7 +129,6 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
                 </>
               }
               onEdit={() => startEdit(event)}
-              onDelete={() => onDelete(event.id)}
             />
           ))}
       </SlatList>
@@ -151,6 +150,7 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
             setEditingEvent(undefined);
           }}
           onSave={handleSave}
+          onDelete={editingEvent ? () => { onDelete(editingEvent.id); setDialogVisible(false); setSelectedType(null); setEditingEvent(undefined); } : undefined}
           editEvent={editingEvent}
           filingStatus={userData.filingStatus}
           existingSSEvents={events.filter((e) => e.type === 'social_security')}
@@ -167,6 +167,7 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
             setEditingEvent(undefined);
           }}
           onSave={handleSave}
+          onDelete={editingEvent ? () => { onDelete(editingEvent.id); setDialogVisible(false); setSelectedType(null); setEditingEvent(undefined); } : undefined}
           editEvent={editingEvent}
           existingEvents={events}
           currentAge={userData.currentAge}
@@ -183,6 +184,7 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
             setEditingEvent(undefined);
           }}
           onSave={handleSave}
+          onDelete={editingEvent ? () => { onDelete(editingEvent.id); setDialogVisible(false); setSelectedType(null); setEditingEvent(undefined); } : undefined}
           editEvent={editingEvent}
           existingEvents={events}
           userData={userData}
@@ -196,6 +198,7 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
             setEditingEvent(undefined);
           }}
           onSave={handleSave}
+          onDelete={editingEvent ? () => { onDelete(editingEvent.id); setDialogVisible(false); setSelectedType(null); setEditingEvent(undefined); } : undefined}
           initialType={selectedType || undefined}
           editEvent={editingEvent}
           existingEvents={events}

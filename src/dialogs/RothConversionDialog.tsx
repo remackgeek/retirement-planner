@@ -8,6 +8,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import type { UserData } from '../types/UserData';
+import { confirmDialog } from 'primereact/confirmdialog';
 import { spacing, colors, border, fontSize } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 import { generateDefaultIncomeEventName, eventTypeIcons } from '../utils/defaultName';
@@ -50,6 +51,24 @@ const HelpText = styled.small`
   font-size: ${fontSize.xs};
 `;
 
+const TrashButton = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: ${spacing.xs};
+  border-radius: ${border.radius};
+  color: ${colors.danger};
+  font-size: ${fontSize.xl};
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    color: ${colors.dangerHover};
+    background: ${colors.bgMedium};
+  }
+`;
+
 const ImpactPanel = styled.div`
   margin-top: ${spacing.sm};
   padding: ${spacing.sm} ${spacing.md};
@@ -87,6 +106,7 @@ interface RothConversionDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (event: Omit<IncomeEvent, 'id'>) => void;
+  onDelete?: () => void;
   editEvent?: IncomeEvent;
   existingEvents: IncomeEvent[];
   userData: UserData;
@@ -109,6 +129,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
   visible,
   onHide,
   onSave,
+  onDelete,
   editEvent,
   existingEvents,
   userData,
@@ -193,17 +214,35 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
     </div>
   );
 
+  const handleDeleteClick = () => {
+    confirmDialog({
+      message: `Are you sure you want to delete "${formData.name}"?`,
+      header: 'Confirm Delete',
+      icon: 'pi pi-exclamation-triangle',
+      accept: onDelete,
+    });
+  };
+
   return (
     <Dialog
       header={
-        <>
-          <i className={eventTypeIcons['roth_conversion']} style={{ marginRight: spacing.sm, color: colors.primary }} />
-          {isEditing ? 'Edit Roth Conversion' : 'Add Roth Conversion'}
-        </>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <span>
+            <i className={eventTypeIcons['roth_conversion']} style={{ marginRight: spacing.sm, color: colors.primary }} />
+            {isEditing ? 'Edit Roth Conversion' : 'Add Roth Conversion'}
+          </span>
+          {onDelete && (
+            <TrashButton onClick={handleDeleteClick} title="Delete">
+              <i className="pi pi-trash" />
+            </TrashButton>
+          )}
+        </div>
       }
       visible={visible}
       style={{ width: '34rem' }}
       onHide={onHide}
+      closable={false}
+      closeOnEscape={true}
       footer={dialogFooter}
     >
       <Form onSubmit={handleSubmit}>

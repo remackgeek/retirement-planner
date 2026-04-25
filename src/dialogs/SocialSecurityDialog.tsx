@@ -7,7 +7,8 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
-import { spacing, colors, fontSize } from '../styles/theme';
+import { confirmDialog } from 'primereact/confirmdialog';
+import { spacing, colors, fontSize, border } from '../styles/theme';
 import { eventTypeIcons } from '../utils/defaultName';
 import { buildAgeOptions } from '../utils/ageOptions';
 import { resolveOwnerAge } from '../utils/ownerAge';
@@ -60,10 +61,29 @@ const WarningText = styled.small`
   font-size: ${fontSize.xs};
 `;
 
+const TrashButton = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: ${spacing.xs};
+  border-radius: ${border.radius};
+  color: ${colors.danger};
+  font-size: ${fontSize.xl};
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    color: ${colors.dangerHover};
+    background: ${colors.bgMedium};
+  }
+`;
+
 interface SocialSecurityDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (event: Omit<IncomeEvent, 'id'>) => void;
+  onDelete?: () => void;
   editEvent?: IncomeEvent;
   filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh';
   existingSSEvents: IncomeEvent[];
@@ -97,6 +117,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
   visible,
   onHide,
   onSave,
+  onDelete,
   editEvent,
   filingStatus,
   existingSSEvents,
@@ -225,17 +246,35 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
     </div>
   );
 
+  const handleDeleteClick = () => {
+    confirmDialog({
+      message: `Are you sure you want to delete "${formData.name}"?`,
+      header: 'Confirm Delete',
+      icon: 'pi pi-exclamation-triangle',
+      accept: onDelete,
+    });
+  };
+
   return (
     <Dialog
       header={
-        <>
-          <i className={eventTypeIcons['social_security']} style={{ marginRight: spacing.sm, color: colors.primary }} />
-          {isEditing ? 'Edit Social Security' : 'Add Social Security'}
-        </>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <span>
+            <i className={eventTypeIcons['social_security']} style={{ marginRight: spacing.sm, color: colors.primary }} />
+            {isEditing ? 'Edit Social Security' : 'Add Social Security'}
+          </span>
+          {onDelete && (
+            <TrashButton onClick={handleDeleteClick} title="Delete">
+              <i className="pi pi-trash" />
+            </TrashButton>
+          )}
+        </div>
       }
       visible={visible}
       style={{ width: '32rem' }}
       onHide={onHide}
+      closable={false}
+      closeOnEscape={true}
       footer={dialogFooter}
     >
       <Form onSubmit={handleSubmit}>

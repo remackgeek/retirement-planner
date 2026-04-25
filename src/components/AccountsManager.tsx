@@ -82,7 +82,6 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
               </>
             }
             onEdit={() => startEdit(account)}
-            onDelete={() => onDelete(account.id)}
           />
         ))}
       </SlatList>
@@ -100,6 +99,7 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
           setEditingAccount(undefined);
         }}
         onSave={handleSave}
+        onDelete={editingAccount ? () => { onDelete(editingAccount.id); setDialogVisible(false); setEditingAccount(undefined); } : undefined}
         accountType={editingAccount?.type ?? selectedType}
         editAccount={editingAccount}
         existingAccounts={accounts}

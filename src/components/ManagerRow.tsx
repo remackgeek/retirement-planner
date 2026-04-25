@@ -10,7 +10,6 @@ export interface ManagerRowProps {
   secondary: React.ReactNode;
   badge?: React.ReactNode;
   onEdit: () => void;
-  onDelete: () => void;
 }
 
 const Slat = styled.div`
@@ -19,13 +18,14 @@ const Slat = styled.div`
   align-items: flex-start;
   padding: ${spacing.sm} ${spacing.md};
   border-bottom: ${border.standard};
+  cursor: pointer;
 
   &:last-child {
     border-bottom: none;
   }
 
   &:hover {
-    background: ${colors.bgMedium};
+    background: ${colors.activeRow};
   }
 `;
 
@@ -70,36 +70,6 @@ const SecondaryLine = styled.div`
   color: ${colors.textSecondary};
 `;
 
-const Right = styled.div`
-  display: flex;
-  gap: ${spacing.xs};
-  flex-shrink: 0;
-  margin-left: ${spacing.sm};
-  align-self: flex-start;
-`;
-
-const ActionBtn = styled.button`
-  padding: ${spacing.xs} ${spacing.sm};
-  border: none;
-  border-radius: ${border.radius};
-  cursor: pointer;
-  background: ${colors.primary};
-  color: white;
-  font-size: ${fontSize.sm};
-
-  &:hover {
-    background: ${colors.primaryHover};
-  }
-`;
-
-const DeleteBtn = styled(ActionBtn)`
-  background: ${colors.danger};
-
-  &:hover {
-    background: ${colors.dangerHover};
-  }
-`;
-
 export const ManagerRow: React.FC<ManagerRowProps> = ({
   icon,
   iconBg = colors.bgMedium,
@@ -108,9 +78,8 @@ export const ManagerRow: React.FC<ManagerRowProps> = ({
   secondary,
   badge,
   onEdit,
-  onDelete,
 }) => (
-  <Slat>
+  <Slat onClick={onEdit}>
     <Left>
       <IconCircle $bg={iconBg} $color={iconColor}>
         {icon}
@@ -123,10 +92,6 @@ export const ManagerRow: React.FC<ManagerRowProps> = ({
         <SecondaryLine>{secondary}</SecondaryLine>
       </InfoBlock>
     </Left>
-    <Right>
-      <ActionBtn onClick={onEdit}>Edit</ActionBtn>
-      <DeleteBtn onClick={onDelete}>Delete</DeleteBtn>
-    </Right>
   </Slat>
 );
 

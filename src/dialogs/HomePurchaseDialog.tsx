@@ -6,7 +6,8 @@ import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
-import { spacing, colors, fontSize } from '../styles/theme';
+import { confirmDialog } from 'primereact/confirmdialog';
+import { spacing, colors, fontSize, border } from '../styles/theme';
 import { buildAgeOptions, spendingGoalAgeRanges } from '../utils/ageOptions';
 import { generateDefaultSpendingGoalName, goalTypeIcons } from '../utils/defaultName';
 
@@ -49,10 +50,29 @@ const RadioDescription = styled.span`
   display: block;
 `;
 
+const TrashButton = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: ${spacing.xs};
+  border-radius: ${border.radius};
+  color: ${colors.danger};
+  font-size: ${fontSize.xl};
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    color: ${colors.dangerHover};
+    background: ${colors.bgMedium};
+  }
+`;
+
 interface HomePurchaseDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (goal: Omit<SpendingGoal, 'id'>) => void;
+  onDelete?: () => void;
   editGoal?: SpendingGoal;
   existingGoals?: SpendingGoal[];
   currentAge: number;
@@ -71,6 +91,7 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
   visible,
   onHide,
   onSave,
+  onDelete,
   editGoal,
   existingGoals = [],
   currentAge,
@@ -130,17 +151,35 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
     </div>
   );
 
+  const handleDeleteClick = () => {
+    confirmDialog({
+      message: `Are you sure you want to delete "${formData.name}"?`,
+      header: 'Confirm Delete',
+      icon: 'pi pi-exclamation-triangle',
+      accept: onDelete,
+    });
+  };
+
   return (
     <Dialog
       header={
-        <>
-          <i className={goalTypeIcons['home_purchase']} style={{ marginRight: spacing.sm, color: colors.primary }} />
-          {isEditing ? 'Edit Home Purchase' : 'Add Home Purchase'}
-        </>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <span>
+            <i className={goalTypeIcons['home_purchase']} style={{ marginRight: spacing.sm, color: colors.primary }} />
+            {isEditing ? 'Edit Home Purchase' : 'Add Home Purchase'}
+          </span>
+          {onDelete && (
+            <TrashButton onClick={handleDeleteClick} title="Delete">
+              <i className="pi pi-trash" />
+            </TrashButton>
+          )}
+        </div>
       }
       visible={visible}
       style={{ width: '32rem' }}
       onHide={onHide}
+      closable={false}
+      closeOnEscape={true}
       footer={dialogFooter}
     >
       <Form onSubmit={handleSubmit}>
