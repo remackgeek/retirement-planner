@@ -224,7 +224,7 @@ const Projections = ({
   const { displayCurrency, setDisplayCurrency } = useUIState();
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const [view, setView] = useState<ViewMode>('median');
+  const [view, setView] = useState<ViewMode>('nominal');
 
   const toggleRow = (index: number) => {
     setExpandedRows(prev => {
