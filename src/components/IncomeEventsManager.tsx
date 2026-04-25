@@ -8,19 +8,9 @@ import RothConversionDialog from '../dialogs/RothConversionDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import type { Account } from '../types/Account';
 import { spacing, colors, border, fontSize } from '../styles/theme';
-import { ManagerRow, SlatList, AddButton } from './ManagerRow';
+import { ManagerRow, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
 
 const Container = styled.div``;
-
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: ${spacing.sm};
-  h3 {
-    margin: 0;
-  }
-`;
 
 const ConversionChip = styled.span`
   padding: 0 ${spacing.xs};
@@ -92,10 +82,11 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
   return (
     <Container>
       <Header>
-        <h3>Income</h3>
-        <AddButton onClick={() => setSelectionDialogVisible(true)}>
-          Add
-        </AddButton>
+        <HeaderLeft>
+          <h3>Income</h3>
+          <div style={{ fontSize: fontSize.sm, visibility: 'hidden' }}>&nbsp;</div>
+        </HeaderLeft>
+        <AddButton onClick={() => setSelectionDialogVisible(true)}>Add</AddButton>
       </Header>
 
       <SlatList>

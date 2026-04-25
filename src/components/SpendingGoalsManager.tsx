@@ -4,21 +4,11 @@ import SpendingGoalTypeSelectionDialog from '../dialogs/SpendingGoalTypeSelectio
 import SpendingGoalDialog from '../dialogs/SpendingGoalDialog';
 import HomePurchaseDialog from '../dialogs/HomePurchaseDialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
-import { spacing, colors } from '../styles/theme';
+import { colors, fontSize } from '../styles/theme';
 import { goalTypeIcons } from '../utils/defaultName';
-import { ManagerRow, SlatList, AddButton } from './ManagerRow';
+import { ManagerRow, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
 
 const Container = styled.div``;
-
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: ${spacing.sm};
-  h3 {
-    margin: 0;
-  }
-`;
 
 interface SpendingGoalsManagerProps {
   goals: SpendingGoal[];
@@ -66,10 +56,11 @@ export const SpendingGoalsManager: React.FC<SpendingGoalsManagerProps> = ({
   return (
     <Container>
       <Header>
-        <h3>Spending</h3>
-        <AddButton onClick={() => setSelectionDialogVisible(true)}>
-          Add
-        </AddButton>
+        <HeaderLeft>
+          <h3>Spending</h3>
+          <div style={{ fontSize: fontSize.sm, visibility: 'hidden' }}>&nbsp;</div>
+        </HeaderLeft>
+        <AddButton onClick={() => setSelectionDialogVisible(true)}>Add</AddButton>
       </Header>
 
       <SlatList>

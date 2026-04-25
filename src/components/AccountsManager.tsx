@@ -3,21 +3,11 @@ import styled from 'styled-components';
 import AccountTypeSelectionDialog from '../dialogs/AccountTypeSelectionDialog';
 import AccountDialog from '../dialogs/AccountDialog';
 import type { Account, AccountType } from '../types/Account';
-import { spacing, colors } from '../styles/theme';
+import { colors, fontSize } from '../styles/theme';
 import { accountTypeShortLabels, accountTypeIcons } from '../utils/defaultName';
-import { ManagerRow, SlatList, AddButton } from './ManagerRow';
+import { ManagerRow, SlatList, AddButton, Header, HeaderLeft } from './ManagerRow';
 
 const Container = styled.div``;
-
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: ${spacing.sm};
-  h3 {
-    margin: 0;
-  }
-`;
 
 interface AccountsManagerProps {
   accounts: Account[];
@@ -61,13 +51,18 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
     setDialogVisible(true);
   };
 
+  const totalBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
+
   return (
     <Container>
       <Header>
-        <h3>Accounts</h3>
-        <AddButton onClick={() => setSelectionDialogVisible(true)}>
-          Add
-        </AddButton>
+        <HeaderLeft>
+          <h3>Accounts</h3>
+          <div style={{ fontSize: fontSize.sm, color: colors.textSecondary }}>
+            ${totalBalance.toLocaleString()}
+          </div>
+        </HeaderLeft>
+        <AddButton onClick={() => setSelectionDialogVisible(true)}>Add</AddButton>
       </Header>
 
       <SlatList>

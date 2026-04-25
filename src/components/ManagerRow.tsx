@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { spacing, colors, border, fontSize } from '../styles/theme';
+import { spacing, colors, border, fontSize, layout } from '../styles/theme';
 
 export interface ManagerRowProps {
   icon: React.ReactNode;
@@ -135,6 +135,26 @@ export const SlatList = styled.div`
   margin: 0 -${spacing.md};
   border-top: ${border.standard};
   border-bottom: ${border.standard};
+`;
+
+/** Shared header bar for manager panels — enforces uniform height across all three. */
+export const Header = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: ${spacing.md};
+  min-height: ${layout.managerHeaderHeight};
+`;
+
+/** Left column of a manager header — stacks title and optional subtitle. */
+export const HeaderLeft = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+
+  h3 {
+    margin: 0;
+  }
 `;
 
 /** Large green Add button for manager panel headers. */

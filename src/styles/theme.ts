@@ -172,6 +172,8 @@ export const layout = {
   /** Minimum width for manager panels before wrapping to next row.
    *  With flex-wrap, adding a third panel just works — no media query update needed. */
   managerMinWidth: '280px',
+  /** Fixed height for manager panel headers — keeps Accounts/Income/Spending headers aligned. */
+  managerHeaderHeight: '2.5rem',
   /** Expanded sidebar width on desktop */
   sidebarExpanded: '300px',
   /** Collapsed sidebar width on desktop (icon-only strip) */
