@@ -195,8 +195,75 @@ const Footer = styled.div`
   flex-shrink: 0;
 `;
 
-const FooterButton = styled(Button)`
+const CompactFooterButton = styled.button<{ $primary?: boolean }>`
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: ${spacing.xs};
+  padding: ${spacing.xs} ${spacing.md};
+  font-size: ${fontSize.sm};
+  font-weight: 500;
+  font-family: inherit;
+  border-radius: ${border.radius};
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+  background: transparent;
+  border: 2px solid ${props => props.$primary ? colors.primary : colors.borderMedium};
+  color: ${props => props.$primary ? colors.primary : colors.textPrimary};
+
+  &:hover {
+    background-color: ${props => props.$primary ? 'rgba(61, 122, 95, 0.08)' : 'rgba(0, 0, 0, 0.06)'};
+    color: ${props => props.$primary ? colors.primary : colors.textPrimary};
+  }
+`;
+
+const EmptyState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: ${spacing.sm};
+  padding: ${spacing.xl};
+  text-align: center;
+  flex: 1;
+`;
+
+const EmptyStateIcon = styled.i`
+  font-size: 1.75rem;
+  color: ${colors.textMuted};
+  opacity: 0.5;
+`;
+
+const EmptyStateTitle = styled.div`
+  font-size: ${fontSize.sm};
+  color: ${colors.textSecondary};
+  font-weight: 500;
+`;
+
+const EmptyStateSub = styled.div`
+  font-size: ${fontSize.xs};
+  color: ${colors.textMuted};
+`;
+
+const EmptyStateCta = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: ${spacing.xs};
+  margin-top: ${spacing.xs};
+  padding: ${spacing.xs} ${spacing.lg};
+  font-size: ${fontSize.base};
+  font-family: inherit;
+  border-radius: ${border.radius};
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid ${colors.primary};
+  color: ${colors.primary};
+  transition: background-color 0.15s;
+
+  &:hover {
+    background-color: ${colors.bgHover};
+  }
 `;
 
 const actionButtonStyle = {
@@ -267,6 +334,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         </HeaderActions>
       </Header>
       <ScenarioList>
+        {scenarios.length === 0 && (
+          <EmptyState>
+            <EmptyStateIcon className="pi pi-chart-bar" />
+            <EmptyStateTitle>No scenarios yet</EmptyStateTitle>
+            <EmptyStateSub>Create one to get started</EmptyStateSub>
+            <EmptyStateCta onClick={() => setDialogVisible(true)}>
+              <i className="pi pi-plus" />
+              New Scenario
+            </EmptyStateCta>
+          </EmptyState>
+        )}
         {scenarios.map((scenario) => {
           const isActive = activeScenario?.id === scenario.id;
           const total = scenario.accounts.reduce((sum, a) => sum + a.balance, 0);
@@ -332,17 +410,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         })}
       </ScenarioList>
       <Footer>
-        <FooterButton
-          label='New'
-          icon='pi pi-plus'
-          onClick={() => setDialogVisible(true)}
-        />
-        <FooterButton
-          label='Import'
-          icon='pi pi-upload'
-          className='p-button-outlined'
-          onClick={() => importScenario()}
-        />
+        <CompactFooterButton $primary onClick={() => setDialogVisible(true)}>
+          <i className="pi pi-plus" />
+          New
+        </CompactFooterButton>
+        <CompactFooterButton onClick={() => importScenario()}>
+          <i className="pi pi-upload" />
+          Import
+        </CompactFooterButton>
       </Footer>
       <ScenarioDialog
         visible={dialogVisible}
