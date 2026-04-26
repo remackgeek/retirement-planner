@@ -55,7 +55,7 @@ const Header = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: ${spacing.md} ${spacing.lg} ${spacing.sm};
+  padding: ${spacing.md} ${spacing.lg};
   flex-shrink: 0;
 `;
 
@@ -124,11 +124,15 @@ const ScenarioActions = styled.div`
 const ScenarioItem = styled.li<{ $isActive: boolean }>`
   padding: ${spacing.xs} ${spacing.sm};
   border-radius: ${border.radius};
+  border-bottom: 1px solid ${colors.border};
+
+  &:first-child {
+    border-top: 1px solid ${colors.border};
+  }
   cursor: pointer;
   background-color: ${(props) => (props.$isActive ? colors.activeRow : 'transparent')};
   display: flex;
-  align-items: center;
-  gap: ${spacing.sm};
+  flex-direction: column;
   font-size: ${fontSize.base};
 
   &:hover {
@@ -148,6 +152,20 @@ const ScenarioItem = styled.li<{ $isActive: boolean }>`
     `}
 `;
 
+const ScenarioRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${spacing.sm};
+`;
+
+const ScenarioMeta = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+  padding-top: ${spacing.xs};
+`;
+
 const ScenarioName = styled.span<{ $isActive: boolean }>`
   flex: 1;
   min-width: 0;
@@ -157,24 +175,15 @@ const ScenarioName = styled.span<{ $isActive: boolean }>`
   font-weight: ${(props) => (props.$isActive ? 600 : 400)};
 `;
 
-const Metrics = styled.span`
-  display: inline-flex;
-  align-items: baseline;
-  gap: ${spacing.sm};
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-`;
-
 const Total = styled.span`
-  color: ${colors.textSecondary};
+  color: ${colors.textMuted};
   font-size: ${fontSize.xs};
 `;
 
 const Probability = styled.span<{ $defined: boolean }>`
   color: ${(props) => (props.$defined ? colors.textPrimary : colors.textMuted)};
-  font-size: ${fontSize.sm};
-  min-width: 2.6rem;
-  text-align: right;
+  font-size: ${fontSize.base};
+  font-weight: 600;
 `;
 
 const Footer = styled.div`
@@ -268,14 +277,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
               $isActive={isActive}
               onClick={() => setActiveScenario(scenario.id)}
             >
-              <ScenarioName $isActive={isActive}>{scenario.name}</ScenarioName>
-              <Metrics>
-                <Total>{formatCurrencyShort(total)}</Total>
-                <Probability $defined={prob != null}>
-                  {prob != null ? `${prob}%` : '—'}
-                </Probability>
-              </Metrics>
-              <ScenarioActions>
+              <ScenarioRow>
+                <ScenarioName $isActive={isActive}>{scenario.name}</ScenarioName>
+                <ScenarioActions>
                 <Button
                   icon='pi pi-trash'
                   className='p-button-text p-button-danger'
@@ -316,6 +320,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
                   tooltipOptions={{ position: 'top' }}
                 />
               </ScenarioActions>
+              </ScenarioRow>
+              <ScenarioMeta>
+                <Total>{formatCurrencyShort(total)}</Total>
+                <Probability $defined={prob != null}>
+                  {prob != null ? `${prob}%` : '—'}
+                </Probability>
+              </ScenarioMeta>
             </ScenarioItem>
           );
         })}
