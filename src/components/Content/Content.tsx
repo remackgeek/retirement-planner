@@ -75,6 +75,10 @@ const Content: React.FC = () => {
   const [results, setResults] = useState<any>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const pendingRun = useRef<number | null>(null);
+  // When we write the freshly-computed probability back to the active scenario
+  // (sidebar display cache), the resulting activeScenario reference change would
+  // re-fire this effect and run MC again. Skip exactly one run after a write-back.
+  const skipNextSim = useRef(false);
 
   // Debounce simulation so rapid edits (each keystroke updates activeScenario)
   // don't fire a full Monte Carlo every time. Keep the previous results visible
@@ -85,13 +89,22 @@ const Content: React.FC = () => {
       setIsCalculating(false);
       return;
     }
+    if (skipNextSim.current) {
+      skipNextSim.current = false;
+      return;
+    }
     setIsCalculating(true);
     if (pendingRun.current != null) window.clearTimeout(pendingRun.current);
     pendingRun.current = window.setTimeout(() => {
       clearTaxCalculationCache();
-      setResults(runSimulation(activeScenario));
+      const result = runSimulation(activeScenario);
+      setResults(result);
       setIsCalculating(false);
       pendingRun.current = null;
+      if (result.probability !== activeScenario.lastSuccessProbability) {
+        skipNextSim.current = true;
+        updateScenario({ ...activeScenario, lastSuccessProbability: result.probability });
+      }
     }, 250);
     return () => {
       if (pendingRun.current != null) {

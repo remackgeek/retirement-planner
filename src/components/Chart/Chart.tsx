@@ -226,6 +226,16 @@ const Projections = ({
 
   const isMobile = useIsMobile();
 
+  // Chart.js 4.x ResizeObserver watches the canvas element itself, which has an
+  // explicit inline style.width set by Chart.js and won't grow on its own.
+  // Force a re-measure from the parent container on every window resize event so
+  // the chart expands when the sidebar collapses or the browser window grows.
+  useEffect(() => {
+    const onResize = () => { chartRef.current?.resize(); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const labels = useMemo(
     () => years.map((_: number, index: number) => `${userData.currentAge + index} (${years[index]})`),
     [years, userData.currentAge]

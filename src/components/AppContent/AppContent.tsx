@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import AppHeader from '../AppHeader/AppHeader';
 import Content from '../Content/Content';
 import Sidebar from '../Sidebar/Sidebar';
 import Footer from '../Footer';
-import { colors, mediaQuery } from '../../styles/theme';
+import { breakpoints, colors, mediaQuery } from '../../styles/theme';
 
 const AppContentContainer = styled.div`
   display: flex;
@@ -29,9 +29,36 @@ const Backdrop = styled.div<{ $visible: boolean }>`
   }
 `;
 
+const mobileMediaQuery = `(max-width: ${breakpoints.mobile - 1}px)`;
+
 const AppContent: React.FC = () => {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const toggle = () => setIsSidebarOpen(o => !o);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return !window.matchMedia(mobileMediaQuery).matches;
+  });
+  // Dispatch a resize event after the sidebar CSS transition so Chart.js
+  // re-measures its container after the layout shift.
+  const nudgeChartResize = (delay = 330) =>
+    setTimeout(() => window.dispatchEvent(new Event('resize')), delay);
+
+  const toggle = () => {
+    setIsSidebarOpen(o => !o);
+    nudgeChartResize();
+  };
+
+  // Auto-close the sidebar when the viewport crosses into mobile width
+  // (e.g. shrinking a desktop window or rotating a tablet to portrait).
+  // Nudge Chart.js on both crossing directions: the sidebar enters/exits the
+  // flex layout flow, changing the content area width in ways Chart.js misses.
+  useEffect(() => {
+    const mql = window.matchMedia(mobileMediaQuery);
+    const handler = (e: MediaQueryListEvent) => {
+      if (e.matches) setIsSidebarOpen(false);
+      nudgeChartResize(50);
+    };
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
 
   return (
     <AppContentContainer>

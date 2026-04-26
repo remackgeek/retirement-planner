@@ -27,7 +27,13 @@ projections, and good tax awareness without overwhelming the user.
 
 ## Key Concepts
 
-- **Scenario** — top-level unit holding all user config, persisted to IndexedDB
+- **Scenario** — top-level unit holding all user config, persisted to IndexedDB.
+  Carries an optional `lastSuccessProbability?: number` field that is the **last
+  computed Monte Carlo success probability**, used **only** to display a stable `%`
+  on inactive scenario rows in the sidebar without re-running 5000-sim MC for each.
+  This is a sidebar display cache — never read it from simulation, chart, CSV
+  export, scenario JSON export logic, or tests. Authoritative probability always
+  comes from the live `runSimulation()` result for the active scenario.
 - **Monte Carlo** — median + 10th percentile portfolio paths, success probability
 - **Accounts** — 3 tax-profile types: `traditional` (withdrawals taxed as ordinary income),
   `roth` (withdrawals tax-free), `taxable` (withdrawals taxed at flat LTCG rate).
