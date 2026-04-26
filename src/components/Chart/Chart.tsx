@@ -15,10 +15,11 @@ import htmlAnnotationsPlugin, {
   type AnnotationConfig,
 } from '../../plugins/chartHtmlAnnotations';
 import chartBlackSwanShadingPlugin from '../../plugins/chartBlackSwanShading';
+import chartCrosshairPlugin from '../../plugins/chartCrosshair';
 import {
   type AnnualCashFlowBreakdown,
 } from '../../services/SimulationService';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
 import { useUIState } from '../../context/UIStateContext';
@@ -34,7 +35,8 @@ ChartJS.register(
   Tooltip,
   Legend,
   htmlAnnotationsPlugin,
-  chartBlackSwanShadingPlugin
+  chartBlackSwanShadingPlugin,
+  chartCrosshairPlugin
 );
 
 type ViewMode = 'median' | 'nominal' | 'downside';
@@ -208,6 +210,11 @@ const Projections = ({
     });
   };
 
+  // --- Crosshair hover state ---
+  const chartRef = useRef<any>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const hoverRafRef = useRef<number | null>(null);
+
   const isMobile = useIsMobile();
 
   const labels = useMemo(
@@ -287,6 +294,7 @@ const Projections = ({
   const options = useMemo(() => ({
     responsive: true,
     plugins: {
+      tooltip: { enabled: false },
       legend: {
         position: 'top' as const,
         labels: {
@@ -312,6 +320,9 @@ const Projections = ({
         events: userData.portfolioAssumptions?.blackSwanEvents ?? [],
         years,
       },
+      crosshair: {
+        activeIndex: hoveredIndex,
+      },
     },
     scales: {
       x: {
@@ -326,13 +337,156 @@ const Projections = ({
         },
       },
     },
-  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years, displayCurrency]);
+  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years, displayCurrency, hoveredIndex]);
 
 
   return (
     <div>
       <ChartHeading>Probability of Success: {probability}%</ChartHeading>
-      <Line options={options} data={chartData} />
+      <div
+        style={{ position: 'relative' }}
+        onMouseMove={(e) => {
+          if (hoverRafRef.current !== null) return;
+          const clientX = e.clientX;
+          const rect = e.currentTarget.getBoundingClientRect();
+          hoverRafRef.current = requestAnimationFrame(() => {
+            hoverRafRef.current = null;
+            const chart = chartRef.current;
+            if (!chart) return;
+            const x = clientX - rect.left;
+            const { left, right } = chart.chartArea;
+            if (x < left || x > right) { setHoveredIndex(null); return; }
+            const raw = chart.scales.x.getValueForPixel(x);
+            if (raw == null) return;
+            const idx = Math.max(0, Math.min(Math.round(raw), years.length - 1));
+            setHoveredIndex(prev => prev === idx ? prev : idx);
+          });
+        }}
+        onMouseLeave={() => {
+          if (hoverRafRef.current !== null) {
+            cancelAnimationFrame(hoverRafRef.current);
+            hoverRafRef.current = null;
+          }
+          setHoveredIndex(null);
+        }}
+      >
+        <Line ref={chartRef} options={options} data={chartData} />
+        {hoveredIndex !== null && chartRef.current && (() => {
+          const chart = chartRef.current;
+          const { top, left, right } = chart.chartArea;
+          const xPx = chart.scales.x.getPixelForValue(hoveredIndex);
+          const isRight = xPx > (left + right) / 2;
+          const age = userData.currentAge + hoveredIndex;
+          const year = years[hoveredIndex];
+
+          const getF = (inf: number[]) => inf[hoveredIndex] ?? 1;
+
+          const nomVal = pathToDisplay(nominal[hoveredIndex] ?? 0, getF(nominalInflation), displayCurrency);
+          const medVal = pathToDisplay(median[hoveredIndex] ?? 0, getF(medianInflation), displayCurrency);
+          const dwnVal = pathToDisplay(downside[hoveredIndex] ?? 0, getF(downsideInflation), displayCurrency);
+
+          const yoyDelta = (path: number[], inf: number[]) => {
+            if (hoveredIndex === 0) return null;
+            return pathToDisplay(path[hoveredIndex] ?? 0, inf[hoveredIndex] ?? 1, displayCurrency)
+                 - pathToDisplay(path[hoveredIndex - 1] ?? 0, inf[hoveredIndex - 1] ?? 1, displayCurrency);
+          };
+          const nomDelta = yoyDelta(nominal, nominalInflation);
+          const medDelta = yoyDelta(median, medianInflation);
+          const dwnDelta = yoyDelta(downside, downsideInflation);
+
+          const selInf = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
+          const selBd = (view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns)[hoveredIndex];
+          const bdF = getF(selInf);
+          const shortfall = toDisplay(selBd.spendingShortfall ?? 0, bdF, displayCurrency);
+          const net = toDisplay(selBd.netCashFlow, bdF, displayCurrency);
+
+          const fmtM = (v: number) => {
+            const a = Math.abs(v);
+            if (a >= 1_000_000) return `$${(a / 1_000_000).toFixed(1)}M`;
+            if (a >= 1_000) return `$${Math.round(a / 1_000)}K`;
+            return `$${Math.round(a)}`;
+          };
+          const fmtD = (d: number | null) =>
+            d === null ? null : `${d >= 0 ? '+' : '−'}${fmtM(Math.abs(d))}`;
+
+          const pathRows: Array<{ mode: ViewMode; val: number; delta: number | null }> = [
+            { mode: 'nominal',  val: nomVal, delta: nomDelta },
+            { mode: 'median',   val: medVal, delta: medDelta },
+            { mode: 'downside', val: dwnVal, delta: dwnDelta },
+          ];
+
+          return (
+            <div style={{
+              position: 'absolute',
+              top: top + 4,
+              ...(isRight ? { right: chart.width - xPx + 12 } : { left: xPx + 12 }),
+              zIndex: 10,
+              pointerEvents: 'none',
+              background: 'rgba(255,255,255,0.97)',
+              border: border.standard,
+              borderRadius: border.radiusRound,
+              padding: `${spacing.xs} ${spacing.sm}`,
+              fontSize: fontSize.xs,
+              boxShadow: `0 2px 8px ${colors.shadowLight}`,
+              minWidth: '13rem',
+              lineHeight: '1.5',
+            }}>
+              <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textPrimary, fontSize: fontSize.sm }}>
+                Age {age} · {year}
+              </div>
+              {pathRows.map(({ mode, val, delta }) => {
+                const d = fmtD(delta);
+                const isSelected = view === mode;
+                return (
+                  <div key={mode} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    fontWeight: isSelected ? 'bold' : 'normal',
+                    opacity: isSelected ? 1 : 0.55,
+                    marginBottom: '1px',
+                  }}>
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%',
+                      backgroundColor: VIEW_COLORS[mode],
+                      flexShrink: 0, display: 'inline-block',
+                    }} />
+                    <span style={{ width: '5rem', color: colors.textPrimary }}>{VIEW_LABELS[mode]}</span>
+                    <span style={{ flex: 1, textAlign: 'right', color: colors.textPrimary }}>{fmtM(val)}</span>
+                    {d !== null && (
+                      <span style={{
+                        minWidth: '3.5rem', textAlign: 'right',
+                        color: (delta ?? 0) >= 0 ? colors.income : colors.danger,
+                      }}>
+                        {d}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+              <div style={{ borderTop: border.light, margin: `${spacing.xs} 0` }} />
+              <div style={{ color: VIEW_COLORS[view], fontWeight: 'bold', marginBottom: '2px' }}>
+                {VIEW_LABELS[view]}
+              </div>
+              <div style={{ display: 'flex', gap: spacing.sm, color: colors.textSecondary, flexWrap: 'wrap' }}>
+                <span><span style={{ color: colors.income }}>Inc</span> {fmtM(toDisplay(selBd.totalGrossIncome, bdF, displayCurrency))}</span>
+                <span><span style={{ color: colors.spending }}>Spend</span> {fmtM(toDisplay(selBd.totalSpendingNet, bdF, displayCurrency))}</span>
+                <span>Tax {fmtM(toDisplay(selBd.totalTax, bdF, displayCurrency))}</span>
+              </div>
+              <div style={{ marginTop: '1px', color: colors.textSecondary }}>
+                Net <span style={{ color: net >= 0 ? colors.income : colors.danger, fontWeight: 'bold' }}>
+                  {net >= 0 ? '+' : '−'}{fmtM(Math.abs(net))}
+                </span>
+              </div>
+              {shortfall > 0.5 && (
+                <div style={{ color: colors.danger, marginTop: spacing.xs, fontWeight: 'bold' }}>
+                  Portfolio Depleted
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </div>
       <Accordion style={{ marginTop: spacing.sm }}>
         <AccordionTab header={
           <YearlyDataHeader>

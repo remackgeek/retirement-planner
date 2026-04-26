@@ -268,6 +268,49 @@ Future direction:
   (smoother chart lines, but synthetic paths with no coherent per-year actuals). The
   representative-run approach was chosen to enable exact stock/bond attribution in detail rows.
 
+### Chart plugins
+
+All Chart.js plugins live in `src/plugins/` as `chartXxx.ts` files and are registered once via
+`ChartJS.register()` at the top of `src/components/Chart/Chart.tsx`. **Never** pass a plugin as an
+inline `<Line plugins={[...]}>` prop — that creates a new plugin object on every render and breaks
+Chart.js's internal deduplication.
+
+Each plugin file follows this structure:
+
+1. **Type augmentation** — extend `PluginOptionsByType` via `declare module 'chart.js'` so every
+   call-site gets type-safe options:
+   ```ts
+   declare module 'chart.js' {
+     interface PluginOptionsByType<TType extends ChartType> {
+       myPlugin?: MyPluginOptions;
+     }
+   }
+   ```
+
+2. **Options interface** — document each field, including how the consuming component should drive it.
+
+3. **Plugin object** — read configuration exclusively from `chart.options.plugins?.myPlugin` inside
+   lifecycle hooks (never from module-level variables or React refs).
+
+To drive a plugin from React state, include the state variable in the `options` useMemo deps and add
+it to the `plugins` block:
+```ts
+const options = useMemo(() => ({
+  plugins: {
+    myPlugin: { activeIndex: someState },
+  },
+}), [..., someState]);
+```
+react-chartjs-2 detects the options change and calls `chart.update()` automatically.
+
+Plugins that need a DOM overlay (e.g. `htmlAnnotations`) use `beforeInit`/`beforeDestroy` to
+attach/detach a container `<div>` next to the canvas.
+
+Current plugins:
+- `chartHtmlAnnotations` — renders income/spending event badges as HTML elements over the chart
+- `chartBlackSwanShading` — draws vertical shaded bands for portfolio stress events
+- `chartCrosshair` — draws a dashed vertical line at the hovered year index
+
 ### Top bar: Settings menu
 
 `AppHeader` renders a single **Settings** dropdown (PrimeReact `Menu` popup) with two items:
