@@ -67,6 +67,13 @@ const ChartHeading = styled.h2`
   ${mediaQuery.mobile} { font-size: ${fontSize.xl}; }
 `;
 
+const UpdatingBadge = styled.span`
+  margin-left: ${spacing.sm};
+  font-size: ${fontSize.xs};
+  color: ${colors.textMuted};
+  font-weight: normal;
+`;
+
 const YearlyDataHeader = styled.div`
   display: flex;
   align-items: center;
@@ -185,9 +192,11 @@ function exportCsv(
 const Projections = ({
   results,
   userData,
+  isCalculating,
 }: {
   results: any;
   userData: any;
+  isCalculating?: boolean;
 }) => {
   if (!results) return null;
   const {
@@ -342,7 +351,10 @@ const Projections = ({
 
   return (
     <div>
-      <ChartHeading>Probability of Success: {probability}%</ChartHeading>
+      <ChartHeading>
+        Probability of Success: {isCalculating ? '—' : `${probability}%`}
+        {isCalculating && <UpdatingBadge>Updating projection…</UpdatingBadge>}
+      </ChartHeading>
       <div
         style={{ position: 'relative' }}
         onMouseMove={(e) => {

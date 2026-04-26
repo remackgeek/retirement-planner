@@ -1,5 +1,6 @@
 import { useContext, useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
+import { ProgressSpinner } from 'primereact/progressspinner';
 import { RetirementContext } from '../../context/RetirementContext';
 import { runSimulation } from '../../services/SimulationService';
 import { clearTaxCalculationCache } from '../../services/TaxCalculator';
@@ -10,7 +11,7 @@ import { AccountsManager } from '../AccountsManager';
 import type { SpendingGoal } from '../../types/SpendingGoal';
 import type { IncomeEvent } from '../../types/IncomeEvent';
 import type { Account } from '../../types/Account';
-import { spacing, colors, border, layout } from '../../styles/theme';
+import { spacing, colors, border, layout, fontSize } from '../../styles/theme';
 
 const ContentContainer = styled.main`
   flex: 1;
@@ -52,11 +53,27 @@ const AccountsManagerSection = styled(ManagerSection)`
   }
 `;
 
+const SpinnerContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 300px;
+  gap: ${spacing.md};
+`;
+
+const SpinnerLabel = styled.div`
+  font-size: ${fontSize.sm};
+  color: ${colors.textSecondary};
+`;
+
 const Content: React.FC = () => {
   const context = useContext(RetirementContext);
   if (!context) return null;
   const { activeScenario, updateScenario } = context;
   const [results, setResults] = useState<any>(null);
+  const [isCalculating, setIsCalculating] = useState(false);
   const pendingRun = useRef<number | null>(null);
 
   // Debounce simulation so rapid edits (each keystroke updates activeScenario)
@@ -65,12 +82,15 @@ const Content: React.FC = () => {
   useEffect(() => {
     if (!activeScenario) {
       setResults(null);
+      setIsCalculating(false);
       return;
     }
+    setIsCalculating(true);
     if (pendingRun.current != null) window.clearTimeout(pendingRun.current);
     pendingRun.current = window.setTimeout(() => {
       clearTaxCalculationCache();
       setResults(runSimulation(activeScenario));
+      setIsCalculating(false);
       pendingRun.current = null;
     }, 250);
     return () => {
@@ -177,7 +197,15 @@ const Content: React.FC = () => {
             No scenario selected. Create or import a scenario to get started.
           </div>
         )}
-        {results && activeScenario && <Projections results={results} userData={activeScenario} />}
+        {!results && activeScenario && isCalculating && (
+          <SpinnerContainer>
+            <ProgressSpinner style={{ width: '48px', height: '48px' }} />
+            <SpinnerLabel>Running Monte Carlo simulation…</SpinnerLabel>
+          </SpinnerContainer>
+        )}
+        {results && activeScenario && (
+          <Projections results={results} userData={activeScenario} isCalculating={isCalculating} />
+        )}
         {activeScenario && (
           <ManagersContainer>
             <AccountsManagerSection>
