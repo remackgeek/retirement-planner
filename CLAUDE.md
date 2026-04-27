@@ -221,6 +221,12 @@ parameters are per-scenario in `UserData`:
   regardless of this setting.
 - `portfolioAssumptions.degreesOfFreedom` — integer 3–12; default `4`; ignored when
   `returnDistribution === 'lognormal'`. Lower values produce fatter tails.
+- `portfolioAssumptions.blackSwanEvents` — optional `BlackSwanEvent[]`; each entry
+  replaces the drawn stock/bond factors for a specific calendar year with fixed historical
+  multipliers, applied identically across every Monte Carlo run. `BlackSwanEvent.groupId`
+  is a **UI-only field** (ties multi-year templates together for grouped deletion in the
+  editor) — never read it in simulation, ReturnGenerator, chart plugins, CSV export, or
+  tests. Scenario JSON files may omit it; the field is optional and simulation-transparent.
 - `simulationSettings.numSimulations` — run count (1000 / 5000 / 10000)
 - `inflationRate` — annual inflation, affects cash flow inflation-adjustment
 - `inflationStdDev` — inflation volatility; affects portfolio deflation (real vs nominal)

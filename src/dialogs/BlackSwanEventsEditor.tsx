@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import type { BlackSwanEvent } from '../types/IncomeEvent';
 import {
@@ -22,11 +21,10 @@ const HelpText = styled.div`
   font-style: italic;
 `;
 
-const AddRow = styled.div`
+const AddSection = styled.div`
   display: flex;
-  align-items: center;
-  gap: ${spacing.sm};
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: ${spacing.xs};
 `;
 
 const AddLabel = styled.span`
@@ -47,7 +45,7 @@ const EventList = styled.div`
 
 const EventRow = styled.div`
   display: grid;
-  grid-template-columns: 3rem 1fr auto auto;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
   gap: ${spacing.sm};
   padding: ${spacing.xs} ${spacing.sm};
@@ -56,30 +54,17 @@ const EventRow = styled.div`
   font-size: ${fontSize.sm};
 `;
 
-const Year = styled.span`
-  font-weight: 600;
-  color: ${colors.textPrimary};
-`;
-
-const TemplateName = styled.span`
+const EventName = styled.span`
   color: ${colors.textPrimary};
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 `;
 
-const Multipliers = styled.span`
+const YearRange = styled.span`
   color: ${colors.textSecondary};
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-`;
-
-const StockDelta = styled.span<{ $negative: boolean }>`
-  color: ${(p) => (p.$negative ? colors.danger : colors.textSecondary)};
-`;
-
-const BondDelta = styled.span<{ $negative: boolean }>`
-  color: ${(p) => (p.$negative ? colors.danger : colors.textSecondary)};
 `;
 
 const DeleteButton = styled.button`
@@ -100,93 +85,139 @@ interface Props {
   onChange: (next: BlackSwanEvent[]) => void;
   yearMin: number;
   yearMax: number;
+  baseAge: number;
 }
 
-function formatPct(multiplier: number): string {
-  const pct = (multiplier - 1) * 100;
-  const sign = pct >= 0 ? '+' : '';
-  return `${sign}${pct.toFixed(1)}%`;
+interface EventGroup {
+  groupId: string | null;
+  label: string;
+  indices: number[];
+  startYear: number;
+  endYear: number;
 }
 
-const BlackSwanEventsEditor: React.FC<Props> = ({ events, onChange, yearMin, yearMax }) => {
-  const initialYear = events.length > 0 ? events[events.length - 1].year + 1 : yearMin;
-  const [pendingYear, setPendingYear] = useState<number>(initialYear);
+const BlackSwanEventsEditor: React.FC<Props> = ({ events, onChange, yearMin, yearMax, baseAge }) => {
+  const [pendingYear, setPendingYear] = useState<number>(yearMin);
+  const [overlapWarning, setOverlapWarning] = useState(false);
 
-  const yearOutOfRange = pendingYear < yearMin || pendingYear > yearMax;
+  const yearOptions = Array.from({ length: yearMax - yearMin + 1 }, (_, i) => {
+    const y = yearMin + i;
+    return { label: `${y} (age ${baseAge + i})`, value: y };
+  });
+
+  const occupiedYears = new Set(events.map((e) => e.year));
 
   const handleTemplatePick = (template: BlackSwanTemplate | null) => {
     if (!template) return;
+    const years = template.years.map((_, offset) => pendingYear + offset);
+    if (years.some((y) => occupiedYears.has(y))) {
+      setOverlapWarning(true);
+      return;
+    }
+    setOverlapWarning(false);
+    const groupId = crypto.randomUUID();
     const expanded: BlackSwanEvent[] = template.years.map((y, offset) => ({
       year: pendingYear + offset,
       stockMultiplier: y.stockMultiplier,
       bondMultiplier: y.bondMultiplier,
+      groupId,
     }));
     onChange([...events, ...expanded]);
-    setPendingYear(pendingYear + template.years.length);
+    const nextYear = pendingYear + template.years.length;
+    if (nextYear <= yearMax) setPendingYear(nextYear);
   };
 
-  const handleDelete = (index: number) => {
-    const next = events.filter((_, i) => i !== index);
-    onChange(next);
+  const handleDeleteGroup = (indices: number[]) => {
+    const indexSet = new Set(indices);
+    onChange(events.filter((_, i) => !indexSet.has(i)));
+  };
+
+  // Build groups: events sharing a groupId → one group; ungrouped events → singleton groups
+  const groups: EventGroup[] = [];
+  const seen = new Map<string, number>(); // groupId → index in groups
+  events.forEach((ev, i) => {
+    if (ev.groupId) {
+      const existing = seen.get(ev.groupId);
+      if (existing !== undefined) {
+        groups[existing].indices.push(i);
+        groups[existing].endYear = Math.max(groups[existing].endYear, ev.year);
+      } else {
+        seen.set(ev.groupId, groups.length);
+        groups.push({
+          groupId: ev.groupId,
+          label: findTemplateForEvent(ev)?.label ?? '—',
+          indices: [i],
+          startYear: ev.year,
+          endYear: ev.year,
+        });
+      }
+    } else {
+      groups.push({
+        groupId: null,
+        label: findTemplateForEvent(ev)?.label ?? '—',
+        indices: [i],
+        startYear: ev.year,
+        endYear: ev.year,
+      });
+    }
+  });
+
+  const formatYearRange = (g: EventGroup): string => {
+    const startAge = baseAge + (g.startYear - yearMin);
+    if (g.startYear === g.endYear) return `${g.startYear} (age ${startAge})`;
+    const endAge = baseAge + (g.endYear - yearMin);
+    return `${g.startYear}–${g.endYear} (age ${startAge}–${endAge})`;
   };
 
   return (
     <Wrapper>
       <HelpText>
-        Multipliers replace the simulated return for that year — e.g. a stock multiplier of 0.63
-        locks in a &minus;37% stock return regardless of what the base draw would have been.
+        Apply historical market crises at specific points in your retirement to stress-test your
+        plan. Each event replaces that year's simulated returns with real historical data.
       </HelpText>
 
-      <AddRow>
-        <AddLabel>Add:</AddLabel>
-        <InputNumber
+      <AddSection>
+        <AddLabel>Starting year</AddLabel>
+        <Dropdown
           value={pendingYear}
-          onValueChange={(e) => setPendingYear(e.value ?? yearMin)}
-          useGrouping={false}
-          min={1900}
-          max={2200}
-          inputStyle={{ width: '5rem' }}
+          options={yearOptions}
+          onChange={(e) => {
+            setPendingYear(e.value as number);
+            setOverlapWarning(false);
+          }}
+          style={{ width: '100%' }}
         />
         <Dropdown
           value={null}
           options={BLACK_SWAN_TEMPLATES}
           optionLabel="label"
-          placeholder="Pick a template…"
+          placeholder="Choose a historical crisis…"
           onChange={(e) => handleTemplatePick(e.value as BlackSwanTemplate | null)}
-          style={{ flex: 1, minWidth: '12rem' }}
+          style={{ width: '100%' }}
         />
-      </AddRow>
-      {yearOutOfRange && (
-        <Warning>
-          Year is outside the scenario range ({yearMin}–{yearMax}); event will not appear on the chart.
-        </Warning>
-      )}
+        {overlapWarning && (
+          <Warning>
+            That year range overlaps an existing event. Choose a different starting year or remove
+            the conflicting event first.
+          </Warning>
+        )}
+      </AddSection>
 
-      {events.length > 0 && (
+      {groups.length > 0 && (
         <EventList>
-          {events.map((ev, i) => {
-            const template = findTemplateForEvent(ev);
-            const stockNeg = ev.stockMultiplier < 1;
-            const bondNeg = ev.bondMultiplier < 1;
-            return (
-              <EventRow key={`${ev.year}-${i}`}>
-                <Year>{ev.year}</Year>
-                <TemplateName>{template ? template.label : '—'}</TemplateName>
-                <Multipliers>
-                  <StockDelta $negative={stockNeg}>{formatPct(ev.stockMultiplier)}</StockDelta>
-                  {' / '}
-                  <BondDelta $negative={bondNeg}>{formatPct(ev.bondMultiplier)}</BondDelta>
-                </Multipliers>
-                <DeleteButton
-                  type="button"
-                  aria-label="Delete event"
-                  onClick={() => handleDelete(i)}
-                >
-                  ×
-                </DeleteButton>
-              </EventRow>
-            );
-          })}
+          {groups.map((g, gi) => (
+            <EventRow key={`group-${gi}`}>
+              <EventName>{g.label}</EventName>
+              <YearRange>{formatYearRange(g)}</YearRange>
+              <DeleteButton
+                type="button"
+                aria-label="Remove event"
+                onClick={() => handleDeleteGroup(g.indices)}
+              >
+                ×
+              </DeleteButton>
+            </EventRow>
+          ))}
         </EventList>
       )}
     </Wrapper>

@@ -42,6 +42,7 @@ export interface BlackSwanEvent {
   year: number;
   stockMultiplier: number; // replaces the drawn stock factor, e.g. 0.60 ⇒ -40% stock return
   bondMultiplier: number;
+  groupId?: string; // ties multi-year template events together for grouped deletion
 }
 
 export interface PortfolioAssumptions {

@@ -338,6 +338,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
             }
             yearMin={scenario.referenceYear}
             yearMax={scenario.referenceYear + scenario.lifeExpectancy - scenario.currentAge}
+            baseAge={scenario.currentAge}
           />
         </Section>
 
