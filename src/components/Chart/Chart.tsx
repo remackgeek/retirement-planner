@@ -25,6 +25,7 @@ import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/them
 import { useUIState } from '../../context/UIStateContext';
 import { toDisplay, pathToDisplay, type DisplayCurrency } from '../../utils/displayCurrency';
 import { eventTypeIcons, goalTypeIcons } from '../../utils/defaultName';
+import { getProbabilityTier } from '../../utils/probabilityTier';
 
 ChartJS.register(
   CategoryScale,
@@ -64,14 +65,30 @@ const VIEW_LABELS_SHORT: Record<ViewMode, string> = {
 const ChartHeading = styled.h2`
   margin: 0 0 ${spacing.sm};
   font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: ${spacing.sm};
   ${mediaQuery.mobile} { font-size: ${fontSize.xl}; }
 `;
 
 const UpdatingBadge = styled.span`
-  margin-left: ${spacing.sm};
   font-size: ${fontSize.xs};
   color: ${colors.textMuted};
   font-weight: normal;
+`;
+
+const TierBadge = styled.span<{ $color: string; $bg: string }>`
+  display: inline-flex;
+  align-items: center;
+  padding: ${spacing.xs} ${spacing.sm};
+  background: ${props => props.$bg};
+  color: ${props => props.$color};
+  border-radius: ${border.radiusRound};
+  font-size: ${fontSize.sm};
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: help;
 `;
 
 const YearlyDataHeader = styled.div`
@@ -362,7 +379,27 @@ const Projections = ({
   return (
     <div>
       <ChartHeading>
-        Probability of Success: {isCalculating ? '—' : `${probability}%`}
+        <span>Chance of Success: {isCalculating ? '—' : `${probability}%`}</span>
+        {!isCalculating && (() => {
+          const tierInfo = getProbabilityTier(probability);
+          return (
+            <>
+              <PrimeTooltip target=".chance-tier-badge" position="bottom" showDelay={150}>
+                <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                  {tierInfo.tooltip}
+                </div>
+              </PrimeTooltip>
+              <TierBadge
+                className="chance-tier-badge"
+                $color={tierInfo.color}
+                $bg={tierInfo.backgroundColor}
+                aria-label={`Tier: ${tierInfo.label}. ${tierInfo.tooltip}`}
+              >
+                {tierInfo.label}
+              </TierBadge>
+            </>
+          );
+        })()}
         {isCalculating && <UpdatingBadge>Updating projection…</UpdatingBadge>}
       </ChartHeading>
       <div

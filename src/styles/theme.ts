@@ -48,6 +48,18 @@ const palette = {
 
   // Greens
   green600: '#008000',
+  green100: '#dcfce7',
+
+  // Limes (status: good)
+  lime600: '#65a30d',
+  lime100: '#ecfccb',
+
+  // Ambers (status: fair)
+  amber700: '#b45309',
+  amber100: '#fef3c7',
+
+  // Reds (status: at risk)
+  red100: '#fee2e2',
 
   // Oranges
   orange600: '#d2691e',
@@ -124,6 +136,17 @@ export const colors = {
   hoverRow:  palette.green25,
   chipBg:    palette.green50,
   chipText:  palette.greenDark,
+
+  // Status (success-tier scale for chance-of-success badges, etc.)
+  success:         palette.green600,
+  successBg:       palette.green100,
+  successMuted:    palette.lime600,
+  successMutedBg:  palette.lime100,
+  warning:         palette.amber700,
+  warningBg:       palette.amber100,
+  dangerBg:        palette.red100,
+  dangerStrong:    palette.red700,
+  dangerStrongBg:  palette.red100,
 } as const;
 
 // --- Typography ---

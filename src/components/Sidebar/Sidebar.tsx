@@ -1,13 +1,15 @@
 import { useState, useContext } from 'react';
-import styled, { css } from 'styled-components';
+import styled, { css, createGlobalStyle } from 'styled-components';
 import { RetirementContext } from '../../context/RetirementContext';
 import { Button } from 'primereact/button';
 import { ConfirmDialog } from 'primereact/confirmdialog';
+import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import ScenarioDialog from '../../dialogs/ScenarioDialog';
 import type { Scenario } from '../../types/Scenario';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { spacing, colors, border, fontSize, mediaQuery, layout } from '../../styles/theme';
 import { formatCurrencyShort } from '../../utils/formatCurrencyShort';
+import { getProbabilityTier } from '../../utils/probabilityTier';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -177,14 +179,32 @@ const ScenarioName = styled.span<{ $isActive: boolean }>`
 
 const Total = styled.span`
   color: ${colors.textMuted};
-  font-size: ${fontSize.xs};
+  font-size: ${fontSize.sm};
+`;
+
+const ProbabilityWrap = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: ${spacing.xs};
+`;
+
+const TierDot = styled.span<{ $color: string; $defined: boolean }>`
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: ${border.radiusCircle};
+  background: ${props => (props.$defined ? props.$color : 'transparent')};
+  border: ${props => (props.$defined ? 'none' : `1px solid ${colors.borderMedium}`)};
+  flex-shrink: 0;
+  cursor: ${props => (props.$defined ? 'help' : 'default')};
 `;
 
 const Probability = styled.span<{ $defined: boolean }>`
   color: ${(props) => (props.$defined ? colors.textPrimary : colors.textMuted)};
-  font-size: ${fontSize.base};
+  font-size: ${fontSize.md};
   font-weight: 600;
 `;
+
 
 const Footer = styled.div`
   display: flex;
@@ -266,6 +286,13 @@ const EmptyStateCta = styled.button`
   }
 `;
 
+const CompactTooltipStyle = createGlobalStyle`
+  .compact-tooltip .p-tooltip-text {
+    font-size: ${fontSize.xs};
+    padding: ${spacing.xs} ${spacing.sm};
+  }
+`;
+
 const actionButtonStyle = {
   padding: '0.1rem 0.15rem',
   fontSize: '0.6rem',
@@ -318,6 +345,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
 
   return (
     <SidebarContainer $isOpen={true}>
+      <CompactTooltipStyle />
       <Header>
         <HeaderTitle>Scenarios</HeaderTitle>
         <HeaderActions>
@@ -372,7 +400,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
                     });
                   }}
                   tooltip='Delete'
-                  tooltipOptions={{ position: 'top' }}
+                  tooltipOptions={{ position: 'top', className: 'compact-tooltip' }}
                 />
                 <Button
                   icon='pi pi-download'
@@ -383,7 +411,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
                     exportScenario(scenario.id);
                   }}
                   tooltip='Export'
-                  tooltipOptions={{ position: 'top' }}
+                  tooltipOptions={{ position: 'top', className: 'compact-tooltip' }}
                 />
                 <Button
                   icon='pi pi-pencil'
@@ -395,15 +423,38 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
                     setDialogVisible(true);
                   }}
                   tooltip='Edit'
-                  tooltipOptions={{ position: 'top' }}
+                  tooltipOptions={{ position: 'top', className: 'compact-tooltip' }}
                 />
               </ScenarioActions>
               </ScenarioRow>
               <ScenarioMeta>
                 <Total>{formatCurrencyShort(total)}</Total>
-                <Probability $defined={prob != null}>
-                  {prob != null ? `${prob}%` : '—'}
-                </Probability>
+                <ProbabilityWrap>
+                  {(() => {
+                    const tierInfo = prob != null ? getProbabilityTier(prob) : null;
+                    const dotClass = `chance-tier-dot-${scenario.id}`;
+                    return (
+                      <>
+                        {tierInfo && (
+                          <PrimeTooltip target={`.${dotClass}`} position="right" showDelay={150}>
+                            <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                              <strong>{tierInfo.label}</strong> — {tierInfo.tooltip}
+                            </div>
+                          </PrimeTooltip>
+                        )}
+                        <TierDot
+                          className={dotClass}
+                          $color={tierInfo?.color ?? ''}
+                          $defined={tierInfo != null}
+                          aria-label={tierInfo ? `Tier: ${tierInfo.label}` : 'No probability yet'}
+                        />
+                      </>
+                    );
+                  })()}
+                  <Probability $defined={prob != null}>
+                    {prob != null ? `${prob}%` : '—'}
+                  </Probability>
+                </ProbabilityWrap>
               </ScenarioMeta>
             </ScenarioItem>
           );

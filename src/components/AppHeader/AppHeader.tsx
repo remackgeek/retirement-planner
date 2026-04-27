@@ -100,7 +100,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle }) => {
           <HamburgerButton onClick={onMenuToggle} aria-label="Toggle menu">
             <i className="pi pi-bars" />
           </HamburgerButton>
-          Retirement Planner MVP
+          Yet Another Retirement Planner
         </HeaderLeft>
         <HeaderCenter>
           {scenarioName && (
