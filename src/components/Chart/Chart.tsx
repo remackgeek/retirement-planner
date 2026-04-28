@@ -9,7 +9,6 @@ import {
   Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { Accordion, AccordionTab } from 'primereact/accordion';
 import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import htmlAnnotationsPlugin, {
   type AnnotationConfig,
@@ -19,7 +18,7 @@ import chartCrosshairPlugin from '../../plugins/chartCrosshair';
 import {
   type AnnualCashFlowBreakdown,
 } from '../../services/SimulationService';
-import React, { useState, useMemo, useEffect, useRef, useContext } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useContext, useCallback } from 'react';
 import styled from 'styled-components';
 import { Menu } from 'primereact/menu';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
@@ -56,17 +55,11 @@ const VIEW_LABELS: Record<ViewMode, string> = {
   downside: 'Downside',
 };
 
-const VIEW_LABELS_SHORT: Record<ViewMode, string> = {
-  median: 'Med',
-  nominal: 'Det',
-  downside: 'Down',
-};
-
 // --- Styled components ---
 
 const ChartHeading = styled.h2`
   margin: 0 0 ${spacing.sm};
-  font-size: 1.25rem;
+  font-size: 1.4rem;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -83,14 +76,15 @@ const UpdatingBadge = styled.span`
 const TierBadge = styled.span<{ $color: string; $bg: string }>`
   display: inline-flex;
   align-items: center;
-  padding: ${spacing.xs} ${spacing.sm};
+  padding: 1px ${spacing.xs};
   background: ${props => props.$bg};
   color: ${props => props.$color};
   border-radius: ${border.radiusRound};
-  font-size: ${fontSize.sm};
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: ${fontSize.xs};
+  font-weight: 500;
   cursor: help;
+  align-self: flex-end;
+  margin-bottom: 3px;
 `;
 
 const CompareWithButton = styled.button`
@@ -110,39 +104,86 @@ const CompareWithButton = styled.button`
   &:hover { background: rgba(61, 122, 95, 0.08); }
 `;
 
-
-const YearlyDataHeader = styled.div`
+const ChartSubtitleRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
-  gap: ${spacing.md};
-  flex-wrap: wrap;
-`;
-
-const YearlyDataControls = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${spacing.sm};
+  margin-bottom: ${spacing.xs};
   font-size: ${fontSize.sm};
+  color: ${colors.textSecondary};
   flex-wrap: wrap;
+  gap: ${spacing.xs};
 `;
 
-const ViewLabel = styled.label<{ $active: boolean; $color: string }>`
+const CurrencyPillGroup = styled.div`
+  display: inline-flex;
+  border: ${border.standard};
+  border-radius: ${border.radius};
+  overflow: hidden;
+`;
+
+const CurrencyPillButton = styled.button<{ $active: boolean }>`
+  padding: 1px ${spacing.sm};
+  font-size: ${fontSize.xs};
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+  background: ${props => props.$active ? colors.primary : 'transparent'};
+  color: ${props => props.$active ? '#fff' : colors.textSecondary};
+  &:hover { background: ${props => props.$active ? colors.primary : colors.bgHover}; }
+`;
+
+const LegendRow = styled.div`
   display: flex;
   align-items: center;
   gap: ${spacing.xs};
+  margin-top: ${spacing.xs};
+  margin-bottom: ${spacing.xs};
+  flex-wrap: wrap;
+`;
+
+const LegendButton = styled.button<{ $active: boolean; $color: string }>`
+  display: inline-flex;
+  align-items: center;
+  gap: ${spacing.xs};
+  background: none;
+  border: none;
   cursor: pointer;
-  font-weight: normal;
-  color: ${props => (props.$active ? props.$color : colors.textPrimary)};
+  padding: 2px ${spacing.sm};
+  border-radius: ${border.radius};
+  font-size: ${fontSize.sm};
+  font-family: inherit;
+  font-weight: ${props => props.$active ? '700' : 'normal'};
+  color: ${props => props.$active ? props.$color : colors.textSecondary};
+  text-decoration: ${props => props.$active ? 'underline' : 'none'};
+  text-underline-offset: 2px;
+  &:hover { background: ${colors.bgHover}; }
+`;
 
-  .label-full  { display: inline; }
-  .label-short { display: none; }
+const LegendSwatch = styled.span<{ $color: string; $dashed?: boolean }>`
+  display: inline-block;
+  width: 18px;
+  height: ${props => props.$dashed ? '0' : '3px'};
+  background: ${props => props.$dashed ? 'transparent' : props.$color};
+  border-top: ${props => props.$dashed ? `2px dashed ${props.$color}` : 'none'};
+  border-radius: 2px;
+  flex-shrink: 0;
+`;
 
-  ${mediaQuery.mobile} {
-    .label-full  { display: none; }
-    .label-short { display: inline; }
-  }
+const DataToggle = styled.button<{ $active: boolean }>`
+  margin-left: auto;
+  padding: 2px ${spacing.sm};
+  font-size: ${fontSize.xs};
+  font-family: inherit;
+  background: ${props => props.$active ? colors.primary : colors.bgMedium};
+  color: ${props => props.$active ? '#fff' : colors.textPrimary};
+  border: ${border.standard};
+  border-radius: ${border.radius};
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: ${spacing.xs};
+  &:hover { background: ${props => props.$active ? colors.primary : colors.bgHover}; }
 `;
 
 function useIsMobile(): boolean {
@@ -244,6 +285,7 @@ const Projections = ({
   compareScenario,
   isCompareCalculating,
   onSetCompare,
+  onRegisterExport,
 }: {
   results: any;
   userData: any;
@@ -252,6 +294,7 @@ const Projections = ({
   compareScenario?: any;
   isCompareCalculating?: boolean;
   onSetCompare: (id: string | null) => void;
+  onRegisterExport?: (fn: (() => void) | null) => void;
 }) => {
   if (!results) return null;
   const {
@@ -271,6 +314,7 @@ const Projections = ({
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [view, setView] = useState<ViewMode>('nominal');
+  const [showData, setShowData] = useState(false);
 
   // Different return models expose different views:
   //  - parametric:           median + nominal + downside (full Monte Carlo + parametric mean)
@@ -290,6 +334,25 @@ const Projections = ({
     : nominalHidden
       ? ['median', 'downside']
       : ['median', 'nominal', 'downside'];
+
+  const buildExportFn = useCallback(() => {
+    const bdInflation = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
+    const bdBreakdowns = view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns;
+    exportCsv(
+      userData.name ?? 'scenario',
+      years, nominal, median, downside,
+      nominalInflation, medianInflation, downsideInflation,
+      bdInflation, bdBreakdowns,
+      userData.currentAge,
+      displayCurrency,
+      { nominalHidden, medianDownsideHidden },
+    );
+  }, [view, userData, years, nominal, median, downside, medianInflation, nominalInflation, downsideInflation, medianBreakdowns, nominalBreakdowns, downsideBreakdowns, displayCurrency, nominalHidden, medianDownsideHidden]);
+
+  useEffect(() => {
+    onRegisterExport?.(buildExportFn);
+    return () => onRegisterExport?.(null);
+  }, [buildExportFn, onRegisterExport]);
 
   const toggleRow = (index: number) => {
     setExpandedRows(prev => {
@@ -409,18 +472,8 @@ const Projections = ({
     responsive: true,
     plugins: {
       tooltip: { enabled: false },
-      legend: {
-        position: 'top' as const,
-        labels: {
-          font: { size: isMobile ? 10 : 12 },
-          boxWidth: isMobile ? 12 : 20,
-        },
-      },
-      title: {
-        display: true,
-        text: `Projected Portfolio Value (${displayCurrency === 'real' ? "Today's" : 'Nominal'} Dollars)`,
-        font: { size: isMobile ? 11 : 13 },
-      },
+      legend: { display: false },
+      title: { display: false },
       htmlAnnotations: {
         annotations: htmlAnnotations,
         onIconClick: (annotation: AnnotationConfig) => {
@@ -451,7 +504,7 @@ const Projections = ({
         },
       },
     },
-  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years, displayCurrency, hoveredIndex]);
+  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years, hoveredIndex]);
 
 
   return (
@@ -542,6 +595,23 @@ const Projections = ({
           </>
         )}
       </ChartHeading>
+      <ChartSubtitleRow>
+        <span>Projected Portfolio Value</span>
+        <PrimeTooltip target=".currency-pill-group" position="bottom" showDelay={150}>
+          <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+            <div style={{ marginBottom: spacing.xs }}>
+              <strong>Today's Dollars</strong>: Values adjusted for inflation (what your money can actually buy today).
+            </div>
+            <div>
+              <strong>Nominal Dollars</strong>: Raw future dollar amounts with no inflation adjustment.
+            </div>
+          </div>
+        </PrimeTooltip>
+        <CurrencyPillGroup className="currency-pill-group">
+          <CurrencyPillButton $active={displayCurrency === 'real'} onClick={() => setDisplayCurrency('real')}>Today's $</CurrencyPillButton>
+          <CurrencyPillButton $active={displayCurrency === 'nominal'} onClick={() => setDisplayCurrency('nominal')}>Nominal $</CurrencyPillButton>
+        </CurrencyPillGroup>
+      </ChartSubtitleRow>
       <div
         style={{ position: 'relative' }}
         onMouseMove={(e) => {
@@ -766,107 +836,31 @@ const Projections = ({
           );
         })()}
       </div>
-      <Accordion style={{ marginTop: spacing.sm }}>
-        <AccordionTab header={
-          <YearlyDataHeader>
-            <span>Yearly Data</span>
-            <YearlyDataControls>
-              <PrimeTooltip
-                target=".currency-toggle-group"
-                position="bottom"
-                showDelay={150}
-              >
-                <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
-                  <div style={{ marginBottom: spacing.xs }}>
-                    <strong>Today's Dollars</strong>: Values adjusted for inflation (what your money can actually buy today).
-                  </div>
-                  <div>
-                    <strong>Nominal Dollars</strong>: Raw future dollar amounts with no inflation adjustment.
-                  </div>
-                </div>
-              </PrimeTooltip>
-              <span
-                className="currency-toggle-group"
-                style={{ display: 'flex', alignItems: 'center', gap: spacing.xs }}
-                onClick={e => e.stopPropagation()}
-              >
-                {(['real', 'nominal'] as DisplayCurrency[]).map(mode => {
-                  const active = displayCurrency === mode;
-                  return (
-                    <ViewLabel
-                      key={mode}
-                      $active={active}
-                      $color={colors.primary}
-                    >
-                      <input
-                        type="radio"
-                        name="displayCurrency"
-                        value={mode}
-                        checked={active}
-                        onChange={() => setDisplayCurrency(mode)}
-                        style={{ accentColor: colors.primary, margin: 0 }}
-                      />
-                      <span className="label-full">{mode === 'real' ? "Today's $" : 'Nominal $'}</span>
-                      <span className="label-short">{mode === 'real' ? "Today" : 'Nom'}</span>
-                    </ViewLabel>
-                  );
-                })}
-              </span>
-              <span style={{ color: colors.borderMedium }}>|</span>
-              {visibleViewModes.map(mode => (
-                <ViewLabel
-                  key={mode}
-                  $active={view === mode}
-                  $color={mode === 'nominal' ? colors.textPrimary : VIEW_COLORS[mode]}
-                  onClick={e => e.stopPropagation()}
-                >
-                  <input
-                    type="radio"
-                    name="view"
-                    value={mode}
-                    checked={view === mode}
-                    onChange={() => setView(mode)}
-                    style={{ accentColor: colors.primary, margin: 0 }}
-                  />
-                  <span className="label-full">{VIEW_LABELS[mode]}</span>
-                  <span className="label-short">{VIEW_LABELS_SHORT[mode]}</span>
-                </ViewLabel>
-              ))}
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  const bdInflation = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
-                  const bdBreakdowns = view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns;
-                  exportCsv(
-                    userData.name ?? 'scenario',
-                    years, nominal, median, downside,
-                    nominalInflation, medianInflation, downsideInflation,
-                    bdInflation, bdBreakdowns,
-                    userData.currentAge,
-                    displayCurrency,
-                    { nominalHidden, medianDownsideHidden },
-                  );
-                }}
-                style={{
-                  marginLeft: spacing.sm,
-                  padding: `${spacing.xs} ${spacing.sm}`,
-                  fontSize: fontSize.sm,
-                  background: colors.bgMedium,
-                  border: border.standard,
-                  borderRadius: border.radius,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: spacing.xs,
-                  color: colors.textPrimary,
-                }}
-              >
-                <i className="pi pi-download" style={{ fontSize: fontSize.sm }} />
-                CSV
-              </button>
-            </YearlyDataControls>
-          </YearlyDataHeader>
-        }>
+      <LegendRow>
+        {visibleViewModes.map(mode => (
+          <LegendButton
+            key={mode}
+            $active={view === mode}
+            $color={VIEW_COLORS[mode]}
+            onClick={() => setView(mode)}
+          >
+            <LegendSwatch $color={VIEW_COLORS[mode]} />
+            {VIEW_LABELS[mode]}
+          </LegendButton>
+        ))}
+        {compareScenario && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: spacing.xs, fontSize: fontSize.sm, color: colors.textSecondary, padding: `2px ${spacing.sm}` }}>
+            <LegendSwatch $color={VIEW_COLORS[view] + '80'} $dashed />
+            {compareScenario.name}
+          </span>
+        )}
+        <DataToggle $active={showData} onClick={() => setShowData(d => !d)}>
+          <i className="pi pi-table" />
+          Data
+        </DataToggle>
+      </LegendRow>
+      {showData && (
+        <div style={{ marginTop: spacing.xs }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -1242,8 +1236,8 @@ const Projections = ({
               </tbody>
             </table>
           </div>
-        </AccordionTab>
-      </Accordion>
+        </div>
+      )}
     </div>
   );
 };

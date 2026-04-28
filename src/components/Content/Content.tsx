@@ -68,7 +68,7 @@ const SpinnerLabel = styled.div`
   color: ${colors.textSecondary};
 `;
 
-const Content: React.FC<{ compareScenarioId?: string | null; onSetCompare: (id: string | null) => void }> = ({ compareScenarioId, onSetCompare }) => {
+const Content: React.FC<{ compareScenarioId?: string | null; onSetCompare: (id: string | null) => void; onRegisterExport?: (fn: (() => void) | null) => void }> = ({ compareScenarioId, onSetCompare, onRegisterExport }) => {
   const context = useContext(RetirementContext);
   if (!context) return null;
   const { activeScenario, updateScenario, scenarios } = context;
@@ -254,6 +254,7 @@ const Content: React.FC<{ compareScenarioId?: string | null; onSetCompare: (id: 
             compareScenario={compareScenario}
             isCompareCalculating={isCompareCalculating}
             onSetCompare={onSetCompare}
+            onRegisterExport={onRegisterExport}
           />
         )}
         {activeScenario && (

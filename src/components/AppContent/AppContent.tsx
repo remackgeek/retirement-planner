@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import AppHeader from '../AppHeader/AppHeader';
 import Content from '../Content/Content';
@@ -37,6 +37,13 @@ const AppContent: React.FC = () => {
     return !window.matchMedia(mobileMediaQuery).matches;
   });
   const [compareScenarioId, setCompareScenarioId] = useState<string | null>(null);
+  const exportCsvRef = useRef<(() => void) | null>(null);
+  const [canExport, setCanExport] = useState(false);
+  const handleRegisterExport = (fn: (() => void) | null) => {
+    exportCsvRef.current = fn;
+    setCanExport(fn !== null);
+  };
+  const handleExportCsv = canExport ? () => exportCsvRef.current?.() : undefined;
   // Dispatch a resize event after the sidebar CSS transition so Chart.js
   // re-measures its container after the layout shift.
   const nudgeChartResize = (delay = 330) =>
@@ -63,14 +70,14 @@ const AppContent: React.FC = () => {
 
   return (
     <AppContentContainer>
-      <AppHeader onMenuToggle={toggle} />
+      <AppHeader onMenuToggle={toggle} onExportCsv={handleExportCsv} />
       <ContentArea>
         <Backdrop $visible={isSidebarOpen} onClick={() => setIsSidebarOpen(false)} />
         <Sidebar
           isOpen={isSidebarOpen}
           onToggle={toggle}
         />
-        <Content compareScenarioId={compareScenarioId} onSetCompare={setCompareScenarioId} />
+        <Content compareScenarioId={compareScenarioId} onSetCompare={setCompareScenarioId} onRegisterExport={handleRegisterExport} />
       </ContentArea>
       <Footer />
     </AppContentContainer>

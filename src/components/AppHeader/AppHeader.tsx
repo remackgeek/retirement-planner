@@ -64,14 +64,16 @@ const HeaderRight = styled.div`
 
 interface AppHeaderProps {
   onMenuToggle: () => void;
+  onExportCsv?: () => void;
 }
 
-const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle }) => {
+const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   const context = useContext(RetirementContext);
   const scenarioName = context?.activeScenario?.name;
   const activeScenario = context?.activeScenario ?? null;
 
   const menuRef = useRef<Menu>(null);
+  const reportsMenuRef = useRef<Menu>(null);
   const [modelingVisible, setModelingVisible] = useState(false);
 
   const menuItems: MenuItem[] = [
@@ -79,6 +81,15 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle }) => {
       label: 'Modeling',
       icon: 'pi pi-chart-line',
       command: () => setModelingVisible(true),
+    },
+  ];
+
+  const reportsMenuItems: MenuItem[] = [
+    {
+      label: 'Export CSV',
+      icon: 'pi pi-download',
+      command: () => onExportCsv?.(),
+      disabled: !onExportCsv,
     },
   ];
 
@@ -104,6 +115,16 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle }) => {
           )}
         </HeaderCenter>
         <HeaderRight>
+          <Menu model={reportsMenuItems} popup ref={reportsMenuRef} />
+          <Button
+            label="Reports"
+            icon="pi pi-chevron-down"
+            iconPos="right"
+            className="p-button-text p-button-sm"
+            style={{ padding: '0.15rem 0.5rem' }}
+            onClick={(e) => reportsMenuRef.current?.toggle(e)}
+            disabled={!activeScenario}
+          />
           <Menu model={menuItems} popup ref={menuRef} />
           <Button
             label="Settings"
