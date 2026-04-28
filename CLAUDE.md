@@ -380,10 +380,22 @@ Both dialogs are disabled when no active scenario.
   downside/median paths show a shortfall indicator in the detail row.
 - **CSV export**: download button in yearly data header exports all three portfolio paths
   plus full income/spending/tax breakdown per year as a `.csv` file
+- **Scenario comparison**: "Compare with ▾" button in the chart heading (right-aligned via
+  `margin-left: auto`) opens a PrimeReact `Menu` popup listing other scenarios. Selecting
+  one overlays the compared scenario's currently-selected path as a dashed line on the
+  chart and shows both names + probabilities + tier badges in the heading; "End comparison"
+  clears it. State (`compareScenarioId`) lives in `AppContent` and flows to `Content` →
+  `Projections`. Comparison auto-clears when the active scenario changes (effect on
+  `activeScenario?.id` in `Content.tsx`). To avoid a one-frame flash of the wrong button
+  while the compare sim runs, `compareResults` is tagged with the scenario id it was
+  computed for, and `isCompareCalculating` is derived synchronously from the id mismatch
+  rather than via `useEffect`.
 
 ### Planned UX
 
-- Side-by-side scenario comparison (visual, not just switching)
+- True side-by-side dual-chart layout (separate canvases for each scenario instead of
+  the current single-chart overlay)
+- Compare 3+ scenarios at once
 - PDF export of scenario summaries
 - Monthly/annual input toggle for remaining spending goal and income event dialogs
   (the `amountPeriod` field is already on both `SpendingGoal` and `IncomeEvent` types;

@@ -19,10 +19,12 @@ import chartCrosshairPlugin from '../../plugins/chartCrosshair';
 import {
   type AnnualCashFlowBreakdown,
 } from '../../services/SimulationService';
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useContext } from 'react';
 import styled from 'styled-components';
+import { Menu } from 'primereact/menu';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
 import { useUIState } from '../../context/UIStateContext';
+import { RetirementContext } from '../../context/RetirementContext';
 import { toDisplay, pathToDisplay, type DisplayCurrency } from '../../utils/displayCurrency';
 import { eventTypeIcons, goalTypeIcons } from '../../utils/defaultName';
 import { getProbabilityTier } from '../../utils/probabilityTier';
@@ -90,6 +92,24 @@ const TierBadge = styled.span<{ $color: string; $bg: string }>`
   letter-spacing: 0.02em;
   cursor: help;
 `;
+
+const CompareWithButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: ${spacing.xs};
+  padding: 2px ${spacing.sm};
+  font-size: ${fontSize.xs};
+  font-family: inherit;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid ${colors.primary};
+  border-radius: ${border.radiusRound};
+  color: ${colors.primary};
+  cursor: pointer;
+  margin-left: auto;
+  &:hover { background: rgba(61, 122, 95, 0.08); }
+`;
+
 
 const YearlyDataHeader = styled.div`
   display: flex;
@@ -222,12 +242,16 @@ const Projections = ({
   isCalculating,
   compareResults,
   compareScenario,
+  isCompareCalculating,
+  onSetCompare,
 }: {
   results: any;
   userData: any;
   isCalculating?: boolean;
   compareResults?: any;
   compareScenario?: any;
+  isCompareCalculating?: boolean;
+  onSetCompare: (id: string | null) => void;
 }) => {
   if (!results) return null;
   const {
@@ -238,6 +262,12 @@ const Projections = ({
   } = results;
 
   const { displayCurrency, setDisplayCurrency } = useUIState();
+  const context = useContext(RetirementContext);
+  const scenarios = context?.scenarios ?? [];
+  const compareMenuRef = useRef<Menu>(null);
+  const compareMenuItems = scenarios
+    .filter(s => s.id !== userData.id)
+    .map(s => ({ label: s.name, command: () => onSetCompare(s.id) }));
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [view, setView] = useState<ViewMode>('nominal');
@@ -449,6 +479,7 @@ const Projections = ({
                 </>
               );
             })()}
+            {isCalculating && <UpdatingBadge style={{ marginLeft: spacing.md }}>Updating projection…</UpdatingBadge>}
             <span style={{ color: colors.textMuted, fontWeight: 400, fontSize: fontSize.sm }}>vs.</span>
             <span>{compareScenario.name}:</span>
             <span>{compareResults ? `${compareResults.probability}%` : '—'}</span>
@@ -471,6 +502,10 @@ const Projections = ({
                 </>
               );
             })()}
+            {isCompareCalculating
+              ? <UpdatingBadge style={{ marginLeft: 'auto' }}>Loading…</UpdatingBadge>
+              : <CompareWithButton onClick={() => onSetCompare(null)}>End comparison</CompareWithButton>
+            }
           </>
         ) : (
           <>
@@ -495,9 +530,17 @@ const Projections = ({
                 </>
               );
             })()}
+            {isCalculating && <UpdatingBadge style={{ marginLeft: spacing.md }}>Updating projection…</UpdatingBadge>}
+            {compareMenuItems.length > 0 && (
+              <>
+                <Menu ref={compareMenuRef} model={compareMenuItems} popup />
+                <CompareWithButton onClick={(e) => compareMenuRef.current?.toggle(e)}>
+                  Compare with <i className="pi pi-chevron-down" style={{ fontSize: '0.6rem' }} />
+                </CompareWithButton>
+              </>
+            )}
           </>
         )}
-        {isCalculating && <UpdatingBadge>Updating projection…</UpdatingBadge>}
       </ChartHeading>
       <div
         style={{ position: 'relative' }}

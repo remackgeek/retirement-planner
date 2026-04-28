@@ -69,10 +69,8 @@ const AppContent: React.FC = () => {
         <Sidebar
           isOpen={isSidebarOpen}
           onToggle={toggle}
-          compareScenarioId={compareScenarioId}
-          onSetCompare={setCompareScenarioId}
         />
-        <Content compareScenarioId={compareScenarioId} />
+        <Content compareScenarioId={compareScenarioId} onSetCompare={setCompareScenarioId} />
       </ContentArea>
       <Footer />
     </AppContentContainer>

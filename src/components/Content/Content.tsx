@@ -68,7 +68,7 @@ const SpinnerLabel = styled.div`
   color: ${colors.textSecondary};
 `;
 
-const Content: React.FC<{ compareScenarioId?: string | null }> = ({ compareScenarioId }) => {
+const Content: React.FC<{ compareScenarioId?: string | null; onSetCompare: (id: string | null) => void }> = ({ compareScenarioId, onSetCompare }) => {
   const context = useContext(RetirementContext);
   if (!context) return null;
   const { activeScenario, updateScenario, scenarios } = context;
@@ -76,8 +76,15 @@ const Content: React.FC<{ compareScenarioId?: string | null }> = ({ compareScena
     ? (scenarios.find(s => s.id === compareScenarioId) ?? null)
     : null;
   const [results, setResults] = useState<any>(null);
-  const [compareResults, setCompareResults] = useState<any>(null);
+  const [compareResults, setCompareResults] = useState<{ scenarioId: string; results: any } | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
+  // Loading state derived synchronously from id mismatch — avoids one-frame flash of
+  // "End comparison" before useEffect fires.
+  const currentCompareResults =
+    compareResults && compareScenario && compareResults.scenarioId === compareScenario.id
+      ? compareResults.results
+      : null;
+  const isCompareCalculating = !!compareScenario && !currentCompareResults;
   const pendingRun = useRef<number | null>(null);
   // When we write the freshly-computed probability back to the active scenario
   // (sidebar display cache), the resulting activeScenario reference change would
@@ -119,13 +126,22 @@ const Content: React.FC<{ compareScenarioId?: string | null }> = ({ compareScena
   }, [activeScenario]);
 
   useEffect(() => {
+    onSetCompare(null);
+  }, [activeScenario?.id]);
+
+  useEffect(() => {
     if (!compareScenario) {
       setCompareResults(null);
       return;
     }
-    const result = runSimulation(compareScenario);
-    setCompareResults(result);
-  }, [compareScenario]);
+    const id = setTimeout(() => {
+      setCompareResults({
+        scenarioId: compareScenario.id,
+        results: runSimulation(compareScenario),
+      });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [compareScenario?.id]);
 
   const handleAddSpendingGoal = (goal: Omit<SpendingGoal, 'id'>) => {
     if (!activeScenario) return;
@@ -234,8 +250,10 @@ const Content: React.FC<{ compareScenarioId?: string | null }> = ({ compareScena
             results={results}
             userData={activeScenario}
             isCalculating={isCalculating}
-            compareResults={compareResults}
+            compareResults={currentCompareResults}
             compareScenario={compareScenario}
+            isCompareCalculating={isCompareCalculating}
+            onSetCompare={onSetCompare}
           />
         )}
         {activeScenario && (
