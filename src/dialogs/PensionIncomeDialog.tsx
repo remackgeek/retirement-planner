@@ -279,7 +279,24 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
               onChange={(e) => handlePeriodChange(e.value)}
             />
           </AmountRow>
-          <HelpText>Amount in today's dollars — adjusted for COLA each year</HelpText>
+          <CheckboxGroup>
+            <Checkbox
+              inputId='colaType'
+              checked={formData.colaType === 'inflation_adjusted'}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  colaType: e.checked ? 'inflation_adjusted' : 'fixed',
+                })
+              }
+            />
+            <label htmlFor='colaType'>Inflation adjusted</label>
+          </CheckboxGroup>
+          <HelpText>
+            {formData.colaType === 'inflation_adjusted'
+              ? "Amount in today's dollars — adjusted for inflation each year"
+              : "Fixed nominal amount — purchasing power decreases over time"}
+          </HelpText>
         </InputGroup>
 
         <FieldRow>
@@ -312,20 +329,6 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
             onChange={(e) => setFormData({ ...formData, taxStatus: e.value })}
           />
         </InputGroup>
-
-        <CheckboxGroup>
-          <Checkbox
-            inputId='colaType'
-            checked={formData.colaType === 'inflation_adjusted'}
-            onChange={(e) =>
-              setFormData({
-                ...formData,
-                colaType: e.checked ? 'inflation_adjusted' : 'fixed',
-              })
-            }
-          />
-          <label htmlFor='colaType'>Inflation adjusted</label>
-        </CheckboxGroup>
       </Form>
     </Dialog>
   );

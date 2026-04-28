@@ -32,12 +32,6 @@ const InputGroup = styled.div`
   gap: ${spacing.xs};
 `;
 
-const FieldRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: ${spacing.md};
-`;
-
 const AmountRow = styled.div`
   display: grid;
   grid-template-columns: 1fr 9rem;
@@ -77,6 +71,37 @@ const TrashButton = styled.button`
     color: ${colors.dangerHover};
     background: ${colors.bgMedium};
   }
+`;
+
+const AdvancedToggle = styled.button`
+  background: none;
+  border: none;
+  border-top: ${border.light};
+  padding: ${spacing.sm} 0 0 0;
+  margin-top: ${spacing.xs};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: ${spacing.sm};
+  color: ${colors.textMuted};
+  font-size: ${fontSize.sm};
+  text-align: left;
+  width: 100%;
+
+  &:hover {
+    color: ${colors.textPrimary};
+  }
+
+  i {
+    font-size: ${fontSize.xs};
+  }
+`;
+
+const AdvancedBody = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${spacing.md};
+  margin-top: ${spacing.sm};
 `;
 
 interface SocialSecurityDialogProps {
@@ -127,6 +152,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
 }) => {
   const isEditing = !!editEvent;
   const [formData, setFormData] = useState(makeDefaultFormData());
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const isMfj = filingStatus === 'mfj';
 
@@ -147,6 +173,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
 
   useEffect(() => {
     if (!visible) return;
+    setAdvancedOpen(false);
     if (editEvent) {
       const period = editEvent.amountPeriod ?? 'annual';
       const displayAmount = period === 'monthly' ? editEvent.amount / 12 : editEvent.amount;
@@ -318,6 +345,15 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
               onChange={(e) => handlePeriodChange(e.value)}
             />
           </AmountRow>
+        </InputGroup>
+
+        <InputGroup>
+          <label>Amount is in</label>
+          <Dropdown
+            value={formData.ssAmountBasis}
+            options={amountBasisOptions}
+            onChange={(e) => setFormData({ ...formData, ssAmountBasis: e.value })}
+          />
           <HelpText>
             {formData.ssAmountBasis === 'future'
               ? 'Projected nominal amount at claiming age — COLA applied after claiming'
@@ -325,58 +361,60 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
           </HelpText>
         </InputGroup>
 
-        <FieldRow>
-          <InputGroup>
-            <label>Start Age</label>
-            <Dropdown
-              value={formData.startAge}
-              options={startAgeOptions}
-              onChange={(e) => setFormData({ ...formData, startAge: e.value })}
-            />
-            {missingSpouseAge && (
-              <WarningText>Set spouse age in scenario to show correct years</WarningText>
-            )}
-          </InputGroup>
-
-          <InputGroup>
-            <label>Amount Type</label>
-            <Dropdown
-              value={formData.ssAmountBasis}
-              options={amountBasisOptions}
-              onChange={(e) => setFormData({ ...formData, ssAmountBasis: e.value })}
-            />
-          </InputGroup>
-        </FieldRow>
-
-        <CheckboxGroup>
-          <Checkbox
-            inputId='ssHaircutEnabled'
-            checked={formData.ssHaircutEnabled}
-            onChange={(e) =>
-              setFormData({ ...formData, ssHaircutEnabled: e.checked || false })
-            }
+        <InputGroup>
+          <label>Start Age</label>
+          <Dropdown
+            value={formData.startAge}
+            options={startAgeOptions}
+            onChange={(e) => setFormData({ ...formData, startAge: e.value })}
           />
-          <label htmlFor='ssHaircutEnabled'>
-            Apply trust fund reduction (from 2034)
-          </label>
-        </CheckboxGroup>
+          {missingSpouseAge && (
+            <WarningText>Set spouse age in scenario to show correct years</WarningText>
+          )}
+        </InputGroup>
 
-        {formData.ssHaircutEnabled && (
-          <InputGroup>
-            <label>Reduction Percentage</label>
-            <InputNumber
-              value={formData.ssHaircutPercent}
-              onValueChange={(e) =>
-                setFormData({ ...formData, ssHaircutPercent: e.value ?? 23 })
-              }
-              suffix='%'
-              min={0}
-              max={100}
-            />
-            <HelpText>
-              Current trustees estimate: 23% reduction when trust fund is exhausted
-            </HelpText>
-          </InputGroup>
+        <AdvancedToggle
+          type='button'
+          onClick={() => setAdvancedOpen((v) => !v)}
+          aria-expanded={advancedOpen}
+        >
+          <i className={advancedOpen ? 'pi pi-chevron-down' : 'pi pi-chevron-right'} />
+          Advanced
+        </AdvancedToggle>
+
+        {advancedOpen && (
+          <AdvancedBody>
+            <CheckboxGroup>
+              <Checkbox
+                inputId='ssHaircutEnabled'
+                checked={formData.ssHaircutEnabled}
+                onChange={(e) =>
+                  setFormData({ ...formData, ssHaircutEnabled: e.checked || false })
+                }
+              />
+              <label htmlFor='ssHaircutEnabled'>
+                Apply trust fund reduction (from 2034)
+              </label>
+            </CheckboxGroup>
+
+            {formData.ssHaircutEnabled && (
+              <InputGroup>
+                <label>Reduction Percentage</label>
+                <InputNumber
+                  value={formData.ssHaircutPercent}
+                  onValueChange={(e) =>
+                    setFormData({ ...formData, ssHaircutPercent: e.value ?? 23 })
+                  }
+                  suffix='%'
+                  min={0}
+                  max={100}
+                />
+                <HelpText>
+                  Current trustees estimate: 23% reduction when trust fund is exhausted
+                </HelpText>
+              </InputGroup>
+            )}
+          </AdvancedBody>
         )}
       </Form>
     </Dialog>
