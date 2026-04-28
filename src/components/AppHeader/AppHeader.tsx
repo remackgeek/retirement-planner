@@ -56,6 +56,19 @@ const HeaderCenter = styled.div`
   }
 `;
 
+const AppTitleFull = styled.span`
+  ${mediaQuery.mobile} {
+    display: none;
+  }
+`;
+
+const AppTitleShort = styled.span`
+  display: none;
+  ${mediaQuery.mobile} {
+    display: inline;
+  }
+`;
+
 const HeaderRight = styled.div`
   flex: 1;
   display: flex;
@@ -104,7 +117,8 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
           <HamburgerButton onClick={onMenuToggle} aria-label="Toggle menu">
             <i className="pi pi-bars" />
           </HamburgerButton>
-          Yet Another Retirement Planner
+          <AppTitleFull>YARP (Yet Another Retirement Planner)</AppTitleFull>
+          <AppTitleShort>YARP</AppTitleShort>
         </HeaderLeft>
         <HeaderCenter>
           {scenarioName && (
