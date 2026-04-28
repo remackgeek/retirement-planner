@@ -18,8 +18,6 @@
   ],
   "incomeEvents": [],
   "portfolioAssumptions": {
-    "portfolioBalance": "80_20",
-    "stockAllocation": 0.8,
     "stockReturn": 0.07,
     "stockStdDev": 0.2,
     "bondReturn": 0.03,
@@ -47,7 +45,9 @@
       "id": "acct-1",
       "name": "Taxable 1",
       "type": "taxable",
-      "balance": 800000
+      "balance": 800000,
+      "stockAllocation": 0.8,
+      "portfolioBalance": "80_20"
     }
   ],
   "longTermCapGainsRate": 0.15

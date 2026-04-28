@@ -204,9 +204,11 @@ The app should be **modular and extensible**. Avoid hardcoded assumptions.
 `SimulationService` uses log-normal Monte Carlo (5000 runs default). All simulation
 parameters are per-scenario in `UserData`:
 
-- `portfolioAssumptions.portfolioBalance` — `'80_20' | '60_40' | '50_50' | 'custom'`;
-  presets set `stockAllocation` only — return assumptions are independent
-- `portfolioAssumptions.stockAllocation` — fraction in stocks (0.0–1.0); bonds = 1 - stock
+- `account.portfolioBalance` — `'80_20' | '60_40' | '50_50'`; UI preset tracker per account
+- `account.stockAllocation` — fraction in stocks (0.0–1.0) per account; derived from
+  `portfolioBalance` via `PORTFOLIO_PRESETS`; drives per-account growth in the simulation loop.
+  New accounts default to `'60_40'` / `0.6`. Synthetic accounts (RMD Reinvestment, Roth Conversion)
+  also default to `'60_40'` / `0.6`.
 - `portfolioAssumptions.stockReturn` / `stockStdDev` — stock log-normal return params
 - `portfolioAssumptions.bondReturn` / `bondStdDev` — bond log-normal return params
 - `portfolioAssumptions.stockBondCorrelationEnabled` / `stockBondCorrelation` — when
@@ -221,6 +223,32 @@ parameters are per-scenario in `UserData`:
   regardless of this setting.
 - `portfolioAssumptions.degreesOfFreedom` — integer 3–12; default `4`; ignored when
   `returnDistribution === 'lognormal'`. Lower values produce fatter tails.
+- `portfolioAssumptions.returnModel` — `'parametric' | 'historical_single' | 'historical_rolling' | 'historical_bootstrap'`;
+  defaults to `'parametric'` when absent. Selects which `ReturnGenerator` strategy
+  drives the Monte Carlo loop (see `src/services/ReturnGenerator.ts`).
+  - `parametric` — random draws from `returnDistribution` with the configured mean
+    and std dev. Inflation also stochastic when `inflationStdDev > 0`.
+  - `historical_single` — walks one fixed slice of `HISTORICAL_RETURNS` (1928–2024)
+    from `historicalStartYear` for `lifeExpectancy - currentAge + 1` years. Single
+    deterministic run; `numSimulations` is ignored.
+  - `historical_rolling` — Trinity-style. One run per valid start year. Without
+    `historicalWrapEnabled`, `numRuns = HISTORICAL_YEARS - horizon + 1`; with wrap,
+    every start year is valid (`numRuns = HISTORICAL_YEARS = 97`).
+  - `historical_bootstrap` — block bootstrap. Each run concatenates randomly-chosen
+    consecutive blocks of length `historicalBlockSize` (1, 3, 5, or 10) until the
+    horizon is filled. `numRuns = numSimulations`. Block size 1 reduces to iid year
+    resampling. RNG is consumed at construction time so per-call draws are O(1).
+  - All historical modes pair returns with the same row's CPI, so a 1970s
+    stagflation slice keeps bad returns + high inflation correlated. Parametric
+    inflation `inflationRate` / `inflationStdDev` are ignored in historical modes.
+  - Black Swan overlay applies regardless of the base generator.
+- `portfolioAssumptions.historicalStartYear` — integer in 1928–2024; required when
+  `returnModel === 'historical_single'`.
+- `portfolioAssumptions.historicalWrapEnabled` — when true, single/rolling modes
+  wrap the historical index modulo `HISTORICAL_YEARS` instead of clamping to the
+  last row at series end.
+- `portfolioAssumptions.historicalBlockSize` — `1 | 3 | 5 | 10`; required when
+  `returnModel === 'historical_bootstrap'`.
 - `portfolioAssumptions.blackSwanEvents` — optional `BlackSwanEvent[]`; each entry
   replaces the drawn stock/bond factors for a specific calendar year with fixed historical
   multipliers, applied identically across every Monte Carlo run. `BlackSwanEvent.groupId`
@@ -233,7 +261,7 @@ parameters are per-scenario in `UserData`:
   in the MC loop only; cash flows always use the deterministic mean `inflationRate`
 
 **Monte Carlo path construction:** each year draws a stock and bond return factor;
-portfolio return = `stockAllocation × stockFactor + bondAllocation × bondFactor`. When
+each account's balance is multiplied by its own `account.stockAllocation × stockFactor + (1 - account.stockAllocation) × bondFactor`. When
 `stockBondCorrelationEnabled` is true, the two underlying shocks are generated as a
 bivariate pair using Cholesky (stock = `z1`, bond = `ρ·z1 + √(1-ρ²)·z2`); otherwise they
 are drawn independently. Each shock is an N(0,1) draw when `returnDistribution ===
@@ -266,7 +294,10 @@ with precise deps; `Projections` is wrapped in `React.memo`.
 
 Future direction:
 
-- Historical sequence-of-returns using real S&P 500 and interest rate data
+- Historical sequence-of-returns ✓ implemented — see `returnModel` above. 1928–2024
+  S&P 500 / 10-yr Treasury / CPI series in `src/data/historicalReturns.ts`. Future:
+  stationary bootstrap (geometric block lengths), era filters
+  (`historicalSampleStart` / `historicalSampleEnd`), regime-weighted resampling.
 - Fat-tail distributions: Student's t ✓ implemented (standardized, unit variance, df
   configurable per scenario). Future: skewed-t, no-tail / bounded distributions.
 - New strategies drop in without changing the rest of the app (`modelType` placeholder
@@ -325,12 +356,19 @@ Current plugins:
 
 ### Top bar: Settings menu
 
-`AppHeader` renders a single **Settings** dropdown (PrimeReact `Menu` popup) with two items:
+`AppHeader` renders a single **Settings** dropdown (PrimeReact `Menu` popup) with one item:
 
-- **Portfolio** → `PortfolioDialog` — stock/bond split (80/20, 60/40, 50/50, Custom);
-  selecting a preset sets `stockAllocation` only; return assumptions are managed in Modeling
-- **Modeling** → `ModelingDialog` — stock/bond expected return % and std dev % (grouped),
-  inflation rate % and std dev %, simulation run count; read-only blended return display
+- **Modeling** → `ModelingDialog` — Return Model selector at the top
+  (Parametric / Historical: Single Sequence / Historical: Rolling Start / Historical:
+  Block Bootstrap) with mode-specific fields (start year, wrap-around, block size);
+  stock/bond expected return % and std dev % (grouped), distribution (lognormal /
+  student-t), asset correlation, inflation rate % and std dev %, simulation run count;
+  read-only blended return (portfolio-weighted average across accounts). Parametric-only
+  inputs (returns, distribution, correlation, inflation rate/stddev) are disabled when a
+  historical mode is active
+
+Stock/bond allocation per account is configured in `AccountDialog` (80/20, 60/40, or 50/50
+preset buttons). The allocation badge is displayed on each account row in `AccountsManager`.
 
 Both dialogs are disabled when no active scenario.
 

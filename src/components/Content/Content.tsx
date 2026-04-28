@@ -68,11 +68,15 @@ const SpinnerLabel = styled.div`
   color: ${colors.textSecondary};
 `;
 
-const Content: React.FC = () => {
+const Content: React.FC<{ compareScenarioId?: string | null }> = ({ compareScenarioId }) => {
   const context = useContext(RetirementContext);
   if (!context) return null;
-  const { activeScenario, updateScenario } = context;
+  const { activeScenario, updateScenario, scenarios } = context;
+  const compareScenario = compareScenarioId
+    ? (scenarios.find(s => s.id === compareScenarioId) ?? null)
+    : null;
   const [results, setResults] = useState<any>(null);
+  const [compareResults, setCompareResults] = useState<any>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const pendingRun = useRef<number | null>(null);
   // When we write the freshly-computed probability back to the active scenario
@@ -113,6 +117,15 @@ const Content: React.FC = () => {
       }
     };
   }, [activeScenario]);
+
+  useEffect(() => {
+    if (!compareScenario) {
+      setCompareResults(null);
+      return;
+    }
+    const result = runSimulation(compareScenario);
+    setCompareResults(result);
+  }, [compareScenario]);
 
   const handleAddSpendingGoal = (goal: Omit<SpendingGoal, 'id'>) => {
     if (!activeScenario) return;
@@ -217,7 +230,13 @@ const Content: React.FC = () => {
           </SpinnerContainer>
         )}
         {results && activeScenario && (
-          <Projections results={results} userData={activeScenario} isCalculating={isCalculating} />
+          <Projections
+            results={results}
+            userData={activeScenario}
+            isCalculating={isCalculating}
+            compareResults={compareResults}
+            compareScenario={compareScenario}
+          />
         )}
         {activeScenario && (
           <ManagersContainer>

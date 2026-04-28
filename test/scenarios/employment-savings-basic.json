@@ -20,8 +20,6 @@
     }
   ],
   "portfolioAssumptions": {
-    "portfolioBalance": "60_40",
-    "stockAllocation": 0.6,
     "stockReturn": 0,
     "stockStdDev": 0,
     "bondReturn": 0,
@@ -49,7 +47,9 @@
       "id": "acct-1",
       "name": "Roth 1",
       "type": "roth",
-      "balance": 100000
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
     }
   ],
   "longTermCapGainsRate": 0.15

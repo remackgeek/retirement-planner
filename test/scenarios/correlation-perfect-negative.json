@@ -9,8 +9,6 @@
   "spendingGoals": [],
   "incomeEvents": [],
   "portfolioAssumptions": {
-    "portfolioBalance": "custom",
-    "stockAllocation": 0.5,
     "stockReturn": 0.05,
     "stockStdDev": 0.1,
     "bondReturn": 0.05,
@@ -38,7 +36,9 @@
       "id": "acct-1",
       "name": "Taxable 1",
       "type": "taxable",
-      "balance": 500000
+      "balance": 500000,
+      "stockAllocation": 0.5,
+      "portfolioBalance": "50_50"
     }
   ],
   "longTermCapGainsRate": 0.15

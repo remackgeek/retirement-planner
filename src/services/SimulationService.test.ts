@@ -14,10 +14,10 @@ const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
   currentAge: 60,
   lifeExpectancy: 90,
   referenceYear: 2026,
-  accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional', balance: 500000 }],
+  accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
   spendingGoals: [],
   incomeEvents: [],
-  portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+  portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
   inflationRate: 0,
   inflationStdDev: 0,
   simulationSettings: { numSimulations: 5000 },
@@ -448,7 +448,7 @@ describe('calculateAnnualCashFlow', () => {
   describe('account-aware withdrawal waterfall', () => {
     it('computes LTCG tax on taxable withdrawal: 50k spending from 100k taxable → W≈58,824', () => {
       const userData = makeUserData({
-        accounts: [{ id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 100000 }],
+        accounts: [{ id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
         longTermCapGainsRate: 0.15,
         spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 50000, startAge: 60, inflationAdjusted: false }],
       });
@@ -465,7 +465,7 @@ describe('calculateAnnualCashFlow', () => {
     it('Roth withdrawal does not increase SS provisional income', () => {
       // With SS income + Roth withdrawal: fromTrad=0 so provisionalIncome stays low → SS untaxed
       const rothUserData = makeUserData({
-        accounts: [{ id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 500000 }],
+        accounts: [{ id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
         longTermCapGainsRate: 0,
         incomeEvents: [
           { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
@@ -480,7 +480,7 @@ describe('calculateAnnualCashFlow', () => {
 
       // Same scenario with Traditional: fromTrad increases provisional income → SS becomes taxable
       const tradUserData = makeUserData({
-        accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000 }],
+        accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
         longTermCapGainsRate: 0,
         incomeEvents: [
           { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
@@ -495,9 +495,9 @@ describe('calculateAnnualCashFlow', () => {
     it('draws from taxable first, then traditional, with explicit accountBalances', () => {
       const userData = makeUserData({
         accounts: [
-          { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 30000 },
-          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 100000 },
-          { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 100000 },
+          { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 30000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         ],
         longTermCapGainsRate: 0,
         spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 60000, startAge: 60, inflationAdjusted: false }],
@@ -514,7 +514,7 @@ describe('calculateAnnualCashFlow', () => {
 
     it('Roth-only account: zero tax regardless of withdrawal size', () => {
       const userData = makeUserData({
-        accounts: [{ id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 500000 }],
+        accounts: [{ id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
         longTermCapGainsRate: 0.15,
         spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 100000, startAge: 60, inflationAdjusted: false }],
       });
@@ -529,9 +529,9 @@ describe('calculateAnnualCashFlow', () => {
     it('per-bucket withdrawals sum to portfolioWithdrawal', () => {
       const userData = makeUserData({
         accounts: [
-          { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 20000 },
-          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 20000 },
-          { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 20000 },
+          { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 20000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 20000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 20000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         ],
         longTermCapGainsRate: 0.15,
         spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 50000, startAge: 60, inflationAdjusted: false }],
@@ -667,9 +667,9 @@ describe('runSimulation — per-path breakdowns', () => {
   const depletionUserData = makeUserData({
     currentAge: 60,
     lifeExpectancy: 64,
-    accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 50_000 }],
+    accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 50_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
     inflationRate: 0,
-    portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+    portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
     simulationSettings: { numSimulations: 10 },
     spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 20_000, startAge: 60, inflationAdjusted: false }],
     incomeEvents: [{ id: 'i1', name: 'Other Income 1', type: 'other_income', amount: 5_000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' }],
@@ -722,9 +722,9 @@ describe('runSimulation — deterministic path', () => {
   const noFlowUserData = makeUserData({
     currentAge: 60,
     lifeExpectancy: 65,
-    accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 1_000_000 }],
+    accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
     inflationRate: 0,
-    portfolioAssumptions: { portfolioBalance: '60_40', stockAllocation: 0.6, stockReturn: 0.065, stockStdDev: 0.105, bondReturn: 0.065, bondStdDev: 0.105, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+    portfolioAssumptions: { stockReturn: 0.065, stockStdDev: 0.105, bondReturn: 0.065, bondStdDev: 0.105, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
     spendingGoals: [],
     incomeEvents: [],
   });
@@ -757,9 +757,9 @@ describe('runSimulation — hoisted precomputation equivalence', () => {
     const userData = makeUserData({
       currentAge: 60,
       lifeExpectancy: 62,
-      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 300_000 }],
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 300_000, stockAllocation: 1, portfolioBalance: '80_20' as const }],
       inflationRate: 0.03,
-      portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 1, stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
       simulationSettings: { numSimulations: 1 },
       incomeEvents: [
         { id: 'i1', name: 'SS 1', type: 'social_security', amount: 24_000, startAge: 60, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false },
@@ -792,9 +792,9 @@ describe('runSimulation — hoisted precomputation equivalence', () => {
       lifeExpectancy: 65,
       inflationRate: 0.03,
       inflationStdDev: 0.01,
-      portfolioAssumptions: { portfolioBalance: 'custom', stockAllocation: 0.6, stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.03, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.03, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
       simulationSettings: { numSimulations: 100 },
-      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000 }],
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
     });
     const result = runSimulation(userData);
     expect(result.probability).toBeGreaterThanOrEqual(0);
@@ -837,7 +837,7 @@ describe('calculateRMD', () => {
   it('rmdRequired appears in calculateAnnualCashFlow breakdown at age 73+', () => {
     const userData = makeUserData({
       currentAge: 73,
-      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 265000 }],
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 265000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
     });
     const breakdown = calculateAnnualCashFlow(userData, 2026, 0);
     expect(breakdown.rmdRequired).toBeCloseTo(10000, 2); // 265000 / 26.5
@@ -846,7 +846,7 @@ describe('calculateRMD', () => {
   it('rmdRequired is 0 in calculateAnnualCashFlow below age 73', () => {
     const userData = makeUserData({
       currentAge: 72,
-      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000 }],
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
     });
     const breakdown = calculateAnnualCashFlow(userData, 2026, 0);
     expect(breakdown.rmdRequired).toBe(0);
@@ -856,7 +856,7 @@ describe('calculateRMD', () => {
   it('rmdExcess is 0 when spending already exceeds RMD', () => {
     const userData = makeUserData({
       currentAge: 73,
-      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 200000 }],
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 200000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
       spendingGoals: [{ id: 'sp-1', name: 'Living Expenses 1', type: 'living_expenses', amount: 50000, startAge: 73, inflationAdjusted: false }],
     });
     const breakdown = calculateAnnualCashFlow(userData, 2026, 0);
@@ -912,12 +912,11 @@ describe('runSimulation — Student\'s t return distribution', () => {
     const baseUserData = makeUserData({
       currentAge: 60,
       lifeExpectancy: 65,
-      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 500_000 }],
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
       spendingGoals: [],
       incomeEvents: [],
       inflationRate: 0,
       portfolioAssumptions: {
-        portfolioBalance: 'custom', stockAllocation: 0.6,
         stockReturn: 0.05, stockStdDev: 0,
         bondReturn: 0.03, bondStdDev: 0,
         stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
@@ -944,14 +943,13 @@ describe('runSimulation — Student\'s t return distribution', () => {
     // the "heavier tails" claim is verified by the sampler-variance tests above
     // and by the fat-tail scenarios in test/scenarios/.
     const portfolioAssumptionsBase = {
-      portfolioBalance: 'custom' as const, stockAllocation: 0.6,
       stockReturn: 0.07, stockStdDev: 0.15,
       bondReturn: 0.03, bondStdDev: 0.05,
       stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
     };
     const shared = {
       currentAge: 60, lifeExpectancy: 80,
-      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000 }],
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
       spendingGoals: [],
       incomeEvents: [],
       inflationRate: 0, inflationStdDev: 0,

@@ -6,6 +6,8 @@ import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import type { Account, AccountType } from '../types/Account';
+import type { PortfolioType } from '../types/IncomeEvent';
+import { PORTFOLIO_PRESETS } from '../utils/portfolioPresets';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { spacing, colors, fontSize, border } from '../styles/theme';
 import {
@@ -34,6 +36,27 @@ const InputGroup = styled.div`
   label {
     font-size: ${fontSize.sm};
     color: ${colors.textPrimary};
+  }
+`;
+
+const AllocationRow = styled.div`
+  display: flex;
+  gap: ${spacing.xs};
+`;
+
+const PresetBtn = styled.button<{ $active: boolean }>`
+  flex: 1;
+  padding: ${spacing.xs} 0;
+  font-size: ${fontSize.sm};
+  border: ${border.standard};
+  border-radius: ${border.radius};
+  cursor: pointer;
+  background: ${({ $active }) => ($active ? colors.primary : colors.bgLight)};
+  color: ${({ $active }) => ($active ? '#fff' : colors.textPrimary)};
+  font-weight: ${({ $active }) => ($active ? 600 : 400)};
+
+  &:hover {
+    background: ${({ $active }) => ($active ? colors.primary : colors.bgMedium)};
   }
 `;
 
@@ -84,6 +107,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   const [name, setName] = useState('');
   const [balance, setBalance] = useState<number>(0);
   const [owner, setOwner] = useState<'self' | 'spouse'>('self');
+  const [portfolioBalance, setPortfolioBalance] = useState<PortfolioType>('60_40');
 
   const showOwnerField = accountType === 'traditional' && spouseAge !== null;
 
@@ -93,10 +117,12 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         setName(editAccount.name);
         setBalance(editAccount.balance);
         setOwner(editAccount.owner ?? 'self');
+        setPortfolioBalance(editAccount.portfolioBalance ?? '60_40');
       } else {
         setName(generateDefaultAccountName(accountType, existingAccounts));
         setBalance(0);
         setOwner('self');
+        setPortfolioBalance('60_40');
       }
     }
   }, [visible, editAccount, accountType, existingAccounts]);
@@ -109,6 +135,8 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
       type: accountType,
       name: name.trim(),
       balance,
+      portfolioBalance,
+      stockAllocation: PORTFOLIO_PRESETS[portfolioBalance].stockAllocation,
       ...(showOwnerField ? { owner } : {}),
     };
     onSave(account);
@@ -184,6 +212,24 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
             currency="USD"
             min={0}
           />
+        </InputGroup>
+        <InputGroup style={{ marginTop: spacing.md }}>
+          <label>Stocks / Bonds Mix</label>
+          <AllocationRow>
+            {(Object.keys(PORTFOLIO_PRESETS) as PortfolioType[]).map((key) => (
+              <PresetBtn
+                key={key}
+                type="button"
+                $active={portfolioBalance === key}
+                onClick={() => setPortfolioBalance(key)}
+              >
+                {PORTFOLIO_PRESETS[key].label.split(' ')[0]}
+              </PresetBtn>
+            ))}
+          </AllocationRow>
+          <small style={{ color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.xs }}>
+            Sets how this account is split between stocks and bonds. Return and volatility assumptions apply to all accounts and are configured in Modeling.
+          </small>
         </InputGroup>
       </Form>
     </Dialog>

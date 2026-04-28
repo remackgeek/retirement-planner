@@ -39,8 +39,6 @@
     }
   ],
   "portfolioAssumptions": {
-    "portfolioBalance": "60_40",
-    "stockAllocation": 0.6,
     "stockReturn": 0.065,
     "stockStdDev": 0.105,
     "bondReturn": 0.065,
@@ -68,7 +66,9 @@
       "id": "acct-1",
       "name": "Traditional 1",
       "type": "traditional",
-      "balance": 800000
+      "balance": 800000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
     }
   ],
   "longTermCapGainsRate": 0.15

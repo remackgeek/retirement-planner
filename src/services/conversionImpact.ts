@@ -121,13 +121,14 @@ export function estimateConversionImpact(
   }
 
   const inflationRate = userData.inflationRate;
-  const {
-    stockAllocation,
-    stockReturn,
-    bondReturn,
-  } = userData.portfolioAssumptions;
-  const bondAllocation = 1 - stockAllocation;
-  const blendedReturn = stockAllocation * stockReturn + bondAllocation * bondReturn;
+  const { stockReturn, bondReturn } = userData.portfolioAssumptions;
+  const totalBalance = userData.accounts.reduce((s, a) => s + a.balance, 0);
+  const weightedStockAlloc = userData.accounts.length === 0
+    ? 0.6
+    : totalBalance > 0
+      ? userData.accounts.reduce((s, a) => s + a.stockAllocation * a.balance, 0) / totalBalance
+      : userData.accounts.reduce((s, a) => s + a.stockAllocation, 0) / userData.accounts.length;
+  const blendedReturn = weightedStockAlloc * stockReturn + (1 - weightedStockAlloc) * bondReturn;
 
   const ownerAge =
     conversion.owner === 'spouse' && userData.spouseAge !== null

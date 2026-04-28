@@ -14,6 +14,8 @@ import { getProbabilityTier } from '../../utils/probabilityTier';
 interface SidebarProps {
   isOpen: boolean;
   onToggle: () => void;
+  compareScenarioId: string | null;
+  onSetCompare: (id: string | null) => void;
 }
 
 const SidebarContainer = styled.aside<{ $isOpen: boolean }>`
@@ -208,7 +210,8 @@ const Probability = styled.span<{ $defined: boolean }>`
 
 const Footer = styled.div`
   display: flex;
-  gap: ${spacing.sm};
+  flex-direction: column;
+  gap: ${spacing.xs};
   padding: ${spacing.sm} ${spacing.md};
   background-color: ${colors.bgMedium};
   border-top: ${border.standard};
@@ -236,6 +239,47 @@ const CompactFooterButton = styled.button<{ $primary?: boolean }>`
     background-color: ${props => props.$primary ? 'rgba(61, 122, 95, 0.08)' : 'rgba(0, 0, 0, 0.06)'};
     color: ${props => props.$primary ? colors.primary : colors.textPrimary};
   }
+`;
+
+const FooterButtons = styled.div`
+  display: flex;
+  gap: ${spacing.sm};
+`;
+
+const CompareRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${spacing.xs};
+`;
+
+const CompareSelect = styled.select`
+  flex: 1;
+  font-size: ${fontSize.xs};
+  font-family: inherit;
+  background: ${colors.bgLight};
+  border: ${border.standard};
+  border-radius: ${border.radius};
+  color: ${colors.textPrimary};
+  padding: 2px ${spacing.xs};
+  cursor: pointer;
+  min-width: 0;
+`;
+
+const CompareClearButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: ${border.radius};
+  color: ${colors.textMuted};
+  cursor: pointer;
+  font-size: ${fontSize.xs};
+  flex-shrink: 0;
+  &:hover { color: ${colors.danger}; }
 `;
 
 const EmptyState = styled.div`
@@ -300,7 +344,7 @@ const actionButtonStyle = {
   minWidth: '1.6rem',
 } as const;
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, compareScenarioId, onSetCompare }) => {
   const [dialogVisible, setDialogVisible] = useState(false);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const context = useContext(RetirementContext);
@@ -381,7 +425,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
             <ScenarioItem
               key={scenario.id}
               $isActive={isActive}
-              onClick={() => setActiveScenario(scenario.id)}
+              onClick={() => {
+                setActiveScenario(scenario.id);
+                if (scenario.id === compareScenarioId) onSetCompare(null);
+              }}
             >
               <ScenarioRow>
                 <ScenarioName $isActive={isActive}>{scenario.name}</ScenarioName>
@@ -396,7 +443,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
                       message: `Are you sure you want to delete "${scenario.name}"?`,
                       header: 'Delete Scenario',
                       icon: 'pi pi-exclamation-triangle',
-                      accept: () => deleteScenario(scenario.id),
+                      accept: () => {
+                        deleteScenario(scenario.id);
+                        if (scenario.id === compareScenarioId) onSetCompare(null);
+                      },
                     });
                   }}
                   tooltip='Delete'
@@ -461,14 +511,38 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         })}
       </ScenarioList>
       <Footer>
-        <CompactFooterButton $primary onClick={() => setDialogVisible(true)}>
-          <i className="pi pi-plus" />
-          New
-        </CompactFooterButton>
-        <CompactFooterButton onClick={() => importScenario()}>
-          <i className="pi pi-upload" />
-          Import
-        </CompactFooterButton>
+        {scenarios.length > 1 && (
+          <CompareRow>
+            <span style={{ fontSize: fontSize.xs, color: colors.textMuted, flexShrink: 0 }}>vs.</span>
+            <CompareSelect
+              value={compareScenarioId ?? ''}
+              onChange={(e) => onSetCompare(e.target.value || null)}
+            >
+              <option value="">— no comparison —</option>
+              {scenarios
+                .filter(s => s.id !== activeScenario?.id)
+                .map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))
+              }
+            </CompareSelect>
+            {compareScenarioId && (
+              <CompareClearButton onClick={() => onSetCompare(null)} title="Clear comparison">
+                <i className="pi pi-times" />
+              </CompareClearButton>
+            )}
+          </CompareRow>
+        )}
+        <FooterButtons>
+          <CompactFooterButton $primary onClick={() => setDialogVisible(true)}>
+            <i className="pi pi-plus" />
+            New
+          </CompactFooterButton>
+          <CompactFooterButton onClick={() => importScenario()}>
+            <i className="pi pi-upload" />
+            Import
+          </CompactFooterButton>
+        </FooterButtons>
       </Footer>
       <ScenarioDialog
         visible={dialogVisible}

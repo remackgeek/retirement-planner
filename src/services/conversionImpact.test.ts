@@ -8,14 +8,12 @@ function baseUserData(overrides: Partial<UserData> = {}): UserData {
     currentAge: 60,
     lifeExpectancy: 90,
     accounts: [
-      { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000 },
-      { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0 },
+      { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
     ],
     spendingGoals: [],
     incomeEvents: [],
     portfolioAssumptions: {
-      portfolioBalance: 'custom',
-      stockAllocation: 0.6,
       stockReturn: 0.07,
       stockStdDev: 0,
       bondReturn: 0.04,

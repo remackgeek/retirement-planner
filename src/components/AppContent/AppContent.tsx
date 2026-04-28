@@ -36,6 +36,7 @@ const AppContent: React.FC = () => {
     if (typeof window === 'undefined') return true;
     return !window.matchMedia(mobileMediaQuery).matches;
   });
+  const [compareScenarioId, setCompareScenarioId] = useState<string | null>(null);
   // Dispatch a resize event after the sidebar CSS transition so Chart.js
   // re-measures its container after the layout shift.
   const nudgeChartResize = (delay = 330) =>
@@ -65,8 +66,13 @@ const AppContent: React.FC = () => {
       <AppHeader onMenuToggle={toggle} />
       <ContentArea>
         <Backdrop $visible={isSidebarOpen} onClick={() => setIsSidebarOpen(false)} />
-        <Sidebar isOpen={isSidebarOpen} onToggle={toggle} />
-        <Content />
+        <Sidebar
+          isOpen={isSidebarOpen}
+          onToggle={toggle}
+          compareScenarioId={compareScenarioId}
+          onSetCompare={setCompareScenarioId}
+        />
+        <Content compareScenarioId={compareScenarioId} />
       </ContentArea>
       <Footer />
     </AppContentContainer>

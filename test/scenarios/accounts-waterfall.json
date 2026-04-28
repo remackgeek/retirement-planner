@@ -18,8 +18,6 @@
   ],
   "incomeEvents": [],
   "portfolioAssumptions": {
-    "portfolioBalance": "custom",
-    "stockAllocation": 0.6,
     "stockReturn": 0,
     "stockStdDev": 0,
     "bondReturn": 0,
@@ -47,19 +45,25 @@
       "id": "taxable-1",
       "name": "Taxable 1",
       "type": "taxable",
-      "balance": 100000
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
     },
     {
       "id": "trad-1",
       "name": "Traditional 1",
       "type": "traditional",
-      "balance": 100000
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
     },
     {
       "id": "roth-1",
       "name": "Roth 1",
       "type": "roth",
-      "balance": 100000
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
     }
   ],
   "longTermCapGainsRate": 0.15

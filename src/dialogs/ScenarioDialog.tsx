@@ -115,8 +115,6 @@ const makeDefaults = (): Scenario => ({
   spendingGoals: [],
   incomeEvents: [],
   portfolioAssumptions: {
-    portfolioBalance: '60_40' as const,
-    stockAllocation: 0.60,
     stockReturn: 0.07,
     stockStdDev: 0.15,
     bondReturn: 0.03,

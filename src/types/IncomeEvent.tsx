@@ -36,7 +36,12 @@ export type ReturnDistribution = 'lognormal' | 'student_t';
 // 'parametric' uses draws from the configured ReturnDistribution.
 // 'historical_single' walks one fixed slice of recorded history.
 // 'historical_rolling' iterates one run per valid start year (Trinity-style).
-export type ReturnModel = 'parametric' | 'historical_single' | 'historical_rolling';
+// 'historical_bootstrap' resamples random multi-year blocks from the series.
+export type ReturnModel =
+  | 'parametric'
+  | 'historical_single'
+  | 'historical_rolling'
+  | 'historical_bootstrap';
 
 export interface BlackSwanEvent {
   year: number;
@@ -46,8 +51,6 @@ export interface BlackSwanEvent {
 }
 
 export interface PortfolioAssumptions {
-  portfolioBalance: PortfolioType | 'custom';
-  stockAllocation: number; // 0.0–1.0
   stockReturn: number;     // decimal, e.g. 0.07
   stockStdDev: number;
   bondReturn: number;
@@ -59,5 +62,6 @@ export interface PortfolioAssumptions {
   returnModel?: ReturnModel; // defaults to 'parametric' when absent
   historicalStartYear?: number;    // required when returnModel === 'historical_single'
   historicalWrapEnabled?: boolean; // if true, horizon wraps to series start when data runs out
+  historicalBlockSize?: number;    // required when returnModel === 'historical_bootstrap'; valid: 1, 3, 5, 10
   blackSwanEvents?: BlackSwanEvent[];
 }

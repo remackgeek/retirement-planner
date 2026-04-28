@@ -5,7 +5,6 @@ import { Menu } from 'primereact/menu';
 import type { MenuItem } from 'primereact/menuitem';
 import { spacing, colors, fontSize, mediaQuery } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
-import PortfolioDialog from '../../dialogs/PortfolioDialog';
 import ModelingDialog from '../../dialogs/ModelingDialog';
 import type { Scenario } from '../../types/Scenario';
 
@@ -73,15 +72,9 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle }) => {
   const activeScenario = context?.activeScenario ?? null;
 
   const menuRef = useRef<Menu>(null);
-  const [portfolioVisible, setPortfolioVisible] = useState(false);
   const [modelingVisible, setModelingVisible] = useState(false);
 
   const menuItems: MenuItem[] = [
-    {
-      label: 'Portfolio',
-      icon: 'pi pi-sliders-h',
-      command: () => setPortfolioVisible(true),
-    },
     {
       label: 'Modeling',
       icon: 'pi pi-chart-line',
@@ -125,20 +118,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle }) => {
       </HeaderContainer>
 
       {activeScenario && (
-        <>
-          <PortfolioDialog
-            visible={portfolioVisible}
-            onHide={() => setPortfolioVisible(false)}
-            scenario={activeScenario}
-            onSave={handleSave}
-          />
-          <ModelingDialog
-            visible={modelingVisible}
-            onHide={() => setModelingVisible(false)}
-            scenario={activeScenario}
-            onSave={handleSave}
-          />
-        </>
+        <ModelingDialog
+          visible={modelingVisible}
+          onHide={() => setModelingVisible(false)}
+          scenario={activeScenario}
+          onSave={handleSave}
+        />
       )}
     </>
   );

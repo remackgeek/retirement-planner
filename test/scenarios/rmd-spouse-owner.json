@@ -11,8 +11,6 @@
   "spendingGoals": [],
   "incomeEvents": [],
   "portfolioAssumptions": {
-    "portfolioBalance": "custom",
-    "stockAllocation": 0.6,
     "stockReturn": 0,
     "stockStdDev": 0,
     "bondReturn": 0,
@@ -39,14 +37,18 @@
       "name": "Traditional Self",
       "type": "traditional",
       "balance": 300000,
-      "owner": "self"
+      "owner": "self",
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
     },
     {
       "id": "trad-spouse",
       "name": "Traditional Spouse",
       "type": "traditional",
       "balance": 200000,
-      "owner": "spouse"
+      "owner": "spouse",
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
     }
   ],
   "longTermCapGainsRate": 0.15

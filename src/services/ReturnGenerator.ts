@@ -197,11 +197,82 @@ function createHistoricalRollingGenerator(userData: UserData): ReturnGenerator {
   };
 }
 
+const VALID_BLOCK_SIZES = [1, 3, 5, 10] as const;
+
+function validateBlockSize(blockSize: number | undefined): number {
+  if (blockSize === undefined) {
+    throw new Error(
+      `HistoricalBootstrapGenerator: historicalBlockSize is required when returnModel is historical_bootstrap`
+    );
+  }
+  if (!VALID_BLOCK_SIZES.includes(blockSize as typeof VALID_BLOCK_SIZES[number])) {
+    throw new Error(
+      `HistoricalBootstrapGenerator: historicalBlockSize ${blockSize} is invalid (allowed: ${VALID_BLOCK_SIZES.join(', ')})`
+    );
+  }
+  return blockSize;
+}
+
+// Block bootstrap: each run is built by concatenating randomly-chosen consecutive
+// blocks of length `blockSize` from HISTORICAL_RETURNS until the horizon is filled.
+// Each block draws one start index in [0, HISTORICAL_YEARS - blockSize], so a block
+// never wraps mid-stream. This preserves short-term sequence correlation (a 2008 block
+// keeps stocks down + bonds up + low-ish inflation together) while generating many
+// alternate futures. Block size 1 reduces to iid year resampling.
+//
+// All RNG consumption happens at construction time so drawFactors / drawInflation are
+// O(1) deterministic lookups, matching the cadence pattern of the parametric generator
+// and keeping the inner simulation loop hot.
+function createHistoricalBootstrapGenerator(
+  userData: UserData,
+  random: () => number
+): ReturnGenerator {
+  const pa = userData.portfolioAssumptions;
+  const blockSize = validateBlockSize(pa.historicalBlockSize);
+  const horizon = retirementHorizon(userData);
+  const numRuns = userData.simulationSettings.numSimulations;
+  const maxBlockStart = HISTORICAL_YEARS - blockSize; // inclusive
+
+  // Flat array: indexMap[runIndex * horizon + yearIndex] = historical row index.
+  const indexMap = new Int32Array(numRuns * horizon);
+  for (let run = 0; run < numRuns; run++) {
+    let year = 0;
+    while (year < horizon) {
+      const blockStart = Math.floor(random() * (maxBlockStart + 1));
+      const blockEnd = Math.min(year + blockSize, horizon);
+      for (let y = year; y < blockEnd; y++) {
+        indexMap[run * horizon + y] = blockStart + (y - year);
+      }
+      year = blockEnd;
+    }
+  }
+
+  return {
+    getNumRuns: () => numRuns,
+    drawFactors(runIndex, yearIndex) {
+      const row = HISTORICAL_RETURNS[indexMap[runIndex * horizon + yearIndex]];
+      return { stockFactor: row.stockFactor, bondFactor: row.bondFactor };
+    },
+    drawInflation(runIndex, yearIndex) {
+      const row = HISTORICAL_RETURNS[indexMap[runIndex * horizon + yearIndex]];
+      return row.inflationFactor - 1;
+    },
+  };
+}
+
 // ---------------- Nominal (deterministic) generator ----------------
 
-// Used by runSimulation's nominal projection path: blended mean return every year,
-// deterministic inflation. Single run, no randomness consumed.
+// Used by runSimulation's nominal projection path. Returns a single deterministic run.
+// For historical_single, the deterministic path IS the chosen slice — using parametric
+// mean here would contradict the user's intent (they picked a specific historical slice).
+// For other modes (parametric, historical_rolling, historical_bootstrap) we use blended
+// mean returns. Rolling and bootstrap don't have a canonical deterministic baseline; the
+// UI hides the Deterministic line in those modes, so the parametric-mean fallback is
+// computed but not displayed.
 export function createNominalGenerator(userData: UserData): ReturnGenerator {
+  if (userData.portfolioAssumptions.returnModel === 'historical_single') {
+    return createHistoricalSingleGenerator(userData);
+  }
   const pa = userData.portfolioAssumptions;
   const stockFactor = 1 + pa.stockReturn;
   const bondFactor = 1 + pa.bondReturn;
@@ -214,7 +285,13 @@ export function createNominalGenerator(userData: UserData): ReturnGenerator {
 
 // ---------------- Factory ----------------
 
-export function createReturnGenerator(userData: UserData): ReturnGenerator {
+// `random` is consumed only by generators that pre-compute randomized run plans at
+// construction time (currently just historical_bootstrap). Other generators ignore it
+// and consume RNG via the per-call `random` parameter passed to drawFactors/drawInflation.
+export function createReturnGenerator(
+  userData: UserData,
+  random: () => number = Math.random
+): ReturnGenerator {
   const model: PortfolioAssumptions['returnModel'] =
     userData.portfolioAssumptions.returnModel ?? 'parametric';
   switch (model) {
@@ -222,6 +299,8 @@ export function createReturnGenerator(userData: UserData): ReturnGenerator {
       return createHistoricalSingleGenerator(userData);
     case 'historical_rolling':
       return createHistoricalRollingGenerator(userData);
+    case 'historical_bootstrap':
+      return createHistoricalBootstrapGenerator(userData, random);
     case 'parametric':
     default:
       return createParametricGenerator(userData);

@@ -309,6 +309,8 @@ function ensureRMDReinvestmentAccount(userData: UserData): UserData {
     name: 'RMD Reinvestment',
     type: 'taxable',
     balance: 0,
+    stockAllocation: 0.6,
+    portfolioBalance: '60_40',
   };
   return { ...userData, accounts: [...userData.accounts, rmdAccount] };
 }
@@ -324,6 +326,8 @@ function ensureRothConversionAccount(userData: UserData): UserData {
     name: 'Roth Conversion',
     type: 'roth',
     balance: 0,
+    stockAllocation: 0.6,
+    portfolioBalance: '60_40',
   };
   return { ...userData, accounts: [...userData.accounts, rothAccount] };
 }
@@ -670,8 +674,10 @@ function simulateOneRun(
   const currentYear = userData.referenceYear;
   const totalYears = precomputes.ageByYear.length;
   const inflationRate = userData.inflationRate;
-  const stockAllocation = userData.portfolioAssumptions.stockAllocation;
-  const bondAllocation = 1 - stockAllocation;
+
+  const allocationById = new Map<string, number>(
+    userData.accounts.map((a) => [a.id, a.stockAllocation])
+  );
 
   const balances = initialAccountBalances(userData);
   const path: number[] = [];
@@ -706,8 +712,10 @@ function simulateOneRun(
     const { stockFactor: sf, bondFactor: bf } = applyBlackSwan(base, year, blackSwanLookup);
     stockFactors.push(sf);
     bondFactors.push(bf);
-    const growthFactor = stockAllocation * sf + bondAllocation * bf;
-    for (const id in balances) balances[id] *= growthFactor;
+    for (const id in balances) {
+      const sa = allocationById.get(id) ?? 0.6; // fallback for synthetic accounts added mid-run
+      balances[id] *= sa * sf + (1 - sa) * bf;
+    }
 
     // 2. Cash flow.
     const postGrowth = sumBalances(balances);
@@ -790,7 +798,7 @@ export function runSimulation(
     stateTaxRateByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
   };
 
-  const generator = createReturnGenerator(userData);
+  const generator = createReturnGenerator(userData, random);
   const blackSwanLookup = buildBlackSwanLookup(userData);
   const numRuns = generator.getNumRuns();
 

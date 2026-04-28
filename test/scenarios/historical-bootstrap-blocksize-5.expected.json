@@ -1,0 +1,5 @@
+{
+  "_rationale": "1000 random pairs of 5-year historical blocks for a 60/40 portfolio with no withdrawals. Real (CPI-deflated) median 60/40 CAGR over rolling 10-year windows in 1928-2024 hovers around 4-6%. With zero spending the balance grows monotonically; a $500k start over ~9 effective years lands in a wide but well-bounded band. probability=100 because zero spending cannot deplete the balance.",
+  "probability": { "min": 100, "max": 100 },
+  "medianFinalBalance": { "min": 600000, "max": 1200000 }
+}

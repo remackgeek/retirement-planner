@@ -150,13 +150,17 @@ function exportCsv(
   annualBreakdowns: AnnualCashFlowBreakdown[],
   currentAge: number,
   displayCurrency: DisplayCurrency,
+  options: { nominalHidden: boolean; medianDownsideHidden: boolean },
 ) {
   const modeLabel = displayCurrency === 'real' ? "today's dollars" : 'nominal dollars';
   const timestamp = new Date().toISOString();
   const comment = `# scenario: ${scenarioName} | exported: ${timestamp} | values in ${modeLabel}`;
+  const pathHeaders: string[] = [];
+  if (!options.nominalHidden) pathHeaders.push('Deterministic Portfolio ($)');
+  if (!options.medianDownsideHidden) pathHeaders.push('Median Portfolio ($)', 'Downside Portfolio ($)');
   const header = [
     'Age', 'Year',
-    'Deterministic Portfolio ($)', 'Median Portfolio ($)', 'Downside Portfolio ($)',
+    ...pathHeaders,
     'SS Gross', 'Other Taxable Income', 'After-Tax Income', 'Total Gross Income',
     'Base Spending', 'Goal Spending', 'Total Spending',
     'Total Tax', 'Ordinary Income Tax', 'Capital Gains Tax', 'Portfolio Withdrawal',
@@ -169,12 +173,18 @@ function exportCsv(
   const rows = years.map((year, i) => {
     const bd = annualBreakdowns[i];
     const bdF = breakdownInflation[i] ?? 1;
+    const pathCells: number[] = [];
+    if (!options.nominalHidden) {
+      pathCells.push(Math.round(pathToDisplay(nominal[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)));
+    }
+    if (!options.medianDownsideHidden) {
+      pathCells.push(Math.round(pathToDisplay(median[i] ?? 0, medianInflation[i] ?? 1, displayCurrency)));
+      pathCells.push(Math.round(pathToDisplay(downside[i] ?? 0, downsideInflation[i] ?? 1, displayCurrency)));
+    }
     return [
       currentAge + i,
       year,
-      Math.round(pathToDisplay(nominal[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)),
-      Math.round(pathToDisplay(median[i] ?? 0, medianInflation[i] ?? 1, displayCurrency)),
-      Math.round(pathToDisplay(downside[i] ?? 0, downsideInflation[i] ?? 1, displayCurrency)),
+      ...pathCells,
       Math.round(toDisplay(bd.ssGross, bdF, displayCurrency)),
       Math.round(toDisplay(bd.otherTaxableGross, bdF, displayCurrency)),
       Math.round(toDisplay(bd.afterTaxIncome, bdF, displayCurrency)),
@@ -210,10 +220,14 @@ const Projections = ({
   results,
   userData,
   isCalculating,
+  compareResults,
+  compareScenario,
 }: {
   results: any;
   userData: any;
   isCalculating?: boolean;
+  compareResults?: any;
+  compareScenario?: any;
 }) => {
   if (!results) return null;
   const {
@@ -227,6 +241,25 @@ const Projections = ({
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [view, setView] = useState<ViewMode>('nominal');
+
+  // Different return models expose different views:
+  //  - parametric:           median + nominal + downside (full Monte Carlo + parametric mean)
+  //  - historical_single:    nominal only (one deterministic slice; median/downside collapse)
+  //  - historical_rolling:   median + downside (no canonical deterministic baseline)
+  //  - historical_bootstrap: median + downside (same)
+  // Nominal in historical_single is the slice itself (see createNominalGenerator).
+  const returnModel = userData?.portfolioAssumptions?.returnModel ?? 'parametric';
+  const nominalHidden = returnModel === 'historical_rolling' || returnModel === 'historical_bootstrap';
+  const medianDownsideHidden = returnModel === 'historical_single';
+  useEffect(() => {
+    if (nominalHidden && view === 'nominal') setView('median');
+    if (medianDownsideHidden && view !== 'nominal') setView('nominal');
+  }, [nominalHidden, medianDownsideHidden, view]);
+  const visibleViewModes: ViewMode[] = medianDownsideHidden
+    ? ['nominal']
+    : nominalHidden
+      ? ['median', 'downside']
+      : ['median', 'nominal', 'downside'];
 
   const toggleRow = (index: number) => {
     setExpandedRows(prev => {
@@ -261,23 +294,38 @@ const Projections = ({
   const chartData = useMemo(() => {
     const toDisplayPath = (path: number[], infArr: number[]) =>
       path.map((v, i) => pathToDisplay(v, infArr[i] ?? 1, displayCurrency));
-    const makeDataset = (label: string, mode: ViewMode, data: number[]) => ({
+    const makeDataset = (label: string, mode: ViewMode, data: number[], dashed = false) => ({
       label,
       data,
-      borderColor: VIEW_COLORS[mode],
-      backgroundColor: VIEW_COLORS[mode],
-      borderWidth: view === mode ? 4 : 1.5,
+      borderColor: dashed ? VIEW_COLORS[mode] + '80' : VIEW_COLORS[mode],
+      backgroundColor: dashed ? VIEW_COLORS[mode] + '80' : VIEW_COLORS[mode],
+      borderWidth: dashed ? 2 : (view === mode ? 4 : 1.5),
+      borderDash: dashed ? [6, 3] : [],
       pointRadius: 0,
     });
-    return {
-      labels,
-      datasets: [
-        makeDataset('Median', 'median', toDisplayPath(median, medianInflation)),
-        makeDataset('Deterministic', 'nominal', toDisplayPath(nominal, nominalInflation)),
-        makeDataset('Downside (10th percentile)', 'downside', toDisplayPath(downside, downsideInflation)),
-      ],
-    };
-  }, [labels, median, nominal, downside, medianInflation, nominalInflation, downsideInflation, displayCurrency, view]);
+    const datasets: ReturnType<typeof makeDataset>[] = [];
+    if (!medianDownsideHidden) {
+      datasets.push(makeDataset('Median', 'median', toDisplayPath(median, medianInflation)));
+    }
+    if (!nominalHidden) {
+      datasets.push(makeDataset('Deterministic', 'nominal', toDisplayPath(nominal, nominalInflation)));
+    }
+    if (!medianDownsideHidden) {
+      datasets.push(makeDataset('Downside (10th percentile)', 'downside', toDisplayPath(downside, downsideInflation)));
+    }
+    if (compareResults && compareScenario) {
+      const cPath = view === 'median' ? compareResults.median
+                  : view === 'nominal' ? compareResults.nominal
+                  : compareResults.downside;
+      const cInf = view === 'median' ? compareResults.medianInflation
+                 : view === 'nominal' ? compareResults.nominalInflation
+                 : compareResults.downsideInflation;
+      if (cPath && cInf) {
+        datasets.push(makeDataset(compareScenario.name, view, toDisplayPath(cPath, cInf), true));
+      }
+    }
+    return { labels, datasets };
+  }, [labels, median, nominal, downside, medianInflation, nominalInflation, downsideInflation, displayCurrency, view, nominalHidden, medianDownsideHidden, compareResults, compareScenario]);
 
   // Group income events / spending goals by their start year once, then iterate
   // years to build the annotation list. Avoids N × M filter passes per render.
@@ -379,27 +427,76 @@ const Projections = ({
   return (
     <div>
       <ChartHeading>
-        <span>Chance of Success: {isCalculating ? '—' : `${probability}%`}</span>
-        {!isCalculating && (() => {
-          const tierInfo = getProbabilityTier(probability);
-          return (
-            <>
-              <PrimeTooltip target=".chance-tier-badge" position="bottom" showDelay={150}>
-                <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
-                  {tierInfo.tooltip}
-                </div>
-              </PrimeTooltip>
-              <TierBadge
-                className="chance-tier-badge"
-                $color={tierInfo.color}
-                $bg={tierInfo.backgroundColor}
-                aria-label={`Tier: ${tierInfo.label}. ${tierInfo.tooltip}`}
-              >
-                {tierInfo.label}
-              </TierBadge>
-            </>
-          );
-        })()}
+        {compareScenario ? (
+          <>
+            <span>{userData.name}:</span>
+            <span>{isCalculating ? '—' : `${probability}%`}</span>
+            {!isCalculating && (() => {
+              const tierInfo = getProbabilityTier(probability);
+              return (
+                <>
+                  <PrimeTooltip target=".chance-tier-badge-primary" position="bottom" showDelay={150}>
+                    <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>{tierInfo.tooltip}</div>
+                  </PrimeTooltip>
+                  <TierBadge
+                    className="chance-tier-badge-primary"
+                    $color={tierInfo.color}
+                    $bg={tierInfo.backgroundColor}
+                    aria-label={`Tier: ${tierInfo.label}. ${tierInfo.tooltip}`}
+                  >
+                    {tierInfo.label}
+                  </TierBadge>
+                </>
+              );
+            })()}
+            <span style={{ color: colors.textMuted, fontWeight: 400, fontSize: fontSize.sm }}>vs.</span>
+            <span>{compareScenario.name}:</span>
+            <span>{compareResults ? `${compareResults.probability}%` : '—'}</span>
+            {compareResults && (() => {
+              const tierInfo = getProbabilityTier(compareResults.probability);
+              return (
+                <>
+                  <PrimeTooltip target=".chance-tier-badge-compare" position="bottom" showDelay={150}>
+                    <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>{tierInfo.tooltip}</div>
+                  </PrimeTooltip>
+                  <TierBadge
+                    className="chance-tier-badge-compare"
+                    $color={tierInfo.color}
+                    $bg={tierInfo.backgroundColor}
+                    aria-label={`Compare tier: ${tierInfo.label}. ${tierInfo.tooltip}`}
+                    style={{ opacity: 0.75 }}
+                  >
+                    {tierInfo.label}
+                  </TierBadge>
+                </>
+              );
+            })()}
+          </>
+        ) : (
+          <>
+            <span>Chance of Success: {isCalculating ? '—' : `${probability}%`}</span>
+            {!isCalculating && (() => {
+              const tierInfo = getProbabilityTier(probability);
+              return (
+                <>
+                  <PrimeTooltip target=".chance-tier-badge" position="bottom" showDelay={150}>
+                    <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                      {tierInfo.tooltip}
+                    </div>
+                  </PrimeTooltip>
+                  <TierBadge
+                    className="chance-tier-badge"
+                    $color={tierInfo.color}
+                    $bg={tierInfo.backgroundColor}
+                    aria-label={`Tier: ${tierInfo.label}. ${tierInfo.tooltip}`}
+                  >
+                    {tierInfo.label}
+                  </TierBadge>
+                </>
+              );
+            })()}
+          </>
+        )}
         {isCalculating && <UpdatingBadge>Updating projection…</UpdatingBadge>}
       </ChartHeading>
       <div
@@ -468,6 +565,26 @@ const Projections = ({
           const fmtD = (d: number | null) =>
             d === null ? null : `${d >= 0 ? '+' : '−'}${fmtM(Math.abs(d))}`;
 
+          // Compare tooltip data
+          const cPath = compareResults
+            ? (view === 'median' ? compareResults.median : view === 'nominal' ? compareResults.nominal : compareResults.downside)
+            : null;
+          const cInfArr = compareResults
+            ? (view === 'median' ? compareResults.medianInflation : view === 'nominal' ? compareResults.nominalInflation : compareResults.downsideInflation)
+            : null;
+          const cBds = compareResults
+            ? (view === 'median' ? compareResults.medianBreakdowns : view === 'nominal' ? compareResults.nominalBreakdowns : compareResults.downsideBreakdowns)
+            : null;
+          const cVal = cPath && cInfArr ? pathToDisplay(cPath[hoveredIndex] ?? 0, cInfArr[hoveredIndex] ?? 1, displayCurrency) : null;
+          const cDelta = cPath && cInfArr && hoveredIndex > 0
+            ? pathToDisplay(cPath[hoveredIndex] ?? 0, cInfArr[hoveredIndex] ?? 1, displayCurrency)
+              - pathToDisplay(cPath[hoveredIndex - 1] ?? 0, cInfArr[hoveredIndex - 1] ?? 1, displayCurrency)
+            : null;
+          const cBd = cBds?.[hoveredIndex] ?? null;
+          const cBdF = cInfArr?.[hoveredIndex] ?? 1;
+
+          const isComparing = compareResults != null && compareScenario != null;
+
           const pathRows: Array<{ mode: ViewMode; val: number; delta: number | null }> = [
             { mode: 'nominal',  val: nomVal, delta: nomDelta },
             { mode: 'median',   val: medVal, delta: medDelta },
@@ -487,60 +604,120 @@ const Projections = ({
               padding: `${spacing.xs} ${spacing.sm}`,
               fontSize: fontSize.xs,
               boxShadow: `0 2px 8px ${colors.shadowLight}`,
-              minWidth: '13rem',
+              minWidth: isComparing ? '18rem' : '13rem',
               lineHeight: '1.5',
             }}>
               <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textPrimary, fontSize: fontSize.sm }}>
                 Age {age} · {year}
               </div>
-              {pathRows.map(({ mode, val, delta }) => {
-                const d = fmtD(delta);
-                const isSelected = view === mode;
-                return (
-                  <div key={mode} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.3rem',
-                    fontWeight: isSelected ? 'bold' : 'normal',
-                    opacity: isSelected ? 1 : 0.55,
-                    marginBottom: '1px',
-                  }}>
-                    <span style={{
-                      width: 7, height: 7, borderRadius: '50%',
-                      backgroundColor: VIEW_COLORS[mode],
-                      flexShrink: 0, display: 'inline-block',
-                    }} />
-                    <span style={{ width: '5rem', color: colors.textPrimary }}>{VIEW_LABELS[mode]}</span>
-                    <span style={{ flex: 1, textAlign: 'right', color: colors.textPrimary }}>{fmtM(val)}</span>
-                    {d !== null && (
-                      <span style={{
-                        minWidth: '3.5rem', textAlign: 'right',
-                        color: (delta ?? 0) >= 0 ? colors.income : colors.danger,
-                      }}>
-                        {d}
-                      </span>
-                    )}
+              {isComparing ? (
+                <>
+                  <div style={{ display: 'flex', gap: spacing.sm, marginBottom: '2px' }}>
+                    <span style={{ flex: 1, fontWeight: 'bold', color: VIEW_COLORS[view] }}>{userData.name}</span>
+                    <span style={{ flex: 1, fontWeight: 'bold', color: VIEW_COLORS[view] + '99' }}>{compareScenario.name}</span>
                   </div>
-                );
-              })}
-              <div style={{ borderTop: border.light, margin: `${spacing.xs} 0` }} />
-              <div style={{ color: VIEW_COLORS[view], fontWeight: 'bold', marginBottom: '2px' }}>
-                {VIEW_LABELS[view]}
-              </div>
-              <div style={{ display: 'flex', gap: spacing.sm, color: colors.textSecondary, flexWrap: 'wrap' }}>
-                <span><span style={{ color: colors.income }}>Inc</span> {fmtM(toDisplay(selBd.totalGrossIncome, bdF, displayCurrency))}</span>
-                <span><span style={{ color: colors.spending }}>Spend</span> {fmtM(toDisplay(selBd.totalSpendingNet, bdF, displayCurrency))}</span>
-                <span>Tax {fmtM(toDisplay(selBd.totalTax, bdF, displayCurrency))}</span>
-              </div>
-              <div style={{ marginTop: '1px', color: colors.textSecondary }}>
-                Net <span style={{ color: net >= 0 ? colors.income : colors.danger, fontWeight: 'bold' }}>
-                  {net >= 0 ? '+' : '−'}{fmtM(Math.abs(net))}
-                </span>
-              </div>
-              {shortfall > 0.5 && (
-                <div style={{ color: colors.danger, marginTop: spacing.xs, fontWeight: 'bold' }}>
-                  Portfolio Depleted
-                </div>
+                  <div style={{ display: 'flex', gap: spacing.sm, marginBottom: spacing.xs }}>
+                    <div style={{ flex: 1, color: colors.textPrimary }}>
+                      {fmtM(view === 'nominal' ? nomVal : view === 'median' ? medVal : dwnVal)}
+                      {(() => {
+                        const d = fmtD(view === 'nominal' ? nomDelta : view === 'median' ? medDelta : dwnDelta);
+                        const delta = view === 'nominal' ? nomDelta : view === 'median' ? medDelta : dwnDelta;
+                        return d ? <span style={{ color: (delta ?? 0) >= 0 ? colors.income : colors.danger }}> {d}</span> : null;
+                      })()}
+                    </div>
+                    <div style={{ flex: 1, color: colors.textPrimary, opacity: 0.75 }}>
+                      {cVal !== null ? fmtM(cVal) : '—'}
+                      {cDelta !== null && cVal !== null && (
+                        <span style={{ color: cDelta >= 0 ? colors.income : colors.danger }}> {fmtD(cDelta)}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ borderTop: border.light, margin: `${spacing.xs} 0` }} />
+                  {(['totalGrossIncome', 'totalSpendingNet', 'totalTax'] as const).map((field, i) => {
+                    const labels = ['Inc', 'Spend', 'Tax'];
+                    const labelColors = [colors.income, colors.spending, colors.textSecondary];
+                    return (
+                      <div key={field} style={{ display: 'flex', gap: spacing.sm, color: colors.textSecondary }}>
+                        <span style={{ color: labelColors[i], minWidth: '2.8rem' }}>{labels[i]}</span>
+                        <span style={{ flex: 1 }}>{fmtM(toDisplay(selBd[field], bdF, displayCurrency))}</span>
+                        <span style={{ flex: 1, opacity: 0.75 }}>
+                          {cBd ? fmtM(toDisplay(cBd[field], cBdF, displayCurrency)) : '—'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  <div style={{ display: 'flex', gap: spacing.sm, marginTop: '1px' }}>
+                    <span style={{ color: colors.textSecondary, minWidth: '2.8rem' }}>Net</span>
+                    <span style={{ flex: 1, color: net >= 0 ? colors.income : colors.danger, fontWeight: 'bold' }}>
+                      {net >= 0 ? '+' : '−'}{fmtM(Math.abs(net))}
+                    </span>
+                    {cBd && (() => {
+                      const cNet = toDisplay(cBd.netCashFlow, cBdF, displayCurrency);
+                      return (
+                        <span style={{ flex: 1, color: cNet >= 0 ? colors.income : colors.danger, fontWeight: 'bold', opacity: 0.75 }}>
+                          {cNet >= 0 ? '+' : '−'}{fmtM(Math.abs(cNet))}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  {shortfall > 0.5 && (
+                    <div style={{ color: colors.danger, marginTop: spacing.xs, fontWeight: 'bold' }}>
+                      Portfolio Depleted
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {pathRows.map(({ mode, val, delta }) => {
+                    const d = fmtD(delta);
+                    const isSelected = view === mode;
+                    return (
+                      <div key={mode} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        fontWeight: isSelected ? 'bold' : 'normal',
+                        opacity: isSelected ? 1 : 0.55,
+                        marginBottom: '1px',
+                      }}>
+                        <span style={{
+                          width: 7, height: 7, borderRadius: '50%',
+                          backgroundColor: VIEW_COLORS[mode],
+                          flexShrink: 0, display: 'inline-block',
+                        }} />
+                        <span style={{ width: '5rem', color: colors.textPrimary }}>{VIEW_LABELS[mode]}</span>
+                        <span style={{ flex: 1, textAlign: 'right', color: colors.textPrimary }}>{fmtM(val)}</span>
+                        {d !== null && (
+                          <span style={{
+                            minWidth: '3.5rem', textAlign: 'right',
+                            color: (delta ?? 0) >= 0 ? colors.income : colors.danger,
+                          }}>
+                            {d}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div style={{ borderTop: border.light, margin: `${spacing.xs} 0` }} />
+                  <div style={{ color: VIEW_COLORS[view], fontWeight: 'bold', marginBottom: '2px' }}>
+                    {VIEW_LABELS[view]}
+                  </div>
+                  <div style={{ display: 'flex', gap: spacing.sm, color: colors.textSecondary, flexWrap: 'wrap' }}>
+                    <span><span style={{ color: colors.income }}>Inc</span> {fmtM(toDisplay(selBd.totalGrossIncome, bdF, displayCurrency))}</span>
+                    <span><span style={{ color: colors.spending }}>Spend</span> {fmtM(toDisplay(selBd.totalSpendingNet, bdF, displayCurrency))}</span>
+                    <span>Tax {fmtM(toDisplay(selBd.totalTax, bdF, displayCurrency))}</span>
+                  </div>
+                  <div style={{ marginTop: '1px', color: colors.textSecondary }}>
+                    Net <span style={{ color: net >= 0 ? colors.income : colors.danger, fontWeight: 'bold' }}>
+                      {net >= 0 ? '+' : '−'}{fmtM(Math.abs(net))}
+                    </span>
+                  </div>
+                  {shortfall > 0.5 && (
+                    <div style={{ color: colors.danger, marginTop: spacing.xs, fontWeight: 'bold' }}>
+                      Portfolio Depleted
+                    </div>
+                  )}
+                </>
               )}
             </div>
           );
@@ -593,7 +770,7 @@ const Projections = ({
                 })}
               </span>
               <span style={{ color: colors.borderMedium }}>|</span>
-              {(['median', 'nominal', 'downside'] as ViewMode[]).map(mode => (
+              {visibleViewModes.map(mode => (
                 <ViewLabel
                   key={mode}
                   $active={view === mode}
@@ -624,6 +801,7 @@ const Projections = ({
                     bdInflation, bdBreakdowns,
                     userData.currentAge,
                     displayCurrency,
+                    { nominalHidden, medianDownsideHidden },
                   );
                 }}
                 style={{

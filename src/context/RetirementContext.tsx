@@ -146,12 +146,16 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         if (!Array.isArray(importedData.accounts)) {
           throw new Error('Invalid scenario: Missing accounts array.');
         }
+        // Backfill per-account allocation for scenarios created before this feature.
+        for (const account of importedData.accounts) {
+          if (typeof account.stockAllocation !== 'number') account.stockAllocation = 0.6;
+          if (!account.portfolioBalance) account.portfolioBalance = '60_40';
+        }
         if (typeof importedData.longTermCapGainsRate !== 'number') {
           importedData.longTermCapGainsRate = 0.15;
         }
         const pa = importedData.portfolioAssumptions;
-        if (!pa || typeof pa.stockAllocation !== 'number' || typeof pa.stockReturn !== 'number' ||
-            typeof pa.bondReturn !== 'number') {
+        if (!pa || typeof pa.stockReturn !== 'number' || typeof pa.bondReturn !== 'number') {
           throw new Error('Invalid scenario: Missing or invalid portfolioAssumptions fields.');
         }
         if (typeof pa.stockBondCorrelationEnabled !== 'boolean') {

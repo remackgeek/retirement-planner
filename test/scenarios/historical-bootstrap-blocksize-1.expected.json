@@ -1,0 +1,5 @@
+{
+  "_rationale": "1000 random iid year-shuffles of 60/40 history with no withdrawals. Block size 1 destroys serial correlation but preserves the unconditional return distribution; median outcome converges to the historical 60/40 real CAGR (~4-6%) for the 10-year horizon. Wider band than block size 5 because individual years can stack arbitrarily. probability=100 because zero spending cannot deplete the balance.",
+  "probability": { "min": 100, "max": 100 },
+  "medianFinalBalance": { "min": 600000, "max": 1200000 }
+}

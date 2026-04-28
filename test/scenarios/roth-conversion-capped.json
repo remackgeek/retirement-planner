@@ -20,8 +20,6 @@
     }
   ],
   "portfolioAssumptions": {
-    "portfolioBalance": "custom",
-    "stockAllocation": 0.6,
     "stockReturn": 0,
     "stockStdDev": 0,
     "bondReturn": 0,
@@ -49,13 +47,17 @@
       "id": "trad-1",
       "name": "Traditional 1",
       "type": "traditional",
-      "balance": 30000
+      "balance": 30000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
     },
     {
       "id": "roth-1",
       "name": "Roth 1",
       "type": "roth",
-      "balance": 100000
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
     }
   ],
   "longTermCapGainsRate": 0.15

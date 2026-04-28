@@ -5,9 +5,16 @@ import AccountDialog from '../dialogs/AccountDialog';
 import type { Account, AccountType } from '../types/Account';
 import { colors, fontSize } from '../styles/theme';
 import { accountTypeShortLabels, accountTypeIcons } from '../utils/defaultName';
+import { PORTFOLIO_PRESETS } from '../utils/portfolioPresets';
 import { ManagerRow, RightAmount, SlatList, PlusButton, Header, HeaderLeft, HeaderRight } from './ManagerRow';
 
 const Container = styled.div``;
+
+const AllocationText = styled.span`
+  color: ${colors.textSecondary};
+  font-size: ${fontSize.xs};
+  margin-left: 0.35rem;
+`;
 
 interface AccountsManagerProps {
   accounts: Account[];
@@ -85,6 +92,9 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
                 {account.type === 'traditional' && account.owner === 'spouse' && spouseAge !== null && (
                   <> • Spouse</>
                 )}
+                <AllocationText>
+                  {PORTFOLIO_PRESETS[account.portfolioBalance].label.split(' ')[0]}
+                </AllocationText>
               </>
             }
             right={<RightAmount>${account.balance.toLocaleString()}</RightAmount>}
