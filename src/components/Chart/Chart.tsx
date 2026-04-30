@@ -25,6 +25,7 @@ import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/them
 import { useUIState } from '../../context/UIStateContext';
 import { RetirementContext } from '../../context/RetirementContext';
 import { toDisplay, pathToDisplay, type DisplayCurrency } from '../../utils/displayCurrency';
+import type { Account } from '../../types/Account';
 import { eventTypeIcons, goalTypeIcons } from '../../utils/defaultName';
 import { getProbabilityTier } from '../../utils/probabilityTier';
 
@@ -999,10 +1000,11 @@ const Projections = ({
                     </tr>
                     {isExpanded && (() => {
                       const { stockReturn, bondReturn } = userData.portfolioAssumptions;
-                      const totalBalance = userData.accounts.reduce((s, a) => s + a.balance, 0);
+                      const accounts = userData.accounts as Account[];
+                      const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
                       const stockAllocation = totalBalance > 0
-                        ? userData.accounts.reduce((s, a) => s + a.stockAllocation * a.balance, 0) / totalBalance
-                        : (userData.accounts[0]?.stockAllocation ?? 0.6);
+                        ? accounts.reduce((s, a) => s + a.stockAllocation * a.balance, 0) / totalBalance
+                        : (accounts[0]?.stockAllocation ?? 0.6);
                       const bondAllocation = 1 - stockAllocation;
 
                       let stockFactor: number;
