@@ -268,12 +268,14 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         {isMfj && (
           <FieldGroup>
             <label>Spouse Age *</label>
-            <InputNumber
-              value={tempData.spouseAge ?? undefined}
-              onValueChange={(e) => handleChange('spouseAge', e.value ?? null)}
-              mode='decimal'
-              min={18}
-              max={100}
+            <InputText
+              value={tempData.spouseAge !== null ? String(tempData.spouseAge) : ''}
+              onChange={(e) => {
+                const raw = e.target.value;
+                const parsed = parseInt(raw, 10);
+                handleChange('spouseAge', raw === '' ? null : isNaN(parsed) ? null : parsed);
+              }}
+              keyfilter='pint'
               className={tempData.spouseAge === null ? 'p-invalid' : ''}
             />
           </FieldGroup>
