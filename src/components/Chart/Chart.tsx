@@ -998,7 +998,11 @@ const Projections = ({
                       </td>
                     </tr>
                     {isExpanded && (() => {
-                      const { stockAllocation, stockReturn, bondReturn } = userData.portfolioAssumptions;
+                      const { stockReturn, bondReturn } = userData.portfolioAssumptions;
+                      const totalBalance = userData.accounts.reduce((s, a) => s + a.balance, 0);
+                      const stockAllocation = totalBalance > 0
+                        ? userData.accounts.reduce((s, a) => s + a.stockAllocation * a.balance, 0) / totalBalance
+                        : (userData.accounts[0]?.stockAllocation ?? 0.6);
                       const bondAllocation = 1 - stockAllocation;
 
                       let stockFactor: number;
