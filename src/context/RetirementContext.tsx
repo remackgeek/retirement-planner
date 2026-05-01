@@ -38,6 +38,7 @@ export const RetirementContext = createContext<{
   addScenario: (data: Scenario) => Promise<void>;
   updateScenario: (data: Scenario) => Promise<void>;
   deleteScenario: (id: string) => Promise<void>;
+  cloneScenario: (id: string, name: string) => Promise<void>;
   exportScenario: (id: string) => Promise<void>;
   importScenario: () => void;
   setActiveScenario: (id: string) => Promise<void>;
@@ -248,6 +249,18 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     input.click();
   };
 
+  const cloneScenario = async (id: string, name: string) => {
+    const source = scenarios.find((s) => s.id === id);
+    if (!source) return;
+    const clone: Scenario = {
+      ...(JSON.parse(JSON.stringify(source)) as Scenario),
+      id: crypto.randomUUID(),
+      name,
+      lastSuccessProbability: undefined,
+    };
+    await addScenario(clone);
+  };
+
   const setActiveScenario = async (id: string) => {
     const db = await openDB(dbName, 1);
     const scenario = await db.get(storeName, id);
@@ -265,6 +278,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         addScenario,
         updateScenario,
         deleteScenario,
+        cloneScenario,
         exportScenario,
         importScenario,
         setActiveScenario,

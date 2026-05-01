@@ -5,6 +5,7 @@ import { Button } from 'primereact/button';
 import { ConfirmDialog } from 'primereact/confirmdialog';
 import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import ScenarioDialog from '../../dialogs/ScenarioDialog';
+import CloneScenarioDialog from '../../dialogs/CloneScenarioDialog';
 import type { Scenario } from '../../types/Scenario';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { spacing, colors, border, fontSize, mediaQuery, layout } from '../../styles/theme';
@@ -313,6 +314,8 @@ const actionButtonStyle = {
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
   const [dialogVisible, setDialogVisible] = useState(false);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
+  const [cloneDialogVisible, setCloneDialogVisible] = useState(false);
+  const [cloneSourceScenario, setCloneSourceScenario] = useState<Scenario | null>(null);
   const context = useContext(RetirementContext);
   if (!context) return null;
   const {
@@ -322,6 +325,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
     addScenario,
     updateScenario,
     deleteScenario,
+    cloneScenario,
     exportScenario,
     importScenario,
   } = context;
@@ -427,6 +431,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
                   tooltipOptions={{ position: 'top', className: 'compact-tooltip' }}
                 />
                 <Button
+                  icon='pi pi-copy'
+                  className='p-button-text'
+                  style={actionButtonStyle}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCloneSourceScenario(scenario);
+                    setCloneDialogVisible(true);
+                  }}
+                  tooltip='Clone'
+                  tooltipOptions={{ position: 'top', className: 'compact-tooltip' }}
+                />
+                <Button
                   icon='pi pi-pencil'
                   className='p-button-text'
                   style={actionButtonStyle}
@@ -490,6 +506,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         onHide={handleDialogHide}
         onSave={handleSave}
         scenario={editingScenario || undefined}
+      />
+      <CloneScenarioDialog
+        visible={cloneDialogVisible}
+        sourceName={cloneSourceScenario?.name ?? ''}
+        onHide={() => { setCloneDialogVisible(false); setCloneSourceScenario(null); }}
+        onSave={(name) => { if (cloneSourceScenario) cloneScenario(cloneSourceScenario.id, name); }}
       />
       <ConfirmDialog />
     </SidebarContainer>
