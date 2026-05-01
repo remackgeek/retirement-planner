@@ -136,6 +136,9 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ visible, onHide }) => {
 
           <MetaLabel>Built</MetaLabel>
           <MetaValue>{formatBuildTime(__BUILD_TIME__)}</MetaValue>
+
+          <MetaLabel>License</MetaLabel>
+          <MetaValue>MIT</MetaValue>
         </MetaTable>
       </Content>
     </Dialog>

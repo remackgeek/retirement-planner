@@ -1,73 +1,43 @@
-# React + TypeScript + Vite
+# YARP — Yet Another Retirement Planner
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A browser-based retirement planning tool positioned between simple calculators (HonestMath, Empower) and full-featured tools (ProjectionLab). Clean UX, honest Monte Carlo projections, and solid tax awareness without overwhelming complexity.
 
-Currently, two official plugins are available:
+**[Live demo](https://remackgeek.github.io/retirement-planner/)**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Features
 
-## React Compiler
+- **Monte Carlo simulation** — 5,000 runs with log-normal or Student's t returns; median, downside, and deterministic paths
+- **Multi-account modeling** — Traditional (pre-tax), Roth (tax-free), and Taxable accounts with per-account stock/bond allocation
+- **Tax-aware withdrawals** — federal + state income tax, RMDs at 73+, Roth conversions, SS provisional income formula
+- **Income events** — Social Security (with 2034 haircut option), pensions, employment savings, Roth conversions, and more
+- **Spending goals** — 11 categories with inflation adjustment, age-based activation, and optional spending decay
+- **State tax timeline** — model future relocations with per-year effective state tax rates
+- **Historical return modes** — Trinity-style rolling sequences or block bootstrap from 1928–2024 S&P 500 / Treasury / CPI data
+- **Scenario comparison** — overlay two scenarios on the same chart
+- **No account required** — runs entirely in the browser; data stored in IndexedDB
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Tech Stack
 
-## Expanding the ESLint configuration
+React 19, TypeScript, Vite, PrimeReact, Chart.js, IndexedDB
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Getting Started
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+git clone https://github.com/remackgeek/retirement-planner.git
+cd retirement-planner
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Dev Commands
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev      # dev server
+npm run build    # type-check + production build
+npm run test     # vitest
+npm run deploy   # deploy to GitHub Pages
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE)
