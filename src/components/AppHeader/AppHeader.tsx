@@ -6,6 +6,7 @@ import type { MenuItem } from 'primereact/menuitem';
 import { spacing, colors, fontSize, mediaQuery } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
 import ModelingDialog from '../../dialogs/ModelingDialog';
+import AboutDialog from '../../dialogs/AboutDialog';
 import type { Scenario } from '../../types/Scenario';
 
 const HeaderContainer = styled.header`
@@ -87,7 +88,9 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
 
   const menuRef = useRef<Menu>(null);
   const reportsMenuRef = useRef<Menu>(null);
+  const helpMenuRef = useRef<Menu>(null);
   const [modelingVisible, setModelingVisible] = useState(false);
+  const [aboutVisible, setAboutVisible] = useState(false);
 
   const menuItems: MenuItem[] = [
     {
@@ -104,6 +107,10 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
       command: () => onExportCsv?.(),
       disabled: !onExportCsv,
     },
+  ];
+
+  const helpMenuItems: MenuItem[] = [
+    { label: 'About YARP', icon: 'pi pi-info-circle', command: () => setAboutVisible(true) },
   ];
 
   const handleSave = (updated: Scenario) => {
@@ -149,6 +156,15 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
             onClick={(e) => menuRef.current?.toggle(e)}
             disabled={!activeScenario}
           />
+          <Menu model={helpMenuItems} popup ref={helpMenuRef} />
+          <Button
+            label="Help"
+            icon="pi pi-chevron-down"
+            iconPos="right"
+            className="p-button-text p-button-sm"
+            style={{ padding: '0.15rem 0.5rem' }}
+            onClick={(e) => helpMenuRef.current?.toggle(e)}
+          />
         </HeaderRight>
       </HeaderContainer>
 
@@ -160,6 +176,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
           onSave={handleSave}
         />
       )}
+      <AboutDialog visible={aboutVisible} onHide={() => setAboutVisible(false)} />
     </>
   );
 };
