@@ -51,6 +51,21 @@ const HelpText = styled.small`
   font-size: ${fontSize.xs};
 `;
 
+const Disclaimer = styled.div`
+  margin-top: ${spacing.sm};
+  display: flex;
+  flex-direction: column;
+  gap: ${spacing.xs};
+  color: ${colors.textMuted};
+  font-size: ${fontSize.xs};
+  line-height: 1.4;
+`;
+
+const DisclaimerLabel = styled.strong`
+  color: ${colors.textSecondary};
+  font-weight: 600;
+`;
+
 const TrashButton = styled.button`
   background: none;
   border: none;
@@ -349,11 +364,27 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
               <ImpactLabel>Tax-free Roth at life expectancy</ImpactLabel>
               <ImpactValue>{currency(impact.projectedRothAtEndOfPlan)}</ImpactValue>
             </ImpactGrid>
-            <HelpText>
-              Estimates are deterministic (no volatility) and ignore SS taxability
-              interactions. Run the full simulation to see scenario-level impact on
-              success probability.
-            </HelpText>
+            <Disclaimer>
+              <div>
+                <DisclaimerLabel>What this estimate includes:</DisclaimerLabel>{' '}
+                federal and state ordinary income tax on the converted amount, RMD
+                reduction at age 73, and projected tax-free Roth growth at the plan's
+                blended return.
+              </div>
+              <div>
+                <DisclaimerLabel>What it doesn't include:</DisclaimerLabel>{' '}
+                Medicare IRMAA surcharges (cliff-based, two-year lookback — can add
+                thousands per year), Social Security taxability interactions, the
+                3.8% Net Investment Income Tax, ACA premium tax credit effects before
+                65, and the surviving-spouse shift from joint to single brackets.
+                Each of these can materially change whether a conversion is
+                worthwhile.
+              </div>
+              <div>
+                Treat this as a starting point, not a recommendation. Talk to a tax
+                professional before executing a real conversion.
+              </div>
+            </Disclaimer>
           </ImpactPanel>
         )}
       </Form>
