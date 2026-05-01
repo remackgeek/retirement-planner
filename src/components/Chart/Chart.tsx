@@ -28,6 +28,7 @@ import { toDisplay, pathToDisplay, type DisplayCurrency } from '../../utils/disp
 import type { Account } from '../../types/Account';
 import { eventTypeIcons, goalTypeIcons } from '../../utils/defaultName';
 import { getProbabilityTier } from '../../utils/probabilityTier';
+import { effectiveTaxRate, fmtRate } from '../../utils/effectiveTaxRate';
 
 ChartJS.register(
   CategoryScale,
@@ -819,7 +820,13 @@ const Projections = ({
                   <div style={{ display: 'flex', gap: spacing.sm, color: colors.textSecondary, flexWrap: 'wrap' }}>
                     <span><span style={{ color: colors.income }}>Inc</span> {fmtM(toDisplay(selBd.totalGrossIncome, bdF, displayCurrency))}</span>
                     <span><span style={{ color: colors.spending }}>Spend</span> {fmtM(toDisplay(selBd.totalSpendingNet, bdF, displayCurrency))}</span>
-                    <span>Tax {fmtM(toDisplay(selBd.totalTax, bdF, displayCurrency))}</span>
+                    <span>
+                      Tax {fmtM(toDisplay(selBd.totalTax, bdF, displayCurrency))}
+                      {(() => {
+                        const rate = effectiveTaxRate(selBd);
+                        return rate !== null ? ` (${fmtRate(rate)})` : '';
+                      })()}
+                    </span>
                   </div>
                   <div style={{ marginTop: '1px', color: colors.textSecondary }}>
                     Net <span style={{ color: net >= 0 ? colors.income : colors.danger, fontWeight: 'bold' }}>
@@ -1156,6 +1163,15 @@ const Projections = ({
                                         <span>${fmt(dispCapGainsTax)}</span>
                                       </div>
                                     )}
+                                    {(() => {
+                                      const rate = effectiveTaxRate(breakdown);
+                                      return rate !== null ? (
+                                        <div style={itemStyle}>
+                                          <span>Effective Rate</span>
+                                          <span>{fmtRate(rate)}</span>
+                                        </div>
+                                      ) : null;
+                                    })()}
                                   </>
                                 );
                               })()}
