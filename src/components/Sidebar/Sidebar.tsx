@@ -57,13 +57,16 @@ const Header = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: ${spacing.md} ${spacing.lg};
+  padding: ${spacing.md} ${spacing.lg} ${spacing.md} ${spacing.md};
   flex-shrink: 0;
 `;
 
 const HeaderTitle = styled.h3`
   margin: 0;
   font-size: ${fontSize.md};
+  display: flex;
+  align-items: center;
+  gap: 6px;
 `;
 
 const HeaderActions = styled.div`
@@ -354,12 +357,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
     <SidebarContainer $isOpen={true}>
       <CompactTooltipStyle />
       <Header>
-        <HeaderTitle>Scenarios</HeaderTitle>
+        <HeaderTitle>
+          <i className="pi pi-chart-bar" style={{ fontSize: fontSize.sm, color: colors.primary }} />
+          Scenarios
+        </HeaderTitle>
         <HeaderActions>
-          <i
-            className="pi pi-chart-bar"
-            style={{ fontSize: fontSize.sm, color: colors.primary }}
-          />
           <DesktopToggle onClick={onToggle} aria-label="Collapse sidebar">
             <i className="pi pi-chevron-left" />
           </DesktopToggle>
