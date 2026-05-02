@@ -1,7 +1,7 @@
 {
   "name": "retirement-planner",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,15 +11,22 @@
     "deploy": "gh-pages -d dist",
     "test": "vitest",
     "test:watch": "vitest --watch",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "smoosh": "repomix -o temp-repomix.md --style markdown"
   },
   "dependencies": {
     "chart.js": "^4.5.0",
+    "chartjs-plugin-annotation": "^3.1.0",
+    "idb": "^8.0.3",
     "primeflex": "^4.0.0",
     "primeicons": "^7.0.0",
     "primereact": "^10.9.7",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "^19.1.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "styled-components": "^6.1.19"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
@@ -28,6 +35,7 @@
     "@types/node": "^24.6.0",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
+    "@types/styled-components": "^5.1.34",
     "@vitejs/plugin-react": "^5.0.4",
     "eslint": "^9.36.0",
     "eslint-plugin-react-hooks": "^5.2.0",

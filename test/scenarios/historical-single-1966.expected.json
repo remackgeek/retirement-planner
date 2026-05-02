@@ -1,0 +1,11 @@
+{
+  "_rationale": "60/40 blended factors and CPI from HISTORICAL_RETURNS for 1966-1969. The simulation reports `path` in TODAY's dollars: each year-end balance is divided by cumulative inflation. So path[i] = (500000 * Π blendedFactor[0..i-1]) / (Π cpiFactor[0..i-1]). Blended factors: 1966=0.95128, 1967=1.13648, 1968=1.07794, 1969=0.93052. CPI factors: 1966=1.0346, 1967=1.0304, 1968=1.0472, 1969=1.0620. Note this scenario verifies the engine pairs returns and inflation contemporaneously — a hallmark of the late-60s/early-70s stagflation that historically destroyed early-Trinity-era retirees. No spending → 100% success.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000.00, "tolerance": 1, "note": "Starting balance" },
+    { "index": 1, "age": 61, "value": 459733.23, "tolerance": 1, "note": "(500000 * 0.95128) / 1.0346" },
+    { "index": 2, "age": 62, "value": 507062.91, "tolerance": 1, "note": "(500000 * 0.95128 * 1.13648) / (1.0346 * 1.0304)" },
+    { "index": 3, "age": 63, "value": 521947.47, "tolerance": 1, "note": "growth × 1968 stagflation deflator" },
+    { "index": 4, "age": 64, "value": 457328.21, "tolerance": 1, "note": "1969 negative real return — bad year for both stocks AND CPI" }
+  ]
+}

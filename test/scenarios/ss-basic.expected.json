@@ -1,0 +1,13 @@
+{
+  "_rationale": "SS $24k/yr, no other income, single filer. Provisional income = $12k < $25k threshold → 0% taxable. No spending, no growth. Balance flat at 500k for ages 60-61 (SS not yet active), then increases by $24k/yr from age 62.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
+    { "index": 1, "age": 61, "value": 500000, "note": "No income, no spending, no growth" },
+    { "index": 2, "age": 62, "value": 500000, "note": "Start of year — SS hasn't paid yet" },
+    { "index": 3, "age": 63, "value": 524000, "note": "500000 + 24000 (first year of SS)" },
+    { "index": 5, "age": 65, "value": 572000, "note": "500000 + 24000 * 3" },
+    { "index": 10, "age": 70, "value": 692000, "note": "500000 + 24000 * 8" }
+  ],
+  "tolerance": 1.0
+}

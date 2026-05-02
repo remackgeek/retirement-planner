@@ -1,0 +1,12 @@
+{
+  "_rationale": "Ages 55-64: identical to fixed-growth-no-tax (no income yet). path[n] = 200000 * 1.05^n + 300000. At age 65 (index 10): path ≈ 625778.93, then pension adds 10k/yr reducing net spending to 5k. Growth happens before spending: balance_new = balance * 1.05 - 5000. From age 65 closed-form: (b65 - 100000) * 1.05^n + 100000. 100% probability — balance always positive.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 55, "value": 500000, "note": "Same as no-income scenario" },
+    { "index": 10, "age": 65, "value": 625778.93, "note": "Same as no-income (pension hasn't started yet)" },
+    { "index": 11, "age": 66, "value": 652067.87, "note": "625778.93 * 1.05 - 5000 — first year with pension" },
+    { "index": 20, "age": 75, "value": 956438.47, "note": "Iterative: 10 years of balance * 1.05 - 5000 from age 65" },
+    { "index": 35, "age": 90, "value": 1880474.06, "note": "Iterative: 25 years of balance * 1.05 - 5000 from age 65" }
+  ],
+  "tolerance": 1.0
+}

@@ -1,0 +1,53 @@
+{
+  "_description": "Two accounts at different allocations: Traditional at 80/20, Roth at 50/50. Zero variance, zero inflation, no income or spending. Verifies that per-account growth rates are applied independently.",
+  "_rationale": "Traditional (80/20): factor = 0.8*1.10 + 0.2*1.04 = 1.088/yr. Roth (50/50): factor = 0.5*1.10 + 0.5*1.04 = 1.07/yr. With 100k in each, path[n] = 100k*1.088^n + 100k*1.07^n. If the old global 60/40 logic were still active (factor 1.076/yr), path[5] would be 200k*1.076^5 = 288,464 — a different number. The correct per-account answer is 100k*1.088^5 + 100k*1.07^5 = 152,456 + 140,255 = 292,711.",
+  "_seed": 99999,
+  "name": "Mixed Account Allocations",
+  "currentAge": 55,
+  "lifeExpectancy": 60,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0.10,
+    "stockStdDev": 0,
+    "bondReturn": 0.04,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 1000
+  },
+  "accounts": [
+    {
+      "id": "acct-trad",
+      "name": "Traditional 401k",
+      "type": "traditional",
+      "balance": 100000,
+      "stockAllocation": 0.8,
+      "portfolioBalance": "80_20"
+    },
+    {
+      "id": "acct-roth",
+      "name": "Roth IRA",
+      "type": "roth",
+      "balance": 100000,
+      "stockAllocation": 0.5,
+      "portfolioBalance": "50_50"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

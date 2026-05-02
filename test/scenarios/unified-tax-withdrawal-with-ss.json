@@ -1,0 +1,75 @@
+{
+  "_description": "Unified tax: SS income + pension + spending where withdrawal affects SS provisional income. Tests that portfolio withdrawal pushes PI above threshold, triggering SS taxation.",
+  "_rationale": "Single filer, Florida, SS $24k + pension $10k (both before_tax) at age 60 + $4k/mo spending ($48k/yr). 0% growth/inflation/stddev. Without withdrawal: PI = (10k + 0) + 12k = 22k < 25k → 0% SS taxable. With withdrawal: PI = (10k + w) + 12k > 25k, pushing SS into 85% zone. Algebraic solution: w ≈ 15856, tax ≈ 1856, ssTaxable ≈ 7778.",
+  "_seed": 12345,
+  "name": "Unified Tax: SS + Withdrawal",
+  "currentAge": 60,
+  "lifeExpectancy": 64,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 48000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "amount": 24000,
+      "startAge": 60,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "amountPeriod": "annual",
+      "ssHaircutEnabled": false,
+      "name": "Social Security 1"
+    },
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "amount": 10000,
+      "startAge": 60,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "name": "Pension Income 1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

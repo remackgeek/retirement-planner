@@ -1,0 +1,9 @@
+{
+  "_rationale": "Auto-injected Roth account receives the $20k conversion. Because the scenario also auto-adds an RMD reinvestment taxable account (current age 60 reaches RMD age within lifeExpectancy 63? No — 73-60=13 years, lifeExpectancy-currentAge=3, so no RMD account is auto-added). Tax draws from conversion itself via the waterfall. Structural check: rothConversionGross = 20k, withdrawalFromTraditional ≈ 20k + small tax.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rothConversionGross", "value": 20000, "tolerance": 1, "_note": "Full conversion; Trad has $100k, conversion needs $20k" },
+    { "index": 0, "field": "withdrawalFromTraditional", "min": 20000, "max": 24000, "_note": "Conversion + small tax drawn via waterfall" }
+  ]
+}

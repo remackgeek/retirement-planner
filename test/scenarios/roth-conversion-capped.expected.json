@@ -1,0 +1,11 @@
+{
+  "_rationale": "Traditional balance $30k < requested $100k conversion → capped at available Trad less forced withdrawal. With NO Taxable account, the tax on the conversion pulls from Traditional via the waterfall. The convergence loop reserves tax-driven withdrawal first, then caps conversion at remaining Trad. Single filer age 60: std deduction ~$15k, so ~$15k taxable in 10% bracket. Tax ~$1,400-$1,500. Final: withdrawalFromTraditional drains Trad (~$30k = conversion + tax), rothConversionGross ≈ $28,500.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rothConversionGross", "min": 28000, "max": 30000, "_note": "Capped; tax draws from Trad too since no Taxable account" },
+    { "index": 0, "field": "rmdRequired", "value": 0, "tolerance": 0.01, "_note": "Age 60, below RMD age" },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 30000, "tolerance": 1, "_note": "Entire Traditional drained by conversion + tax" },
+    { "index": 1, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "Traditional depleted, nothing to convert" }
+  ]
+}

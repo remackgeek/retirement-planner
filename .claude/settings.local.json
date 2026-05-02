@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run test:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm test)",
+      "Bash(ls /c/dev/retirement-planner/test/scenarios/*.json)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(find src:*)",
+      "Bash(for file:*)",
+      "Bash(do)",
+      "Bash(if ! grep -q '\"\"name\"\"' \"$file\")",
+      "Bash(then)",
+      "Bash(echo \"MISSING NAME: $file\")",
+      "Bash(git -C /c/Dev4/retirement-planner status)",
+      "Bash(git -C /c/Dev4/retirement-planner diff)",
+      "Bash(git -C /c/Dev4/retirement-planner log --oneline -5)",
+      "Bash(npm run *)"
+    ]
+  }
+}

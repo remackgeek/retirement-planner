@@ -1,0 +1,5 @@
+{
+  "_rationale": "1966-1970 historical slice with black swan in year 2 (1968 replaced). Year-by-year nominal blended factors: 0.95128 (1966), 1.13648 (1967), 0.66 (BS in 1968 — 0.6*0.5 + 0.4*0.9), 0.93052 (1969), 1.08836 (1970). Nominal final = 500k * product ≈ $361k; real (CPI-deflated by 1966-1970 CPI ≈ 1.252) ≈ $288k. Without the overlay, the same slice produces a real final near $470k — so a final balance well under $350k confirms the overlay applied. probability=100 because zero spending cannot deplete a positive balance.",
+  "probability": { "min": 100, "max": 100 },
+  "medianFinalBalance": { "min": 250000, "max": 330000 }
+}

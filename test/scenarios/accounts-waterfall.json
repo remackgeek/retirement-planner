@@ -1,0 +1,70 @@
+{
+  "_description": "Three account types with waterfall withdrawal order: Taxable → Traditional → Roth. Verifies depletion order.",
+  "_rationale": "100k taxable + 100k traditional + 100k roth = 300k total. 50k/yr spending, 0% return, 0% inflation, Florida. Year 0: draw from taxable first. Year 1-2: taxable depletes, then traditional. Year 3-4: traditional depletes, then roth. Verify the order is correct.",
+  "_seed": 12345,
+  "name": "Waterfall Order",
+  "currentAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 50000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "taxable-1",
+      "name": "Taxable 1",
+      "type": "taxable",
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "roth-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

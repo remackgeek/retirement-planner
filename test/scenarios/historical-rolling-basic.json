@@ -1,0 +1,45 @@
+{
+  "_description": "Historical rolling mode (Trinity-style): one simulation run per valid start year in HISTORICAL_RETURNS. Tests that returnModel='historical_rolling' overrides numSimulations and runs (HISTORICAL_YEARS - horizon + 1) separate runs, each walking the series from a different start year.",
+  "_rationale": "10-year horizon (currentAge=60, lifeExpectancy=69) gives numRuns = 97 - 10 + 1 = 88 valid start years (1928-1937 through 2015-2024). Pure accumulation: $500k Roth, no spending, no income, no inflation — every run grows monotonically by its own slice of history. probability=100 because zero spending cannot deplete the balance. Median final balance is the 44th-ranked outcome and lands well within the historical 60/40 10-year experience.",
+  "_seed": 12345,
+  "name": "Historical Rolling 10yr",
+  "currentAge": 60,
+  "lifeExpectancy": 69,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0.07,
+    "stockStdDev": 0.15,
+    "bondReturn": 0.03,
+    "bondStdDev": 0.05,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "historical_rolling"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

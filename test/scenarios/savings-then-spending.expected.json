@@ -1,0 +1,14 @@
+{
+  "_rationale": "Accumulation: 200k + 40k/yr (after_tax) * 10 years = 600k peak at age 60. Drawdown: 30k/yr spending + federal tax on portfolio withdrawals (~1.6k/yr tax since standard deduction covers ~15.7k of 31.6k withdrawal). ~31,614/yr net drawdown. At age 65: ~441,932. At age 70: ~285,261. Depletes at age 79. Life expectancy 85 → 0% success.",
+  "probability": 0,
+  "tolerance": 1.0,
+  "pathValues": [
+    { "index": 0, "age": 50, "value": 200000 },
+    { "index": 5, "age": 55, "value": 400000 },
+    { "index": 10, "age": 60, "value": 600000 },
+    { "index": 15, "age": 65, "value": 441932 },
+    { "index": 20, "age": 70, "value": 285261 },
+    { "index": 25, "age": 75, "value": 128591 },
+    { "index": 30, "age": 80, "value": 0 }
+  ]
+}

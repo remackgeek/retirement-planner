@@ -1,0 +1,54 @@
+{
+  "_description": "Student's t return distribution with df=3 (very heavy tails) and high volatility, combined with a withdrawal stream that eats into the portfolio. df=3 sits at the edge where variance is finite but kurtosis is infinite, so extreme downside years happen significantly more often than under log-normal. Paired with a steady spending draw, this produces a visibly lower success probability than the log-normal case.",
+  "_rationale": "80/20 portfolio starting at $800,000 with 7% stockReturn / 20% stockStdDev, $50,000/yr living expenses (no income), 25-year horizon. Blended deterministic return ≈ 6.2%; deterministic balance would grow modestly. Under log-normal the 20% stock stddev already produces meaningful downside; under standardized-t with df=3 the tail kurtosis inflates large-loss frequency, driving more runs to depletion. Expected probability: noticeably below 100% — range 60–95 is wide enough to tolerate PRNG variation while still asserting the t-distribution path is active and producing non-trivial failure rates. Median final balance range is broad because heavy tails widen the run-to-run distribution.",
+  "_seed": 42,
+  "name": "Fat Tail: Extreme (df=3)",
+  "currentAge": 65,
+  "lifeExpectancy": 90,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "goal-1",
+      "name": "Living Expenses 1",
+      "type": "living_expenses",
+      "amount": 50000,
+      "startAge": 65,
+      "inflationAdjusted": false
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0.07,
+    "stockStdDev": 0.2,
+    "bondReturn": 0.03,
+    "bondStdDev": 0.05,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "student_t",
+    "degreesOfFreedom": 3,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Taxable 1",
+      "type": "taxable",
+      "balance": 800000,
+      "stockAllocation": 0.8,
+      "portfolioBalance": "80_20"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

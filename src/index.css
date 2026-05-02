@@ -1,68 +1,134 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+/* ============================================================
+   PrimeReact theme color overrides (lara-light-indigo → green)
+
+   Indigo #6366f1 → Forest green #3d7a5f
+   Indigo #4338ca → Dark green #2f6049
+   Focus ring #c7d2fe → #b5cebe
+   Highlight bg #eef2ff → #f0f5f2
+   ============================================================ */
+
+/* --- Buttons (solid) --- */
+.p-button:not(.p-button-text):not(.p-button-outlined):not(.p-button-danger) {
+  background: #3d7a5f;
+  border-color: #3d7a5f;
+}
+.p-button:not(.p-button-text):not(.p-button-outlined):not(.p-button-danger):not(:disabled):hover {
+  background: #2f6049;
+  border-color: #2f6049;
+}
+.p-button:not(.p-button-text):not(.p-button-outlined):not(.p-button-danger):not(:disabled):active {
+  background: #254a38;
+  border-color: #254a38;
+}
+.p-button:focus {
+  box-shadow: 0 0 0 0.2rem #b5cebe;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
+/* --- Buttons (text) --- */
+.p-button.p-button-text:not(.p-button-danger) {
+  color: #3d7a5f;
 }
-button:hover {
-  border-color: #646cff;
+.p-button.p-button-text:not(.p-button-danger):not(:disabled):hover {
+  background: rgba(61, 122, 95, 0.04);
+  color: #3d7a5f;
 }
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+.p-button.p-button-text:not(.p-button-danger):not(:disabled):active {
+  background: rgba(61, 122, 95, 0.16);
+  color: #3d7a5f;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+/* --- Buttons (outlined) --- */
+.p-button.p-button-outlined:not(.p-button-danger) {
+  color: #3d7a5f;
+}
+.p-button.p-button-outlined:not(.p-button-danger):not(:disabled):hover {
+  background: rgba(61, 122, 95, 0.04);
+  color: #3d7a5f;
+}
+.p-button.p-button-outlined:not(.p-button-danger):not(:disabled):active {
+  background: rgba(61, 122, 95, 0.16);
+  color: #3d7a5f;
+}
+
+/* --- Buttons (danger text) --- */
+.p-button.p-button-danger.p-button-text {
+  color: #b06b4f;
+}
+.p-button.p-button-danger.p-button-text:not(:disabled):hover {
+  background: rgba(176, 107, 79, 0.04);
+  color: #965a42;
+}
+.p-button.p-button-danger.p-button-text:not(:disabled):active {
+  background: rgba(176, 107, 79, 0.16);
+  color: #965a42;
+}
+
+/* --- Checkbox --- */
+.p-checkbox.p-highlight .p-checkbox-box {
+  border-color: #3d7a5f;
+  background: #3d7a5f;
+}
+.p-checkbox:not(.p-disabled):has(.p-checkbox-input:hover) .p-checkbox-box {
+  border-color: #3d7a5f;
+}
+.p-checkbox:not(.p-disabled):has(.p-checkbox-input:hover).p-highlight .p-checkbox-box {
+  border-color: #2f6049;
+  background: #2f6049;
+}
+.p-checkbox:not(.p-disabled):has(.p-checkbox-input:focus-visible) .p-checkbox-box {
+  box-shadow: 0 0 0 0.2rem #b5cebe;
+  border-color: #3d7a5f;
+}
+
+/* --- Radio button --- */
+.p-radiobutton.p-highlight .p-radiobutton-box {
+  border-color: #3d7a5f;
+  background: #3d7a5f;
+}
+.p-radiobutton:not(.p-disabled):has(.p-radiobutton-input:hover) .p-radiobutton-box {
+  border-color: #3d7a5f;
+}
+.p-radiobutton:not(.p-disabled):has(.p-radiobutton-input:hover).p-highlight .p-radiobutton-box {
+  border-color: #2f6049;
+  background: #2f6049;
+}
+.p-radiobutton:not(.p-disabled):has(.p-radiobutton-input:focus-visible) .p-radiobutton-box {
+  box-shadow: 0 0 0 0.2rem #b5cebe;
+  border-color: #3d7a5f;
+}
+
+/* --- InputText / InputNumber focus --- */
+.p-inputtext:enabled:hover {
+  border-color: #3d7a5f;
+}
+.p-inputtext:enabled:focus {
+  box-shadow: 0 0 0 0.2rem #b5cebe;
+  border-color: #3d7a5f;
+}
+
+/* --- Dropdown --- */
+.p-dropdown:not(.p-disabled):hover {
+  border-color: #3d7a5f;
+}
+.p-dropdown:not(.p-disabled).p-focus {
+  box-shadow: 0 0 0 0.2rem #b5cebe;
+  border-color: #3d7a5f;
+}
+.p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight {
+  color: #2f6049;
+  background: #f0f5f2;
+}
+.p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight.p-focus {
+  background: rgba(61, 122, 95, 0.24);
+}
+
+/* --- Tighten PrimeReact accordion header to match app's compact style --- */
+.p-accordion .p-accordion-header .p-accordion-header-link {
+  padding: 0.5rem 0.75rem;
 }

@@ -1,0 +1,56 @@
+{
+  "_rationale": "Savings phase (ages 55-64): 50k/yr after_tax deposited — 30k to trad-1, 20k to roth-1. At age 65 (index 10): trad=300k, roth=200k, total=500k. Retirement phase (ages 65-70): 15k/yr from trad (W=15k, zero tax because 15k < 18,150 deduction for single age 65+). Roth untouched. After 6 retirement years: trad=210k, roth=200k, total=410k. Probability=100% (never depletes).",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "value": 0, "tolerance": 1, "note": "Start: both accounts empty" },
+    { "index": 1, "value": 50000, "tolerance": 1, "note": "After year 0: 30k to trad + 20k to roth" },
+    { "index": 5, "value": 250000, "tolerance": 1, "note": "Mid savings: 5 years * 50k" },
+    { "index": 10, "value": 500000, "tolerance": 1, "note": "End of savings: trad=300k, roth=200k" },
+    { "index": 11, "value": 485000, "tolerance": 1, "note": "First retirement year: 15k withdrawn from trad (zero tax)" },
+    { "index": 15, "value": 425000, "tolerance": 1, "note": "End of final year: trad=210k+15k start, roth=200k" }
+  ],
+  "breakdownChecks": [
+    {
+      "index": 0,
+      "field": "afterTaxIncome",
+      "value": 50000,
+      "tolerance": 1,
+      "_note": "Savings year: 30k trad + 20k roth employment_savings, both after_tax"
+    },
+    {
+      "index": 0,
+      "field": "totalTax",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Savings year: all after_tax income, no ordinary tax"
+    },
+    {
+      "index": 0,
+      "field": "portfolioWithdrawal",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Savings year: no spending, no withdrawal needed"
+    },
+    {
+      "index": 10,
+      "field": "withdrawalFromTraditional",
+      "value": 15000,
+      "tolerance": 1,
+      "_note": "Retirement year 1: 15k from trad (no taxable acct, trad is waterfall first)"
+    },
+    {
+      "index": 10,
+      "field": "withdrawalFromRoth",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Retirement year 1: roth untouched while trad has balance"
+    },
+    {
+      "index": 10,
+      "field": "totalTax",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "15k withdrawal < 18,150 deduction (16,100 standard + 2,050 senior age 65+), so zero tax"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "_rationale": "Pension $30k + spending $48k/yr. Gap = $18k, but withdrawal is taxable. Combined taxable = $30k + w, deduction $16,100, all in 10%/12% brackets. Algebraic solution: w = 18000 + tax, tax = 1420 + 0.12w → w = 19420/0.88 = 22068.18, tax = 4068.18. Net cash flow = -22068.18/yr. Balance drops by ~22068 each year. Stays below age 65 to avoid senior deduction changes.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
+    { "index": 1, "age": 61, "value": 477932, "note": "500000 - 22068" },
+    { "index": 4, "age": 64, "value": 411727, "note": "500000 - 4*22068" }
+  ],
+  "tolerance": 5.0
+}

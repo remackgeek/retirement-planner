@@ -1,0 +1,10 @@
+{
+  "_rationale": "Traditional (80/20) factor = 0.8*1.10 + 0.2*1.04 = 1.088. Roth (50/50) factor = 0.5*1.10 + 0.5*1.04 = 1.07. path[n] = 100000*1.088^n + 100000*1.07^n. path[0]=200000, path[3]=100000*1.287913+100000*1.225043=251296, path[5]=100000*1.524560+100000*1.402552=292711. The discriminating value is path[5]: the old single 60/40 allocation would give 200000*1.076^5=288464, not 292711.",
+  "probability": 100,
+  "tolerance": 1,
+  "pathValues": [
+    { "index": 0, "age": 55, "value": 200000, "note": "Initial balance, before any growth" },
+    { "index": 3, "age": 58, "value": 251296, "note": "100000*1.088^3 + 100000*1.07^3 = 128791 + 122504" },
+    { "index": 5, "age": 60, "value": 292711, "note": "100000*1.088^5 + 100000*1.07^5 = 152456 + 140255; old global 60/40 would give 288464" }
+  ]
+}

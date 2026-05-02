@@ -1,0 +1,57 @@
+{
+  "_description": "SS income with 0% taxable fraction (low provisional income). Tests basic SS flow and that SS is untaxed when below threshold.",
+  "_rationale": "Single filer, Florida (no state tax), $24k SS at age 62, haircut disabled. Provisional income = 0 + 0.5 * 24000 = $12,000, below $25k single threshold, so 0% of SS is taxable. No spending (startAge beyond lifeExpectancy). Balance grows by $24k/yr from age 62 onward.",
+  "_seed": 12345,
+  "name": "SS Basic",
+  "currentAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "amount": 24000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "amountPeriod": "annual",
+      "ssHaircutEnabled": false,
+      "name": "Social Security 1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

@@ -1,0 +1,54 @@
+{
+  "_description": "Age 75, Traditional $200k, spending $50k/yr — spending need far exceeds the RMD. Verify rmdExcess=0 and waterfall unchanged.",
+  "_rationale": "RMD at 75 = 200000 / 24.6 = 8130.08. Spending is $50k, all from Traditional (no other accounts). The waterfall naturally withdraws well above the RMD floor. rmdExcess should be 0 and withdrawal should be ~$50k+ (plus tax convergence). Florida, no state tax.",
+  "_seed": 12345,
+  "name": "RMD Spending Exceeds RMD",
+  "currentAge": 75,
+  "lifeExpectancy": 80,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 50000,
+      "startAge": 75,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 200000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

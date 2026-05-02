@@ -1,0 +1,45 @@
+{
+  "_description": "Perfect positive stock/bond correlation with matched volatility. The two lognormal return streams are fully coupled (rho = 1, matched sigma) so the portfolio behaves as a single asset with 10% stddev. Final-balance dispersion is at its maximum for this stddev.",
+  "_rationale": "Same 50/50 portfolio as correlation-perfect-negative but with rho = 1. Portfolio yearly log-return variance equals the common asset variance (sigma^2/2 * (1 + rho) = sigma^2). Over 10 years the median tracks 500000 * exp(mu_ln * 10) where mu_ln ≈ ln(1.05) - 0.00451 ≈ 0.04428, so median ≈ 778000. With substantial per-run dispersion the seeded median may land anywhere from ~600k to ~1M. Wide acceptance range — the purpose of this scenario is to confirm the run succeeds under maximal correlation, not to pin a specific number.",
+  "_seed": 42,
+  "name": "Correlation: Perfect Positive",
+  "currentAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0.05,
+    "stockStdDev": 0.1,
+    "bondReturn": 0.05,
+    "bondStdDev": 0.1,
+    "stockBondCorrelationEnabled": true,
+    "stockBondCorrelation": 1,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Taxable 1",
+      "type": "taxable",
+      "balance": 500000,
+      "stockAllocation": 0.5,
+      "portfolioBalance": "50_50"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

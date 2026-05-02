@@ -1,0 +1,45 @@
+{
+  "_description": "Age 72 — RMD does not apply. Traditional-only portfolio with no spending should stay flat at 0% return.",
+  "_rationale": "SECURE 2.0 RMD starts at 73. At 72 the table is not engaged even though the IRS table has a row for 72. Verify rmdRequired=0 and rmdExcess=0 for all years, and that the portfolio balance is exactly the starting Traditional balance each year.",
+  "_seed": 12345,
+  "name": "RMD No Effect Below 73",
+  "currentAge": 72,
+  "lifeExpectancy": 74,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

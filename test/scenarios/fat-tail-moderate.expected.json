@@ -1,0 +1,5 @@
+{
+  "_rationale": "Accumulation-only with standardized-t (df=6). Deterministic growth path lands near 500000 * 1.054^15 ≈ $1.1M; with unit-variance t-shocks the realized variance is the same as log-normal, so the median should fall in a broad range around that expected value. 100% success is guaranteed because there are no withdrawals and growth factors are strictly positive. The range is broad enough to tolerate t-distribution kurtosis without being so loose that the assertion is meaningless.",
+  "probability": { "min": 100, "max": 100 },
+  "medianFinalBalance": { "min": 850000, "max": 1400000 }
+}

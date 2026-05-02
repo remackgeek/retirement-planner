@@ -1,0 +1,5 @@
+{
+  "_rationale": "Zero portfolio variance means all 5000 runs have the same nominal balance each year. Non-zero inflation stddev (2%) causes each run's cumulative inflation factor to vary, producing a spread in real-dollar final balances. Probability = 100% (no spending, no portfolio variance, no chance of failure). The median real final balance should be near the deterministic value of ~718k (500000 * 1.068^10 / 1.03^10), but log-normal inflation draws mean the median can land anywhere in a broad band around that. The wide range (500k-900k) is intentional — this test verifies the scenario runs and produces 100% probability with non-zero inflation variance, not the exact numeric outcome.",
+  "probability": 100,
+  "medianFinalBalance": { "min": 500000, "max": 900000 }
+}

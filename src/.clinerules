@@ -1,0 +1,5 @@
+# Project Guidelines
+
+## Backward Compatibility
+
+- We are in development, so unless explicitly asked for, breaking changes in data structures or logic, don't require compatibility fallbacks, since we are iterating

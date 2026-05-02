@@ -1,0 +1,13 @@
+{
+  "_rationale": "Ages 60-61: no income, balance flat at 500k. Ages 62-67 (pre-2034): SS $30k/yr, 0% taxable, balance grows by 30k/yr. Age 68+ (2034+): SS $30k * 0.70 = $21k/yr (30% haircut), still 0% taxable, balance grows by 21k/yr.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
+    { "index": 2, "age": 62, "value": 500000, "note": "SS starts this year, hasn't paid yet" },
+    { "index": 3, "age": 63, "value": 530000, "note": "500000 + 30000" },
+    { "index": 8, "age": 68, "value": 680000, "note": "500000 + 30000*6 — haircut starts this year (2034)" },
+    { "index": 9, "age": 69, "value": 701000, "note": "680000 + 21000 (30k * 0.70)" },
+    { "index": 10, "age": 70, "value": 722000, "note": "701000 + 21000" }
+  ],
+  "tolerance": 1.0
+}

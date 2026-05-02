@@ -1,0 +1,65 @@
+{
+  "_description": "Employment savings routed to Roth account via accountId. Verifies that contributions grow the designated account, not the default.",
+  "_rationale": "Start with 0 in Traditional and 0 in Roth. Employment savings of 50k/yr (after_tax) for 5 years (age 60-64), routed to roth-1. 0% return. No spending. After 5 years, roth should have ~250k (50k/yr * 5) and traditional should remain 0. No taxes on after_tax income.",
+  "_seed": 12345,
+  "name": "Employment Savings Routing",
+  "currentAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "savings-1",
+      "type": "employment_savings",
+      "name": "401k Contribution",
+      "amount": 50000,
+      "startAge": 60,
+      "endAge": 64,
+      "taxStatus": "after_tax",
+      "colaType": "fixed",
+      "accountId": "roth-1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 0,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "roth-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 0,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

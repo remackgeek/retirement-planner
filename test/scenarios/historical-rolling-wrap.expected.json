@@ -1,0 +1,5 @@
+{
+  "_rationale": "97 wrapped 60-year windows of 60/40 history with no withdrawals. 60 years of compounding produces enormous range (a 5% real CAGR on $500k yields ~$9M; 7% yields ~$30M). Wrap enables runs that wouldn't otherwise fit, exposing more of the late-data tail to early-data conditions. probability=100 because zero spending cannot deplete the balance. Range is very wide because long-horizon historical compounding spans roughly 60-year windows of widely different real outcomes.",
+  "probability": { "min": 100, "max": 100 },
+  "medianFinalBalance": { "min": 3000000, "max": 50000000 }
+}

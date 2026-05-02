@@ -1,0 +1,5 @@
+{
+  "_rationale": "88 rolling 10-yr windows of 60/40 history with no withdrawals. The simulation reports balances in today's dollars, so the displayed final balance is the REAL (CPI-deflated) outcome of each window. Historical 60/40 real CAGR is roughly 5% over most multi-decade windows; the median real outcome from $500k after 9 years of growth (path[lifeExp - currentAge - 1] is reported BEFORE the last year's growth) lands in a wide but well-bounded band. probability=100 because zero spending cannot deplete a balance.",
+  "probability": { "min": 100, "max": 100 },
+  "medianFinalBalance": { "min": 700000, "max": 1100000 }
+}

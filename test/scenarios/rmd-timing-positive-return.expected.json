@@ -1,0 +1,14 @@
+{
+  "_rationale": "RMD at age 73 = 500000 / 26.5 = 18867.92, using the beginning-of-year Traditional balance before 10% growth is applied. Post-growth balance would be $550,000 giving 20754.72 — the wrong answer. Tolerance of 1 means the assertion fails if the post-growth balance is used instead.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    {
+      "index": 0,
+      "field": "rmdRequired",
+      "value": 18867.92,
+      "tolerance": 1,
+      "_note": "500000/26.5 = 18867.924. Post-growth bug would yield 550000/26.5 = 20754.72 — outside tolerance."
+    }
+  ]
+}

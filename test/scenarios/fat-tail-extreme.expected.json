@@ -1,0 +1,5 @@
+{
+  "_rationale": "df=3 is the heaviest practical tail (infinite kurtosis, variance barely finite) paired with 20% stock stddev and a $50k/yr draw. Many runs hit depletion from extreme down-years; a large fraction fail. Observed probability with seed 42 is ~42%, well below the log-normal equivalent. The range (25–75) tolerates PRNG variation while asserting the t-distribution path meaningfully depresses success. Median final balance is highly variable under such heavy tails; we assert only a non-negative range.",
+  "probability": { "min": 25, "max": 75 },
+  "medianFinalBalance": { "min": 0, "max": 4000000 }
+}

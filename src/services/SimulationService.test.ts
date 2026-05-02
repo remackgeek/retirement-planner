@@ -1,0 +1,974 @@
+import { describe, it, expect } from 'vitest';
+import {
+  calculateAnnualCashFlow,
+  calculateRMD,
+  IRS_UNIFORM_LIFETIME_TABLE,
+  runSimulation,
+  studentTRandom,
+  standardizedTRandom,
+} from './SimulationService';
+import type { UserData } from '../types/UserData';
+import { createSeededRandom } from '../../test/utils/seededRandom';
+
+const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
+  currentAge: 60,
+  lifeExpectancy: 90,
+  referenceYear: 2026,
+  accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+  spendingGoals: [],
+  incomeEvents: [],
+  portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+  inflationRate: 0,
+  inflationStdDev: 0,
+  simulationSettings: { numSimulations: 5000 },
+  filingStatus: 'single',
+  spouseAge: null,
+  stateTimeline: [{ state: 'Florida' }],
+  longTermCapGainsRate: 0.15,
+  ...overrides,
+});
+
+/** Helper to create a living_expenses spending goal */
+const baseSpending = (monthlyAmount: number, startAge: number = 60) => ({
+  id: 'base-spending',
+  name: 'Living Expenses 1',
+  type: 'living_expenses' as const,
+  amount: monthlyAmount * 12,
+  startAge,
+  inflationAdjusted: false,
+});
+
+describe('calculateAnnualCashFlow', () => {
+  describe('aggregate taxation (income only)', () => {
+    it('applies one standard deduction across multiple before_tax events', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '2', name: 'Pension Income 2', type: 'pension_income', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.otherTaxableGross).toBe(40000);
+      expect(result.totalTax).toBeCloseTo(2620, 0);
+      expect(result.netCashFlow).toBeCloseTo(37380, 0);
+      expect(result.portfolioWithdrawal).toBe(0);
+    });
+
+    it('passes after_tax income through without tax', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 10000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.afterTaxIncome).toBe(10000);
+      expect(result.totalTax).toBe(0);
+      expect(result.netCashFlow).toBe(10000);
+    });
+
+    it('returns zero breakdown with no active income or spending', () => {
+      const userData = makeUserData({ incomeEvents: [] });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.netCashFlow).toBe(0);
+      expect(result.totalTax).toBe(0);
+      expect(result.portfolioWithdrawal).toBe(0);
+      expect(result.totalGrossIncome).toBe(0);
+      expect(result.totalSpendingNet).toBe(0);
+    });
+  });
+
+  describe('SS taxable fraction integration', () => {
+    it('SS is untaxed when provisional income below threshold', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 24000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.ssGross).toBe(24000);
+      expect(result.ssTaxableAmount).toBe(0);
+      expect(result.totalTax).toBe(0);
+      expect(result.netCashFlow).toBe(24000);
+    });
+
+    it('SS is partially taxed in the 50% zone', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+          { id: '2', name: 'Pension Income 2', type: 'pension_income', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.ssTaxableAmount).toBeCloseTo(2500, 0);
+      expect(result.totalTax).toBeCloseTo(640, 0);
+      expect(result.netCashFlow).toBeCloseTo(39360, 0);
+    });
+  });
+
+  describe('SS haircut', () => {
+    it('applies default 23% haircut from 2034', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2034, 0);
+      expect(result.ssGross).toBe(23100);
+      expect(result.netCashFlow).toBe(23100);
+    });
+
+    it('applies custom haircut percentage', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: true, ssHaircutPercent: 30 },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2034, 0);
+      expect(result.ssGross).toBe(21000);
+      expect(result.netCashFlow).toBe(21000);
+    });
+
+    it('does not apply haircut when disabled', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2034, 0);
+      expect(result.netCashFlow).toBe(30000);
+    });
+
+    it('does not apply haircut before 2034', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: true },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2033, 0);
+      expect(result.netCashFlow).toBe(30000);
+    });
+  });
+
+  describe('SS amount basis (today vs future dollars)', () => {
+    it('today\'s dollars: inflates from reference year', () => {
+      const userData = makeUserData({
+        currentAge: 60,
+        referenceYear: 2026,
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false, ssAmountBasis: 'today' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2033, 0.03);
+      expect(result.ssGross).toBeCloseTo(29516.95, 0);
+      expect(result.netCashFlow).toBeCloseTo(29516.95, 0);
+    });
+
+    it('future dollars: inflates only from claiming year forward', () => {
+      const userData = makeUserData({
+        currentAge: 60,
+        referenceYear: 2026,
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false, ssAmountBasis: 'future' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2033, 0.03);
+      expect(result.netCashFlow).toBe(24000);
+    });
+
+    it('future dollars: applies COLA after claiming year', () => {
+      const userData = makeUserData({
+        currentAge: 60,
+        referenceYear: 2026,
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false, ssAmountBasis: 'future' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2035, 0.03);
+      expect(result.ssGross).toBeCloseTo(25461.60, 0);
+    });
+
+    it('default (no ssAmountBasis) behaves as today\'s dollars', () => {
+      const userData = makeUserData({
+        currentAge: 60,
+        referenceYear: 2026,
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 24000, startAge: 67, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2033, 0.03);
+      expect(result.netCashFlow).toBeCloseTo(29516.95, 0);
+    });
+  });
+
+  describe('unified tax: spending only', () => {
+    it('spending below standard deduction requires no tax gross-up', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(1250)], // 15k/yr < 16100 deduction
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.baseSpendingNet).toBe(15000);
+      expect(result.totalTax).toBe(0);
+      expect(result.portfolioWithdrawal).toBe(15000);
+      expect(result.netCashFlow).toBe(-15000);
+    });
+
+    it('spending above deduction includes tax in withdrawal', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(5000)], // 60k/yr
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.baseSpendingNet).toBe(60000);
+      expect(result.totalTax).toBeGreaterThan(0);
+      expect(result.portfolioWithdrawal).toBeGreaterThan(60000);
+      // Verify internal consistency: withdrawal = spending + tax - income
+      expect(result.portfolioWithdrawal).toBeCloseTo(
+        result.totalSpendingNet + result.totalTax, 0
+      );
+    });
+  });
+
+  describe('unified tax: income + spending interaction', () => {
+    it('income covers spending: no withdrawal needed, surplus to portfolio', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(1000)], // 12k/yr
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 50000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.portfolioWithdrawal).toBe(0);
+      expect(result.netCashFlow).toBeGreaterThan(0);
+      // Net cash flow = income - tax - spending
+      expect(result.netCashFlow).toBeCloseTo(
+        result.totalGrossIncome - result.totalTax - result.totalSpendingNet, 0
+      );
+    });
+
+    it('spending exceeds income: withdrawal accounts for combined tax brackets', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(4000)], // 48k/yr net
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.portfolioWithdrawal).toBeGreaterThan(0);
+      expect(result.totalTax).toBeGreaterThan(0);
+      const available = result.afterTaxIncome + result.ssGross + result.otherTaxableGross;
+      expect(result.netCashFlow).toBeCloseTo(available - result.totalTax - result.totalSpendingNet, 0);
+      expect(result.netCashFlow).toBeCloseTo(-result.portfolioWithdrawal, 0);
+    });
+
+    it('income exactly equals spending: small withdrawal needed for tax', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(2500)], // 30k/yr net
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.totalTax).toBeGreaterThan(0);
+      expect(result.portfolioWithdrawal).toBeGreaterThan(0);
+      expect(result.portfolioWithdrawal).toBeGreaterThanOrEqual(result.totalTax * 0.5);
+    });
+
+    it('after-tax income covers spending: no tax, no withdrawal', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(500)], // 6k/yr
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 10000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.totalTax).toBe(0);
+      expect(result.portfolioWithdrawal).toBe(0);
+      expect(result.netCashFlow).toBe(4000); // 10000 - 6000
+    });
+
+    it('SS provisional income accounts for withdrawal', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(2000)], // 24k/yr
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 40000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.portfolioWithdrawal).toBe(0); // Actually 40k income > 24k spending
+      // Try a case where SS doesn't cover spending
+      const userData2 = makeUserData({
+        spendingGoals: [baseSpending(4000)], // 48k/yr
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 40000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+        ],
+      });
+      const result2 = calculateAnnualCashFlow(userData2, 2026, 0);
+      expect(result2.portfolioWithdrawal).toBeGreaterThan(0);
+      expect(result2.ssTaxableAmount).toBeGreaterThan(0);
+    });
+
+    it('high-bracket interaction: large income + large spending', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(10000)], // 120k/yr
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 80000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.portfolioWithdrawal).toBeGreaterThan(40000);
+      expect(result.totalTax).toBeGreaterThan(10000);
+      expect(result.netCashFlow).toBeCloseTo(-result.portfolioWithdrawal, 0);
+    });
+
+    it('mixed income types: after-tax + before-tax + SS + spending', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(5000)], // 60k/yr
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+          { id: '2', name: 'Pension Income 2', type: 'pension_income', amount: 15000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '3', name: 'Other Income 3', type: 'other_income', amount: 5000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.ssGross).toBe(20000);
+      expect(result.otherTaxableGross).toBe(15000);
+      expect(result.afterTaxIncome).toBe(5000);
+      expect(result.totalGrossIncome).toBe(40000);
+      expect(result.portfolioWithdrawal).toBeGreaterThan(0);
+      expect(result.ssTaxableAmount).toBeGreaterThanOrEqual(0);
+      const available = result.afterTaxIncome + result.ssGross + result.otherTaxableGross;
+      expect(result.netCashFlow).toBeCloseTo(available - result.totalTax - result.totalSpendingNet, 0);
+    });
+  });
+
+  describe('employment_savings income type', () => {
+    it('flows through as after_tax income with no taxation', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Employment Savings 1', type: 'employment_savings', amount: 20000, startAge: 60, endAge: 65, taxStatus: 'after_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.afterTaxIncome).toBe(20000);
+      expect(result.totalTax).toBe(0);
+      expect(result.netCashFlow).toBe(20000);
+    });
+
+    it('is not active before startAge', () => {
+      const userData = makeUserData({
+        currentAge: 55,
+        referenceYear: 2026,
+        incomeEvents: [
+          { id: '1', name: 'Employment Savings 1', type: 'employment_savings', amount: 20000, startAge: 60, endAge: 65, taxStatus: 'after_tax', colaType: 'fixed' },
+        ],
+      });
+      // Year 2026 = age 55, event starts at age 60 = year 2031
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.afterTaxIncome).toBe(0);
+      expect(result.netCashFlow).toBe(0);
+    });
+
+    it('is not active after endAge', () => {
+      const userData = makeUserData({
+        currentAge: 55,
+        referenceYear: 2026,
+        incomeEvents: [
+          { id: '1', name: 'Employment Savings 1', type: 'employment_savings', amount: 20000, startAge: 55, endAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+        ],
+      });
+      // Year 2032 = age 61, event ends at age 60 = year 2031
+      const result = calculateAnnualCashFlow(userData, 2032, 0);
+      expect(result.afterTaxIncome).toBe(0);
+      expect(result.netCashFlow).toBe(0);
+    });
+  });
+
+  describe('yearlyDecreasePercent on spending goals', () => {
+    it('applies compound decay to living_expenses spending', () => {
+      const userData = makeUserData({
+        spendingGoals: [{
+          id: '1',
+          name: 'Living Expenses 1',
+          type: 'living_expenses' as const,
+          amount: 60000,
+          startAge: 60,
+          inflationAdjusted: false,
+          yearlyDecreasePercent: 5,
+        }],
+      });
+      // Year 0 (startAge): 60000
+      const r0 = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(r0.baseSpendingNet).toBe(60000);
+
+      // Year 1: 60000 * 0.95 = 57000
+      const r1 = calculateAnnualCashFlow(userData, 2027, 0);
+      expect(r1.baseSpendingNet).toBe(57000);
+
+      // Year 2: 60000 * 0.95^2 = 54150
+      const r2 = calculateAnnualCashFlow(userData, 2028, 0);
+      expect(r2.baseSpendingNet).toBe(54150);
+    });
+
+    it('applies decay after inflation adjustment', () => {
+      const userData = makeUserData({
+        spendingGoals: [{
+          id: '1',
+          name: 'Living Expenses 1',
+          type: 'living_expenses' as const,
+          amount: 60000,
+          startAge: 60,
+          inflationAdjusted: true,
+          yearlyDecreasePercent: 5,
+        }],
+      });
+      // Year 2 with 3% inflation:
+      // Inflation: 60000 * 1.03^2 = 63654
+      // Then decay: 63654 * 0.95^2 = 57403.23
+      const result = calculateAnnualCashFlow(userData, 2028, 0.03);
+      expect(result.baseSpendingNet).toBeCloseTo(60000 * Math.pow(1.03, 2) * Math.pow(0.95, 2), 0);
+    });
+
+    it('does not apply decay to goals without yearlyDecreasePercent', () => {
+      const userData = makeUserData({
+        spendingGoals: [{
+          id: '1',
+          name: 'Living Expenses 1',
+          type: 'living_expenses' as const,
+          amount: 60000,
+          startAge: 60,
+          inflationAdjusted: false,
+        }],
+      });
+      const r0 = calculateAnnualCashFlow(userData, 2026, 0);
+      const r2 = calculateAnnualCashFlow(userData, 2028, 0);
+      expect(r0.baseSpendingNet).toBe(60000);
+      expect(r2.baseSpendingNet).toBe(60000);
+    });
+  });
+
+  describe('account-aware withdrawal waterfall', () => {
+    it('computes LTCG tax on taxable withdrawal: 50k spending from 100k taxable → W≈58,824', () => {
+      const userData = makeUserData({
+        accounts: [{ id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+        longTermCapGainsRate: 0.15,
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 50000, startAge: 60, inflationAdjusted: false }],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      // Solver: W = 50k + 0.15*W → W = 50k/0.85 ≈ 58,824; LTCG tax ≈ 8,824
+      expect(result.withdrawalFromTaxable).toBeCloseTo(58824, 0);
+      expect(result.withdrawalFromTraditional).toBe(0);
+      expect(result.withdrawalFromRoth).toBe(0);
+      expect(result.totalTax).toBeCloseTo(8824, 0);
+      // Consistency: withdrawal = spending + tax
+      expect(result.portfolioWithdrawal).toBeCloseTo(result.totalSpendingNet + result.totalTax, 0);
+    });
+
+    it('Roth withdrawal does not increase SS provisional income', () => {
+      // With SS income + Roth withdrawal: fromTrad=0 so provisionalIncome stays low → SS untaxed
+      const rothUserData = makeUserData({
+        accounts: [{ id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+        longTermCapGainsRate: 0,
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+        ],
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 40000, startAge: 60, inflationAdjusted: false }],
+      });
+      const rothResult = calculateAnnualCashFlow(rothUserData, 2026, 0);
+      // 20k SS covers 20k, need 20k more from roth. provisionalIncome = fromTrad + 0.5*SS = 0 + 10k < 25k threshold.
+      expect(rothResult.withdrawalFromRoth).toBeGreaterThan(0);
+      expect(rothResult.withdrawalFromTraditional).toBe(0);
+      expect(rothResult.ssTaxableAmount).toBe(0);
+
+      // Same scenario with Traditional: fromTrad increases provisional income → SS becomes taxable
+      const tradUserData = makeUserData({
+        accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+        longTermCapGainsRate: 0,
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+        ],
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 40000, startAge: 60, inflationAdjusted: false }],
+      });
+      const tradResult = calculateAnnualCashFlow(tradUserData, 2026, 0);
+      expect(tradResult.withdrawalFromTraditional).toBeGreaterThan(0);
+      expect(tradResult.ssTaxableAmount).toBeGreaterThan(0); // trad withdrawal pushed SS into taxable range
+    });
+
+    it('draws from taxable first, then traditional, with explicit accountBalances', () => {
+      const userData = makeUserData({
+        accounts: [
+          { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 30000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        ],
+        longTermCapGainsRate: 0,
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 60000, startAge: 60, inflationAdjusted: false }],
+      });
+      // Taxable only has 30k (0% LTCG). Remaining ~30k+ comes from traditional.
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.withdrawalFromTaxable).toBe(30000); // exhausted
+      expect(result.withdrawalFromTraditional).toBeGreaterThan(0);
+      expect(result.withdrawalFromRoth).toBe(0); // roth not touched yet
+      expect(result.portfolioWithdrawal).toBeCloseTo(
+        result.withdrawalFromTaxable + result.withdrawalFromTraditional + result.withdrawalFromRoth, 0
+      );
+    });
+
+    it('Roth-only account: zero tax regardless of withdrawal size', () => {
+      const userData = makeUserData({
+        accounts: [{ id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+        longTermCapGainsRate: 0.15,
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 100000, startAge: 60, inflationAdjusted: false }],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      // Roth withdrawals are tax-free regardless of LTCG rate
+      expect(result.totalTax).toBe(0);
+      expect(result.withdrawalFromRoth).toBe(100000);
+      expect(result.withdrawalFromTaxable).toBe(0);
+      expect(result.withdrawalFromTraditional).toBe(0);
+    });
+
+    it('per-bucket withdrawals sum to portfolioWithdrawal', () => {
+      const userData = makeUserData({
+        accounts: [
+          { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 20000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 20000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 20000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        ],
+        longTermCapGainsRate: 0.15,
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 50000, startAge: 60, inflationAdjusted: false }],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.portfolioWithdrawal).toBeCloseTo(
+        result.withdrawalFromTaxable + result.withdrawalFromTraditional + result.withdrawalFromRoth, 0
+      );
+    });
+  });
+
+  describe('breakdown field consistency', () => {
+    it('totalGrossIncome equals sum of income components', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+          { id: '2', name: 'Pension Income 2', type: 'pension_income', amount: 15000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: '3', name: 'Other Income 3', type: 'other_income', amount: 5000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.totalGrossIncome).toBe(
+        result.ssGross + result.otherTaxableGross + result.afterTaxIncome
+      );
+    });
+
+    it('totalSpendingNet equals sum of spending components', () => {
+      const userData = makeUserData({
+        spendingGoals: [
+          baseSpending(3000), // 36k/yr
+          { id: '1', name: 'Vacation 1', type: 'vacation' as const, amount: 5000, startAge: 60, inflationAdjusted: false, isOneTime: true },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.totalSpendingNet).toBe(
+        result.baseSpendingNet + result.otherSpendingGoalsNet
+      );
+      expect(result.baseSpendingNet).toBe(36000);
+      expect(result.otherSpendingGoalsNet).toBe(5000);
+    });
+  });
+
+  describe('state timeline', () => {
+    it('single-state timeline applies state tax', () => {
+      const userData = makeUserData({
+        stateTimeline: [{ state: 'California' }],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      // CA state tax = 100000 * 0.08 = 8000
+      // Federal tax on 100000 - 16100 = 83900 taxable
+      expect(result.totalTax).toBeGreaterThan(8000); // federal + state
+      // Compare with Florida (0% state tax)
+      const flResult = calculateAnnualCashFlow(makeUserData({
+        stateTimeline: [{ state: 'Florida' }],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      }), 2026, 0);
+      expect(result.totalTax - flResult.totalTax).toBeCloseTo(8000, 0);
+    });
+
+    it('relocation changes tax rate at the correct year', () => {
+      const userData = makeUserData({
+        stateTimeline: [
+          { state: 'California' },
+          { state: 'Florida', startYear: 2030 },
+        ],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const before = calculateAnnualCashFlow(userData, 2029, 0);
+      const after = calculateAnnualCashFlow(userData, 2030, 0);
+      // Before relocation: CA 8% state tax. After: FL 0%
+      expect(before.totalTax - after.totalTax).toBeCloseTo(8000, 0);
+    });
+
+    it('multiple relocations: middle segment uses correct rate', () => {
+      const userData = makeUserData({
+        stateTimeline: [
+          { state: 'Texas' },
+          { state: 'New York', startYear: 2028 },
+          { state: 'Florida', startYear: 2030 },
+        ],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      // All years keep age < 65 to avoid senior deduction differences
+      const tx = calculateAnnualCashFlow(userData, 2027, 0);  // age 61, TX
+      const ny = calculateAnnualCashFlow(userData, 2029, 0);  // age 63, NY
+      const fl = calculateAnnualCashFlow(userData, 2030, 0);  // age 64, FL
+      // TX and FL both have 0% state tax, same federal brackets/deduction (all age < 65)
+      expect(tx.totalTax).toBe(fl.totalTax);
+      expect(ny.totalTax - tx.totalTax).toBeCloseTo(5500, 0); // 100k * 5.5%
+    });
+
+    it('relocation in reference year takes effect immediately', () => {
+      const userData = makeUserData({
+        stateTimeline: [
+          { state: 'California' },
+          { state: 'Florida', startYear: 2026 },
+        ],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const flOnly = makeUserData({
+        stateTimeline: [{ state: 'Florida' }],
+        incomeEvents: [
+          { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      const flResult = calculateAnnualCashFlow(flOnly, 2026, 0);
+      expect(result.totalTax).toBe(flResult.totalTax);
+    });
+  });
+});
+
+describe('runSimulation — per-path breakdowns', () => {
+  // Deterministic setup: 0% returns, 0% stddev → all runs identical.
+  // after_tax income avoids taxable withdrawal complications: $5k income, $20k spending,
+  // $15k/yr net withdrawal. With $50k savings and 0% growth over 5 years (ages 60–64):
+  //   Year 0: balance $50k → withdrawal $15k → balance $35k
+  //   Year 1: balance $35k → withdrawal $15k → balance $20k
+  //   Year 2: balance $20k → withdrawal $15k → balance $5k
+  //   Year 3: balance $5k  → need $15k, cap at $5k → balance $0  (partial depletion)
+  //   Year 4: balance $0   → need $15k, cap at $0  → balance $0  (full depletion)
+  const depletionUserData = makeUserData({
+    currentAge: 60,
+    lifeExpectancy: 64,
+    accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 50_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+    inflationRate: 0,
+    portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+    simulationSettings: { numSimulations: 10 },
+    spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 20_000, startAge: 60, inflationAdjusted: false }],
+    incomeEvents: [{ id: 'i1', name: 'Other Income 1', type: 'other_income', amount: 5_000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' }],
+  });
+
+  it('returns medianBreakdowns and downsideBreakdowns with one entry per year', () => {
+    const result = runSimulation(depletionUserData);
+    const totalYears = depletionUserData.lifeExpectancy - depletionUserData.currentAge + 1;
+    expect(result.medianBreakdowns).toHaveLength(totalYears);
+    expect(result.downsideBreakdowns).toHaveLength(totalYears);
+  });
+
+  it('non-depleted years show full withdrawal and correct tax', () => {
+    const { downsideBreakdowns } = runSimulation(depletionUserData);
+    // Years 0–2: $15k withdrawal, tax = 0 (after_tax income only, no taxable income)
+    for (let i = 0; i <= 2; i++) {
+      expect(downsideBreakdowns[i].portfolioWithdrawal).toBeCloseTo(15_000, 0);
+      expect(downsideBreakdowns[i].totalTax).toBe(0);
+      expect(downsideBreakdowns[i].netCashFlow).toBeCloseTo(-15_000, 0);
+    }
+  });
+
+  it('partially depleting year caps withdrawal at remaining balance', () => {
+    const { downsideBreakdowns } = runSimulation(depletionUserData);
+    // Year 3: only $5k left, so withdrawal is capped at $5k (not the $15k need)
+    expect(downsideBreakdowns[3].portfolioWithdrawal).toBeCloseTo(5_000, 0);
+    expect(downsideBreakdowns[3].totalTax).toBe(0); // $5k < standard deduction
+    expect(downsideBreakdowns[3].netCashFlow).toBeCloseTo(-5_000, 0);
+  });
+
+  it('fully depleted year shows zero withdrawal and correctly recomputed zero tax', () => {
+    const { downsideBreakdowns } = runSimulation(depletionUserData);
+    // Year 4: portfolio is $0, no withdrawal possible
+    expect(downsideBreakdowns[4].portfolioWithdrawal).toBe(0);
+    expect(downsideBreakdowns[4].totalTax).toBe(0);
+    expect(downsideBreakdowns[4].netCashFlow).toBe(0);
+  });
+
+  it('income and spending fields are unchanged by depletion', () => {
+    const { downsideBreakdowns } = runSimulation(depletionUserData);
+    // Income and spending are deterministic — same in all years for this scenario
+    for (const bd of downsideBreakdowns) {
+      expect(bd.afterTaxIncome).toBe(5_000);
+      expect(bd.totalSpendingNet).toBe(20_000);
+    }
+  });
+});
+
+describe('runSimulation — deterministic path', () => {
+  const noFlowUserData = makeUserData({
+    currentAge: 60,
+    lifeExpectancy: 65,
+    accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+    inflationRate: 0,
+    portfolioAssumptions: { stockReturn: 0.065, stockStdDev: 0.105, bondReturn: 0.065, bondStdDev: 0.105, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+    spendingGoals: [],
+    incomeEvents: [],
+  });
+
+  it('nominal array is identical regardless of random function used', () => {
+    const alwaysLow = () => 0.01;
+    const alwaysHigh = () => 0.99;
+    const r1 = runSimulation(noFlowUserData, alwaysLow);
+    const r2 = runSimulation(noFlowUserData, alwaysHigh);
+    expect(r1.nominal).toEqual(r2.nominal);
+  });
+
+  it('nominal compounds at balanced arithmetic mean (6.5%) with no cash flow and 0% inflation', () => {
+    const mean = 0.065;
+    const { nominal } = runSimulation(noFlowUserData);
+    const totalYears = noFlowUserData.lifeExpectancy - noFlowUserData.currentAge + 1;
+    for (let i = 0; i < totalYears; i++) {
+      const startBalance = noFlowUserData.accounts.reduce((s, a) => s + a.balance, 0);
+      const expected = startBalance * Math.pow(1 + mean, i);
+      expect(nominal[i]).toBeCloseTo(expected, 0);
+    }
+  });
+});
+
+describe('runSimulation — hoisted precomputation equivalence', () => {
+  // Verify that the MC loop's precomputed per-year arrays produce the same
+  // breakdown as the public calculateAnnualCashFlow wrapper for a reference year.
+  // If calculateAnnualCashFlowCore ever drifts from calculateAnnualCashFlow, this catches it.
+  it('per-year income/spending in a deterministic run matches calculateAnnualCashFlow', () => {
+    const userData = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 62,
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 300_000, stockAllocation: 1, portfolioBalance: '80_20' as const }],
+      inflationRate: 0.03,
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 1 },
+      incomeEvents: [
+        { id: 'i1', name: 'SS 1', type: 'social_security', amount: 24_000, startAge: 60, taxStatus: 'before_tax', colaType: 'inflation_adjusted', ssHaircutEnabled: false },
+      ],
+      spendingGoals: [
+        { id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 40_000, startAge: 60, inflationAdjusted: true },
+      ],
+      stateTimeline: [{ state: 'California' }],
+    });
+
+    const { nominalBreakdowns } = runSimulation(userData);
+
+    // The nominal path calls calculateAnnualCashFlowCore with the same precomputed
+    // arrays. Cross-check year 1 (index 1, year 2027) against the public wrapper.
+    const refYear = userData.referenceYear + 1;
+    const refBalances = { 'acct-1': 300_000 }; // approximate; exact value doesn't matter for income/spending check
+    const direct = calculateAnnualCashFlow(userData, refYear, userData.inflationRate, refBalances);
+
+    // ssGross, otherTaxableGross, afterTaxIncome, baseSpendingNet, and otherSpendingGoalsNet
+    // come purely from accumulateIncome/accumulateSpending — balance-independent.
+    expect(nominalBreakdowns[1].ssGross).toBeCloseTo(direct.ssGross, 2);
+    expect(nominalBreakdowns[1].afterTaxIncome).toBe(direct.afterTaxIncome);
+    expect(nominalBreakdowns[1].baseSpendingNet).toBeCloseTo(direct.baseSpendingNet, 2);
+    expect(nominalBreakdowns[1].otherSpendingGoalsNet).toBe(direct.otherSpendingGoalsNet);
+  });
+
+  it('stochastic inflation (inflationStdDev > 0) runs without error and produces valid output', () => {
+    const userData = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 65,
+      inflationRate: 0.03,
+      inflationStdDev: 0.01,
+      portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.03, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 100 },
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+    });
+    const result = runSimulation(userData);
+    expect(result.probability).toBeGreaterThanOrEqual(0);
+    expect(result.probability).toBeLessThanOrEqual(100);
+    expect(result.median.length).toBe(6); // ages 60–65 inclusive
+    expect(result.nominal.every(v => Number.isFinite(v))).toBe(true);
+  });
+});
+
+describe('calculateRMD', () => {
+  it('returns 0 for age below 73', () => {
+    expect(calculateRMD(500000, 72)).toBe(0);
+    expect(calculateRMD(500000, 65)).toBe(0);
+    expect(calculateRMD(500000, 0)).toBe(0);
+  });
+
+  it('returns 0 for zero balance regardless of age', () => {
+    expect(calculateRMD(0, 73)).toBe(0);
+    expect(calculateRMD(0, 80)).toBe(0);
+  });
+
+  it('uses divisor 26.5 at age 73', () => {
+    expect(calculateRMD(265000, 73)).toBeCloseTo(10000, 2);
+    expect(IRS_UNIFORM_LIFETIME_TABLE[73]).toBe(26.5);
+  });
+
+  it('uses decreasing divisors at higher ages (larger RMD %)', () => {
+    const rmd73 = calculateRMD(500000, 73);
+    const rmd80 = calculateRMD(500000, 80);
+    const rmd90 = calculateRMD(500000, 90);
+    expect(rmd80).toBeGreaterThan(rmd73);
+    expect(rmd90).toBeGreaterThan(rmd80);
+  });
+
+  it('uses age 114 divisor for ages 115 and above', () => {
+    expect(calculateRMD(100000, 115)).toBeCloseTo(calculateRMD(100000, 114), 10);
+    expect(calculateRMD(100000, 120)).toBeCloseTo(calculateRMD(100000, 114), 10);
+  });
+
+  it('rmdRequired appears in calculateAnnualCashFlow breakdown at age 73+', () => {
+    const userData = makeUserData({
+      currentAge: 73,
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 265000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+    });
+    const breakdown = calculateAnnualCashFlow(userData, 2026, 0);
+    expect(breakdown.rmdRequired).toBeCloseTo(10000, 2); // 265000 / 26.5
+  });
+
+  it('rmdRequired is 0 in calculateAnnualCashFlow below age 73', () => {
+    const userData = makeUserData({
+      currentAge: 72,
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+    });
+    const breakdown = calculateAnnualCashFlow(userData, 2026, 0);
+    expect(breakdown.rmdRequired).toBe(0);
+    expect(breakdown.rmdExcess).toBe(0);
+  });
+
+  it('rmdExcess is 0 when spending already exceeds RMD', () => {
+    const userData = makeUserData({
+      currentAge: 73,
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 200000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      spendingGoals: [{ id: 'sp-1', name: 'Living Expenses 1', type: 'living_expenses', amount: 50000, startAge: 73, inflationAdjusted: false }],
+    });
+    const breakdown = calculateAnnualCashFlow(userData, 2026, 0);
+    // RMD = 200000/26.5 ≈ 7547, spending = 50000 >> RMD
+    expect(breakdown.rmdExcess).toBe(0);
+    expect(breakdown.rmdRequired).toBeCloseTo(7547, 0);
+  });
+});
+
+describe('Student\'s t samplers', () => {
+  // Compute sample variance of N draws from a sampler.
+  const sampleVariance = (draws: number[]): { mean: number; variance: number } => {
+    const n = draws.length;
+    const mean = draws.reduce((s, x) => s + x, 0) / n;
+    const variance = draws.reduce((s, x) => s + (x - mean) * (x - mean), 0) / (n - 1);
+    return { mean, variance };
+  };
+
+  it('studentTRandom has approximate theoretical variance df/(df-2)', () => {
+    const df = 6;
+    const expectedVar = df / (df - 2); // = 1.5
+    const rng = createSeededRandom(12345);
+    const N = 50000;
+    const draws: number[] = [];
+    for (let i = 0; i < N; i++) draws.push(studentTRandom(df, rng));
+    const { mean, variance } = sampleVariance(draws);
+    // Mean should be near 0 (t is symmetric)
+    expect(Math.abs(mean)).toBeLessThan(0.05);
+    // Variance close to df/(df-2) within ±10% over 50k draws
+    expect(variance).toBeGreaterThan(expectedVar * 0.9);
+    expect(variance).toBeLessThan(expectedVar * 1.1);
+  });
+
+  it('standardizedTRandom has unit variance regardless of df', () => {
+    const rng = createSeededRandom(777);
+    const N = 50000;
+    for (const df of [4, 6, 10]) {
+      const draws: number[] = [];
+      for (let i = 0; i < N; i++) draws.push(standardizedTRandom(df, rng));
+      const { mean, variance } = sampleVariance(draws);
+      expect(Math.abs(mean)).toBeLessThan(0.05);
+      // Unit variance within ±10% tolerance
+      expect(variance).toBeGreaterThan(0.9);
+      expect(variance).toBeLessThan(1.1);
+    }
+  });
+});
+
+describe('runSimulation — Student\'s t return distribution', () => {
+  it('zero-variance scenario produces identical results under lognormal and student_t', () => {
+    // With stockStdDev=0 and bondStdDev=0 the shock is multiplied by zero,
+    // so the distribution choice is irrelevant and paths must match exactly.
+    const baseUserData = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 65,
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      spendingGoals: [],
+      incomeEvents: [],
+      inflationRate: 0,
+      portfolioAssumptions: {
+        stockReturn: 0.05, stockStdDev: 0,
+        bondReturn: 0.03, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+      },
+    });
+    const tUserData = {
+      ...baseUserData,
+      portfolioAssumptions: {
+        ...baseUserData.portfolioAssumptions,
+        returnDistribution: 'student_t' as const,
+        degreesOfFreedom: 4,
+      },
+    };
+    const logResult = runSimulation(baseUserData, createSeededRandom(42));
+    const tResult = runSimulation(tUserData, createSeededRandom(42));
+    expect(tResult.nominal).toEqual(logResult.nominal);
+    expect(tResult.median).toEqual(logResult.median);
+  });
+
+  it('student_t produces different results than lognormal when stddev is non-zero', () => {
+    // Sanity check that the t-distribution path is actually engaged and produces
+    // distinct output from the log-normal path. The mathematical correctness of
+    // the "heavier tails" claim is verified by the sampler-variance tests above
+    // and by the fat-tail scenarios in test/scenarios/.
+    const portfolioAssumptionsBase = {
+      stockReturn: 0.07, stockStdDev: 0.15,
+      bondReturn: 0.03, bondStdDev: 0.05,
+      stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+    };
+    const shared = {
+      currentAge: 60, lifeExpectancy: 80,
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      spendingGoals: [],
+      incomeEvents: [],
+      inflationRate: 0, inflationStdDev: 0,
+      simulationSettings: { numSimulations: 1000 },
+    };
+    const lognormal = makeUserData({
+      ...shared,
+      portfolioAssumptions: { ...portfolioAssumptionsBase, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+    });
+    const tDist = makeUserData({
+      ...shared,
+      portfolioAssumptions: { ...portfolioAssumptionsBase, returnDistribution: 'student_t', degreesOfFreedom: 4 },
+    });
+    const logResult = runSimulation(lognormal, createSeededRandom(99));
+    const tResult = runSimulation(tDist, createSeededRandom(99));
+    // Both should produce valid results
+    expect(tResult.probability).toBeGreaterThanOrEqual(0);
+    expect(tResult.probability).toBeLessThanOrEqual(100);
+    // And they must not be identical (the t path is doing something)
+    expect(tResult.median).not.toEqual(logResult.median);
+  });
+});

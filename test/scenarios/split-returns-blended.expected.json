@@ -1,0 +1,18 @@
+{
+  "_rationale": "0% stddev means fully deterministic — all 5000 runs produce identical results so median equals every run. Blended return = 0.6*10% + 0.4*2% = 6.8%/yr. No spending so probability = 100%. median[n] = 500000 * 1.068^n with 0% inflation so no deflation.",
+  "probability": 100,
+  "tolerance": 1,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000 },
+    { "index": 1, "age": 61, "value": 534000 },
+    { "index": 2, "age": 62, "value": 570312 },
+    { "index": 3, "age": 63, "value": 609093 },
+    { "index": 4, "age": 64, "value": 650512 },
+    { "index": 5, "age": 65, "value": 694746 },
+    { "index": 6, "age": 66, "value": 741989 },
+    { "index": 7, "age": 67, "value": 792444 },
+    { "index": 8, "age": 68, "value": 846331 },
+    { "index": 9, "age": 69, "value": 903881 },
+    { "index": 10, "age": 70, "value": 965345 }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "_description": "Unified tax: income surplus covers spending. No portfolio withdrawal needed. Tests the no-withdrawal path.",
+  "_rationale": "Single filer, Florida, pension $50k (before_tax) at age 60 + $2k/mo spending ($24k/yr). 0% growth/inflation/stddev. Income exceeds spending. Tax on $50k: deduction $16,100, taxable $33,900. Fed tax = $1,240 (10% on $12,400) + $2,580 (12% on $21,500) = $3,820. Net income = $46,180. Net cash flow = 46180 - 24000 = $22,180 surplus/yr.",
+  "_seed": 12345,
+  "name": "Unified Tax: Income Covers Spending",
+  "currentAge": 60,
+  "lifeExpectancy": 64,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 24000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "amount": 50000,
+      "startAge": 60,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "name": "Pension Income 1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

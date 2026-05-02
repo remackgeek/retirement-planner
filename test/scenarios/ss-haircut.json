@@ -1,0 +1,58 @@
+{
+  "_description": "SS with custom haircut percentage (30%). Tests haircut activation at 2034 and custom percentage.",
+  "_rationale": "Single filer, Florida, $30k SS at age 62, custom 30% haircut. Pre-2034 (ages 62-67): full $30k/yr. From 2034 (age 68+): $30k * 0.70 = $21k/yr. Provisional income always below $25k threshold, so 0% taxable. No spending, no growth.",
+  "_seed": 12345,
+  "name": "SS Haircut",
+  "currentAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "amount": 30000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "amountPeriod": "annual",
+      "ssHaircutEnabled": true,
+      "ssHaircutPercent": 30,
+      "name": "Social Security 1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

@@ -1,0 +1,66 @@
+{
+  "_description": "SS taxable fraction in the 85% zone. MFJ with higher income tests upper threshold.",
+  "_rationale": "MFJ, Florida, SS $30k + pension $50k (before_tax) at age 62, haircut disabled, spouse age 60. Provisional = $50k + 0.5 * $30k = $65k. MFJ thresholds $32k/$44k → 85% zone. SS taxable = min(0.85 * ($65k - $44k) + $6k, 0.85 * $30k) = min($23,850, $25,500) = $23,850. Combined taxable gross = $73,850. Deduction = $32,200 (2026 MFJ, both under 65). Taxable = $41,650. Federal tax = $2,480 (10% on $24,800) + $2,022 (12% on $16,850) = $4,502. Net = $75,498/yr.",
+  "_seed": 12345,
+  "name": "SS Taxable Fraction 85%",
+  "currentAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "amount": 30000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "amountPeriod": "annual",
+      "ssHaircutEnabled": false,
+      "name": "Social Security 1"
+    },
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "amount": 50000,
+      "startAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "name": "Pension Income 1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "mfj",
+  "spouseAge": 60,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

@@ -1,0 +1,11 @@
+{
+  "_rationale": "100k + 50k/yr for 10 years (ages 55–64) = 600k. No spending, no growth, so balance is flat at 600k after age 64. Never fails → 100% success. Path values: age 55 start = 100k, age 60 = 350k (5 years of 50k added), age 65 = 600k (savings stopped), age 70 = 600k (unchanged).",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 55, "value": 100000 },
+    { "index": 5, "age": 60, "value": 350000 },
+    { "index": 10, "age": 65, "value": 600000 },
+    { "index": 15, "age": 70, "value": 600000 },
+    { "index": 20, "age": 75, "value": 600000 }
+  ]
+}

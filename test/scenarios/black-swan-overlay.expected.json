@@ -1,0 +1,11 @@
+{
+  "_rationale": "Stddev=0 makes the lognormal formula deterministic: exp(mu + 0*z) = exp(log(1.05)) = 1.05. Every year except 2028 is +5% blended. Black swan REPLACES the drawn factors in 2028 (not scales them), so the prescribed historical return is applied consistently regardless of what the base draw happened to be: stock factor = 0.5, bond factor = 0.9, blended = 0.6*0.5 + 0.4*0.9 = 0.66. path[0]=500000 (start of 2026), path[1]=500000*1.05=525000, path[2]=525000*1.05=551250, path[3]=551250*0.66=363825, path[4]=363825*1.05=382016.25. probability=100 (no spending).",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000.00, "tolerance": 1, "note": "Starting balance" },
+    { "index": 1, "age": 61, "value": 525000.00, "tolerance": 1, "note": "After 2026: 500000 * 1.05" },
+    { "index": 2, "age": 62, "value": 551250.00, "tolerance": 1, "note": "After 2027: 525000 * 1.05" },
+    { "index": 3, "age": 63, "value": 363825.00, "tolerance": 1, "note": "After 2028 black swan: 551250 * 0.66 (factors replaced, not scaled)" },
+    { "index": 4, "age": 64, "value": 382016.25, "tolerance": 1, "note": "After 2029: 363825 * 1.05 (black swan year only affects 2028)" }
+  ]
+}

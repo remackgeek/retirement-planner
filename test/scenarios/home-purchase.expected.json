@@ -1,0 +1,10 @@
+{
+  "_rationale": "500k savings, 0% return, 0% inflation, no other spending. Home purchase of 100k (inflationAdjusted=false, future dollars) fires only in year 2027 (startAge 66 = referenceYear 2026 + 1). path[0]=500k (initial). path[1]=500k (year 2026: no purchase since startYear=2027, no spending, no tax, balance unchanged). path[2]=384704 (year 2027: 100k purchase requires portfolio withdrawal; solver converges to W~115296 covering 100k spending + ~15296 federal tax; deduction=16100+2050_senior+3582_OBBB=21732, taxable=93564, tax=15296; netCashFlow=0-15296-100000=-115296; balance=500000-115296=384704). Never runs out -> 100% probability.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 65, "value": 500000, "note": "Starting balance" },
+    { "index": 1, "age": 66, "value": 500000, "note": "Year 2026: no purchase (startYear=2027), no spending, balance unchanged" },
+    { "index": 2, "age": 67, "value": 384704, "note": "Year 2027: 100k purchase + ~15296 tax on withdrawal; balance 500000-115296=384704" }
+  ],
+  "tolerance": 1.0
+}

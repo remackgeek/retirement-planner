@@ -1,0 +1,64 @@
+{
+  "_description": "Age 73 with Traditional $500k and a $50k Roth conversion. Verifies RMD is enforced first (18,867.92) AND conversion is added on top, so Traditional outflow includes both.",
+  "_rationale": "Age 73 at start → RMD = 500k/26.5 = 18,867.92. Conversion of $50k is added after RMD is reserved, so total withdrawalFromTraditional ≈ RMD + 50k = ~68,868 (plus any tax drawdown from Traditional since there's no Taxable to absorb tax). rothConversionGross should be exactly 50,000 since 500k - 18,868 = 481,132 is well above 50k.",
+  "_seed": 12345,
+  "name": "Roth Conversion — RMD Interaction",
+  "currentAge": 73,
+  "lifeExpectancy": 76,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "conv-1",
+      "type": "roth_conversion",
+      "name": "Test Conversion",
+      "amount": 50000,
+      "startAge": 73,
+      "isOneTime": true,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": 0,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "roth-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 0,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

@@ -1,0 +1,12 @@
+{
+  "_rationale": "500k initial, 60k/yr flat spending (0% yearly decrease) starting at age 60. No growth, no inflation, Florida (no state tax). Federal tax applies on withdrawals above standard deduction (~15.7k). Effective annual drawdown ~65.7k. Depletes faster than the 5% decrease scenario (age 68 vs 70) because spending never decays. 0% success rate.",
+  "probability": 0,
+  "tolerance": 1.0,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000 },
+    { "index": 5, "age": 65, "value": 171477 },
+    { "index": 8, "age": 68, "value": 0 },
+    { "index": 10, "age": 70, "value": 0 },
+    { "index": 20, "age": 80, "value": 0 }
+  ]
+}

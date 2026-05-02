@@ -1,0 +1,45 @@
+{
+  "_description": "60/40 split with different stock (10%) and bond (2%) rates, 0% stddev, 0% inflation, no income/spending. Verifies blended return math.",
+  "_rationale": "Pure portfolio growth test. 60/40 split, stock return 10%, bond return 2%, both 0% stddev = fully deterministic. Blended return = 0.6*0.10 + 0.4*0.02 = 6.8% per year. With 500k initial savings and no cash flows, balance = 500000 * 1.068^n each year. No spending so never fails.",
+  "_seed": 12345,
+  "name": "Split Returns Blended",
+  "currentAge": 60,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0.1,
+    "stockStdDev": 0,
+    "bondReturn": 0.02,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15
+}

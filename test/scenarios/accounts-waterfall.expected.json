@@ -1,0 +1,120 @@
+{
+  "_rationale": "Waterfall: Taxable first, then Traditional, then Roth. 100k in each, 50k/yr spending, 0% return, 0% inflation, Florida (0% state), 15% LTCG. Year 0: LTCG solver gives W=50k/0.85≈58,824 all from taxable; taxable→41,176. Year 1: taxable exhausted at 41,176 (LTCG=6,176), trad covers remaining 15k (below deduction, 0 ordinary tax); W=56,176. Year 2: taxable=0, trad=85k; full ordinary-tax solver gives W≈54,341. Year 3: trad=30,659 (last scrap); ordinary tax=1,499, W=51,499, roth fills 20,840. Year 4: trad=0, roth=79,160; W=50k exactly, tax=0. Portfolio depletes in year 5 (only 29,160 left vs 50k needed), so probability=0.",
+  "probability": 0,
+  "pathValues": [
+    { "index": 0, "value": 300000, "tolerance": 1, "note": "Start: 100k taxable + 100k trad + 100k roth" },
+    { "index": 1, "value": 241176, "tolerance": 5, "note": "After 58,824 LTCG draw from taxable" },
+    { "index": 2, "value": 185000, "tolerance": 5, "note": "After 56,176 draw (all taxable + 15k trad)" },
+    { "index": 3, "value": 130659, "tolerance": 5, "note": "After 54,341 draw from trad" },
+    { "index": 4, "value": 79160, "tolerance": 5, "note": "After 51,499 draw (all trad + 20,840 roth)" },
+    { "index": 5, "value": 29160, "tolerance": 5, "note": "After 50,000 draw from roth (tax-free)" },
+    { "index": 6, "value": 0, "tolerance": 5, "note": "After 29,160 capped draw; portfolio depleted" }
+  ],
+  "breakdownChecks": [
+    {
+      "index": 0,
+      "field": "withdrawalFromTaxable",
+      "value": 58824,
+      "tolerance": 5,
+      "_note": "Year 0: LTCG-only draw; W=50k/0.85=58,824"
+    },
+    {
+      "index": 0,
+      "field": "withdrawalFromTraditional",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Year 0: taxable covers everything, traditional untouched"
+    },
+    {
+      "index": 0,
+      "field": "withdrawalFromRoth",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Year 0: roth untouched"
+    },
+    {
+      "index": 0,
+      "field": "totalTax",
+      "value": 8824,
+      "tolerance": 5,
+      "_note": "Year 0: 15% LTCG on 58,824 = 8,824"
+    },
+    {
+      "index": 1,
+      "field": "withdrawalFromTaxable",
+      "value": 41176,
+      "tolerance": 5,
+      "_note": "Year 1: taxable balance fully exhausted"
+    },
+    {
+      "index": 1,
+      "field": "withdrawalFromTraditional",
+      "value": 15000,
+      "tolerance": 5,
+      "_note": "Year 1: 15k from trad (below 16,100 deduction, zero ordinary tax)"
+    },
+    {
+      "index": 1,
+      "field": "withdrawalFromRoth",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Year 1: roth still untouched"
+    },
+    {
+      "index": 3,
+      "field": "withdrawalFromTaxable",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Year 3: taxable exhausted in year 1"
+    },
+    {
+      "index": 3,
+      "field": "withdrawalFromTraditional",
+      "value": 30659,
+      "tolerance": 5,
+      "_note": "Year 3: trad fully exhausted (last 30,659)"
+    },
+    {
+      "index": 3,
+      "field": "withdrawalFromRoth",
+      "value": 20840,
+      "tolerance": 5,
+      "_note": "Year 3: roth fills the 20,840 gap after trad+tax"
+    },
+    {
+      "index": 3,
+      "field": "totalTax",
+      "value": 1499,
+      "tolerance": 5,
+      "_note": "Year 3: ordinary tax on 30,659 trad (taxable=14,559); 1,240+259=1,499"
+    },
+    {
+      "index": 4,
+      "field": "withdrawalFromTaxable",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Year 4: taxable depleted"
+    },
+    {
+      "index": 4,
+      "field": "withdrawalFromTraditional",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Year 4: traditional depleted"
+    },
+    {
+      "index": 4,
+      "field": "withdrawalFromRoth",
+      "value": 50000,
+      "tolerance": 5,
+      "_note": "Year 4: pure roth draw, exactly 50k (no tax gross-up needed)"
+    },
+    {
+      "index": 4,
+      "field": "totalTax",
+      "value": 0,
+      "tolerance": 1,
+      "_note": "Year 4: roth withdrawals are tax-free"
+    }
+  ]
+}
