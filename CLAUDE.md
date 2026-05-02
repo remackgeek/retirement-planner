@@ -78,6 +78,20 @@ projections, and good tax awareness without overwhelming the user.
   is current state (no startYear); subsequent entries are future relocations. Simulation
   resolves effective state per year via `getStateTaxRate(userData, year)`
 
+## In-App Documentation
+
+Two Markdown files are served as in-app documentation via the sidebar viewer:
+
+- `src/docs/USER_GUIDE.md` — user-facing guide covering UI, scenarios, income/spending
+  events, accounts, and how to interpret results
+- `src/docs/MODEL_DETAILS.md` — technical reference covering the simulation engine,
+  tax model, RMD rules, return models, and all `UserData` / `portfolioAssumptions` fields
+
+**Keep these files in sync with code changes.** When you add, rename, or remove a feature
+that affects user-visible behavior or modeling parameters, update the relevant doc(s) in
+the same pass. This includes: new income/spending types, new `portfolioAssumptions` fields,
+changes to tax logic, new dialogs or UX flows, and any change to simulation defaults.
+
 ## Conventions
 
 Follow existing project patterns when adding new features (types, dialogs, services,
