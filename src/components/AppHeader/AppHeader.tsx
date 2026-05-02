@@ -7,6 +7,9 @@ import { spacing, colors, fontSize, mediaQuery } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
 import ModelingDialog from '../../dialogs/ModelingDialog';
 import AboutDialog from '../../dialogs/AboutDialog';
+import MarkdownViewerSidebar from '../../dialogs/MarkdownViewerSidebar';
+import userGuideContent from '../../docs/USER_GUIDE.md?raw';
+import modelDetailsContent from '../../docs/MODEL_DETAILS.md?raw';
 import type { Scenario } from '../../types/Scenario';
 
 const HeaderContainer = styled.header`
@@ -91,6 +94,8 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   const helpMenuRef = useRef<Menu>(null);
   const [modelingVisible, setModelingVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
+  const [userGuideVisible, setUserGuideVisible] = useState(false);
+  const [modelDetailsVisible, setModelDetailsVisible] = useState(false);
 
   const menuItems: MenuItem[] = [
     {
@@ -110,7 +115,10 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   ];
 
   const helpMenuItems: MenuItem[] = [
-    { label: 'About YARP', icon: 'pi pi-info-circle', command: () => setAboutVisible(true) },
+    { label: 'User Guide',    icon: 'pi pi-book',       command: () => setUserGuideVisible(true) },
+    { label: 'Model Details', icon: 'pi pi-sliders-h',  command: () => setModelDetailsVisible(true) },
+    { separator: true },
+    { label: 'About YARP',   icon: 'pi pi-info-circle', command: () => setAboutVisible(true) },
   ];
 
   const handleSave = (updated: Scenario) => {
@@ -177,6 +185,20 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
         />
       )}
       <AboutDialog visible={aboutVisible} onHide={() => setAboutVisible(false)} />
+      <MarkdownViewerSidebar
+        title="User Guide"
+        icon="pi pi-book"
+        content={userGuideContent}
+        visible={userGuideVisible}
+        onHide={() => setUserGuideVisible(false)}
+      />
+      <MarkdownViewerSidebar
+        title="Model Details"
+        icon="pi pi-sliders-h"
+        content={modelDetailsContent}
+        visible={modelDetailsVisible}
+        onHide={() => setModelDetailsVisible(false)}
+      />
     </>
   );
 };
