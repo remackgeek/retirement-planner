@@ -191,6 +191,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
         content={userGuideContent}
         visible={userGuideVisible}
         onHide={() => setUserGuideVisible(false)}
+        showLogo
       />
       <MarkdownViewerSidebar
         title="Model Details"

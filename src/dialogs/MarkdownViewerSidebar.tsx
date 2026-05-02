@@ -3,6 +3,7 @@ import { Sidebar } from 'primereact/sidebar';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { spacing, colors, fontSize, border } from '../styles/theme';
+import yarpIcon from '../assets/YARP.ico';
 
 interface Props {
   title: string;
@@ -10,6 +11,7 @@ interface Props {
   content: string;
   visible: boolean;
   onHide: () => void;
+  showLogo?: boolean;
 }
 
 const SidebarHeader = styled.div`
@@ -152,10 +154,12 @@ const Body = styled.div`
   }
 `;
 
-const MarkdownViewerSidebar: React.FC<Props> = ({ title, icon, content, visible, onHide }) => {
+const MarkdownViewerSidebar: React.FC<Props> = ({ title, icon, content, visible, onHide, showLogo }) => {
   const header = (
     <SidebarHeader>
-      <i className={icon} />
+      {showLogo
+        ? <img src={yarpIcon} alt="YARP" style={{ width: '1.4rem', height: '1.4rem' }} />
+        : <i className={icon} />}
       {title}
     </SidebarHeader>
   );
