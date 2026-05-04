@@ -5,34 +5,9 @@
 
 ---
 
-## ⚠️ Before You Start
-
-YARP is a **planning tool, not financial advice**. A few things to keep in mind:
-
-- It's not a substitute for a financial advisor, tax professional, or estate attorney.
-- All projections are estimates. Real outcomes will differ — sometimes substantially.
-- Past performance does not predict future results.
-- Wrong inputs produce wrong outputs.
-
-Use YARP to **explore the shape of your retirement** — what decisions matter most, where your plan is fragile, how sensitive things are to assumptions. Don't use it as the final word on whether you can retire.
-
----
-
-## 🔒 Your Data Stays With You
-
-YARP runs entirely in your web browser. **There is no account to create, no server to log into, and no upload of your financial data.** Everything you enter — balances, ages, scenarios, the works — stays on your device.
-
-That means:
-
-- **Privacy by design.** No one but you (and anyone who uses your computer) sees your numbers.
-- **No tracking, no analytics on your data, no selling anything.**
-- The flip side: if you clear your browser, switch computers, or use a different browser, your scenarios won't be there. **Back them up periodically** — see the *Backing Up Your Data* section near the end.
-
----
-
 ## What YARP Is For
 
-YARP is a retirement planner that sits between simple calculators and full financial-planning platforms. It's good for answering questions like:
+YARP is a **planning tool, not financial advice** — not a substitute for a financial advisor, tax professional, or estate attorney. It sits between simple calculators and full financial-planning platforms, and it's good for answering questions like:
 
 - Can I retire at 62 instead of 65?
 - What happens if the market drops 30% the year after I retire?
@@ -40,7 +15,18 @@ YARP is a retirement planner that sits between simple calculators and full finan
 - Should I convert some of my Traditional IRA to Roth in my 60s?
 - How much can I safely spend each year?
 
+Use it to **explore the shape of your retirement** — what decisions matter most, where your plan is fragile, how sensitive things are to assumptions. Projections are estimates; real outcomes will differ, sometimes substantially.
+
 It's **not** the right tool for: estate planning, healthcare-specific projections (Medicare premiums, IRMAA, long-term care), insurance products, real estate transactions, or tax-loss harvesting strategies. For those, see a professional.
+
+---
+
+## Your Data Stays With You
+
+YARP runs entirely in your web browser. **No account to create, no server, no upload of your financial data.** Everything you enter stays on your device.
+
+- **Privacy by design.** No tracking, no analytics, no selling anything.
+- The flip side: if you clear your browser, switch computers, or use a different browser, your scenarios won't be there. **Back them up periodically** — see the *Backing Up Your Data* section near the end.
 
 ---
 
@@ -74,7 +60,7 @@ You can compare any two scenarios on the chart side-by-side (see *Comparing Scen
 
 ### The probability number and badge
 
-Each scenario shows a percentage and a colored badge. The percentage is the share of simulated future market sequences in which your plan didn't run out of money:
+The percentage is the share of simulated future market sequences in which your plan didn't run out of money:
 
 | Badge | Range | What it means |
 |---|---|---|
@@ -152,7 +138,7 @@ YARP enforces IRS contribution caps per owner per account kind. Configure the li
 - Catch-up age (default 50) and catch-up amounts
 - Optionally, scale the caps by inflation each year
 
-Mark each tax-advantaged account as **IRA** or **401(k)/403(b)/TSP** in the account dialog. Pre-tax and Roth contributions to the same `(owner, kind)` group share the same cap. Employer match is **not** counted against the elective deferral cap. Excess contributions are not deposited; capped pre-tax dollars remain taxed (since the deduction is reduced) and otherwise stay in spendable cash via the originating wage event. The cut amount appears as `contributionsCappedAmount` in the yearly detail.
+Mark each tax-advantaged account as **IRA** or **401(k)/403(b)/TSP** in the account dialog. Pre-tax and Roth contributions to the same `(owner, kind)` group share the same cap. Employer match is **not** counted against the elective deferral cap. Excess contributions are not deposited; capped pre-tax dollars remain taxed (since the deduction is reduced) and otherwise stay in spendable cash via the originating wage event. Any capped amount is visible as **Contributions Capped** in the yearly detail rows.
 
 ### Roth Conversions
 
@@ -291,9 +277,8 @@ For deeper detail on any of these settings — including the math, distributions
 - **Plan to a high life expectancy** (95 or 100). You don't want to run out of money at 90 because you planned to age 85.
 - **Stress-test with reduced returns.** Even if you believe in 10% stocks long-term, run a scenario at 7%.
 - **Try Historical: Rolling Start.** If your plan only succeeds in 70% of actual historical sequences, the parametric Monte Carlo number is overstating safety.
-- **Don't chase 100%.** 95% with comfortable spending beats 100% with miserable spending.
 - **Spending matters more than returns.** Getting your spending estimate right within ±10% usually matters more than the exact return assumption.
-- **Review yearly.** Your plan should be revisited at least once a year as your situation changes.
+- **Revisit your plan yearly** as your situation changes.
 
 ---
 
