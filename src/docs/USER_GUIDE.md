@@ -195,7 +195,7 @@ You'll see three lines:
 | Line | What it represents |
 |---|---|
 | **Median** | A typical outcome — the middle of all simulated futures |
-| **Deterministic** | What happens with no market randomness, using your average return assumptions |
+| **Deterministic** | What happens with no market randomness, using your average return assumptions (hidden when a Historical return model is active) |
 | **Downside** | A bad outcome — the 10th-percentile result |
 
 Use the **Median / Deterministic / Downside** selector to switch which line drives the year-by-year detail below the chart. Pay attention to the Downside path — if your plan looks fine on Median but craters on Downside, you have sequence-of-returns risk to think about.
@@ -238,9 +238,9 @@ This is the most useful feature for actually making decisions: rather than askin
 Click **What If?** above the chart to enter an experimental mode. A snapshot of your scenario is held in memory; the chart shows the original as a solid line and your live edits as a dashed amber **Draft** line. Edit accounts, income events, or spending goals normally — only the dashed line moves.
 
 Three exit actions:
-- **Discard & Exit** — restore the scenario to its original state.
-- **Save Changes** — keep your edits (they were already being saved as you went).
-- **Save as New Scenario** — create a brand-new scenario containing your experiment, and restore the original scenario back to its starting state.
+- **Discard** — restore the scenario to its original state.
+- **Save** — keep your edits (they were already being saved as you went).
+- **Save as New** — create a brand-new scenario containing your experiment, and restore the original scenario back to its starting state.
 
 While in What If mode, **Compare with** is disabled (and vice versa) — they share the chart's overlay slot. Switching to a different scenario in the sidebar will prompt you before discarding your unsaved changes.
 
