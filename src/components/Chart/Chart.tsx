@@ -21,6 +21,7 @@ import {
 import React, { useState, useMemo, useEffect, useRef, useContext, useCallback } from 'react';
 import styled from 'styled-components';
 import { Menu } from 'primereact/menu';
+import CloneScenarioDialog from '../../dialogs/CloneScenarioDialog';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
 import { useUIState } from '../../context/UIStateContext';
 import { RetirementContext } from '../../context/RetirementContext';
@@ -104,6 +105,43 @@ const CompareWithButton = styled.button`
   cursor: pointer;
   margin-left: auto;
   &:hover { background: rgba(61, 122, 95, 0.08); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+const WhatIfButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: ${spacing.xs};
+  padding: 2px ${spacing.sm};
+  font-size: ${fontSize.xs};
+  font-family: inherit;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid ${colors.primary};
+  border-radius: ${border.radiusRound};
+  color: ${colors.primary};
+  cursor: pointer;
+  &:hover { background: rgba(61, 122, 95, 0.08); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+const ActionButton = styled.button<{ $variant?: 'danger' | 'primary' | 'neutral' }>`
+  padding: 2px ${spacing.sm};
+  font-size: ${fontSize.xs};
+  font-family: inherit;
+  font-weight: 500;
+  border: 1px solid ${props =>
+    props.$variant === 'danger' ? colors.danger
+      : props.$variant === 'primary' ? colors.primary
+      : colors.border};
+  background: transparent;
+  color: ${props =>
+    props.$variant === 'danger' ? colors.danger
+      : props.$variant === 'primary' ? colors.primary
+      : colors.textPrimary};
+  border-radius: ${border.radiusRound};
+  cursor: pointer;
+  &:hover { background: ${colors.bgHover}; }
 `;
 
 const ChartSubtitleRow = styled.div`
@@ -230,6 +268,7 @@ function exportCsv(
     'Withdrawal — Taxable', 'Withdrawal — Traditional', 'Withdrawal — Roth',
     'RMD Required', 'RMD Reinvested',
     'Roth Conversion',
+    'Surplus Contribution',
     'Net Cash Flow',
   ].join(',');
 
@@ -265,6 +304,7 @@ function exportCsv(
       Math.round(toDisplay(bd.rmdRequired, bdF, displayCurrency)),
       Math.round(toDisplay(bd.rmdExcess, bdF, displayCurrency)),
       Math.round(toDisplay(bd.rothConversionGross, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.surplusContribution, bdF, displayCurrency)),
       Math.round(toDisplay(bd.netCashFlow, bdF, displayCurrency)),
     ].join(',');
   });
@@ -288,6 +328,14 @@ const Projections = ({
   isCompareCalculating,
   onSetCompare,
   onRegisterExport,
+  whatIfActive,
+  whatIfSnapshot,
+  whatIfSnapshotResults,
+  compareDisabled,
+  onEnterWhatIf,
+  onDiscardWhatIf,
+  onSaveWhatIf,
+  onSaveWhatIfAsNew,
 }: {
   results: any;
   userData: any;
@@ -297,7 +345,16 @@ const Projections = ({
   isCompareCalculating?: boolean;
   onSetCompare: (id: string | null) => void;
   onRegisterExport?: (fn: (() => void) | null) => void;
+  whatIfActive?: boolean;
+  whatIfSnapshot?: any;
+  whatIfSnapshotResults?: any;
+  compareDisabled?: boolean;
+  onEnterWhatIf?: () => void;
+  onDiscardWhatIf?: () => void;
+  onSaveWhatIf?: () => void;
+  onSaveWhatIfAsNew?: (name: string) => void;
 }) => {
+  const [cloneDialogVisible, setCloneDialogVisible] = useState(false);
   if (!results) return null;
   const {
     probability, median, downside, nominal, nominalBreakdowns, years,
@@ -389,38 +446,72 @@ const Projections = ({
   const chartData = useMemo(() => {
     const toDisplayPath = (path: number[], infArr: number[]) =>
       path.map((v, i) => pathToDisplay(v, infArr[i] ?? 1, displayCurrency));
-    const makeDataset = (label: string, mode: ViewMode, data: number[], dashed = false) => ({
-      label,
-      data,
-      borderColor: dashed ? VIEW_COLORS[mode] + '80' : VIEW_COLORS[mode],
-      backgroundColor: dashed ? VIEW_COLORS[mode] + '80' : VIEW_COLORS[mode],
-      borderWidth: dashed ? 2 : (view === mode ? 4 : 1.5),
-      borderDash: dashed ? [6, 3] : [],
-      pointRadius: 0,
-    });
+    const makeDataset = (label: string, mode: ViewMode, data: number[], dashed = false, dashColor?: string) => {
+      const color = dashed
+        ? (dashColor ?? VIEW_COLORS[mode] + '80')
+        : VIEW_COLORS[mode];
+      return {
+        label,
+        data,
+        borderColor: color,
+        backgroundColor: color,
+        borderWidth: dashed ? (view === mode ? 3 : 2) : (view === mode ? 4 : 1.5),
+        borderDash: dashed ? [6, 3] : [],
+        pointRadius: 0,
+      };
+    };
     const datasets: ReturnType<typeof makeDataset>[] = [];
-    if (!medianDownsideHidden) {
-      datasets.push(makeDataset('Median', 'median', toDisplayPath(median, medianInflation)));
-    }
-    if (!nominalHidden) {
-      datasets.push(makeDataset('Deterministic', 'nominal', toDisplayPath(nominal, nominalInflation)));
-    }
-    if (!medianDownsideHidden) {
-      datasets.push(makeDataset('Downside (10th percentile)', 'downside', toDisplayPath(downside, downsideInflation)));
-    }
-    if (compareResults && compareScenario) {
-      const cPath = view === 'median' ? compareResults.median
-                  : view === 'nominal' ? compareResults.nominal
-                  : compareResults.downside;
-      const cInf = view === 'median' ? compareResults.medianInflation
-                 : view === 'nominal' ? compareResults.nominalInflation
-                 : compareResults.downsideInflation;
-      if (cPath && cInf) {
-        datasets.push(makeDataset(compareScenario.name, view, toDisplayPath(cPath, cInf), true));
+
+    // In What If mode: just two lines for the current view —
+    // snapshot as gray solid, draft (active) as dashed amber.
+    if (whatIfActive && whatIfSnapshotResults) {
+      const snap = whatIfSnapshotResults;
+      const sPath = view === 'median' ? snap.median : view === 'nominal' ? snap.nominal : snap.downside;
+      const sInf = view === 'median' ? snap.medianInflation : view === 'nominal' ? snap.nominalInflation : snap.downsideInflation;
+      const aPath = view === 'median' ? median : view === 'nominal' ? nominal : downside;
+      const aInf = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
+      datasets.push({
+        label: 'Original',
+        data: toDisplayPath(sPath, sInf),
+        borderColor: colors.textMuted,
+        backgroundColor: colors.textMuted,
+        borderWidth: 2,
+        borderDash: [],
+        pointRadius: 0,
+      });
+      datasets.push({
+        label: 'Draft',
+        data: toDisplayPath(aPath, aInf),
+        borderColor: VIEW_COLORS[view] + '80',
+        backgroundColor: VIEW_COLORS[view] + '80',
+        borderWidth: 2,
+        borderDash: [6, 3],
+        pointRadius: 0,
+      });
+    } else {
+      if (!medianDownsideHidden) {
+        datasets.push(makeDataset('Median', 'median', toDisplayPath(median, medianInflation)));
+      }
+      if (!nominalHidden) {
+        datasets.push(makeDataset('Deterministic', 'nominal', toDisplayPath(nominal, nominalInflation)));
+      }
+      if (!medianDownsideHidden) {
+        datasets.push(makeDataset('Downside (10th percentile)', 'downside', toDisplayPath(downside, downsideInflation)));
+      }
+      if (compareResults && compareScenario) {
+        const cPath = view === 'median' ? compareResults.median
+                    : view === 'nominal' ? compareResults.nominal
+                    : compareResults.downside;
+        const cInf = view === 'median' ? compareResults.medianInflation
+                   : view === 'nominal' ? compareResults.nominalInflation
+                   : compareResults.downsideInflation;
+        if (cPath && cInf) {
+          datasets.push(makeDataset(compareScenario.name, view, toDisplayPath(cPath, cInf), true));
+        }
       }
     }
     return { labels, datasets };
-  }, [labels, median, nominal, downside, medianInflation, nominalInflation, downsideInflation, displayCurrency, view, nominalHidden, medianDownsideHidden, compareResults, compareScenario]);
+  }, [labels, median, nominal, downside, medianInflation, nominalInflation, downsideInflation, displayCurrency, view, nominalHidden, medianDownsideHidden, compareResults, compareScenario, whatIfActive, whatIfSnapshotResults]);
 
   // Group income events / spending goals by their start year once, then iterate
   // years to build the annotation list. Avoids N × M filter passes per render.
@@ -509,10 +600,83 @@ const Projections = ({
   }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years, hoveredIndex]);
 
 
+  const snapshotProb = whatIfSnapshotResults?.probability;
+  const whatIfLoading = whatIfActive && !whatIfSnapshotResults;
+
   return (
     <div>
+      {whatIfActive && whatIfSnapshot && (
+        <CloneScenarioDialog
+          visible={cloneDialogVisible}
+          sourceName={whatIfSnapshot.name}
+          defaultName={`What If - ${whatIfSnapshot.name}`}
+          onHide={() => setCloneDialogVisible(false)}
+          onSave={(name) => onSaveWhatIfAsNew?.(name)}
+        />
+      )}
       <ChartHeading>
-        {compareScenario ? (
+        {whatIfActive ? (
+          <>
+            <span>What If: {userData.name}</span>
+            <span style={{ color: colors.textMuted, fontWeight: 400, fontSize: fontSize.sm }}>Original:</span>
+            <span>{snapshotProb != null ? `${snapshotProb}%` : '—'}</span>
+            {snapshotProb != null && (() => {
+              const tierInfo = getProbabilityTier(snapshotProb);
+              return (
+                <>
+                  <PrimeTooltip target=".chance-tier-badge-snapshot" position="bottom" showDelay={150}>
+                    <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>{tierInfo.tooltip}</div>
+                  </PrimeTooltip>
+                  <TierBadge
+                    className="chance-tier-badge-snapshot"
+                    $color={tierInfo.color}
+                    $bg={tierInfo.backgroundColor}
+                    aria-label={`Original tier: ${tierInfo.label}`}
+                  >
+                    {tierInfo.label}
+                  </TierBadge>
+                </>
+              );
+            })()}
+            <span style={{ color: colors.textMuted, fontWeight: 400, fontSize: fontSize.sm }}>|</span>
+            <span style={{ color: colors.draftOverlay }}>Draft:</span>
+            <span style={{ color: colors.draftOverlay }}>{isCalculating ? '—' : `${probability}%`}</span>
+            {!isCalculating && (() => {
+              const tierInfo = getProbabilityTier(probability);
+              return (
+                <>
+                  <PrimeTooltip target=".chance-tier-badge-draft" position="bottom" showDelay={150}>
+                    <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>{tierInfo.tooltip}</div>
+                  </PrimeTooltip>
+                  <TierBadge
+                    className="chance-tier-badge-draft"
+                    $color={tierInfo.color}
+                    $bg={tierInfo.backgroundColor}
+                    aria-label={`Draft tier: ${tierInfo.label}`}
+                  >
+                    {tierInfo.label}
+                  </TierBadge>
+                </>
+              );
+            })()}
+            {whatIfLoading && <UpdatingBadge style={{ marginLeft: spacing.md }}><i className="pi pi-spin pi-spinner" style={{ marginRight: spacing.xs, fontSize: '0.7rem' }} />Setting up What If…</UpdatingBadge>}
+            {!whatIfLoading && isCalculating && <UpdatingBadge style={{ marginLeft: spacing.md }}>Updating draft…</UpdatingBadge>}
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: spacing.xs }}>
+              <PrimeTooltip target=".whatif-discard-btn" position="bottom" showDelay={150}>
+                <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>Restore the scenario to its original state</div>
+              </PrimeTooltip>
+              <PrimeTooltip target=".whatif-save-btn" position="bottom" showDelay={150}>
+                <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>Keep your changes — they are already saved</div>
+              </PrimeTooltip>
+              <PrimeTooltip target=".whatif-clone-btn" position="bottom" showDelay={150}>
+                <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>Create a new scenario from your experiment and restore the original</div>
+              </PrimeTooltip>
+              <ActionButton className="whatif-discard-btn" $variant="danger" onClick={() => onDiscardWhatIf?.()}>Discard</ActionButton>
+              <ActionButton className="whatif-save-btn" onClick={() => onSaveWhatIf?.()}>Save</ActionButton>
+              <ActionButton className="whatif-clone-btn" $variant="primary" onClick={() => setCloneDialogVisible(true)}>Save as New</ActionButton>
+            </span>
+          </>
+        ) : compareScenario ? (
           <>
             <span>{userData.name}:</span>
             <span>{isCalculating ? '—' : `${probability}%`}</span>
@@ -586,14 +750,45 @@ const Projections = ({
               );
             })()}
             {isCalculating && <UpdatingBadge style={{ marginLeft: spacing.md }}>Updating projection…</UpdatingBadge>}
-            {compareMenuItems.length > 0 && (
-              <>
-                <Menu ref={compareMenuRef} model={compareMenuItems} popup />
-                <CompareWithButton onClick={(e) => compareMenuRef.current?.toggle(e)}>
-                  Compare with <i className="pi pi-chevron-down" style={{ fontSize: '0.6rem' }} />
-                </CompareWithButton>
-              </>
-            )}
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: spacing.xs }}>
+              {onEnterWhatIf && (
+                <>
+                  <PrimeTooltip target=".whatif-button" position="bottom" showDelay={150}>
+                    <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                      {compareScenario
+                        ? 'End comparison to start What If mode'
+                        : 'Experiment with changes — your saved scenario stays untouched'}
+                    </div>
+                  </PrimeTooltip>
+                  <WhatIfButton
+                    className="whatif-button"
+                    onClick={() => onEnterWhatIf()}
+                    disabled={!!compareScenario}
+                  >
+                    <i className="pi pi-flask" style={{ fontSize: '0.7rem' }} /> What If?
+                  </WhatIfButton>
+                </>
+              )}
+              {compareMenuItems.length > 0 && (
+                <>
+                  <Menu ref={compareMenuRef} model={compareMenuItems} popup />
+                  <PrimeTooltip target=".compare-with-button" position="bottom" showDelay={150}>
+                    <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                      {compareDisabled
+                        ? 'End What If mode to compare scenarios'
+                        : 'Overlay another scenario as a dashed line'}
+                    </div>
+                  </PrimeTooltip>
+                  <CompareWithButton
+                    className="compare-with-button"
+                    onClick={(e) => compareMenuRef.current?.toggle(e)}
+                    disabled={!!compareDisabled}
+                  >
+                    Compare with <i className="pi pi-chevron-down" style={{ fontSize: '0.6rem' }} />
+                  </CompareWithButton>
+                </>
+              )}
+            </span>
           </>
         )}
       </ChartHeading>
@@ -680,15 +875,19 @@ const Projections = ({
           const fmtD = (d: number | null) =>
             d === null ? null : `${d >= 0 ? '+' : '−'}${fmtM(Math.abs(d))}`;
 
-          // Compare tooltip data
-          const cPath = compareResults
-            ? (view === 'median' ? compareResults.median : view === 'nominal' ? compareResults.nominal : compareResults.downside)
+          // Side-by-side tooltip data — sourced from compare scenario in compare
+          // mode, or from the What If snapshot in What If mode.
+          const overlaySource = whatIfActive && whatIfSnapshotResults
+            ? whatIfSnapshotResults
+            : compareResults;
+          const cPath = overlaySource
+            ? (view === 'median' ? overlaySource.median : view === 'nominal' ? overlaySource.nominal : overlaySource.downside)
             : null;
-          const cInfArr = compareResults
-            ? (view === 'median' ? compareResults.medianInflation : view === 'nominal' ? compareResults.nominalInflation : compareResults.downsideInflation)
+          const cInfArr = overlaySource
+            ? (view === 'median' ? overlaySource.medianInflation : view === 'nominal' ? overlaySource.nominalInflation : overlaySource.downsideInflation)
             : null;
-          const cBds = compareResults
-            ? (view === 'median' ? compareResults.medianBreakdowns : view === 'nominal' ? compareResults.nominalBreakdowns : compareResults.downsideBreakdowns)
+          const cBds = overlaySource
+            ? (view === 'median' ? overlaySource.medianBreakdowns : view === 'nominal' ? overlaySource.nominalBreakdowns : overlaySource.downsideBreakdowns)
             : null;
           const cVal = cPath && cInfArr ? pathToDisplay(cPath[hoveredIndex] ?? 0, cInfArr[hoveredIndex] ?? 1, displayCurrency) : null;
           const cDelta = cPath && cInfArr && hoveredIndex > 0
@@ -698,7 +897,9 @@ const Projections = ({
           const cBd = cBds?.[hoveredIndex] ?? null;
           const cBdF = cInfArr?.[hoveredIndex] ?? 1;
 
-          const isComparing = compareResults != null && compareScenario != null;
+          const isComparing = (compareResults != null && compareScenario != null) || (whatIfActive && whatIfSnapshotResults != null);
+          const primaryLabel = whatIfActive ? 'Draft' : userData.name;
+          const overlayLabel = whatIfActive ? 'Original' : compareScenario?.name;
 
           const pathRows: Array<{ mode: ViewMode; val: number; delta: number | null }> = [
             { mode: 'nominal',  val: nomVal, delta: nomDelta },
@@ -728,8 +929,8 @@ const Projections = ({
               {isComparing ? (
                 <>
                   <div style={{ display: 'flex', gap: spacing.sm, marginBottom: '2px' }}>
-                    <span style={{ flex: 1, fontWeight: 'bold', color: VIEW_COLORS[view] }}>{userData.name}</span>
-                    <span style={{ flex: 1, fontWeight: 'bold', color: VIEW_COLORS[view] + '99' }}>{compareScenario.name}</span>
+                    <span style={{ flex: 1, fontWeight: 'bold', color: VIEW_COLORS[view] }}>{primaryLabel}</span>
+                    <span style={{ flex: 1, fontWeight: 'bold', color: VIEW_COLORS[view] + '99' }}>{overlayLabel}</span>
                   </div>
                   <div style={{ display: 'flex', gap: spacing.sm, marginBottom: spacing.xs }}>
                     <div style={{ flex: 1, color: colors.textPrimary }}>
@@ -1239,6 +1440,15 @@ const Projections = ({
                                 return (
                                   <div style={{ color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'right', paddingTop: spacing.xs }}>
                                     Roth conversion: ${fmt(dispConv)} <span style={{ color: colors.textMuted }}>(Trad → Roth)</span>
+                                  </div>
+                                );
+                              })()}
+                              {/* Surplus contribution */}
+                              {breakdown.surplusContribution > 0.5 && (() => {
+                                const dispSurplus = toDisplay(breakdown.surplusContribution, pathFactor, displayCurrency);
+                                return (
+                                  <div style={{ color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'right', paddingTop: spacing.xs }}>
+                                    Surplus reinvested to Taxable: ${fmt(dispSurplus)}
                                   </div>
                                 );
                               })()}

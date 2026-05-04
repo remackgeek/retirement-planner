@@ -5,7 +5,7 @@ import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
-import type { Account, AccountType } from '../types/Account';
+import type { Account, AccountType, AccountKind } from '../types/Account';
 import type { PortfolioType } from '../types/IncomeEvent';
 import { PORTFOLIO_PRESETS } from '../utils/portfolioPresets';
 import { confirmDialog } from 'primereact/confirmdialog';
@@ -94,6 +94,11 @@ const ownerOptions = [
   { label: 'Spouse', value: 'spouse' },
 ];
 
+const accountKindOptions: { label: string; value: AccountKind }[] = [
+  { label: 'IRA', value: 'ira' },
+  { label: '401(k)/403(b)/TSP', value: '401k' },
+];
+
 const AccountDialog: React.FC<AccountDialogProps> = ({
   visible,
   onHide,
@@ -108,8 +113,10 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   const [balance, setBalance] = useState<number>(0);
   const [owner, setOwner] = useState<'self' | 'spouse'>('self');
   const [portfolioBalance, setPortfolioBalance] = useState<PortfolioType>('60_40');
+  const [accountKind, setAccountKind] = useState<AccountKind>('ira');
 
   const showOwnerField = accountType === 'traditional' && spouseAge !== null;
+  const showAccountKindField = accountType === 'traditional' || accountType === 'roth';
 
   useEffect(() => {
     if (visible) {
@@ -118,11 +125,15 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         setBalance(editAccount.balance);
         setOwner(editAccount.owner ?? 'self');
         setPortfolioBalance(editAccount.portfolioBalance ?? '60_40');
+        setAccountKind(
+          editAccount.accountKind ?? (editAccount.type === 'taxable' ? 'brokerage' : 'ira')
+        );
       } else {
         setName(generateDefaultAccountName(accountType, existingAccounts));
         setBalance(0);
         setOwner('self');
         setPortfolioBalance('60_40');
+        setAccountKind(accountType === 'taxable' ? 'brokerage' : 'ira');
       }
     }
   }, [visible, editAccount, accountType, existingAccounts]);
@@ -138,6 +149,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
       portfolioBalance,
       stockAllocation: PORTFOLIO_PRESETS[portfolioBalance].stockAllocation,
       ...(showOwnerField ? { owner } : {}),
+      ...(showAccountKindField ? { accountKind } : {}),
     };
     onSave(account);
     onHide();
@@ -200,6 +212,16 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
               value={owner}
               options={ownerOptions}
               onChange={(e) => setOwner(e.value)}
+            />
+          </InputGroup>
+        )}
+        {showAccountKindField && (
+          <InputGroup>
+            <label>Account Kind</label>
+            <Dropdown
+              value={accountKind}
+              options={accountKindOptions}
+              onChange={(e) => setAccountKind(e.value)}
             />
           </InputGroup>
         )}

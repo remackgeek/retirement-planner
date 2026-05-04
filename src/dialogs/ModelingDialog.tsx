@@ -6,7 +6,8 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { Scenario } from '../types/Scenario';
-import type { SimulationSettings } from '../types/UserData';
+import type { SimulationSettings, ContributionLimits } from '../types/UserData';
+import { getContributionLimits } from '../utils/contributionLimits';
 import type { ReturnDistribution, ReturnModel, BlackSwanEvent } from '../types/IncomeEvent';
 import { spacing, colors, fontSize, border } from '../styles/theme';
 import BlackSwanEventsEditor from './BlackSwanEventsEditor';
@@ -151,6 +152,7 @@ interface FormState {
   longTermCapGainsRate: number;
   simulationSettings: SimulationSettings;
   blackSwanEvents: BlackSwanEvent[];
+  contributionLimits: ContributionLimits;
 }
 
 const ModelingDialog: React.FC<ModelingDialogProps> = ({
@@ -179,6 +181,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     blackSwanEvents: s.portfolioAssumptions.blackSwanEvents
       ? s.portfolioAssumptions.blackSwanEvents.map((e) => ({ ...e }))
       : [],
+    contributionLimits: getContributionLimits(s),
   });
 
   const [form, setForm] = useState<FormState>(() => formFromScenario(scenario));
@@ -203,6 +206,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
       inflationStdDev: form.inflationStdDev,
       longTermCapGainsRate: form.longTermCapGainsRate,
       simulationSettings: form.simulationSettings,
+      contributionLimits: form.contributionLimits,
       portfolioAssumptions: {
         ...scenario.portfolioAssumptions,
         stockReturn: form.stockReturn,
@@ -500,6 +504,118 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
             yearMax={scenario.referenceYear + scenario.lifeExpectancy - scenario.currentAge}
             baseAge={scenario.currentAge}
           />
+        </Section>
+
+        <Section>
+          <SectionHeader>Contribution Limits</SectionHeader>
+          <FieldRow>
+            <InputGroup>
+              <label>401(k) Elective</label>
+              <InputNumber
+                value={form.contributionLimits.elective401k}
+                onValueChange={(e) =>
+                  setForm({
+                    ...form,
+                    contributionLimits: { ...form.contributionLimits, elective401k: e.value ?? 0 },
+                  })
+                }
+                mode="currency"
+                currency="USD"
+                min={0}
+                inputStyle={{ width: '8rem' }}
+              />
+            </InputGroup>
+            <InputGroup>
+              <label>IRA Limit</label>
+              <InputNumber
+                value={form.contributionLimits.iraLimit}
+                onValueChange={(e) =>
+                  setForm({
+                    ...form,
+                    contributionLimits: { ...form.contributionLimits, iraLimit: e.value ?? 0 },
+                  })
+                }
+                mode="currency"
+                currency="USD"
+                min={0}
+                inputStyle={{ width: '8rem' }}
+              />
+            </InputGroup>
+          </FieldRow>
+          <FieldRow>
+            <InputGroup>
+              <label>Catch-up Age</label>
+              <InputNumber
+                value={form.contributionLimits.catchUpAge}
+                onValueChange={(e) =>
+                  setForm({
+                    ...form,
+                    contributionLimits: { ...form.contributionLimits, catchUpAge: e.value ?? 50 },
+                  })
+                }
+                min={0}
+                max={100}
+                inputStyle={{ width: '6rem' }}
+              />
+            </InputGroup>
+            <InputGroup>
+              <label>401(k) Catch-up</label>
+              <InputNumber
+                value={form.contributionLimits.catchUp401k}
+                onValueChange={(e) =>
+                  setForm({
+                    ...form,
+                    contributionLimits: { ...form.contributionLimits, catchUp401k: e.value ?? 0 },
+                  })
+                }
+                mode="currency"
+                currency="USD"
+                min={0}
+                inputStyle={{ width: '8rem' }}
+              />
+            </InputGroup>
+            <InputGroup>
+              <label>IRA Catch-up</label>
+              <InputNumber
+                value={form.contributionLimits.catchUpIra}
+                onValueChange={(e) =>
+                  setForm({
+                    ...form,
+                    contributionLimits: { ...form.contributionLimits, catchUpIra: e.value ?? 0 },
+                  })
+                }
+                mode="currency"
+                currency="USD"
+                min={0}
+                inputStyle={{ width: '8rem' }}
+              />
+            </InputGroup>
+          </FieldRow>
+          <AssetRow>
+            <Checkbox
+              inputId="contribution-limits-inflation"
+              checked={form.contributionLimits.inflationAdjusted}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  contributionLimits: {
+                    ...form.contributionLimits,
+                    inflationAdjusted: !!e.checked,
+                  },
+                })
+              }
+            />
+            <label
+              htmlFor="contribution-limits-inflation"
+              style={{ fontSize: fontSize.sm, cursor: 'pointer' }}
+            >
+              Adjust caps for inflation each year
+            </label>
+          </AssetRow>
+          <HelpText>
+            Caps are enforced per-owner per-kind. Excess contributions are not deposited;
+            the dollars remain in spendable cash via the originating wage event.
+          </HelpText>
         </Section>
 
         <Section style={{ marginTop: spacing.md }}>

@@ -43,8 +43,16 @@ projections, and good tax awareness without overwhelming the user.
   **RMD:** Traditional accounts trigger Required Minimum Distributions at age 73+ (SECURE 2.0,
   IRS Uniform Lifetime Table). The simulation forces `withdrawalFromTraditional ≥ rmdRequired`
   each year. Excess RMD beyond the spending need is reinvested into the first taxable account;
-  if none exists, `ensureRMDReinvestmentAccount` auto-creates a `"RMD Reinvestment"` taxable
-  account in the working simulation copy (not persisted to UserData). Roth accounts are exempt.
+  if none exists, `ensureReinvestmentAccount` auto-creates a `"Reinvestment"` taxable
+  account in the working simulation copy (not persisted to UserData). The same synthetic
+  account also receives general surplus (see Surplus handling below) — never two synthetics.
+  Roth accounts are exempt.
+  **Surplus handling:** any year with `netCashFlow > 0` deposits the surplus into the
+  first taxable account via `distributeDeposit`. There is no fallback chain to
+  Traditional/Roth — `ensureReinvestmentAccount` (called once in `runSimulation`)
+  guarantees a taxable account exists whenever none is configured, so surplus is never
+  silently discarded. `AnnualCashFlowBreakdown.surplusContribution` records the
+  per-year deposit for detail rows / CSV.
   RMD amounts are taxed as ordinary income like all Traditional withdrawals.
   RMD is calculated on the beginning-of-year (pre-growth) Traditional balance,
   matching the IRS Dec 31 prior-year rule. The simulation captures this balance
@@ -54,10 +62,27 @@ projections, and good tax awareness without overwhelming the user.
   separately for each group using the correct age (`userData.currentAge` for self,
   `userData.spouseAge` for spouse); the total `rmdRequired` is their sum. The `AccountDialog`
   shows an Owner dropdown (Self / Spouse) for Traditional accounts when `spouseAge` is set.
-- **Income events** — 10 types (including `employment_savings` for pre-retirement savings
-  and `roth_conversion` for Traditional→Roth transfers), each with a required `name`
+- **Income events** — 11 types. `wage_income` (W-2 salary, taxable ordinary income),
+  `retirement_contribution` (pre-tax / Roth / after-tax deposit instruction — never adds
+  to spendable cash; `pre_tax` reduces `otherTaxableGross` before tax calc, floored at zero;
+  routed to a target account by `contributionType` and optional `accountId`; supports
+  optional employer match via `employerMatchPercent` + `employerMatchCeilingPercent` and
+  optional `wageEventId` to compute the match base off a linked salary event), and
+  `roth_conversion` for Traditional→Roth transfers. Each has a required `name`
   (auto-generated defaults like "Pension Income 1"), COLA, before/after-tax, SS 2034 haircut
   (configurable). All cash flow flows through events/goals — no special-cased fields on UserData.
+  IRS contribution caps are enforced per `(owner, kind)` group, where account "kind" is
+  `Account.accountKind` (`'401k' | 'ira' | 'brokerage'`; defaults: traditional/roth → IRA,
+  taxable → brokerage). Within a group, pre_tax + roth contributions pool against the
+  same cap (`elective401k` for 401(k)-kind, `iraLimit` for IRA-kind, plus catch-up at
+  `catchUpAge`). Caps live on `UserData.contributionLimits` (see `getContributionLimits`
+  for defaults) and optionally inflate yearly. Excess deposits are scaled down
+  proportionally; the cut is captured in `AnnualCashFlowBreakdown.contributionsCappedAmount`.
+  Capped pre-tax dollars stay in `otherTaxableGross` (they were never deducted); employer
+  match is scaled with the employee contribution but does NOT count against the elective
+  deferral cap. Per-event contribution amounts are surfaced in `AnnualCashFlowBreakdown`
+  as `wageIncomeGross`, `preTaxContributions`, `rothContributions`, `afterTaxContributions`,
+  and `employerMatch`.
   **Roth Conversions:** A `roth_conversion` event models Traditional → Roth transfers. Unlike
   other income types, the amount does NOT contribute to cash available for spending —
   it is taxed as ordinary income, withdrawn pro-rata from Traditional accounts, and deposited
@@ -160,6 +185,18 @@ import { spacing, colors, fontSize, border } from '../styles/theme';
 - **`border`** — `standard` (`1px solid #ddd`), `light`, `medium`, plus `radius` (4px),
   `radiusRound` (8px), `radiusCircle` (50%).
 
+### Tooltips
+
+Use `<PrimeTooltip>` with rich content for all tooltips — never bare `data-pr-tooltip` strings. Wrap content in a `<div>` with `fontSize: fontSize.xs` and `lineHeight: 1.4` to match the app's compact type scale. Constrain width with `maxWidth: '18rem'` for short tips, `'20rem'` for longer explanations.
+
+```tsx
+<PrimeTooltip target=".my-element" position="bottom" showDelay={150}>
+  <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+    Tooltip text here.
+  </div>
+</PrimeTooltip>
+```
+
 ### Compact spacing rules
 
 - **Padding:** `spacing.xs`–`spacing.sm` for elements, `spacing.md`–`spacing.xl` for
@@ -221,7 +258,7 @@ parameters are per-scenario in `UserData`:
 - `account.portfolioBalance` — `'80_20' | '60_40' | '50_50'`; UI preset tracker per account
 - `account.stockAllocation` — fraction in stocks (0.0–1.0) per account; derived from
   `portfolioBalance` via `PORTFOLIO_PRESETS`; drives per-account growth in the simulation loop.
-  New accounts default to `'60_40'` / `0.6`. Synthetic accounts (RMD Reinvestment, Roth Conversion)
+  New accounts default to `'60_40'` / `0.6`. Synthetic accounts (Reinvestment, Roth Conversion)
   also default to `'60_40'` / `0.6`.
 - `portfolioAssumptions.stockReturn` / `stockStdDev` — stock log-normal return params
 - `portfolioAssumptions.bondReturn` / `bondStdDev` — bond log-normal return params

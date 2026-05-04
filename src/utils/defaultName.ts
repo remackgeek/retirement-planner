@@ -3,7 +3,8 @@ import type { SpendingGoal } from '../types/SpendingGoal';
 import type { Account, AccountType } from '../types/Account';
 
 export const eventTypeLabels: Record<IncomeEventType, string> = {
-  employment_savings: 'Employment Savings',
+  wage_income: 'Salary',
+  retirement_contribution: 'Retirement Contribution',
   social_security: 'Social Security',
   annuity_income: 'Annuity Income',
   inheritance: 'Inheritance',
@@ -16,7 +17,8 @@ export const eventTypeLabels: Record<IncomeEventType, string> = {
 };
 
 export const eventTypeIcons: Record<IncomeEventType, string> = {
-  employment_savings: 'pi pi-wallet',
+  wage_income: 'pi pi-wallet',
+  retirement_contribution: 'pi pi-database',
   social_security: 'pi pi-shield',
   annuity_income: 'pi pi-money-bill',
   inheritance: 'pi pi-gift',

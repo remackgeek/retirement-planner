@@ -56,6 +56,7 @@ const palette = {
 
   // Ambers (status: fair)
   amber700: '#b45309',
+  amber500: '#f59e0b',
   amber100: '#fef3c7',
 
   // Reds (status: at risk)
@@ -125,6 +126,9 @@ export const colors = {
 
   // Black swan event shading (semi-transparent vertical band)
   blackSwanShade: palette.red500Alpha08,
+
+  // What If draft overlay (dashed line for the experimental scenario)
+  draftOverlay: palette.amber500,
 
   // Shadows & overlays (used in annotations and dialog hover states)
   shadowLight:  palette.black10,

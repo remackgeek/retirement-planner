@@ -25,6 +25,16 @@ const makeUserData = (overrides: Partial<UserData> = {}): UserData => ({
   spouseAge: null,
   stateTimeline: [{ state: 'Florida' }],
   longTermCapGainsRate: 0.15,
+  // Default to very high caps so non-cap tests don't trip enforcement.
+  // Cap-specific tests override this explicitly.
+  contributionLimits: {
+    elective401k: 1_000_000,
+    iraLimit: 1_000_000,
+    catchUpAge: 50,
+    catchUp401k: 0,
+    catchUpIra: 0,
+    inflationAdjusted: false,
+  },
   ...overrides,
 });
 
@@ -244,6 +254,30 @@ describe('calculateAnnualCashFlow', () => {
       );
     });
 
+    it('surplusContribution equals max(0, netCashFlow) on uncapped years', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(1000)], // 12k/yr
+        incomeEvents: [
+          { id: '1', name: 'Pension', type: 'pension_income', amount: 30000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+        ],
+      });
+      const surplus = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(surplus.netCashFlow).toBeGreaterThan(0);
+      expect(surplus.surplusContribution).toBeCloseTo(surplus.netCashFlow, 0);
+    });
+
+    it('surplusContribution is 0 when netCashFlow is negative', () => {
+      const userData = makeUserData({
+        spendingGoals: [baseSpending(4000)],
+        incomeEvents: [
+          { id: '1', name: 'Pension', type: 'pension_income', amount: 5000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.netCashFlow).toBeLessThan(0);
+      expect(result.surplusContribution).toBe(0);
+    });
+
     it('spending exceeds income: withdrawal accounts for combined tax brackets', () => {
       const userData = makeUserData({
         spendingGoals: [baseSpending(4000)], // 48k/yr net
@@ -340,45 +374,208 @@ describe('calculateAnnualCashFlow', () => {
     });
   });
 
-  describe('employment_savings income type', () => {
-    it('flows through as after_tax income with no taxation', () => {
+  describe('wage_income + retirement_contribution', () => {
+    it('wage_income flows as before-tax ordinary income', () => {
       const userData = makeUserData({
         incomeEvents: [
-          { id: '1', name: 'Employment Savings 1', type: 'employment_savings', amount: 20000, startAge: 60, endAge: 65, taxStatus: 'after_tax', colaType: 'fixed' },
+          { id: '1', name: 'Salary 1', type: 'wage_income', amount: 100000, startAge: 60, endAge: 64, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
-      expect(result.afterTaxIncome).toBe(20000);
-      expect(result.totalTax).toBe(0);
-      expect(result.netCashFlow).toBe(20000);
+      expect(result.wageIncomeGross).toBe(100000);
+      expect(result.otherTaxableGross).toBe(100000);
+      expect(result.totalTax).toBeGreaterThan(0);
     });
 
-    it('is not active before startAge', () => {
+    it('pre_tax retirement_contribution reduces taxable income', () => {
       const userData = makeUserData({
-        currentAge: 55,
-        referenceYear: 2026,
+        accounts: [
+          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        ],
         incomeEvents: [
-          { id: '1', name: 'Employment Savings 1', type: 'employment_savings', amount: 20000, startAge: 60, endAge: 65, taxStatus: 'after_tax', colaType: 'fixed' },
+          { id: 'w1', name: 'Salary', type: 'wage_income', amount: 100000, startAge: 60, endAge: 64, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: 'c1', name: '401k', type: 'retirement_contribution', amount: 20000, startAge: 60, endAge: 64, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax', accountId: 'trad-1' },
         ],
       });
-      // Year 2026 = age 55, event starts at age 60 = year 2031
       const result = calculateAnnualCashFlow(userData, 2026, 0);
-      expect(result.afterTaxIncome).toBe(0);
-      expect(result.netCashFlow).toBe(0);
+      // 100k wage minus 20k pre_tax = 80k otherTaxableGross
+      expect(result.wageIncomeGross).toBe(100000);
+      expect(result.otherTaxableGross).toBe(80000);
+      expect(result.preTaxContributions).toBe(20000);
     });
 
-    it('is not active after endAge', () => {
+    it('roth retirement_contribution does NOT reduce taxable income', () => {
+      const userData = makeUserData({
+        accounts: [
+          { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        ],
+        incomeEvents: [
+          { id: 'w1', name: 'Salary', type: 'wage_income', amount: 100000, startAge: 60, endAge: 64, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: 'c1', name: 'Roth 401k', type: 'retirement_contribution', amount: 15000, startAge: 60, endAge: 64, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'roth', accountId: 'roth-1' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.otherTaxableGross).toBe(100000);
+      expect(result.rothContributions).toBe(15000);
+    });
+
+    it('employer match is computed from match% × min(contribution, ceiling × wage)', () => {
+      const userData = makeUserData({
+        accounts: [
+          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        ],
+        incomeEvents: [
+          { id: 'w1', name: 'Salary', type: 'wage_income', amount: 100000, startAge: 60, endAge: 64, taxStatus: 'before_tax', colaType: 'fixed' },
+          // Match 100% up to 6% of wages. Employee contribution 10k > 6% of 100k = 6k → match capped at 6k.
+          { id: 'c1', name: '401k', type: 'retirement_contribution', amount: 10000, startAge: 60, endAge: 64, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax', accountId: 'trad-1', employerMatchPercent: 100, employerMatchCeilingPercent: 6, wageEventId: 'w1' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.employerMatch).toBeCloseTo(6000, 0);
+    });
+
+    it('retirement_contribution is not active before startAge', () => {
       const userData = makeUserData({
         currentAge: 55,
         referenceYear: 2026,
+        accounts: [
+          { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        ],
         incomeEvents: [
-          { id: '1', name: 'Employment Savings 1', type: 'employment_savings', amount: 20000, startAge: 55, endAge: 60, taxStatus: 'after_tax', colaType: 'fixed' },
+          { id: 'c1', name: '401k', type: 'retirement_contribution', amount: 20000, startAge: 60, endAge: 65, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax' },
         ],
       });
-      // Year 2032 = age 61, event ends at age 60 = year 2031
-      const result = calculateAnnualCashFlow(userData, 2032, 0);
-      expect(result.afterTaxIncome).toBe(0);
-      expect(result.netCashFlow).toBe(0);
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.preTaxContributions).toBe(0);
+    });
+  });
+
+  describe('contribution limit enforcement', () => {
+    const lowCaps = {
+      elective401k: 23000,
+      iraLimit: 7000,
+      catchUpAge: 50,
+      catchUp401k: 7500,
+      catchUpIra: 1000,
+      inflationAdjusted: false,
+    };
+
+    it('401(k) cap enforced per-owner with two owners contributing to separate 401(k)s', () => {
+      const userData = makeUserData({
+        currentAge: 40,
+        spouseAge: 40,
+        contributionLimits: lowCaps,
+        accounts: [
+          { id: 'self-401k', name: 'Self 401k', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: '401k', owner: 'self' },
+          { id: 'spouse-401k', name: 'Spouse 401k', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: '401k', owner: 'spouse' },
+        ],
+        incomeEvents: [
+          { id: 'ws', name: 'Self Salary', type: 'wage_income', amount: 200000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: 'cs', name: 'Self 401k', type: 'retirement_contribution', amount: 30000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax', accountId: 'self-401k', owner: 'self' },
+          { id: 'csp', name: 'Spouse 401k', type: 'retirement_contribution', amount: 30000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax', accountId: 'spouse-401k', owner: 'spouse' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      // Each owner capped to 23k. Total deposited = 46k; cut = 14k.
+      expect(result.preTaxContributions).toBeCloseTo(46000, 0);
+      expect(result.contributionsCappedAmount).toBeCloseTo(14000, 0);
+    });
+
+    it('catch-up boost applies at catchUpAge', () => {
+      const userData = makeUserData({
+        currentAge: 50,
+        contributionLimits: lowCaps,
+        accounts: [
+          { id: 's401', name: '401k', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: '401k' },
+        ],
+        incomeEvents: [
+          { id: 'w', name: 'Salary', type: 'wage_income', amount: 200000, startAge: 50, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: 'c', name: '401k', type: 'retirement_contribution', amount: 35000, startAge: 50, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax', accountId: 's401' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      // Cap = 23000 + 7500 = 30500; cut = 4500.
+      expect(result.preTaxContributions).toBeCloseTo(30500, 0);
+      expect(result.contributionsCappedAmount).toBeCloseTo(4500, 0);
+    });
+
+    it('IRA and 401(k) caps tracked independently for the same owner', () => {
+      const userData = makeUserData({
+        currentAge: 40,
+        contributionLimits: lowCaps,
+        accounts: [
+          { id: 'k', name: '401k', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: '401k' },
+          { id: 'i', name: 'IRA', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: 'ira' },
+        ],
+        incomeEvents: [
+          { id: 'w', name: 'Salary', type: 'wage_income', amount: 300000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: 'c1', name: '401k', type: 'retirement_contribution', amount: 30000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax', accountId: 'k' },
+          { id: 'c2', name: 'IRA', type: 'retirement_contribution', amount: 10000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax', accountId: 'i' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      // 401k: cap 23k, cut 7k. IRA: cap 7k, cut 3k. Total cut = 10k.
+      expect(result.preTaxContributions).toBeCloseTo(30000, 0);
+      expect(result.contributionsCappedAmount).toBeCloseTo(10000, 0);
+    });
+
+    it('inflation adjustment scales caps in later years', () => {
+      const userData = makeUserData({
+        currentAge: 40,
+        contributionLimits: { ...lowCaps, catchUpAge: 99, inflationAdjusted: true },
+        inflationRate: 0.03,
+        accounts: [
+          { id: 'k', name: '401k', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: '401k' },
+        ],
+        incomeEvents: [
+          { id: 'w', name: 'Salary', type: 'wage_income', amount: 200000, startAge: 40, taxStatus: 'before_tax', colaType: 'inflation_adjusted' },
+          { id: 'c', name: '401k', type: 'retirement_contribution', amount: 25000, startAge: 40, taxStatus: 'before_tax', colaType: 'inflation_adjusted', contributionType: 'pre_tax', accountId: 'k' },
+        ],
+      });
+      // Year 0: contribution 25k > cap 23k → cut 2k
+      const r0 = calculateAnnualCashFlow(userData, 2026, 0.03);
+      expect(r0.contributionsCappedAmount).toBeCloseTo(2000, 0);
+      // Year 10: contribution 25k * 1.03^10 ≈ 33598; cap 23k * 1.03^10 ≈ 30910; cut ≈ 2688
+      const r10 = calculateAnnualCashFlow(userData, 2036, 0.03);
+      const expectedContrib = 25000 * Math.pow(1.03, 10);
+      const expectedCap = 23000 * Math.pow(1.03, 10);
+      expect(r10.contributionsCappedAmount).toBeCloseTo(expectedContrib - expectedCap, 0);
+    });
+
+    it('overflow propagates to contributionsCappedAmount and pre-tax overflow stays in taxable income', () => {
+      const userData = makeUserData({
+        currentAge: 40,
+        contributionLimits: lowCaps,
+        accounts: [
+          { id: 'k', name: '401k', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: '401k' },
+        ],
+        incomeEvents: [
+          { id: 'w', name: 'Salary', type: 'wage_income', amount: 100000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: 'c', name: '401k', type: 'retirement_contribution', amount: 30000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax', accountId: 'k' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      // Cap 23k → cut 7k. otherTaxableGross = 100k - 23k = 77k (capped pre-tax stays taxable).
+      expect(result.contributionsCappedAmount).toBeCloseTo(7000, 0);
+      expect(result.preTaxContributions).toBeCloseTo(23000, 0);
+      expect(result.otherTaxableGross).toBeCloseTo(77000, 0);
+    });
+
+    it('after_tax contributions to brokerage are uncapped', () => {
+      const userData = makeUserData({
+        currentAge: 40,
+        contributionLimits: lowCaps,
+        accounts: [
+          { id: 'tx', name: 'Brokerage', type: 'taxable', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        ],
+        incomeEvents: [
+          { id: 'w', name: 'Salary', type: 'wage_income', amount: 200000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed' },
+          { id: 'c', name: 'Savings', type: 'retirement_contribution', amount: 50000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'after_tax', accountId: 'tx' },
+        ],
+      });
+      const result = calculateAnnualCashFlow(userData, 2026, 0);
+      expect(result.contributionsCappedAmount).toBe(0);
+      expect(result.afterTaxContributions).toBeCloseTo(50000, 0);
     });
   });
 

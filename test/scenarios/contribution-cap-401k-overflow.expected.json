@@ -1,0 +1,10 @@
+{
+  "_rationale": "Cap = $23k; contribution = $30k → cut = $7k recorded as contributionsCappedAmount. preTaxContributions = $23k (the deposited amount). otherTaxableGross = 200k wage - 23k pre-tax deduction = 177k (overflow stays taxed). Probability irrelevant for this short-horizon accumulation test.",
+  "probability": { "min": 0, "max": 100 },
+  "breakdownChecks": [
+    { "index": 0, "field": "contributionsCappedAmount", "value": 7000, "tolerance": 1, "_note": "30k contribution - 23k cap = 7k cut" },
+    { "index": 0, "field": "preTaxContributions", "value": 23000, "tolerance": 1, "_note": "Capped employee deposit" },
+    { "index": 0, "field": "otherTaxableGross", "value": 177000, "tolerance": 1, "_note": "200k wage - 23k pre-tax deduction" },
+    { "index": 0, "field": "wageIncomeGross", "value": 200000, "tolerance": 1 }
+  ]
+}

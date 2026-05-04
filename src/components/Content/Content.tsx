@@ -11,6 +11,7 @@ import { AccountsManager } from '../AccountsManager';
 import type { SpendingGoal } from '../../types/SpendingGoal';
 import type { IncomeEvent } from '../../types/IncomeEvent';
 import type { Account } from '../../types/Account';
+import type { Scenario } from '../../types/Scenario';
 import { spacing, colors, border, layout, fontSize } from '../../styles/theme';
 
 const ContentContainer = styled.main`
@@ -68,7 +69,18 @@ const SpinnerLabel = styled.div`
   color: ${colors.textSecondary};
 `;
 
-const Content: React.FC<{ compareScenarioId?: string | null; onSetCompare: (id: string | null) => void; onRegisterExport?: (fn: (() => void) | null) => void }> = ({ compareScenarioId, onSetCompare, onRegisterExport }) => {
+const Content: React.FC<{
+  compareScenarioId?: string | null;
+  onSetCompare: (id: string | null) => void;
+  onRegisterExport?: (fn: (() => void) | null) => void;
+  whatIfSnapshot?: Scenario | null;
+  whatIfActive?: boolean;
+  compareDisabled?: boolean;
+  onEnterWhatIf?: () => void;
+  onDiscardWhatIf?: () => void;
+  onSaveWhatIf?: () => void;
+  onSaveWhatIfAsNew?: (name: string) => void;
+}> = ({ compareScenarioId, onSetCompare, onRegisterExport, whatIfSnapshot, whatIfActive, compareDisabled, onEnterWhatIf, onDiscardWhatIf, onSaveWhatIf, onSaveWhatIfAsNew }) => {
   const context = useContext(RetirementContext);
   if (!context) return null;
   const { activeScenario, updateScenario, scenarios } = context;
@@ -142,6 +154,20 @@ const Content: React.FC<{ compareScenarioId?: string | null; onSetCompare: (id: 
     }, 0);
     return () => clearTimeout(id);
   }, [compareScenario?.id]);
+
+  // Snapshot sim is computed once per snapshot identity — frozen original baseline.
+  // Deferred to a 0ms setTimeout so React can paint the "Setting up…" loading
+  // state before the 5000-run Monte Carlo blocks the main thread.
+  const [whatIfSnapshotResults, setWhatIfSnapshotResults] = useState<any>(null);
+  useEffect(() => {
+    if (!whatIfSnapshot) { setWhatIfSnapshotResults(null); return; }
+    setWhatIfSnapshotResults(null);
+    const id = window.setTimeout(() => {
+      clearTaxCalculationCache();
+      setWhatIfSnapshotResults(runSimulation(whatIfSnapshot));
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [whatIfSnapshot]);
 
   const handleAddSpendingGoal = (goal: Omit<SpendingGoal, 'id'>) => {
     if (!activeScenario) return;
@@ -255,6 +281,14 @@ const Content: React.FC<{ compareScenarioId?: string | null; onSetCompare: (id: 
             isCompareCalculating={isCompareCalculating}
             onSetCompare={onSetCompare}
             onRegisterExport={onRegisterExport}
+            whatIfActive={whatIfActive}
+            whatIfSnapshot={whatIfSnapshot}
+            whatIfSnapshotResults={whatIfSnapshotResults}
+            compareDisabled={compareDisabled}
+            onEnterWhatIf={onEnterWhatIf}
+            onDiscardWhatIf={onDiscardWhatIf}
+            onSaveWhatIf={onSaveWhatIf}
+            onSaveWhatIfAsNew={onSaveWhatIfAsNew}
           />
         )}
         {activeScenario && (

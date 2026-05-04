@@ -1,6 +1,6 @@
 {
   "_description": "Age 73, Traditional $500k only, no spending. No taxable account — simulation auto-creates 'RMD Reinvestment' to absorb excess. Results should match the existing-taxable scenario.",
-  "_rationale": "Same setup as rmd-excess-to-existing-taxable but with no taxable account in UserData. ensureRMDReinvestmentAccount should add a $0 taxable account before the sim runs. rmdRequired ≈ 18868, rmdExcess same as the existing-taxable scenario. The auto-created account isn't visible in UserData but functions correctly during simulation.",
+  "_rationale": "Same setup as rmd-excess-to-existing-taxable but with no taxable account in UserData. ensureReinvestmentAccount should add a $0 taxable account before the sim runs. rmdRequired ≈ 18868, rmdExcess same as the existing-taxable scenario. The auto-created account isn't visible in UserData but functions correctly during simulation.",
   "_seed": 12345,
   "name": "RMD No Taxable Auto Create",
   "currentAge": 73,

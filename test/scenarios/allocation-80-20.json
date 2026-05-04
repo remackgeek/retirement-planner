@@ -1,75 +1,85 @@
 {
-  "_description": "80/20 stock/bond split with stocks 10%/15% stddev and bonds 3%/5% stddev. Same spending profile as balanced-realistic but more aggressive allocation. Verifies that higher allocation produces higher expected return and wider variance.",
-  "_rationale": "800k savings, 80/20 split (stocks 10%/15%, bonds 3%/5%). Blended return = 0.8*10% + 0.2*3% = 8.6% vs 7.2% for 60/40 equivalent. 60k/yr inflating spending (3%), MFJ Virginia, SS at 67 for 30k. Higher expected return should boost probability vs an equivalent 60/40 scenario, but higher stock stddev (15%) widens the spread between median and downside outcomes.",
-  "_seed": 42,
-  "name": "Allocation 80/20",
-  "currentAge": 55,
-  "lifeExpectancy": 90,
-  "referenceYear": 2026,
-  "spendingGoals": [
-    {
-      "id": "base-spending-1",
-      "type": "living_expenses",
-      "amount": 60000,
-      "startAge": 60,
-      "inflationAdjusted": true,
-      "name": "Living Expenses 1"
-    }
-  ],
-  "incomeEvents": [
-    {
-      "id": "emp-savings-1",
-      "type": "employment_savings",
-      "amount": 30000,
-      "startAge": 55,
-      "endAge": 60,
-      "taxStatus": "after_tax",
-      "colaType": "inflation_adjusted",
-      "name": "Employment Savings 1"
-    },
-    {
-      "id": "ss-1",
-      "type": "social_security",
-      "amount": 30000,
-      "startAge": 67,
-      "taxStatus": "before_tax",
-      "colaType": "fixed",
-      "amountPeriod": "annual",
-      "name": "Social Security 1"
-    }
-  ],
-  "portfolioAssumptions": {
-    "stockReturn": 0.1,
-    "stockStdDev": 0.15,
-    "bondReturn": 0.03,
-    "bondStdDev": 0.05,
-    "stockBondCorrelationEnabled": false,
-    "stockBondCorrelation": -0.2,
-    "returnDistribution": "lognormal",
-    "degreesOfFreedom": 4,
-    "returnModel": "parametric"
-  },
-  "inflationRate": 0.03,
-  "inflationStdDev": 0,
-  "filingStatus": "mfj",
-  "spouseAge": 53,
-  "stateTimeline": [
-    {
-      "state": "Virginia"
-    }
-  ],
-  "simulationSettings": {
-    "numSimulations": 5000
-  },
-  "accounts": [
-    {
-      "id": "acct-1",
-      "name": "Traditional 1",
-      "type": "traditional",
-      "balance": 800000,
-      "stockAllocation": 0.8,
-      "portfolioBalance": "80_20"
-    }
-  ],
-  "longTermCapGainsRate": 0.15
+    "_description":  "80/20 stock/bond split with stocks 10%/15% stddev and bonds 3%/5% stddev. Same spending profile as balanced-realistic but more aggressive allocation. Verifies that higher allocation produces higher expected return and wider variance.",
+    "_rationale":  "800k savings, 80/20 split (stocks 10%/15%, bonds 3%/5%). Blended return = 0.8*10% + 0.2*3% = 8.6% vs 7.2% for 60/40 equivalent. 60k/yr inflating spending (3%), MFJ Virginia, SS at 67 for 30k. Higher expected return should boost probability vs an equivalent 60/40 scenario, but higher stock stddev (15%) widens the spread between median and downside outcomes.",
+    "_seed":  42,
+    "name":  "Allocation 80/20",
+    "currentAge":  55,
+    "lifeExpectancy":  90,
+    "referenceYear":  2026,
+    "spendingGoals":  [
+                          {
+                              "id":  "base-spending-1",
+                              "type":  "living_expenses",
+                              "amount":  60000,
+                              "startAge":  60,
+                              "inflationAdjusted":  true,
+                              "name":  "Living Expenses 1"
+                          }
+                      ],
+    "incomeEvents":  [
+                         {
+                             "id":  "emp-savings-1",
+                             "type":  "retirement_contribution",
+                             "contributionType":  "pre_tax",
+                             "accountId":  "acct-1",
+                             "amount":  30000,
+                             "startAge":  55,
+                             "endAge":  60,
+                             "taxStatus":  "before_tax",
+                             "colaType":  "inflation_adjusted",
+                             "name":  "401k Contribution 1"
+                         },
+                         {
+                             "id":  "ss-1",
+                             "type":  "social_security",
+                             "amount":  30000,
+                             "startAge":  67,
+                             "taxStatus":  "before_tax",
+                             "colaType":  "fixed",
+                             "amountPeriod":  "annual",
+                             "name":  "Social Security 1"
+                         }
+                     ],
+    "portfolioAssumptions":  {
+                                 "stockReturn":  0.1,
+                                 "stockStdDev":  0.15,
+                                 "bondReturn":  0.03,
+                                 "bondStdDev":  0.05,
+                                 "stockBondCorrelationEnabled":  false,
+                                 "stockBondCorrelation":  -0.2,
+                                 "returnDistribution":  "lognormal",
+                                 "degreesOfFreedom":  4,
+                                 "returnModel":  "parametric"
+                             },
+    "inflationRate":  0.03,
+    "inflationStdDev":  0,
+    "filingStatus":  "mfj",
+    "spouseAge":  53,
+    "stateTimeline":  [
+                          {
+                              "state":  "Virginia"
+                          }
+                      ],
+    "simulationSettings":  {
+                               "numSimulations":  5000
+                           },
+    "accounts":  [
+                     {
+                         "id":  "acct-1",
+                         "name":  "Traditional 1",
+                         "type":  "traditional",
+                         "balance":  800000,
+                         "stockAllocation":  0.8,
+                         "portfolioBalance":  "80_20"
+                     }
+                 ],
+    "longTermCapGainsRate":  0.15,
+    "contributionLimits":  {
+                               "elective401k":  1000000,
+                               "iraLimit":  1000000,
+                               "catchUpAge":  50,
+                               "catchUp401k":  0,
+                               "catchUpIra":  0,
+                               "inflationAdjusted":  false
+                           }
 }

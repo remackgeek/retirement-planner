@@ -134,7 +134,7 @@ balance ← balance · (s · stockFactor + (1 − s) · bondFactor)
 
 **Rebalancing:** the formula implicitly assumes the account is rebalanced to its target allocation each year. We do not track separate stock and bond sub-balances per account.
 
-Synthetic accounts (auto-created RMD Reinvestment, Roth Conversion accounts) default to **60/40** allocation.
+Synthetic accounts (auto-created Reinvestment, Roth Conversion accounts) default to **60/40** allocation.
 
 ### Blended Return (displayed in Modeling dialog)
 
@@ -240,8 +240,55 @@ Traditional accounts trigger **RMDs at age 73** (SECURE 2.0). Each year:
 1. RMD is calculated on the **beginning-of-year (pre-growth) balance** using the IRS Uniform Lifetime Table — matching the IRS Dec 31 prior-year rule.
 2. The simulation forces `withdrawalFromTraditional ≥ rmdRequired`.
 3. **Per-owner split:** if an account has `owner: 'spouse'` set, RMD uses the spouse's age. Self and spouse RMDs are computed independently and summed.
-4. **Excess RMD** beyond the spending need is reinvested into the first taxable account. If none exists, an `"RMD Reinvestment"` taxable account is auto-created in the working simulation copy (not persisted).
+4. **Excess RMD** beyond the spending need is reinvested into the first taxable account. If none exists, a `"Reinvestment"` taxable account is auto-created in the working simulation copy (not persisted). The same synthetic account also receives general surplus (see Surplus Handling below).
 5. RMD is **not eligible** for Roth conversion (IRS rule). Roth accounts are exempt from RMD.
+
+---
+
+## Wage Income and Retirement Contributions
+
+`wage_income` events are taxable ordinary income (always `before_tax`). They flow into `otherTaxableGross` exactly like a pension or part-time work event.
+
+`retirement_contribution` events are **deposit instructions, not income**. They never add to spendable cash. Each event carries a `contributionType`:
+
+- **`pre_tax`** — the contribution amount is subtracted from `otherTaxableGross` before the tax calc, then deposited to the target Traditional account. The deduction is floored at zero (you can't reduce taxable income below zero).
+- **`roth`** — no tax effect; deposited to the target Roth account.
+- **`after_tax`** — no tax effect; deposited to the target Taxable account.
+
+If the event's `accountId` doesn't match the contribution type (or is omitted), the simulation falls back to the first account of the implied type, then to the first account of any type.
+
+**Employer match** is configured per contribution event with `employerMatchPercent` and `employerMatchCeilingPercent`. The match base is either the linked `wageEventId`'s annual amount (when set) or the contribution amount itself. The match is `matchRate × min(employeeContribution, ceilingRate × matchBase)`. Match dollars are deposited to the **same target account** as the employee contribution — a documented simplification (in reality, employer match for a Roth 401(k) historically went to the pre-tax bucket; SECURE 2.0 allows it Roth, but the model keeps things simple).
+
+### Contribution Limits
+
+Per-scenario IRS limits are configured under Modeling → Contribution Limits:
+
+- `elective401k` — 401(k)/403(b)/TSP elective deferral cap (default $23,000)
+- `iraLimit` — IRA cap (default $7,000)
+- `catchUpAge` — age at which catch-up kicks in (default 50)
+- `catchUp401k`, `catchUpIra` — extra contribution allowed at/after `catchUpAge`
+- `inflationAdjusted` — when true, all caps scale by deterministic mean inflation each year
+
+Caps are enforced **per owner per kind**. An account's "kind" is set on the account itself (`accountKind`: `'401k'` / `'ira'` / `'brokerage'`). When `accountKind` is absent, `traditional` and `roth` accounts default to `'ira'`, and `taxable` accounts default to `'brokerage'` (uncapped).
+
+Within an `(owner, kind)` group, employee `pre_tax` and `roth` contributions pool against the same cap. When the group exceeds its cap, all of its deposits are scaled proportionally and the cut amount accumulates into `contributionsCappedAmount`. Employer match is scaled proportionally with the employee contribution but does **not** count against the elective deferral cap (the IRS 415(c) total cap that includes match is not modeled). `after_tax` contributions to brokerage accounts are uncapped.
+
+Capped pre-tax dollars stay in `otherTaxableGross` (they were never deducted, so the worker is taxed on them). Capped roth dollars also remain in spendable cash via the originating wage event — the simulation simply skips the over-cap deposit. Whatever cash remains beyond spending and tax in the year is then routed via the surplus pathway (see below) into the first taxable account.
+
+---
+
+## Surplus Handling
+
+Whenever annual cash flow leaves money on the table — `netCashFlow > 0` after income, contributions (capped), spending, and tax — that surplus is deposited into the **first taxable account**.
+
+- Routing is unconditional: surplus always goes to taxable, never to Traditional or Roth.
+- If no taxable account exists in the user's configuration, `ensureReinvestmentAccount` injects a $0 synthetic `"Reinvestment"` taxable account (60/40 allocation) into the working simulation copy. This is the same account used for RMD excess reinvestment — the two pathways share one synthetic account, never two.
+- The synthetic account is not persisted to `UserData`. It only exists for the duration of the simulation run.
+- When the portfolio cap is binding (depletion year), there is no surplus by definition; `surplusContribution` is 0.
+
+`AnnualCashFlowBreakdown.surplusContribution` records the dollars deposited as surplus each year and is exposed in the yearly-data detail rows and CSV export.
+
+`AnnualCashFlowBreakdown` exposes `wageIncomeGross`, `preTaxContributions`, `rothContributions`, `afterTaxContributions`, `employerMatch`, and `contributionsCappedAmount` for visibility in detail rows and CSV export.
 
 ---
 

@@ -1,5 +1,6 @@
 export type IncomeEventType =
-  | 'employment_savings'
+  | 'wage_income'
+  | 'retirement_contribution'
   | 'social_security'
   | 'annuity_income'
   | 'inheritance'
@@ -9,6 +10,8 @@ export type IncomeEventType =
   | 'sale_of_property'
   | 'work_during_retirement'
   | 'other_income';
+
+export type ContributionType = 'pre_tax' | 'roth' | 'after_tax';
 
 export interface IncomeEvent {
   id: string;
@@ -25,7 +28,11 @@ export interface IncomeEvent {
   ssHaircutPercent?: number; // SS only — reduction percentage (default 23)
   ssAmountBasis?: 'today' | 'future'; // SS only — today's dollars vs already-inflated (default 'today')
   amountPeriod?: 'monthly' | 'annual'; // UI hint for input/display period (default 'annual')
-  accountId?: string; // employment_savings only — which account contributions land in
+  accountId?: string; // retirement_contribution only — target account for the contribution
+  contributionType?: ContributionType; // retirement_contribution only — pre_tax / roth / after_tax
+  employerMatchPercent?: number; // retirement_contribution only — % of wage base matched by employer
+  employerMatchCeilingPercent?: number; // retirement_contribution only — cap on match as % of wage base
+  wageEventId?: string; // retirement_contribution only — optional linked wage event for match-base calc
 }
 
 export type PortfolioType = '80_20' | '60_40' | '50_50';

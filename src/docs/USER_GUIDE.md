@@ -107,6 +107,10 @@ YARP draws from your accounts in this order each year: **Taxable first, then Tra
 
 Once you turn **73**, the IRS requires you to withdraw a minimum amount from Traditional accounts each year, whether you need the money or not. YARP handles this automatically: it forces the minimum withdrawal, taxes it as ordinary income, and reinvests anything you didn't actually need into a taxable account. Roth accounts don't have RMDs.
 
+### Surplus reinvestment
+
+In any year where your income exceeds your spending and taxes, the leftover cash is deposited into your first taxable account. If you don't have one, YARP creates a synthetic "Reinvestment" account during the simulation so surplus is never silently lost. The yearly data detail rows and CSV export show this as **Surplus Contribution**.
+
 If you're married and have Traditional accounts in both your names, YARP calculates each person's RMD using their own age — set the **owner** (Self / Spouse) on each account.
 
 ---
@@ -120,9 +124,35 @@ Income events cover everything flowing **into** your portfolio. Common ones:
 - **Part-time work / consulting** in retirement
 - **Rental income, annuity payments**
 - **Inheritance, gifts** (these come in tax-free — mark them as "after-tax")
-- **Current paycheck contributions** (if you're still working) — choose the account they go into
+- **Salary** (W-2 wages) — taxed as ordinary income, ends at retirement
+- **Retirement contributions** — pre-tax 401(k), Roth, or after-tax savings; deposited into the chosen account
 
 Each event has a start age, an optional end age, and an optional cost-of-living adjustment to grow the amount over time.
+
+### Salary and Retirement Contributions (working years)
+
+If you're still working, model your earnings and savings as two separate events:
+
+- **Salary** captures your W-2 wages. It flows into spendable cash and is taxed as ordinary income (federal + state, plus FICA isn't modeled — use after-tax-equivalent if you want a clean accounting).
+- **Retirement Contribution** captures the slice of those wages going into a retirement account. Pick one of three flavors:
+  - **Pre-tax** — reduces this year's taxable income and deposits to a Traditional account.
+  - **Roth** — no tax break today; deposits to a Roth account; growth and qualified withdrawals are tax-free.
+  - **After-tax** — deposits to a taxable brokerage; growth taxed at LTCG on withdrawal.
+
+Optional: an **employer match** (e.g. "100% up to 6% of wages") deposits additional dollars to the same account as your contribution. Link the contribution to a specific salary event so the match ceiling is computed against the actual wage base.
+
+Contributions are *deposit instructions* — they do not show up as spendable cash. If you contribute $20k pre-tax against a $100k salary, the simulation taxes $80k and deposits $20k to your Traditional account.
+
+#### Contribution Limits
+
+YARP enforces IRS contribution caps per owner per account kind. Configure the limits under **Settings → Modeling → Contribution Limits**:
+
+- 401(k)/403(b)/TSP elective deferral (default $23,000)
+- IRA limit (default $7,000)
+- Catch-up age (default 50) and catch-up amounts
+- Optionally, scale the caps by inflation each year
+
+Mark each tax-advantaged account as **IRA** or **401(k)/403(b)/TSP** in the account dialog. Pre-tax and Roth contributions to the same `(owner, kind)` group share the same cap. Employer match is **not** counted against the elective deferral cap. Excess contributions are not deposited; capped pre-tax dollars remain taxed (since the deduction is reduced) and otherwise stay in spendable cash via the originating wage event. The cut amount appears as `contributionsCappedAmount` in the yearly detail.
 
 ### Roth Conversions
 
@@ -214,6 +244,19 @@ Most retirement planning is done in real terms.
 Click **Compare with ▾** above the chart to overlay another scenario as a dashed line. You'll see both probabilities and tier badges side by side. Click **End comparison** to clear it.
 
 This is the most useful feature for actually making decisions: rather than asking "is my plan good?" you ask "is plan A better than plan B?"
+
+---
+
+## What If? Mode
+
+Click **What If?** above the chart to enter an experimental mode. A snapshot of your scenario is held in memory; the chart shows the original as a solid line and your live edits as a dashed amber **Draft** line. Edit accounts, income events, or spending goals normally — only the dashed line moves.
+
+Three exit actions:
+- **Discard & Exit** — restore the scenario to its original state.
+- **Save Changes** — keep your edits (they were already being saved as you went).
+- **Save as New Scenario** — create a brand-new scenario containing your experiment, and restore the original scenario back to its starting state.
+
+While in What If mode, **Compare with** is disabled (and vice versa) — they share the chart's overlay slot. Switching to a different scenario in the sidebar will prompt you before discarding your unsaved changes.
 
 ---
 

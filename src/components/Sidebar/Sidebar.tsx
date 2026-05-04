@@ -15,6 +15,7 @@ import { getProbabilityTier } from '../../utils/probabilityTier';
 interface SidebarProps {
   isOpen: boolean;
   onToggle: () => void;
+  requestSwitchScenario?: (id: string) => void;
 }
 
 const SidebarContainer = styled.aside<{ $isOpen: boolean }>`
@@ -311,7 +312,7 @@ const actionButtonStyle = {
   minWidth: '1.6rem',
 } as const;
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenario }) => {
   const [dialogVisible, setDialogVisible] = useState(false);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [cloneDialogVisible, setCloneDialogVisible] = useState(false);
@@ -395,7 +396,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
               key={scenario.id}
               $isActive={isActive}
               onClick={() => {
-                setActiveScenario(scenario.id);
+                if (requestSwitchScenario) requestSwitchScenario(scenario.id);
+                else setActiveScenario(scenario.id);
               }}
             >
               <ScenarioRow>

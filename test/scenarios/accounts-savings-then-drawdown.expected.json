@@ -1,5 +1,5 @@
 {
-  "_rationale": "Savings phase (ages 55-64): 50k/yr after_tax deposited — 30k to trad-1, 20k to roth-1. At age 65 (index 10): trad=300k, roth=200k, total=500k. Retirement phase (ages 65-70): 15k/yr from trad (W=15k, zero tax because 15k < 18,150 deduction for single age 65+). Roth untouched. After 6 retirement years: trad=210k, roth=200k, total=410k. Probability=100% (never depletes).",
+  "_rationale": "Savings phase (ages 55-64): 50k/yr deposited via retirement_contribution — 30k pre_tax to trad-1, 20k roth to roth-1. With no wage income, pre_tax floors taxable income at 0 (no tax effect). Contributions are NOT spendable income, so afterTaxIncome=0 and netCashFlow=0 in savings years; balances grow because contributions are explicit deposits. At age 65 (index 10): trad=300k, roth=200k, total=500k. Retirement phase (ages 65-70): 15k/yr from trad (W=15k, zero tax because 15k < 18,150 deduction for single age 65+). Roth untouched. After 6 retirement years: trad=210k, roth=200k, total=410k. Probability=100% (never depletes).",
   "probability": 100,
   "pathValues": [
     { "index": 0, "value": 0, "tolerance": 1, "note": "Start: both accounts empty" },
@@ -13,9 +13,23 @@
     {
       "index": 0,
       "field": "afterTaxIncome",
-      "value": 50000,
+      "value": 0,
       "tolerance": 1,
-      "_note": "Savings year: 30k trad + 20k roth employment_savings, both after_tax"
+      "_note": "Savings year: retirement contributions are deposit instructions, not income — afterTaxIncome=0"
+    },
+    {
+      "index": 0,
+      "field": "preTaxContributions",
+      "value": 30000,
+      "tolerance": 1,
+      "_note": "Savings year: 30k pre-tax employee contribution recorded"
+    },
+    {
+      "index": 0,
+      "field": "rothContributions",
+      "value": 20000,
+      "tolerance": 1,
+      "_note": "Savings year: 20k Roth employee contribution recorded"
     },
     {
       "index": 0,

@@ -31,7 +31,8 @@ export function buildEndAgeOptions(
 }
 
 export const incomeEventAgeRanges: Record<IncomeEventType, { min: number; max: number }> = {
-  employment_savings: { min: 18, max: 70 },
+  wage_income: { min: 18, max: 80 },
+  retirement_contribution: { min: 18, max: 75 },
   social_security: { min: 62, max: 120 },
   annuity_income: { min: 50, max: 100 },
   inheritance: { min: 20, max: 100 },

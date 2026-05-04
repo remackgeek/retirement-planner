@@ -7,7 +7,6 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
-import type { Account } from '../types/Account';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { spacing, colors, fontSize, border } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
@@ -69,7 +68,6 @@ interface IncomeEventDialogProps {
   initialType?: IncomeEventType;
   editEvent?: IncomeEvent;
   existingEvents?: IncomeEvent[];
-  accounts?: Account[];
   currentAge: number;
   referenceYear: number;
 }
@@ -80,7 +78,7 @@ const getDefaultCOLA = (
   type: IncomeEventType
 ): 'fixed' | 'inflation_adjusted' => {
   const inflationAdjustedTypes: IncomeEventType[] = [
-    'employment_savings',
+    'wage_income',
     'social_security',
     'inheritance',
     'rental_income',
@@ -91,21 +89,15 @@ const getDefaultCOLA = (
   return inflationAdjustedTypes.includes(type) ? 'inflation_adjusted' : 'fixed';
 };
 
-const getDefaultTaxStatus = (type: IncomeEventType): 'before_tax' | 'after_tax' => {
-  if (type === 'employment_savings') return 'after_tax';
-  return 'before_tax';
-};
-
 const makeDefaultFormData = (type: IncomeEventType = 'pension_income') => ({
   type,
   name: '',
   amount: 0,
-  startAge: type === 'employment_savings' ? 40 : 65,
-  endAge: (type === 'employment_savings' ? 65 : undefined) as number | undefined,
+  startAge: type === 'wage_income' ? 40 : 65,
+  endAge: (type === 'wage_income' ? 65 : undefined) as number | undefined,
   isOneTime: false,
-  taxStatus: getDefaultTaxStatus(type),
+  taxStatus: 'before_tax' as 'before_tax' | 'after_tax',
   colaType: getDefaultCOLA(type),
-  accountId: undefined as string | undefined,
 });
 
 const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
@@ -116,7 +108,6 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
   initialType,
   editEvent,
   existingEvents = [],
-  accounts = [],
   currentAge,
   referenceYear,
 }) => {
@@ -141,7 +132,6 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
         isOneTime: editEvent.isOneTime || false,
         taxStatus: editEvent.taxStatus,
         colaType: editEvent.colaType,
-        accountId: editEvent.accountId,
       });
     } else if (initialType) {
       const defaults = makeDefaultFormData(initialType);
@@ -273,29 +263,13 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
           <label htmlFor='isOneTime'>One-time event (occurs only in start year)</label>
         </CheckboxGroup>
 
-        {formData.type !== 'employment_savings' && (
+        {formData.type !== 'wage_income' && (
           <InputGroup>
             <label>Tax Status</label>
             <Dropdown
               value={formData.taxStatus}
               options={taxStatusOptions}
               onChange={(e) => setFormData({ ...formData, taxStatus: e.value })}
-            />
-          </InputGroup>
-        )}
-
-        {formData.type === 'employment_savings' && accounts.length > 0 && (
-          <InputGroup>
-            <label>Target Account</label>
-            <Dropdown
-              value={formData.accountId ?? ''}
-              options={[
-                { label: 'Default (first Traditional)', value: '' },
-                ...accounts.map((a) => ({ label: a.name, value: a.id })),
-              ]}
-              onChange={(e) =>
-                setFormData({ ...formData, accountId: e.value || undefined })
-              }
             />
           </InputGroup>
         )}

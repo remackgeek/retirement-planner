@@ -23,6 +23,13 @@ const makeBd = (overrides: Partial<AnnualCashFlowBreakdown>): AnnualCashFlowBrea
   rmdExcess: 0,
   rothConversionGross: 0,
   spendingShortfall: 0,
+  wageIncomeGross: 0,
+  preTaxContributions: 0,
+  rothContributions: 0,
+  afterTaxContributions: 0,
+  employerMatch: 0,
+  surplusContribution: 0,
+  contributionsCappedAmount: 0,
   ...overrides,
 });
 
