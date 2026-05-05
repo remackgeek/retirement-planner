@@ -295,4 +295,4 @@ To restore or move to a new device, click **Import** and select the file. You ca
 - **Help → Model Details** — full technical reference for the simulation engine, tax math, and known limitations
 - **Help → About** — version and license info
 
-Found a bug or want to suggest an improvement? See the About dialog for the project repository link.
+Found a bug or want to suggest an improvement? Open a ticket on the [GitHub Issues page](https://github.com/remackgeek/retirement-planner/issues), or open **Help → About YARP** for project and build details.
