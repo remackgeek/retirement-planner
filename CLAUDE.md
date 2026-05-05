@@ -93,6 +93,18 @@ projections, and good tax awareness without overwhelming the user.
   from Traditional and effectively reduces the convertible amount. `ensureRothConversionAccount`
   auto-creates a `"Roth Conversion"` Roth account when conversions exist but no Roth accounts
   do. Per-year conversion amount is captured in `AnnualCashFlowBreakdown.rothConversionGross`.
+  The dialog's Impact Preview surfaces `estimateConversionImpact()` results
+  (`firstYearTax`, `totalTaxOverConversion`, `rmdReductionAt73`,
+  `projectedRothAtEndOfPlan`, and `netPlanValueImpact` — a deterministic signed
+  delta of plan value at life expectancy with vs. without the conversion,
+  including tax drag from paying conversion tax out of taxable accounts; v1
+  excludes IRMAA, SS taxability, NIIT, ACA, and surviving-spouse bracket shifts).
+  New conversion events default to `colaType: 'inflation_adjusted'` so the
+  entered amount is a real-dollar target across the conversion window. Inline
+  warning hints fire when the configured amount is large relative to spending,
+  jumps ≥ 2 federal brackets, or would convert > 80% of Traditional balance —
+  see `exceedsSpendingHeuristic`, `crossesMultipleBracketsHeuristic`,
+  `exceedsMostOfTradHeuristic` in `conversionImpact.ts`.
 - **Spending goals** — 11 categories, each with a required `name` (auto-generated defaults
   like "Vacation 1"), inflation adjustment, age-based activation.
   `living_expenses` goals support optional `yearlyDecreasePercent` for spending decay
