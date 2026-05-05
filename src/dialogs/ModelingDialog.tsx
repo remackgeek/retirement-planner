@@ -281,7 +281,19 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
             <Dropdown
               value={form.returnModel}
               options={returnModelOptions}
-              onChange={(e) => setForm({ ...form, returnModel: e.value })}
+              onChange={(e) => {
+                const newModel: ReturnModel = e.value;
+                if (newModel === 'historical_single') {
+                  const latestValid = HISTORICAL_LAST_YEAR - horizon + 1;
+                  const clampedStart = Math.min(
+                    form.historicalStartYear,
+                    Math.max(HISTORICAL_FIRST_YEAR, latestValid)
+                  );
+                  setForm({ ...form, returnModel: newModel, historicalStartYear: clampedStart });
+                } else {
+                  setForm({ ...form, returnModel: newModel });
+                }
+              }}
               style={{ width: '100%' }}
             />
           </InputGroup>

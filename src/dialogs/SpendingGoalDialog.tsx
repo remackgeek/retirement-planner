@@ -114,7 +114,7 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
 
   const range = spendingGoalAgeRanges[formData.type];
   const effectiveMin = Math.min(range.min, formData.startAge);
-  const effectiveEndMin = formData.endAge ? Math.min(range.min, formData.endAge) : range.min;
+  const effectiveEndMin = Math.max(range.min, formData.startAge + 1);
   const startAgeOptions = buildAgeOptions(referenceYear, currentAge, effectiveMin, range.max);
   const endAgeOptions = buildEndAgeOptions(referenceYear, currentAge, effectiveEndMin, range.max);
 
@@ -137,11 +137,12 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
     } else if (initialType) {
       const defaults = makeDefaultFormData(initialType);
       defaults.name = generateDefaultSpendingGoalName(initialType, existingGoals);
+      defaults.startAge = currentAge;
       setFormData(defaults);
     } else {
       setFormData(makeDefaultFormData());
     }
-  }, [visible, editGoal, initialType, existingGoals]);
+  }, [visible, editGoal, initialType, existingGoals, currentAge]);
 
   const isLivingExpenses = formData.type === 'living_expenses';
 
@@ -294,31 +295,40 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
             <Dropdown
               value={formData.startAge}
               options={startAgeOptions}
-              onChange={(e) =>
-                setFormData({ ...formData, startAge: e.value })
-              }
+              onChange={(e) => setFormData({
+                ...formData,
+                startAge: e.value,
+                endAge: formData.endAge && formData.endAge <= e.value ? undefined : formData.endAge,
+              })}
             />
           </InputGroup>
 
-          <InputGroup>
-            <label>End Age (optional)</label>
-            <Dropdown
-              value={formData.endAge ?? 0}
-              options={endAgeOptions}
-              onChange={(e) =>
-                setFormData({ ...formData, endAge: e.value === 0 ? undefined : e.value })
-              }
-            />
-          </InputGroup>
+          {!formData.isOneTime && (
+            <InputGroup>
+              <label>End Age (optional)</label>
+              <Dropdown
+                value={formData.endAge ?? 0}
+                options={endAgeOptions}
+                onChange={(e) =>
+                  setFormData({ ...formData, endAge: e.value === 0 ? undefined : e.value })
+                }
+              />
+            </InputGroup>
+          )}
         </FieldRow>
 
         <CheckboxGroup>
           <Checkbox
             inputId='isOneTime'
             checked={formData.isOneTime}
-            onChange={(e) =>
-              setFormData({ ...formData, isOneTime: e.checked || false })
-            }
+            onChange={(e) => {
+              const checked = e.checked || false;
+              setFormData({
+                ...formData,
+                isOneTime: checked,
+                endAge: checked ? undefined : Math.min(range.max, formData.startAge + 10),
+              });
+            }}
           />
           <label htmlFor='isOneTime'>One-time event (occurs only in start year)</label>
         </CheckboxGroup>

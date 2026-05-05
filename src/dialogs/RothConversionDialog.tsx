@@ -156,7 +156,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
   const ownerAge = resolveOwnerAge(formData.owner, userData.currentAge, userData.spouseAge);
   const range = incomeEventAgeRanges['roth_conversion'];
   const effectiveMin = Math.min(range.min, formData.startAge);
-  const effectiveEndMin = formData.endAge ? Math.min(range.min, formData.endAge) : range.min;
+  const effectiveEndMin = Math.max(range.min, formData.startAge + 1);
   const startAgeOptions = buildAgeOptions(userData.referenceYear, ownerAge, effectiveMin, range.max);
   const endAgeOptions = buildEndAgeOptions(userData.referenceYear, ownerAge, effectiveEndMin, range.max);
 
@@ -175,10 +175,11 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
     } else {
       setFormData({
         ...makeDefaultFormData(),
+        startAge: Math.max(incomeEventAgeRanges['roth_conversion'].min, userData.currentAge),
         name: generateDefaultIncomeEventName('roth_conversion', existingEvents),
       });
     }
-  }, [visible, editEvent, existingEvents]);
+  }, [visible, editEvent, existingEvents, userData.currentAge]);
 
   const impact = useMemo(() => {
     if (!formData.amount || formData.amount <= 0) return null;
@@ -312,7 +313,11 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
             <Dropdown
               value={formData.startAge}
               options={startAgeOptions}
-              onChange={(e) => setFormData({ ...formData, startAge: e.value })}
+              onChange={(e) => setFormData({
+                ...formData,
+                startAge: e.value,
+                endAge: formData.endAge && formData.endAge <= e.value ? undefined : formData.endAge,
+              })}
             />
           </InputGroup>
 

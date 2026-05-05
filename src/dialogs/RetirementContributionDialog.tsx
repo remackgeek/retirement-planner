@@ -131,7 +131,7 @@ const RetirementContributionDialog: React.FC<RetirementContributionDialogProps> 
   const ownerAge = resolveOwnerAge(formData.owner, currentAge, spouseAge);
   const range = incomeEventAgeRanges['retirement_contribution'];
   const effectiveMin = Math.min(range.min, formData.startAge);
-  const effectiveEndMin = formData.endAge ? Math.min(range.min, formData.endAge) : range.min;
+  const effectiveEndMin = Math.max(range.min, formData.startAge + 1);
   const startAgeOptions = buildAgeOptions(referenceYear, ownerAge, effectiveMin, range.max);
   const endAgeOptions = buildEndAgeOptions(referenceYear, ownerAge, effectiveEndMin, range.max);
 
@@ -158,10 +158,12 @@ const RetirementContributionDialog: React.FC<RetirementContributionDialogProps> 
     } else {
       setFormData({
         ...makeDefaultFormData(),
+        startAge: currentAge,
+        endAge: Math.min(range.max, currentAge + 20),
         name: generateDefaultIncomeEventName('retirement_contribution', existingEvents),
       });
     }
-  }, [visible, editEvent, existingEvents]);
+  }, [visible, editEvent, existingEvents, currentAge]);
 
   const requiredAccountType = accountTypeForContribution[formData.contributionType];
   const eligibleAccounts = accounts.filter((a) => a.type === requiredAccountType);
@@ -346,7 +348,11 @@ const RetirementContributionDialog: React.FC<RetirementContributionDialogProps> 
             <Dropdown
               value={formData.startAge}
               options={startAgeOptions}
-              onChange={(e) => setFormData({ ...formData, startAge: e.value })}
+              onChange={(e) => setFormData({
+                ...formData,
+                startAge: e.value,
+                endAge: formData.endAge && formData.endAge <= e.value ? undefined : formData.endAge,
+              })}
             />
           </InputGroup>
           <InputGroup>

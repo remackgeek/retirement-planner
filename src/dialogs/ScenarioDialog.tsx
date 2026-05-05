@@ -190,10 +190,11 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     onHide();
   };
 
-  const yearOptions = Array.from({ length: 41 }, (_, i) => {
-    const y = tempData.referenceYear + i;
-    return { label: String(y), value: y };
-  });
+  const buildRelocationYearOptions = (minYear: number) =>
+    Array.from({ length: tempData.referenceYear + 40 - minYear + 1 }, (_, i) => {
+      const y = minYear + i;
+      return { label: String(y), value: y };
+    });
 
   const dialogFooter = (
     <div>
@@ -337,7 +338,9 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
                 ) : (
                   <Dropdown
                     value={entry.startYear ?? tempData.referenceYear}
-                    options={yearOptions}
+                    options={buildRelocationYearOptions(
+                      (tempData.stateTimeline[idx - 1].startYear ?? tempData.referenceYear) + 1
+                    )}
                     onChange={(e) => {
                       const updated = [...tempData.stateTimeline];
                       updated[idx] = { ...updated[idx], startYear: e.value };

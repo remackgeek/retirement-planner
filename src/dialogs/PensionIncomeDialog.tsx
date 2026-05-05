@@ -117,7 +117,7 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
   const ownerAge = resolveOwnerAge(formData.owner, currentAge, spouseAge);
   const range = incomeEventAgeRanges['pension_income'];
   const effectiveMin = Math.min(range.min, formData.startAge);
-  const effectiveEndMin = formData.endAge ? Math.min(range.min, formData.endAge) : range.min;
+  const effectiveEndMin = Math.max(range.min, formData.startAge + 1);
   const startAgeOptions = buildAgeOptions(referenceYear, ownerAge, effectiveMin, range.max);
   const endAgeOptions = buildEndAgeOptions(referenceYear, ownerAge, effectiveEndMin, range.max);
 
@@ -139,10 +139,11 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
     } else {
       setFormData({
         ...makeDefaultFormData(),
+        startAge: Math.max(incomeEventAgeRanges['pension_income'].min, currentAge),
         name: generateDefaultIncomeEventName('pension_income', existingEvents),
       });
     }
-  }, [visible, editEvent, existingEvents]);
+  }, [visible, editEvent, existingEvents, currentAge]);
 
   const handlePeriodChange = (newPeriod: 'monthly' | 'annual') => {
     if (newPeriod === formData.amountPeriod) return;
@@ -305,7 +306,11 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
             <Dropdown
               value={formData.startAge}
               options={startAgeOptions}
-              onChange={(e) => setFormData({ ...formData, startAge: e.value })}
+              onChange={(e) => setFormData({
+                ...formData,
+                startAge: e.value,
+                endAge: formData.endAge && formData.endAge <= e.value ? undefined : formData.endAge,
+              })}
             />
           </InputGroup>
 

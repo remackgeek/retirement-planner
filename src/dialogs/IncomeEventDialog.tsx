@@ -116,7 +116,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
 
   const range = incomeEventAgeRanges[formData.type];
   const effectiveMin = Math.min(range.min, formData.startAge);
-  const effectiveEndMin = formData.endAge ? Math.min(range.min, formData.endAge) : range.min;
+  const effectiveEndMin = Math.max(range.min, formData.startAge + 1);
   const startAgeOptions = buildAgeOptions(referenceYear, currentAge, effectiveMin, range.max);
   const endAgeOptions = buildEndAgeOptions(referenceYear, currentAge, effectiveEndMin, range.max);
 
@@ -136,11 +136,15 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
     } else if (initialType) {
       const defaults = makeDefaultFormData(initialType);
       defaults.name = generateDefaultIncomeEventName(initialType, existingEvents);
+      defaults.startAge = currentAge;
+      if (initialType === 'wage_income') {
+        defaults.endAge = Math.min(incomeEventAgeRanges['wage_income'].max, currentAge + 20);
+      }
       setFormData(defaults);
     } else {
       setFormData(makeDefaultFormData());
     }
-  }, [visible, editEvent, initialType, existingEvents]);
+  }, [visible, editEvent, initialType, existingEvents, currentAge]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,31 +238,40 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
             <Dropdown
               value={formData.startAge}
               options={startAgeOptions}
-              onChange={(e) =>
-                setFormData({ ...formData, startAge: e.value })
-              }
+              onChange={(e) => setFormData({
+                ...formData,
+                startAge: e.value,
+                endAge: formData.endAge && formData.endAge <= e.value ? undefined : formData.endAge,
+              })}
             />
           </InputGroup>
 
-          <InputGroup>
-            <label>End Age (optional)</label>
-            <Dropdown
-              value={formData.endAge ?? 0}
-              options={endAgeOptions}
-              onChange={(e) =>
-                setFormData({ ...formData, endAge: e.value === 0 ? undefined : e.value })
-              }
-            />
-          </InputGroup>
+          {!formData.isOneTime && (
+            <InputGroup>
+              <label>End Age (optional)</label>
+              <Dropdown
+                value={formData.endAge ?? 0}
+                options={endAgeOptions}
+                onChange={(e) =>
+                  setFormData({ ...formData, endAge: e.value === 0 ? undefined : e.value })
+                }
+              />
+            </InputGroup>
+          )}
         </FieldRow>
 
         <CheckboxGroup>
           <Checkbox
             inputId='isOneTime'
             checked={formData.isOneTime}
-            onChange={(e) =>
-              setFormData({ ...formData, isOneTime: e.checked || false })
-            }
+            onChange={(e) => {
+              const checked = e.checked || false;
+              setFormData({
+                ...formData,
+                isOneTime: checked,
+                endAge: checked ? undefined : Math.min(range.max, formData.startAge + 10),
+              });
+            }}
           />
           <label htmlFor='isOneTime'>One-time event (occurs only in start year)</label>
         </CheckboxGroup>
