@@ -41,6 +41,7 @@ export const RetirementContext = createContext<{
   cloneScenario: (id: string, name: string) => Promise<void>;
   exportScenario: (id: string) => Promise<void>;
   importScenario: () => void;
+  loadExampleScenario: (template: Omit<Scenario, 'id'>) => Promise<void>;
   setActiveScenario: (id: string) => Promise<void>;
 } | null>(null);
 
@@ -261,6 +262,15 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     await addScenario(clone);
   };
 
+  const loadExampleScenario = async (template: Omit<Scenario, 'id'>) => {
+    const scenario: Scenario = {
+      ...structuredClone(template) as Omit<Scenario, 'id'>,
+      id: crypto.randomUUID(),
+      lastSuccessProbability: undefined,
+    };
+    await addScenario(scenario);
+  };
+
   const setActiveScenario = async (id: string) => {
     const db = await openDB(dbName, 1);
     const scenario = await db.get(storeName, id);
@@ -281,6 +291,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         cloneScenario,
         exportScenario,
         importScenario,
+        loadExampleScenario,
         setActiveScenario,
       }}
     >

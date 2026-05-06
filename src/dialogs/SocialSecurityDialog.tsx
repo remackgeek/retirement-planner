@@ -189,10 +189,12 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
       });
     } else {
       const defaultOwner: 'self' | 'spouse' = isMfj && selfTaken && !spouseTaken ? 'spouse' : 'self';
+      const ownerStartAge = defaultOwner === 'spouse' && spouseAge !== null ? spouseAge : currentAge;
       const defaults = {
         ...makeDefaultFormData(),
         owner: defaultOwner,
         name: generateSSDefaultName(defaultOwner),
+        startAge: Math.max(62, ownerStartAge),
       };
       setFormData(defaults);
     }

@@ -1,5 +1,5 @@
 {
-  "_rationale": "No taxable account in UserData. ensureRMDReinvestmentAccount adds a $0 'RMD Reinvestment' taxable account before the sim loop. With Traditional $500k and RMD at 73 = 500000/26.5 ≈ 18868, all RMD is excess and deposits into the auto-created account. Results are identical to rmd-excess-to-existing-taxable.",
+  "_rationale": "No taxable account in UserData. ensureReinvestmentAccount adds a $0 'Reinvestment' taxable account before the sim loop. With Traditional $500k and RMD at 73 = 500000/26.5 ≈ 18868, all RMD is excess and deposits into the auto-created account. Results are identical to rmd-excess-to-existing-taxable.",
   "probability": 100,
   "tolerance": 1.0,
   "breakdownChecks": [

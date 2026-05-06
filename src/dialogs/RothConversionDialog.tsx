@@ -13,7 +13,12 @@ import { spacing, colors, border, fontSize } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 import { generateDefaultIncomeEventName, eventTypeIcons } from '../utils/defaultName';
 import { resolveOwnerAge } from '../utils/ownerAge';
-import { estimateConversionImpact } from '../services/conversionImpact';
+import {
+  estimateConversionImpact,
+  exceedsSpendingHeuristic,
+  crossesMultipleBracketsHeuristic,
+  exceedsMostOfTradHeuristic,
+} from '../services/conversionImpact';
 
 const Form = styled.form`
   display: flex;
@@ -64,6 +69,22 @@ const Disclaimer = styled.div`
 const DisclaimerLabel = styled.strong`
   color: ${colors.textSecondary};
   font-weight: 600;
+`;
+
+const WarningHint = styled.div`
+  color: ${colors.warning};
+  background: ${colors.warningBg};
+  border-radius: ${border.radius};
+  padding: ${spacing.xs} ${spacing.sm};
+  font-size: ${fontSize.xs};
+  line-height: 1.4;
+`;
+
+const WarningList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${spacing.xs};
+  margin-top: ${spacing.xs};
 `;
 
 const TrashButton = styled.button`
@@ -134,7 +155,7 @@ const makeDefaultFormData = () => ({
   startAge: 65,
   endAge: undefined as number | undefined,
   isOneTime: false,
-  colaType: 'fixed' as 'fixed' | 'inflation_adjusted',
+  colaType: 'inflation_adjusted' as 'fixed' | 'inflation_adjusted',
 });
 
 const currency = (n: number): string =>
@@ -156,7 +177,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
   const ownerAge = resolveOwnerAge(formData.owner, userData.currentAge, userData.spouseAge);
   const range = incomeEventAgeRanges['roth_conversion'];
   const effectiveMin = Math.min(range.min, formData.startAge);
-  const effectiveEndMin = formData.endAge ? Math.min(range.min, formData.endAge) : range.min;
+  const effectiveEndMin = Math.max(range.min, formData.startAge + 1);
   const startAgeOptions = buildAgeOptions(userData.referenceYear, ownerAge, effectiveMin, range.max);
   const endAgeOptions = buildEndAgeOptions(userData.referenceYear, ownerAge, effectiveEndMin, range.max);
 
@@ -175,10 +196,11 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
     } else {
       setFormData({
         ...makeDefaultFormData(),
+        startAge: Math.max(incomeEventAgeRanges['roth_conversion'].min, userData.currentAge),
         name: generateDefaultIncomeEventName('roth_conversion', existingEvents),
       });
     }
-  }, [visible, editEvent, existingEvents]);
+  }, [visible, editEvent, existingEvents, userData.currentAge]);
 
   const impact = useMemo(() => {
     if (!formData.amount || formData.amount <= 0) return null;
@@ -194,6 +216,39 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
       colaType: formData.colaType,
     };
     return estimateConversionImpact(userData, { id: 'preview', ...draft });
+  }, [userData, formData]);
+
+  const warnings = useMemo(() => {
+    if (!formData.amount || formData.amount <= 0) return [] as string[];
+    const draft: IncomeEvent = {
+      id: 'preview',
+      type: 'roth_conversion',
+      name: formData.name || 'Draft',
+      owner: formData.owner,
+      amount: formData.amount,
+      startAge: formData.startAge,
+      endAge: formData.isOneTime ? undefined : formData.endAge,
+      isOneTime: formData.isOneTime,
+      taxStatus: 'before_tax',
+      colaType: formData.colaType,
+    };
+    const list: string[] = [];
+    if (exceedsSpendingHeuristic(userData, draft)) {
+      list.push(
+        'This conversion is large relative to your spending — it may force significant additional Traditional withdrawals to cover the conversion tax.',
+      );
+    }
+    if (crossesMultipleBracketsHeuristic(userData, draft)) {
+      list.push(
+        'This conversion crosses multiple federal tax brackets. Smaller annual amounts often produce better outcomes.',
+      );
+    }
+    if (exceedsMostOfTradHeuristic(userData, draft)) {
+      list.push(
+        'This will convert most of your Traditional balance. Consider whether a smaller schedule would better balance early tax cost against future RMD savings.',
+      );
+    }
+    return list;
   }, [userData, formData]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -291,10 +346,19 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
             required
           />
           <HelpText>
-            Gross amount moved from Traditional to Roth each year (today's dollars).
-            Taxed as ordinary income; tax is paid from taxable accounts first via the
-            usual withdrawal waterfall.
+            Gross amount moved from Traditional to Roth each year, in today's dollars.
+            With <em>Inflation-adjusted amount</em> on (default), the nominal amount
+            grows each year so the real-dollar conversion stays constant; turn it off
+            for a fixed-nominal schedule. Taxed as ordinary income; tax is paid from
+            taxable accounts first via the usual withdrawal waterfall.
           </HelpText>
+          {warnings.length > 0 && (
+            <WarningList>
+              {warnings.map((w, i) => (
+                <WarningHint key={i}>{w}</WarningHint>
+              ))}
+            </WarningList>
+          )}
         </InputGroup>
 
         <CheckboxGroup>
@@ -312,7 +376,11 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
             <Dropdown
               value={formData.startAge}
               options={startAgeOptions}
-              onChange={(e) => setFormData({ ...formData, startAge: e.value })}
+              onChange={(e) => setFormData({
+                ...formData,
+                startAge: e.value,
+                endAge: formData.endAge && formData.endAge <= e.value ? undefined : formData.endAge,
+              })}
             />
           </InputGroup>
 
@@ -363,13 +431,23 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
               <ImpactValue>{currency(impact.rmdReductionAt73)}</ImpactValue>
               <ImpactLabel>Tax-free Roth at life expectancy</ImpactLabel>
               <ImpactValue>{currency(impact.projectedRothAtEndOfPlan)}</ImpactValue>
+              <ImpactLabel>Net impact on plan value</ImpactLabel>
+              <ImpactValue
+                style={{
+                  color: impact.netPlanValueImpact >= 0 ? colors.income : colors.danger,
+                }}
+              >
+                {currency(impact.netPlanValueImpact)}
+              </ImpactValue>
             </ImpactGrid>
             <Disclaimer>
               <div>
                 <DisclaimerLabel>What this estimate includes:</DisclaimerLabel>{' '}
                 federal and state ordinary income tax on the converted amount, RMD
-                reduction at age 73, and projected tax-free Roth growth at the plan's
-                blended return.
+                reduction at age 73, projected tax-free Roth growth, and a net
+                plan-value comparison that accounts for forgone Traditional growth
+                (taxed at your current baseline effective rate) and the opportunity
+                cost of conversion tax paid from taxable accounts.
               </div>
               <div>
                 <DisclaimerLabel>What it doesn't include:</DisclaimerLabel>{' '}

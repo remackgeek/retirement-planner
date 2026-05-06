@@ -111,11 +111,13 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
         inflationAdjusted: editGoal.inflationAdjusted,
       });
     } else {
-      const defaults = makeDefaultFormData();
-      defaults.name = generateDefaultSpendingGoalName('home_purchase', existingGoals);
-      setFormData(defaults);
+      setFormData({
+        ...makeDefaultFormData(),
+        startAge: currentAge,
+        name: generateDefaultSpendingGoalName('home_purchase', existingGoals),
+      });
     }
-  }, [visible, editGoal, existingGoals]);
+  }, [visible, editGoal, existingGoals, currentAge]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

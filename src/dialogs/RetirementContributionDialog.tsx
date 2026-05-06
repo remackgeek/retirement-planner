@@ -6,8 +6,9 @@ import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
-import type { IncomeEvent } from '../types/IncomeEvent';
 import { confirmDialog } from 'primereact/confirmdialog';
+import type { IncomeEvent, ContributionType } from '../types/IncomeEvent';
+import type { Account, AccountType } from '../types/Account';
 import { spacing, colors, fontSize, border } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 import { generateDefaultIncomeEventName, eventTypeIcons } from '../utils/defaultName';
@@ -74,37 +75,50 @@ const TrashButton = styled.button`
   }
 `;
 
-interface PensionIncomeDialogProps {
+interface RetirementContributionDialogProps {
   visible: boolean;
   onHide: () => void;
   onSave: (event: Omit<IncomeEvent, 'id'>) => void;
   onDelete?: () => void;
   editEvent?: IncomeEvent;
   existingEvents: IncomeEvent[];
+  accounts: Account[];
   currentAge: number;
   spouseAge: number | null;
   filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh';
   referenceYear: number;
 }
 
+const accountTypeForContribution: Record<ContributionType, AccountType> = {
+  pre_tax: 'traditional',
+  roth: 'roth',
+  after_tax: 'taxable',
+};
+
 const makeDefaultFormData = () => ({
   name: '',
   owner: 'self' as 'self' | 'spouse',
+  contributionType: 'pre_tax' as ContributionType,
   displayAmount: 0,
-  amountPeriod: 'monthly' as 'monthly' | 'annual',
-  startAge: 65,
-  endAge: undefined as number | undefined,
-  taxStatus: 'before_tax' as 'before_tax' | 'after_tax',
-  colaType: 'fixed' as 'fixed' | 'inflation_adjusted',
+  amountPeriod: 'annual' as 'monthly' | 'annual',
+  startAge: 40,
+  endAge: 65 as number | undefined,
+  colaType: 'inflation_adjusted' as 'fixed' | 'inflation_adjusted',
+  accountId: undefined as string | undefined,
+  employerMatchEnabled: false,
+  employerMatchPercent: 100,
+  employerMatchCeilingPercent: 6,
+  wageEventId: undefined as string | undefined,
 });
 
-const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
+const RetirementContributionDialog: React.FC<RetirementContributionDialogProps> = ({
   visible,
   onHide,
   onSave,
   onDelete,
   editEvent,
   existingEvents,
+  accounts,
   currentAge,
   spouseAge,
   filingStatus,
@@ -115,7 +129,7 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
   const [formData, setFormData] = useState(makeDefaultFormData());
 
   const ownerAge = resolveOwnerAge(formData.owner, currentAge, spouseAge);
-  const range = incomeEventAgeRanges['pension_income'];
+  const range = incomeEventAgeRanges['retirement_contribution'];
   const effectiveMin = Math.min(range.min, formData.startAge);
   const effectiveEndMin = Math.max(range.min, formData.startAge + 1);
   const startAgeOptions = buildAgeOptions(referenceYear, ownerAge, effectiveMin, range.max);
@@ -129,21 +143,33 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
       setFormData({
         name: editEvent.name,
         owner: editEvent.owner ?? 'self',
+        contributionType: editEvent.contributionType ?? 'pre_tax',
         displayAmount,
         amountPeriod: period,
         startAge: editEvent.startAge,
         endAge: editEvent.endAge,
-        taxStatus: editEvent.taxStatus,
         colaType: editEvent.colaType,
+        accountId: editEvent.accountId,
+        employerMatchEnabled: (editEvent.employerMatchPercent ?? 0) > 0,
+        employerMatchPercent: editEvent.employerMatchPercent ?? 100,
+        employerMatchCeilingPercent: editEvent.employerMatchCeilingPercent ?? 6,
+        wageEventId: editEvent.wageEventId,
       });
     } else {
       setFormData({
         ...makeDefaultFormData(),
-        startAge: Math.max(incomeEventAgeRanges['pension_income'].min, currentAge),
-        name: generateDefaultIncomeEventName('pension_income', existingEvents),
+        startAge: currentAge,
+        endAge: Math.min(range.max, currentAge + 20),
+        name: generateDefaultIncomeEventName('retirement_contribution', existingEvents),
       });
     }
   }, [visible, editEvent, existingEvents, currentAge]);
+
+  const requiredAccountType = accountTypeForContribution[formData.contributionType];
+  const eligibleAccounts = accounts.filter((a) => a.type === requiredAccountType);
+  const wageEvents = existingEvents.filter(
+    (e) => e.type === 'wage_income' && (!editEvent || e.id !== editEvent.id)
+  );
 
   const handlePeriodChange = (newPeriod: 'monthly' | 'annual') => {
     if (newPeriod === formData.amountPeriod) return;
@@ -158,6 +184,11 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
     });
   };
 
+  const handleContributionTypeChange = (newType: ContributionType) => {
+    // Clear accountId when switching type so it doesn't point at an account of the wrong type.
+    setFormData({ ...formData, contributionType: newType, accountId: undefined });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const annualAmount =
@@ -165,15 +196,20 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
         ? formData.displayAmount * 12
         : formData.displayAmount;
     onSave({
-      type: 'pension_income',
+      type: 'retirement_contribution',
       name: formData.name,
       owner: formData.owner,
       amount: annualAmount,
       amountPeriod: formData.amountPeriod,
       startAge: formData.startAge,
       endAge: formData.endAge,
-      taxStatus: formData.taxStatus,
+      taxStatus: 'before_tax', // structurally unused by retirement_contribution; keep field set.
       colaType: formData.colaType,
+      contributionType: formData.contributionType,
+      accountId: formData.accountId,
+      employerMatchPercent: formData.employerMatchEnabled ? formData.employerMatchPercent : undefined,
+      employerMatchCeilingPercent: formData.employerMatchEnabled ? formData.employerMatchCeilingPercent : undefined,
+      wageEventId: formData.wageEventId,
     });
     onHide();
   };
@@ -188,19 +224,15 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
     { label: 'Spouse', value: 'spouse' },
   ];
 
-  const taxStatusOptions = [
-    { label: 'Before Tax', value: 'before_tax' },
-    { label: 'After Tax', value: 'after_tax' },
+  const contributionTypeOptions = [
+    { label: 'Pre-tax (Traditional 401k/IRA)', value: 'pre_tax' },
+    { label: 'Roth (Roth 401k/IRA)', value: 'roth' },
+    { label: 'After-tax (Taxable brokerage)', value: 'after_tax' },
   ];
 
   const dialogFooter = (
     <div>
-      <Button
-        label='Cancel'
-        icon='pi pi-times'
-        onClick={onHide}
-        className='p-button-text'
-      />
+      <Button label='Cancel' icon='pi pi-times' onClick={onHide} className='p-button-text' />
       <Button
         label={isEditing ? 'Save Changes' : 'Add Event'}
         icon='pi pi-check'
@@ -224,8 +256,8 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
       header={
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
           <span>
-            <i className={eventTypeIcons['pension_income']} style={{ marginRight: spacing.sm, color: colors.primary }} />
-            {isEditing ? 'Edit Pension Income' : 'Add Pension Income'}
+            <i className={eventTypeIcons['retirement_contribution']} style={{ marginRight: spacing.sm, color: colors.primary }} />
+            {isEditing ? 'Edit Retirement Contribution' : 'Add Retirement Contribution'}
           </span>
           {onDelete && (
             <TrashButton onClick={handleDeleteClick} title="Delete">
@@ -235,7 +267,7 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
         </div>
       }
       visible={visible}
-      style={{ width: '32rem' }}
+      style={{ width: '34rem' }}
       onHide={onHide}
       closable={false}
       closeOnEscape={true}
@@ -251,9 +283,26 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
           />
         </InputGroup>
 
+        <InputGroup>
+          <label>Contribution Type</label>
+          <Dropdown
+            value={formData.contributionType}
+            options={contributionTypeOptions}
+            onChange={(e) => handleContributionTypeChange(e.value)}
+          />
+          <HelpText>
+            {formData.contributionType === 'pre_tax' &&
+              'Pre-tax contributions reduce this year’s taxable income and grow tax-deferred. Withdrawals are taxed as ordinary income.'}
+            {formData.contributionType === 'roth' &&
+              'Roth contributions are made with after-tax dollars. Growth and qualified withdrawals are tax-free.'}
+            {formData.contributionType === 'after_tax' &&
+              'After-tax contributions go to a taxable brokerage. Growth is taxed (LTCG on withdrawal in this model).'}
+          </HelpText>
+        </InputGroup>
+
         {isMfj && (
           <InputGroup>
-            <label>Recipient</label>
+            <label>Owner</label>
             <Dropdown
               value={formData.owner}
               options={ownerOptions}
@@ -263,13 +312,11 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
         )}
 
         <InputGroup>
-          <label>Pension Amount</label>
+          <label>Contribution Amount</label>
           <AmountRow>
             <InputNumber
               value={formData.displayAmount}
-              onValueChange={(e) =>
-                setFormData({ ...formData, displayAmount: e.value || 0 })
-              }
+              onValueChange={(e) => setFormData({ ...formData, displayAmount: e.value || 0 })}
               mode='currency'
               currency='USD'
               required
@@ -293,11 +340,6 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
             />
             <label htmlFor='colaType'>Inflation adjusted</label>
           </CheckboxGroup>
-          <HelpText>
-            {formData.colaType === 'inflation_adjusted'
-              ? "Amount in today's dollars — adjusted for inflation each year"
-              : "Fixed nominal amount — purchasing power decreases over time"}
-          </HelpText>
         </InputGroup>
 
         <FieldRow>
@@ -313,7 +355,6 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
               })}
             />
           </InputGroup>
-
           <InputGroup>
             <label>End Age (optional)</label>
             <Dropdown
@@ -327,16 +368,85 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
         </FieldRow>
 
         <InputGroup>
-          <label>Tax Status</label>
+          <label>Target Account</label>
           <Dropdown
-            value={formData.taxStatus}
-            options={taxStatusOptions}
-            onChange={(e) => setFormData({ ...formData, taxStatus: e.value })}
+            value={formData.accountId ?? ''}
+            options={[
+              { label: `Default (first ${requiredAccountType})`, value: '' },
+              ...eligibleAccounts.map((a) => ({ label: a.name, value: a.id })),
+            ]}
+            onChange={(e) => setFormData({ ...formData, accountId: e.value || undefined })}
           />
+          {eligibleAccounts.length === 0 && (
+            <HelpText>
+              No {requiredAccountType} accounts exist. Create one in the Accounts section, or the
+              contribution will fall back to the first available account.
+            </HelpText>
+          )}
         </InputGroup>
+
+        {wageEvents.length > 0 && (
+          <InputGroup>
+            <label>Linked Wage Event (optional)</label>
+            <Dropdown
+              value={formData.wageEventId ?? ''}
+              options={[
+                { label: 'None — match base = contribution amount', value: '' },
+                ...wageEvents.map((w) => ({ label: w.name, value: w.id })),
+              ]}
+              onChange={(e) =>
+                setFormData({ ...formData, wageEventId: e.value || undefined })
+              }
+            />
+            <HelpText>
+              When set, employer match ceiling is computed against this wage event’s annual
+              amount instead of the contribution amount.
+            </HelpText>
+          </InputGroup>
+        )}
+
+        <CheckboxGroup>
+          <Checkbox
+            inputId='employerMatchEnabled'
+            checked={formData.employerMatchEnabled}
+            onChange={(e) =>
+              setFormData({ ...formData, employerMatchEnabled: e.checked || false })
+            }
+          />
+          <label htmlFor='employerMatchEnabled'>Employer match</label>
+        </CheckboxGroup>
+
+        {formData.employerMatchEnabled && (
+          <FieldRow>
+            <InputGroup>
+              <label>Match %</label>
+              <InputNumber
+                value={formData.employerMatchPercent}
+                onValueChange={(e) =>
+                  setFormData({ ...formData, employerMatchPercent: e.value || 0 })
+                }
+                suffix='%'
+                min={0}
+                max={500}
+              />
+            </InputGroup>
+            <InputGroup>
+              <label>Up to (% of wages)</label>
+              <InputNumber
+                value={formData.employerMatchCeilingPercent}
+                onValueChange={(e) =>
+                  setFormData({ ...formData, employerMatchCeilingPercent: e.value || 0 })
+                }
+                suffix='%'
+                min={0}
+                max={100}
+              />
+            </InputGroup>
+          </FieldRow>
+        )}
       </Form>
     </Dialog>
   );
 };
 
-export default PensionIncomeDialog;
+export default RetirementContributionDialog;

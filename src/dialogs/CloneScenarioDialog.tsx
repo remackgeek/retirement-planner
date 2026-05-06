@@ -25,6 +25,7 @@ interface CloneScenarioDialogProps {
   sourceName: string;
   onHide: () => void;
   onSave: (name: string) => void;
+  defaultName?: string;
 }
 
 const CloneScenarioDialog: React.FC<CloneScenarioDialogProps> = ({
@@ -32,12 +33,13 @@ const CloneScenarioDialog: React.FC<CloneScenarioDialogProps> = ({
   sourceName,
   onHide,
   onSave,
+  defaultName,
 }) => {
   const [name, setName] = useState('');
 
   useEffect(() => {
-    if (visible) setName(`Copy of ${sourceName}`);
-  }, [visible, sourceName]);
+    if (visible) setName(defaultName ?? `Copy of ${sourceName}`);
+  }, [visible, sourceName, defaultName]);
 
   const isValid = name.trim().length > 0;
 

@@ -1,0 +1,69 @@
+{
+  "_description": "Young high earner contributes $30k/yr pre-tax to a 401(k) but cap is $23k. Expect $7k/yr overflow each active year, captured in contributionsCappedAmount. Single year horizon for simplicity.",
+  "_rationale": "Age 35, 200k wage, 30k pre_tax contribution to 401(k) with explicit accountKind '401k'. Cap = 23000. Cut = 7000/yr. After cap, 23k deposits to Traditional. Pre-tax overflow stays in taxable income (otherTaxableGross = 200k - 23k = 177k). No spending, no growth, no inflation, no other income. Year 0 balance = 0 + 23k = 23k.",
+  "_seed": 12345,
+  "name": "Contribution Cap 401k Overflow",
+  "currentAge": 35,
+  "lifeExpectancy": 36,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "wage-1",
+      "type": "wage_income",
+      "name": "Salary",
+      "amount": 200000,
+      "startAge": 35,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    },
+    {
+      "id": "contrib-1",
+      "type": "retirement_contribution",
+      "contributionType": "pre_tax",
+      "accountId": "trad-1",
+      "amount": 30000,
+      "startAge": 35,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "name": "401k Contribution"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": 0,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "401k",
+      "type": "traditional",
+      "balance": 0,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40",
+      "accountKind": "401k"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "contributionLimits": {
+    "elective401k": 23000,
+    "iraLimit": 7000,
+    "catchUpAge": 50,
+    "catchUp401k": 7500,
+    "catchUpIra": 1000,
+    "inflationAdjusted": false
+  }
+}

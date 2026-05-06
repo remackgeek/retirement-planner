@@ -1,10 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import styled from 'styled-components';
 import AppHeader from '../AppHeader/AppHeader';
 import Content from '../Content/Content';
 import Sidebar from '../Sidebar/Sidebar';
 import Footer from '../Footer';
 import { breakpoints, colors, mediaQuery } from '../../styles/theme';
+import { RetirementContext } from '../../context/RetirementContext';
+import type { Scenario } from '../../types/Scenario';
+import { confirmDialog } from 'primereact/confirmdialog';
 
 const AppContentContainer = styled.div`
   display: flex;
@@ -37,6 +40,8 @@ const AppContent: React.FC = () => {
     return !window.matchMedia(mobileMediaQuery).matches;
   });
   const [compareScenarioId, setCompareScenarioId] = useState<string | null>(null);
+  const [whatIfSnapshot, setWhatIfSnapshot] = useState<Scenario | null>(null);
+  const ctx = useContext(RetirementContext);
   const exportCsvRef = useRef<(() => void) | null>(null);
   const [canExport, setCanExport] = useState(false);
   const handleRegisterExport = (fn: (() => void) | null) => {
@@ -53,6 +58,63 @@ const AppContent: React.FC = () => {
     setIsSidebarOpen(o => !o);
     nudgeChartResize();
   };
+
+  const enterWhatIf = () => {
+    if (!ctx?.activeScenario || whatIfSnapshot || compareScenarioId) return;
+    setWhatIfSnapshot(JSON.parse(JSON.stringify(ctx.activeScenario)) as Scenario);
+  };
+
+  const discardWhatIf = () => {
+    if (!whatIfSnapshot || !ctx) return;
+    confirmDialog({
+      message: `Discard What If changes and restore "${whatIfSnapshot.name}"?`,
+      header: 'Discard What If Changes',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Discard',
+      rejectLabel: 'Cancel',
+      accept: async () => {
+        await ctx.updateScenario(whatIfSnapshot);
+        setWhatIfSnapshot(null);
+      },
+    });
+  };
+
+  const saveWhatIf = () => {
+    setWhatIfSnapshot(null);
+  };
+
+  const saveWhatIfAsNew = async (name: string) => {
+    if (!whatIfSnapshot || !ctx?.activeScenario) return;
+    const experiment = ctx.activeScenario;
+    await ctx.cloneScenario(experiment.id, name);
+    await ctx.updateScenario(whatIfSnapshot);
+    setWhatIfSnapshot(null);
+  };
+
+  const requestSwitchScenario = (id: string) => {
+    if (!ctx) return;
+    if (!whatIfSnapshot) { ctx.setActiveScenario(id); return; }
+    confirmDialog({
+      message: 'You have unsaved What If changes. Discard them and switch scenarios?',
+      header: 'Unsaved What If Changes',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Discard & Switch',
+      rejectLabel: 'Cancel',
+      accept: async () => {
+        await ctx.updateScenario(whatIfSnapshot);
+        setWhatIfSnapshot(null);
+        await ctx.setActiveScenario(id);
+      },
+    });
+  };
+
+  // Auto-clear What If state if the active scenario changes for any other reason
+  // (e.g. delete, import).
+  useEffect(() => {
+    if (whatIfSnapshot && ctx?.activeScenario && ctx.activeScenario.id !== whatIfSnapshot.id) {
+      setWhatIfSnapshot(null);
+    }
+  }, [ctx?.activeScenario?.id, whatIfSnapshot]);
 
   // Auto-close the sidebar when the viewport crosses into mobile width
   // (e.g. shrinking a desktop window or rotating a tablet to portrait).
@@ -76,8 +138,20 @@ const AppContent: React.FC = () => {
         <Sidebar
           isOpen={isSidebarOpen}
           onToggle={toggle}
+          requestSwitchScenario={requestSwitchScenario}
         />
-        <Content compareScenarioId={compareScenarioId} onSetCompare={setCompareScenarioId} onRegisterExport={handleRegisterExport} />
+        <Content
+          compareScenarioId={whatIfSnapshot ? null : compareScenarioId}
+          onSetCompare={setCompareScenarioId}
+          onRegisterExport={handleRegisterExport}
+          whatIfSnapshot={whatIfSnapshot}
+          whatIfActive={whatIfSnapshot != null}
+          compareDisabled={whatIfSnapshot != null}
+          onEnterWhatIf={enterWhatIf}
+          onDiscardWhatIf={discardWhatIf}
+          onSaveWhatIf={saveWhatIf}
+          onSaveWhatIfAsNew={saveWhatIfAsNew}
+        />
       </ContentArea>
       <Footer />
     </AppContentContainer>

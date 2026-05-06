@@ -1,9 +1,10 @@
 import type { UserData } from '../types/UserData';
-import type { Account, AccountType } from '../types/Account';
+import type { Account, AccountType, AccountKind } from '../types/Account';
 import {
   calculateNetFromGross,
   calculateSSTaxableAmount,
 } from './TaxCalculator';
+import { getContributionLimits } from '../utils/contributionLimits';
 import {
   createReturnGenerator,
   createNominalGenerator,
@@ -206,71 +207,72 @@ function eventActiveInYear(
   return year >= startYear && year <= endYear;
 }
 
-function resolveEmploymentSavingsAccountId(
+// Resolve the deposit-target account for a retirement_contribution event.
+// Falls back to the first account of the type implied by contributionType, then any account.
+function resolveContributionAccountId(
   userData: UserData,
-  accountId: string | undefined
+  event: UserData['incomeEvents'][number]
 ): string | null {
-  if (accountId && userData.accounts.some((a) => a.id === accountId)) return accountId;
-  const trad = userData.accounts.find((a) => a.type === 'traditional');
-  if (trad) return trad.id;
+  const requiredType: AccountType =
+    event.contributionType === 'pre_tax'
+      ? 'traditional'
+      : event.contributionType === 'roth'
+        ? 'roth'
+        : 'taxable';
+  if (event.accountId) {
+    const explicit = userData.accounts.find((a) => a.id === event.accountId);
+    if (explicit) return explicit.id;
+  }
+  const ofType = userData.accounts.find((a) => a.type === requiredType);
+  if (ofType) return ofType.id;
   return userData.accounts[0]?.id ?? null;
 }
 
-// Distribute a positive net cash flow (surplus or savings contribution) into accounts.
-// If any employment_savings events are active this year, split proportionally by their
-// inflation-adjusted gross amounts; otherwise deposit into the first available
-// taxable → traditional → roth account.
+// Distribute a positive surplus (netCashFlow > 0) into the first taxable account.
+// ensureReinvestmentAccount guarantees a taxable account exists when the simulation
+// can possibly produce surplus, so the no-target case shouldn't fire in practice.
+// Note: retirement_contribution deposits are handled separately (see depositContributions),
+// not via this surplus pathway.
 function distributeDeposit(
   userData: UserData,
-  year: number,
   amount: number,
-  balances: Record<string, number>,
-  inflationRate: number
+  balances: Record<string, number>
 ): void {
-  if (amount <= 0 || userData.accounts.length === 0) return;
-  const active = userData.incomeEvents.filter(
-    (e) => e.type === 'employment_savings' && eventActiveInYear(userData, e, year)
-  );
-  if (active.length > 0) {
-    // Use inflation-adjusted amounts so the proportional split matches actual event cash flows.
-    const adjustedAmounts = active.map((e) => {
-      let amt = Math.max(0, e.amount);
-      if (e.colaType === 'inflation_adjusted') {
-        const yearsFromBase = year - userData.referenceYear;
-        if (yearsFromBase > 0) amt *= Math.pow(1 + inflationRate, yearsFromBase);
-      }
-      return amt;
-    });
-    const totalGross = adjustedAmounts.reduce((s, a) => s + a, 0);
-    if (totalGross > 0) {
-      for (let i = 0; i < active.length; i++) {
-        const e = active[i];
-        const targetId = resolveEmploymentSavingsAccountId(userData, e.accountId);
-        if (!targetId) continue;
-        const share = (adjustedAmounts[i] / totalGross) * amount;
-        balances[targetId] = (balances[targetId] ?? 0) + share;
-      }
-      return;
-    }
-  }
-  const target =
-    userData.accounts.find((a) => a.type === 'taxable') ??
-    userData.accounts.find((a) => a.type === 'traditional') ??
-    userData.accounts.find((a) => a.type === 'roth') ??
-    userData.accounts[0];
-  if (target) {
-    balances[target.id] = (balances[target.id] ?? 0) + amount;
+  if (amount <= 0) return;
+  const target = userData.accounts.find((a) => a.type === 'taxable');
+  if (!target) return;
+  balances[target.id] = (balances[target.id] ?? 0) + amount;
+}
+
+// Deposit retirement contributions (employee + employer match) into target accounts.
+// Routing: pre_tax → traditional, roth → roth, after_tax → taxable. Employer match
+// is deposited to the same target as the employee contribution (a documented
+// simplification — pre-SECURE 2.0 employer match always went to the pre-tax bucket;
+// modeling it consistently with the employee contribution is the cleaner approximation).
+function depositContributions(
+  userData: UserData,
+  contributions: ContributionDeposit[],
+  balances: Record<string, number>
+): void {
+  if (userData.accounts.length === 0) return;
+  for (const c of contributions) {
+    const total = c.employeeAmount + c.employerMatch;
+    if (total <= 0) continue;
+    const event = userData.incomeEvents.find((e) => e.id === c.eventId);
+    if (!event) continue;
+    const targetId = resolveContributionAccountId(userData, event);
+    if (!targetId) continue;
+    balances[targetId] = (balances[targetId] ?? 0) + total;
   }
 }
 
 // Apply the per-bucket withdrawals from a cash-flow breakdown to the account balances,
-// then deposit any positive netCashFlow surplus.
+// then deposit retirement contributions and any positive netCashFlow surplus.
 function applyCashFlow(
   userData: UserData,
-  year: number,
   breakdown: AnnualCashFlowBreakdown,
-  balances: Record<string, number>,
-  inflationRate: number
+  contributions: ContributionDeposit[],
+  balances: Record<string, number>
 ): void {
   subtractFromType(userData.accounts, balances, 'taxable', breakdown.withdrawalFromTaxable);
   subtractFromType(userData.accounts, balances, 'traditional', breakdown.withdrawalFromTraditional);
@@ -287,32 +289,29 @@ function applyCashFlow(
       balances[taxableTarget.id] = (balances[taxableTarget.id] ?? 0) + breakdown.rmdExcess;
     }
   }
+  // Retirement contributions (explicit deposit instructions, independent of surplus).
+  depositContributions(userData, contributions, balances);
   if (breakdown.netCashFlow > 0) {
-    distributeDeposit(userData, year, breakdown.netCashFlow, balances, inflationRate);
+    distributeDeposit(userData, breakdown.netCashFlow, balances);
   }
 }
 
-// If Traditional accounts exist and the user will reach age 73, ensure a taxable account
-// exists to receive excess RMD reinvestment. Returns a shallow copy with the account added.
-function ensureRMDReinvestmentAccount(userData: UserData): UserData {
-  if (!userData.accounts.some((a) => a.type === 'traditional')) return userData;
-  const totalYears = userData.lifeExpectancy - userData.currentAge;
-  const selfReaches73 = 73 - userData.currentAge <= totalYears;
-  const spouseReaches73 =
-    userData.spouseAge !== null &&
-    userData.accounts.some((a) => a.type === 'traditional' && (a.owner ?? 'self') === 'spouse') &&
-    73 - userData.spouseAge <= totalYears;
-  if (!selfReaches73 && !spouseReaches73) return userData;
+// Ensure a taxable account exists to receive (a) excess RMD reinvestment from
+// Traditional balances after age 73 and (b) general surplus (positive netCashFlow)
+// from any year. The synthetic "Reinvestment" account starts at $0 and only matters
+// if it actually receives deposits; injecting it whenever no taxable account exists
+// is trivially safe. Returns a shallow copy with the account added when needed.
+function ensureReinvestmentAccount(userData: UserData): UserData {
   if (userData.accounts.some((a) => a.type === 'taxable')) return userData;
-  const rmdAccount: Account = {
-    id: 'rmd-reinvestment-auto',
-    name: 'RMD Reinvestment',
+  const reinvestAccount: Account = {
+    id: 'reinvestment-auto',
+    name: 'Reinvestment',
     type: 'taxable',
     balance: 0,
     stockAllocation: 0.6,
     portfolioBalance: '60_40',
   };
-  return { ...userData, accounts: [...userData.accounts, rmdAccount] };
+  return { ...userData, accounts: [...userData.accounts, reinvestAccount] };
 }
 
 // If any Roth conversion events exist but there is no Roth account to receive
@@ -336,9 +335,9 @@ function ensureRothConversionAccount(userData: UserData): UserData {
 
 export interface AnnualCashFlowBreakdown {
   ssGross: number;
-  otherTaxableGross: number;
+  otherTaxableGross: number;     // post-pre-tax-deduction (wage_income + other before_tax − pre_tax contributions)
   afterTaxIncome: number;
-  totalGrossIncome: number;
+  totalGrossIncome: number;      // post-pre-tax-deduction sum of taxable + after_tax + SS
   ssTaxableAmount: number;
   baseSpendingNet: number;
   otherSpendingGoalsNet: number;
@@ -355,62 +354,279 @@ export interface AnnualCashFlowBreakdown {
   rmdExcess: number;    // rmdRequired beyond spending need; reinvested to taxable
   rothConversionGross: number;  // amount converted from Traditional to Roth this year
   spendingShortfall: number;  // unmet spending+tax need when portfolio cap was binding; 0 otherwise
+  wageIncomeGross: number;          // sum of wage_income events (already included in otherTaxableGross before any pre-tax deduction)
+  preTaxContributions: number;      // employee pre_tax contributions deposited to Traditional this year
+  rothContributions: number;        // employee Roth contributions deposited to Roth this year
+  afterTaxContributions: number;    // employee after_tax contributions deposited to Taxable this year
+  employerMatch: number;            // employer match deposited (routed to same target as employee contribution)
+  contributionsCappedAmount: number; // total employee contribution dollars cut by IRS caps this year
+  surplusContribution: number;       // positive netCashFlow deposited to taxable as general surplus this year
+}
+
+// Per-event contribution deposit instruction emitted by accumulateIncome and consumed
+// by applyCashFlow. Kept separate from AnnualCashFlowBreakdown so the deposit routing
+// has access to the originating event (for accountId / contributionType).
+export interface ContributionDeposit {
+  eventId: string;
+  employeeAmount: number;
+  employerMatch: number;
+}
+
+export interface AccumulatedIncome {
+  ssGross: number;
+  // otherTaxableGross is wage_income + other before_tax events MINUS pre_tax contributions
+  // (i.e., already net of pre-tax deduction — feeds directly into the tax calc).
+  otherTaxableGross: number;
+  afterTaxIncome: number;
+  conversionGross: number;
+  wageIncomeGross: number;        // sum of wage_income events (pre-deduction)
+  preTaxContributions: number;    // employee pre_tax contributions for this year
+  rothContributions: number;
+  afterTaxContributions: number;
+  employerMatch: number;
+  contributions: ContributionDeposit[];
+  contributionsCappedAmount: number;
+}
+
+// Resolve the cap-classification kind for a given target account.
+// Defaults: 'taxable' → brokerage; 'traditional' / 'roth' → IRA when accountKind is absent.
+function getAccountKind(account: Account): AccountKind {
+  if (account.accountKind) return account.accountKind;
+  return account.type === 'taxable' ? 'brokerage' : 'ira';
+}
+
+function inflateAmount(
+  userData: UserData,
+  event: UserData['incomeEvents'][number],
+  year: number,
+  inflationRate: number
+): number {
+  let amount = event.amount;
+  if (event.colaType === 'inflation_adjusted') {
+    const ownerAge =
+      event.owner === 'spouse' && userData.spouseAge !== null
+        ? userData.spouseAge
+        : userData.currentAge;
+    const startYear = userData.referenceYear + (event.startAge - ownerAge);
+    let baseYear = userData.referenceYear;
+    if (event.type === 'social_security' && event.ssAmountBasis === 'future') {
+      baseYear = startYear;
+    }
+    const yearsFromBase = year - baseYear;
+    if (yearsFromBase > 0) {
+      amount *= Math.pow(1 + inflationRate, yearsFromBase);
+    }
+  }
+  return amount;
 }
 
 function accumulateIncome(
   userData: UserData,
   year: number,
   inflationRate: number
-): { ssGross: number; otherTaxableGross: number; afterTaxIncome: number; conversionGross: number } {
+): AccumulatedIncome {
   let afterTaxIncome = 0;
   let ssGross = 0;
   let otherTaxableGross = 0;
   let conversionGross = 0;
+  let wageIncomeGross = 0;
+  let preTaxContributions = 0;
+  let rothContributions = 0;
+  let afterTaxContributions = 0;
+  let employerMatchTotal = 0;
+  const contributions: ContributionDeposit[] = [];
+
+  // Pre-pass: build wage-amount lookup keyed by event id so contributions linked to
+  // a wage event can compute employer-match base off the inflated wage amount.
+  const wageAmountById = new Map<string, number>();
+  userData.incomeEvents.forEach((event) => {
+    if (event.type !== 'wage_income') return;
+    if (!eventActiveInYear(userData, event, year)) return;
+    wageAmountById.set(event.id, inflateAmount(userData, event, year, inflationRate));
+  });
 
   userData.incomeEvents.forEach((event) => {
     if (!eventActiveInYear(userData, event, year)) return;
 
-    const ownerAge =
-      event.owner === 'spouse' && userData.spouseAge !== null
-        ? userData.spouseAge
-        : userData.currentAge;
-    const startYear = userData.referenceYear + (event.startAge - ownerAge);
-
-    let amount = event.amount;
-    if (event.colaType === 'inflation_adjusted') {
-      let baseYear = userData.referenceYear;
-      if (event.type === 'social_security' && event.ssAmountBasis === 'future') {
-        baseYear = startYear;
-      }
-      const yearsFromBase = year - baseYear;
-      if (yearsFromBase > 0) {
-        amount *= Math.pow(1 + inflationRate, yearsFromBase);
-      }
-    }
-
-    if (event.type === 'social_security' && event.ssHaircutEnabled !== false && year >= 2034) {
-      const reduction = (event.ssHaircutPercent ?? 23) / 100;
-      amount *= 1 - reduction;
-    }
+    const amount = inflateAmount(userData, event, year, inflationRate);
 
     // Roth conversions are a Trad->Roth transfer: taxed as ordinary income but
-    // NOT added to cash available for spending. Tracked separately and applied
-    // in calculateAnnualCashFlowCore.
+    // NOT added to cash available for spending. Tracked separately.
     if (event.type === 'roth_conversion') {
       conversionGross += Math.max(0, amount);
       return;
     }
 
-    if (event.taxStatus === 'after_tax') {
-      afterTaxIncome += amount;
-    } else if (event.type === 'social_security') {
-      ssGross += amount;
-    } else {
+    // Retirement contributions are deposit instructions — they do NOT add to
+    // spendable cash. pre_tax additionally reduces taxable income (handled below).
+    if (event.type === 'retirement_contribution') {
+      const employeeAmount = Math.max(0, amount);
+      const matchBase = event.wageEventId
+        ? wageAmountById.get(event.wageEventId) ?? employeeAmount
+        : employeeAmount;
+      let match = 0;
+      if (event.employerMatchPercent && event.employerMatchPercent > 0) {
+        const matchRate = event.employerMatchPercent / 100;
+        const ceilingRate =
+          event.employerMatchCeilingPercent != null
+            ? Math.max(0, event.employerMatchCeilingPercent) / 100
+            : Infinity;
+        // Industry convention: match X% of every dollar contributed up to a ceiling
+        // expressed as % of the wage base. Cap contribution-eligible-for-match at
+        // ceiling × wageBase, then multiply by matchRate.
+        const cappedContribution =
+          ceilingRate === Infinity
+            ? employeeAmount
+            : Math.min(employeeAmount, ceilingRate * matchBase);
+        match = cappedContribution * matchRate;
+      }
+      contributions.push({ eventId: event.id, employeeAmount, employerMatch: match });
+      employerMatchTotal += match;
+      switch (event.contributionType) {
+        case 'pre_tax':
+          preTaxContributions += employeeAmount;
+          break;
+        case 'roth':
+          rothContributions += employeeAmount;
+          break;
+        case 'after_tax':
+        default:
+          afterTaxContributions += employeeAmount;
+          break;
+      }
+      return;
+    }
+
+    if (event.type === 'wage_income') {
+      // Wage income is taxable ordinary income (always before_tax).
+      wageIncomeGross += amount;
       otherTaxableGross += amount;
+      return;
+    }
+
+    let effectiveAmount = amount;
+    if (event.type === 'social_security' && event.ssHaircutEnabled !== false && year >= 2034) {
+      const reduction = (event.ssHaircutPercent ?? 23) / 100;
+      effectiveAmount *= 1 - reduction;
+    }
+
+    if (event.taxStatus === 'after_tax') {
+      afterTaxIncome += effectiveAmount;
+    } else if (event.type === 'social_security') {
+      ssGross += effectiveAmount;
+    } else {
+      otherTaxableGross += effectiveAmount;
     }
   });
 
-  return { ssGross, otherTaxableGross, afterTaxIncome, conversionGross };
+  // Enforce IRS contribution caps per (owner, kind). Excess is removed from the deposit
+  // instructions and refunded to the owner as spendable cash (added to afterTaxIncome).
+  // Overflow goes to afterTaxIncome rather than netCashFlow because the cap is applied
+  // pre-tax-calc — the un-deposited dollars are effectively after-tax wages the owner
+  // keeps. Phase 4 may route this overflow to a taxable account via the surplus path.
+  const limits = getContributionLimits(userData);
+  const inflationFactor = limits.inflationAdjusted
+    ? Math.pow(1 + inflationRate, year - userData.referenceYear)
+    : 1;
+  // Group contributions by (owner, kind) — kind ∈ {'401k','ira'}; 'brokerage' is uncapped.
+  type Group = {
+    owner: 'self' | 'spouse';
+    kind: '401k' | 'ira';
+    age: number;
+    employeeTotal: number;
+    preTax: number;
+    roth: number;
+    indices: number[]; // indices into `contributions` array for proportional scaling
+  };
+  const groups = new Map<string, Group>();
+  contributions.forEach((c, idx) => {
+    const event = userData.incomeEvents.find((e) => e.id === c.eventId);
+    if (!event || event.type !== 'retirement_contribution') return;
+    const targetId = resolveContributionAccountId(userData, event);
+    if (!targetId) return;
+    const target = userData.accounts.find((a) => a.id === targetId);
+    if (!target) return;
+    const kind = getAccountKind(target);
+    if (kind === 'brokerage') return; // after_tax / brokerage deposits are uncapped
+    const owner: 'self' | 'spouse' = event.owner ?? 'self';
+    const age =
+      owner === 'spouse' && userData.spouseAge !== null
+        ? userData.spouseAge + (year - userData.referenceYear)
+        : userData.currentAge + (year - userData.referenceYear);
+    const key = `${owner}:${kind}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { owner, kind, age, employeeTotal: 0, preTax: 0, roth: 0, indices: [] };
+      groups.set(key, g);
+    }
+    g.employeeTotal += c.employeeAmount;
+    if (event.contributionType === 'pre_tax') g.preTax += c.employeeAmount;
+    else if (event.contributionType === 'roth') g.roth += c.employeeAmount;
+    g.indices.push(idx);
+  });
+
+  let contributionsCappedAmount = 0;
+  groups.forEach((g) => {
+    const baseLimit = g.kind === '401k' ? limits.elective401k : limits.iraLimit;
+    const catchUp = g.age >= limits.catchUpAge
+      ? (g.kind === '401k' ? limits.catchUp401k : limits.catchUpIra)
+      : 0;
+    const cap = (baseLimit + catchUp) * inflationFactor;
+    if (g.employeeTotal <= cap || g.employeeTotal <= 0) return;
+    const scale = cap / g.employeeTotal;
+    // Scale this group's deposits proportionally and tally the cut.
+    let cutThisGroup = 0;
+    let preTaxCutThisGroup = 0;
+    for (const idx of g.indices) {
+      const c = contributions[idx];
+      const event = userData.incomeEvents.find((e) => e.id === c.eventId);
+      const oldEmp = c.employeeAmount;
+      const newEmp = oldEmp * scale;
+      const cut = oldEmp - newEmp;
+      cutThisGroup += cut;
+      if (event?.contributionType === 'pre_tax') preTaxCutThisGroup += cut;
+      // Scale employer match proportionally — the match base shrinks with the
+      // employee contribution, so the previously-computed match is reduced 1:1.
+      c.employeeAmount = newEmp;
+      c.employerMatch *= scale;
+    }
+    // Adjust per-bucket totals.
+    if (g.preTax > 0 && preTaxCutThisGroup > 0) {
+      preTaxContributions -= preTaxCutThisGroup;
+    }
+    const rothCut = g.roth > 0 ? cutThisGroup * (g.roth / g.employeeTotal) : 0;
+    if (rothCut > 0) rothContributions -= rothCut;
+    // Recompute employer match total from scratch for safety (cheap).
+    contributionsCappedAmount += cutThisGroup;
+  });
+  // Recompute employer match total after scaling.
+  if (contributionsCappedAmount > 0) {
+    employerMatchTotal = contributions.reduce((s, c) => s + c.employerMatch, 0);
+  }
+
+  // Pre-tax contributions reduce taxable wage/before-tax income for the tax calc.
+  // Floor at zero so contributions in excess of taxable income don't create a refund.
+  // Note on overflow routing: capped pre_tax dollars stay in `otherTaxableGross`
+  // automatically because we already reduced `preTaxContributions` above before
+  // this subtraction — the worker is taxed on the un-diverted wages. Capped roth
+  // dollars come out of post-tax wages that already flowed through wage_income;
+  // since the deposit is just skipped, the dollars naturally remain in the year's
+  // available cash via the wage event. No explicit re-injection needed.
+  otherTaxableGross = Math.max(0, otherTaxableGross - preTaxContributions);
+
+  return {
+    ssGross,
+    otherTaxableGross,
+    afterTaxIncome,
+    conversionGross,
+    wageIncomeGross,
+    preTaxContributions,
+    rothContributions,
+    afterTaxContributions,
+    employerMatch: employerMatchTotal,
+    contributions,
+    contributionsCappedAmount,
+  };
 }
 
 function accumulateSpending(
@@ -498,12 +714,7 @@ export function calculateAnnualCashFlow(
 function calculateAnnualCashFlowCore(
   userData: UserData,
   year: number,
-  income: {
-    ssGross: number;
-    otherTaxableGross: number;
-    afterTaxIncome: number;
-    conversionGross: number;
-  },
+  income: AccumulatedIncome,
   spending: { baseSpendingNet: number; otherSpendingGoalsNet: number },
   stateTaxRate: number,
   age: number,
@@ -603,6 +814,10 @@ function calculateAnnualCashFlowCore(
   const netCashFlow = capWasBinding
     ? -withdrawal || 0
     : availableCash - totalTax - totalSpendingNet;
+  // Surplus is the portion of netCashFlow deposited to a taxable account as general
+  // reinvestment. Zero when the cap was binding (no surplus possible) or when net
+  // cash flow is non-positive. ensureReinvestmentAccount guarantees a taxable target.
+  const surplusContribution = capWasBinding ? 0 : Math.max(0, netCashFlow);
 
   const uncappedNeed = Math.max(0, totalSpendingNet + totalTax - availableCash);
   const spendingShortfall = capWasBinding ? Math.max(0, uncappedNeed - withdrawal) : 0;
@@ -628,6 +843,13 @@ function calculateAnnualCashFlowCore(
     rmdExcess,
     rothConversionGross: rothConversion,
     spendingShortfall,
+    wageIncomeGross: income.wageIncomeGross,
+    preTaxContributions: income.preTaxContributions,
+    rothContributions: income.rothContributions,
+    afterTaxContributions: income.afterTaxContributions,
+    employerMatch: income.employerMatch,
+    contributionsCappedAmount: income.contributionsCappedAmount,
+    surplusContribution,
   };
 }
 
@@ -647,12 +869,7 @@ interface Precomputes {
   stateTaxRateByYear: number[];
   ageByYear: number[];
   spouseAgeByYear: Array<number | null>;
-  incomeByYear: Array<{
-    ssGross: number;
-    otherTaxableGross: number;
-    afterTaxIncome: number;
-    conversionGross: number;
-  }>;
+  incomeByYear: AccumulatedIncome[];
   spendingByYear: Array<{
     baseSpendingNet: number;
     otherSpendingGoalsNet: number;
@@ -673,7 +890,6 @@ function simulateOneRun(
 ): SimRun {
   const currentYear = userData.referenceYear;
   const totalYears = precomputes.ageByYear.length;
-  const inflationRate = userData.inflationRate;
 
   const allocationById = new Map<string, number>(
     userData.accounts.map((a) => [a.id, a.stockAllocation])
@@ -744,7 +960,7 @@ function simulateOneRun(
       failed = true;
     }
 
-    applyCashFlow(userData, year, effectiveCashFlow, balances, inflationRate);
+    applyCashFlow(userData, effectiveCashFlow, yearIncome.contributions, balances);
     // Clamp against float drift.
     for (const id in balances) if (balances[id] < 0) balances[id] = 0;
 
@@ -775,7 +991,7 @@ export function runSimulation(
   nominalInflation: number[];
   years: number[];
 } {
-  const userData = ensureRothConversionAccount(ensureRMDReinvestmentAccount(rawUserData));
+  const userData = ensureRothConversionAccount(ensureReinvestmentAccount(rawUserData));
   const currentYear = userData.referenceYear;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const inflationRate = userData.inflationRate;

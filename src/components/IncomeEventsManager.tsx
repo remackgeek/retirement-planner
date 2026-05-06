@@ -5,6 +5,7 @@ import IncomeEventDialog from '../dialogs/IncomeEventDialog';
 import SocialSecurityDialog from '../dialogs/SocialSecurityDialog';
 import PensionIncomeDialog from '../dialogs/PensionIncomeDialog';
 import RothConversionDialog from '../dialogs/RothConversionDialog';
+import RetirementContributionDialog from '../dialogs/RetirementContributionDialog';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import type { Account } from '../types/Account';
 import { spacing, colors, border, fontSize } from '../styles/theme';
@@ -162,6 +163,24 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           filingStatus={userData.filingStatus}
           referenceYear={userData.referenceYear}
         />
+      ) : (selectedType === 'retirement_contribution' || editingEvent?.type === 'retirement_contribution') ? (
+        <RetirementContributionDialog
+          visible={dialogVisible}
+          onHide={() => {
+            setDialogVisible(false);
+            setSelectedType(null);
+            setEditingEvent(undefined);
+          }}
+          onSave={handleSave}
+          onDelete={editingEvent ? () => { onDelete(editingEvent.id); setDialogVisible(false); setSelectedType(null); setEditingEvent(undefined); } : undefined}
+          editEvent={editingEvent}
+          existingEvents={events}
+          accounts={accounts}
+          currentAge={userData.currentAge}
+          spouseAge={userData.spouseAge}
+          filingStatus={userData.filingStatus}
+          referenceYear={userData.referenceYear}
+        />
       ) : (selectedType === 'roth_conversion' || editingEvent?.type === 'roth_conversion') ? (
         <RothConversionDialog
           visible={dialogVisible}
@@ -189,7 +208,6 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           initialType={selectedType || undefined}
           editEvent={editingEvent}
           existingEvents={events}
-          accounts={accounts}
           currentAge={userData.currentAge}
           referenceYear={userData.referenceYear}
         />

@@ -407,6 +407,42 @@ export function calculateNetFromGross(
   return result;
 }
 
+export type { FilingStatus };
+
+/**
+ * Returns the standard deduction for the given filing status and tax year
+ * (using the most recent available year for future years). Does not include
+ * senior or OBBB additions — use `calculateNetFromGross` for full accuracy.
+ */
+export function getStandardDeduction(status: FilingStatus, taxYear: number): number {
+  const years = Object.keys(standardDeductionsByYear).map(Number).sort((a, b) => b - a);
+  const effectiveYear = years.find((y) => y <= taxYear) ?? years[0];
+  return standardDeductionsByYear[effectiveYear]?.[status] ?? 0;
+}
+
+/**
+ * Returns the 0-based index of the marginal federal bracket the given taxable
+ * income lands in (0 = 10%, 6 = 37%). Standard deduction is NOT applied here —
+ * pass already-deducted taxable income.
+ */
+export function getFederalBracketIndex(
+  taxable: number,
+  status: FilingStatus,
+  taxYear: number,
+): number {
+  const availableYears = Object.keys(bracketsByYear)
+    .map(Number)
+    .sort((a, b) => b - a);
+  const effectiveYear =
+    availableYears.find((year) => year <= taxYear) || availableYears[0];
+  const brackets = bracketsByYear[effectiveYear]?.[status];
+  if (!brackets) return 0;
+  for (let i = 0; i < brackets.length; i++) {
+    if (taxable <= brackets[i].upper) return i;
+  }
+  return brackets.length - 1;
+}
+
 // SS taxable fraction thresholds (frozen since 1983/1993, not inflation-indexed)
 const ssThresholds: Record<string, { t1: number; t2: number; base: number }> = {
   single: { t1: 25000, t2: 34000, base: 4500 },

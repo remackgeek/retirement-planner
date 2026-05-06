@@ -5,34 +5,9 @@
 
 ---
 
-## ⚠️ Before You Start
-
-YARP is a **planning tool, not financial advice**. A few things to keep in mind:
-
-- It's not a substitute for a financial advisor, tax professional, or estate attorney.
-- All projections are estimates. Real outcomes will differ — sometimes substantially.
-- Past performance does not predict future results.
-- Wrong inputs produce wrong outputs.
-
-Use YARP to **explore the shape of your retirement** — what decisions matter most, where your plan is fragile, how sensitive things are to assumptions. Don't use it as the final word on whether you can retire.
-
----
-
-## 🔒 Your Data Stays With You
-
-YARP runs entirely in your web browser. **There is no account to create, no server to log into, and no upload of your financial data.** Everything you enter — balances, ages, scenarios, the works — stays on your device.
-
-That means:
-
-- **Privacy by design.** No one but you (and anyone who uses your computer) sees your numbers.
-- **No tracking, no analytics on your data, no selling anything.**
-- The flip side: if you clear your browser, switch computers, or use a different browser, your scenarios won't be there. **Back them up periodically** — see the *Backing Up Your Data* section near the end.
-
----
-
 ## What YARP Is For
 
-YARP is a retirement planner that sits between simple calculators and full financial-planning platforms. It's good for answering questions like:
+YARP is a **planning tool, not financial advice** — not a substitute for a financial advisor, tax professional, or estate attorney. It sits between simple calculators and full financial-planning platforms, and it's good for answering questions like:
 
 - Can I retire at 62 instead of 65?
 - What happens if the market drops 30% the year after I retire?
@@ -40,13 +15,26 @@ YARP is a retirement planner that sits between simple calculators and full finan
 - Should I convert some of my Traditional IRA to Roth in my 60s?
 - How much can I safely spend each year?
 
+Use it to **explore the shape of your retirement** — what decisions matter most, where your plan is fragile, how sensitive things are to assumptions. Projections are estimates; real outcomes will differ, sometimes substantially.
+
 It's **not** the right tool for: estate planning, healthcare-specific projections (Medicare premiums, IRMAA, long-term care), insurance products, real estate transactions, or tax-loss harvesting strategies. For those, see a professional.
+
+---
+
+## Your Data Stays With You
+
+YARP runs entirely in your web browser. **No account to create, no server, no upload of your financial data.** Everything you enter stays on your device.
+
+- **Privacy by design.** No tracking, no analytics, no selling anything.
+- The flip side: if you clear your browser, switch computers, or use a different browser, your scenarios won't be there. **Back them up periodically** — see the *Backing Up Your Data* section near the end.
 
 ---
 
 ## Getting Started
 
 The first thing to do is create a baseline scenario that reflects your current plan. Don't try to optimize on the first pass — just get a realistic picture in.
+
+If you'd rather kick the tires before entering your own data, the empty sidebar offers three pre-populated example scenarios under **or try an example** (Near retirement, Retired early, Mid-career). The same options live under **Settings → Load example…** once you have scenarios of your own. Loading an example appends a new scenario and makes it active — you can edit, rename, or delete it freely.
 
 1. Click **+ New Scenario** in the sidebar and give it a name like "Baseline".
 2. Enter your **current age**, **planned retirement age**, and a **life expectancy** to plan to. Using a high number — 95 or 100 — gives you a margin against living longer than you expect.
@@ -74,7 +62,7 @@ You can compare any two scenarios on the chart side-by-side (see *Comparing Scen
 
 ### The probability number and badge
 
-Each scenario shows a percentage and a colored badge. The percentage is the share of simulated future market sequences in which your plan didn't run out of money:
+The percentage is the share of simulated future market sequences in which your plan didn't run out of money:
 
 | Badge | Range | What it means |
 |---|---|---|
@@ -107,6 +95,10 @@ YARP draws from your accounts in this order each year: **Taxable first, then Tra
 
 Once you turn **73**, the IRS requires you to withdraw a minimum amount from Traditional accounts each year, whether you need the money or not. YARP handles this automatically: it forces the minimum withdrawal, taxes it as ordinary income, and reinvests anything you didn't actually need into a taxable account. Roth accounts don't have RMDs.
 
+### Surplus reinvestment
+
+In any year where your income exceeds your spending and taxes, the leftover cash is deposited into your first taxable account. If you don't have one, YARP creates a synthetic "Reinvestment" account during the simulation so surplus is never silently lost. The yearly data detail rows and CSV export show this as **Surplus Contribution**.
+
 If you're married and have Traditional accounts in both your names, YARP calculates each person's RMD using their own age — set the **owner** (Self / Spouse) on each account.
 
 ---
@@ -120,9 +112,35 @@ Income events cover everything flowing **into** your portfolio. Common ones:
 - **Part-time work / consulting** in retirement
 - **Rental income, annuity payments**
 - **Inheritance, gifts** (these come in tax-free — mark them as "after-tax")
-- **Current paycheck contributions** (if you're still working) — choose the account they go into
+- **Salary** (W-2 wages) — taxed as ordinary income, ends at retirement
+- **Retirement contributions** — pre-tax 401(k), Roth, or after-tax savings; deposited into the chosen account
 
 Each event has a start age, an optional end age, and an optional cost-of-living adjustment to grow the amount over time.
+
+### Salary and Retirement Contributions (working years)
+
+If you're still working, model your earnings and savings as two separate events:
+
+- **Salary** captures your W-2 wages. It flows into spendable cash and is taxed as ordinary income (federal + state, plus FICA isn't modeled — use after-tax-equivalent if you want a clean accounting).
+- **Retirement Contribution** captures the slice of those wages going into a retirement account. Pick one of three flavors:
+  - **Pre-tax** — reduces this year's taxable income and deposits to a Traditional account.
+  - **Roth** — no tax break today; deposits to a Roth account; growth and qualified withdrawals are tax-free.
+  - **After-tax** — deposits to a taxable brokerage; growth taxed at LTCG on withdrawal.
+
+Optional: an **employer match** (e.g. "100% up to 6% of wages") deposits additional dollars to the same account as your contribution. Link the contribution to a specific salary event so the match ceiling is computed against the actual wage base.
+
+Contributions are *deposit instructions* — they do not show up as spendable cash. If you contribute $20k pre-tax against a $100k salary, the simulation taxes $80k and deposits $20k to your Traditional account.
+
+#### Contribution Limits
+
+YARP enforces IRS contribution caps per owner per account kind. Configure the limits under **Settings → Modeling → Contribution Limits**:
+
+- 401(k)/403(b)/TSP elective deferral (default $23,000)
+- IRA limit (default $7,000)
+- Catch-up age (default 50) and catch-up amounts
+- Optionally, scale the caps by inflation each year
+
+Mark each tax-advantaged account as **IRA** or **401(k)/403(b)/TSP** in the account dialog. Pre-tax and Roth contributions to the same `(owner, kind)` group share the same cap. Employer match is **not** counted against the elective deferral cap. Excess contributions are not deposited; capped pre-tax dollars remain taxed (since the deduction is reduced) and otherwise stay in spendable cash via the originating wage event. Any capped amount is visible as **Contributions Capped** in the yearly detail rows.
 
 ### Roth Conversions
 
@@ -133,6 +151,8 @@ A Roth conversion moves money from your Traditional accounts into your Roth acco
 - **You have to take your RMD first** if you're 73 or older — the IRS doesn't let RMDs be converted.
 
 The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation.
+
+The Roth Conversion dialog shows an **Impact Preview** with a deterministic estimate of first-year tax, total tax over the conversion window, RMD reduction at 73, projected tax-free Roth at life expectancy, and a **Net impact on plan value** row that signs the trade-off in dollar terms (green when the conversion pays off, red when it costs more than it saves). Multi-year conversions default to **inflation-adjusted**, so the amount you enter is a real-dollar target — turn that off if you mean a fixed nominal schedule. If you configure a conversion that is unusually large relative to your spending, crosses two or more federal brackets in a single year, or would convert most of your Traditional balance, the dialog shows an inline hint — these are advisory only and never block saving.
 
 ---
 
@@ -179,7 +199,7 @@ You'll see three lines:
 | Line | What it represents |
 |---|---|
 | **Median** | A typical outcome — the middle of all simulated futures |
-| **Deterministic** | What happens with no market randomness, using your average return assumptions |
+| **Deterministic** | What happens with no market randomness, using your average return assumptions (hidden when a Historical return model is active) |
 | **Downside** | A bad outcome — the 10th-percentile result |
 
 Use the **Median / Deterministic / Downside** selector to switch which line drives the year-by-year detail below the chart. Pay attention to the Downside path — if your plan looks fine on Median but craters on Downside, you have sequence-of-returns risk to think about.
@@ -217,6 +237,19 @@ This is the most useful feature for actually making decisions: rather than askin
 
 ---
 
+## What If? Mode
+
+Click **What If?** above the chart to enter an experimental mode. A snapshot of your scenario is held in memory; the chart shows the original as a solid line and your live edits as a dashed amber **Draft** line. Edit accounts, income events, or spending goals normally — only the dashed line moves.
+
+Three exit actions:
+- **Discard** — restore the scenario to its original state.
+- **Save** — keep your edits (they were already being saved as you went).
+- **Save as New** — create a brand-new scenario containing your experiment, and restore the original scenario back to its starting state.
+
+While in What If mode, **Compare with** is disabled (and vice versa) — they share the chart's overlay slot. Switching to a different scenario in the sidebar will prompt you before discarding your unsaved changes.
+
+---
+
 ## Modeling Settings
 
 Open **Settings → Modeling** to adjust the underlying assumptions. The defaults are reasonable for most people, but a few things are worth knowing:
@@ -248,9 +281,8 @@ For deeper detail on any of these settings — including the math, distributions
 - **Plan to a high life expectancy** (95 or 100). You don't want to run out of money at 90 because you planned to age 85.
 - **Stress-test with reduced returns.** Even if you believe in 10% stocks long-term, run a scenario at 7%.
 - **Try Historical: Rolling Start.** If your plan only succeeds in 70% of actual historical sequences, the parametric Monte Carlo number is overstating safety.
-- **Don't chase 100%.** 95% with comfortable spending beats 100% with miserable spending.
 - **Spending matters more than returns.** Getting your spending estimate right within ±10% usually matters more than the exact return assumption.
-- **Review yearly.** Your plan should be revisited at least once a year as your situation changes.
+- **Revisit your plan yearly** as your situation changes.
 
 ---
 
@@ -267,4 +299,4 @@ To restore or move to a new device, click **Import** and select the file. You ca
 - **Help → Model Details** — full technical reference for the simulation engine, tax math, and known limitations
 - **Help → About** — version and license info
 
-Found a bug or want to suggest an improvement? See the About dialog for the project repository link.
+Found a bug or want to suggest an improvement? Open a ticket on the [GitHub Issues page](https://github.com/remackgeek/retirement-planner/issues), or open **Help → About YARP** for project and build details.

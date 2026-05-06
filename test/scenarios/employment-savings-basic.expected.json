@@ -1,5 +1,5 @@
 {
-  "_rationale": "100k + 50k/yr for 10 years (ages 55–64) = 600k. No spending, no growth, so balance is flat at 600k after age 64. Never fails → 100% success. Path values: age 55 start = 100k, age 60 = 350k (5 years of 50k added), age 65 = 600k (savings stopped), age 70 = 600k (unchanged).",
+  "_rationale": "100k Roth + 50k/yr Roth contribution for 10 years (ages 55–64) = 600k. No spending, no growth, no wage income, so balance is flat at 600k after age 64. Never fails → 100% success. Path values: age 55 start = 100k, age 60 = 350k (5 years of 50k added), age 65 = 600k (contributions stopped), age 70 = 600k (unchanged).",
   "probability": 100,
   "pathValues": [
     { "index": 0, "age": 55, "value": 100000 },

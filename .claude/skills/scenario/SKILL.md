@@ -32,7 +32,7 @@ Create a new scenario test pair in `test/scenarios/`. The scenario should test: 
      - `accounts` (array of `{ id, name, type, balance }` — types: `traditional`, `roth`, `taxable`)
      - `longTermCapGainsRate` (default 0.15)
      - `spendingGoals` (array, can be empty)
-     - `incomeEvents` (array, can be empty — `employment_savings` type supports `accountId`)
+     - `incomeEvents` (array, can be empty — `retirement_contribution` type supports `accountId`, `contributionType`, `employerMatchPercent`, `employerMatchCeilingPercent`, `wageEventId`)
      - `portfolioAssumptions` (with `portfolioBalance`, `stockAllocation`, `stockReturn`, `stockStdDev`, `bondReturn`, `bondStdDev`)
      - `inflationRate`, `inflationStdDev`
      - `simulationSettings` (with `numSimulations`)

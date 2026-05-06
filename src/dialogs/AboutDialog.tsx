@@ -43,6 +43,15 @@ const MetaValue = styled.span`
   font-family: monospace;
 `;
 
+const MetaLink = styled.a`
+  color: ${colors.primary};
+  font-family: monospace;
+  font-size: inherit;
+  text-decoration: none;
+  &:hover { text-decoration: underline; }
+  i { font-size: ${fontSize.xs}; color: ${colors.textMuted}; margin-left: 0.25em; vertical-align: middle; }
+`;
+
 const DirtyBadge = styled.span`
   color: ${colors.danger};
   margin-left: ${spacing.xs};
@@ -139,6 +148,20 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ visible, onHide }) => {
 
           <MetaLabel>License</MetaLabel>
           <MetaValue>MIT</MetaValue>
+
+          <MetaLabel>Repository</MetaLabel>
+          <MetaValue>
+            <MetaLink href="https://github.com/remackgeek/retirement-planner" target="_blank" rel="noopener noreferrer">
+              github.com/remackgeek/retirement-planner<i className="pi pi-external-link" />
+            </MetaLink>
+          </MetaValue>
+
+          <MetaLabel>Support</MetaLabel>
+          <MetaValue>
+            <MetaLink href="https://github.com/remackgeek/retirement-planner/issues" target="_blank" rel="noopener noreferrer">
+              GitHub Issues<i className="pi pi-external-link" />
+            </MetaLink>
+          </MetaValue>
         </MetaTable>
       </Content>
     </Dialog>

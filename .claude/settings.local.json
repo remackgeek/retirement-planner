@@ -15,7 +15,11 @@
       "Bash(git -C /c/Dev4/retirement-planner status)",
       "Bash(git -C /c/Dev4/retirement-planner diff)",
       "Bash(git -C /c/Dev4/retirement-planner log --oneline -5)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "PowerShell(npx tsc --noEmit 2>&1)",
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell(npm run test 2>&1)",
+      "PowerShell(npm run test --silent -- --run 2>&1)"
     ]
   }
 }

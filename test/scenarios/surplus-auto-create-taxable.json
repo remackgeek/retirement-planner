@@ -1,0 +1,62 @@
+{
+  "_description": "Pension income exceeds spending with no taxable account — simulation auto-creates 'Reinvestment' taxable account to absorb surplus.",
+  "_rationale": "$50k/yr pension (after_tax) into Florida (no state tax) with $20k/yr living expenses, no portfolio growth, no inflation, no income tax. After-tax income = 50k, spending = 20k, surplus = 30k/yr. With no taxable account in UserData, ensureReinvestmentAccount injects a $0 'Reinvestment' taxable account. After 5 years, surplus accumulates to 5×30k = 150k in the synthetic taxable account; existing $0 Roth stays $0. Without auto-create, surplus would silently vanish.",
+  "_seed": 12345,
+  "name": "Surplus Auto Create Taxable",
+  "currentAge": 70,
+  "lifeExpectancy": 75,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "living-1",
+      "type": "living_expenses",
+      "name": "Living Expenses",
+      "amount": 20000,
+      "startAge": 70,
+      "inflationAdjusted": false
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "name": "Pension",
+      "amount": 50000,
+      "startAge": 70,
+      "taxStatus": "after_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    { "state": "Florida" }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "roth-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 0,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0
+}

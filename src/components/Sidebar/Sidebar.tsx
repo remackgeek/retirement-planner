@@ -11,10 +11,12 @@ import { confirmDialog } from 'primereact/confirmdialog';
 import { spacing, colors, border, fontSize, mediaQuery, layout } from '../../styles/theme';
 import { formatCurrencyShort } from '../../utils/formatCurrencyShort';
 import { getProbabilityTier } from '../../utils/probabilityTier';
+import { EXAMPLE_SCENARIOS } from '../../data/exampleScenarios';
 
 interface SidebarProps {
   isOpen: boolean;
   onToggle: () => void;
+  requestSwitchScenario?: (id: string) => void;
 }
 
 const SidebarContainer = styled.aside<{ $isOpen: boolean }>`
@@ -277,6 +279,53 @@ const EmptyStateSub = styled.div`
   color: ${colors.textMuted};
 `;
 
+const ExampleDivider = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${spacing.sm};
+  margin-top: ${spacing.md};
+  width: 100%;
+  font-size: ${fontSize.xs};
+  color: ${colors.textMuted};
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background-color: ${colors.borderLight};
+  }
+`;
+
+const ExampleButtonRow = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${spacing.xs};
+  width: 100%;
+`;
+
+const ExampleButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: ${spacing.xs};
+  padding: ${spacing.xs} ${spacing.sm};
+  font-size: ${fontSize.sm};
+  font-family: inherit;
+  border-radius: ${border.radius};
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid ${colors.border};
+  color: ${colors.textSecondary};
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+
+  &:hover {
+    background-color: ${colors.bgHover};
+    border-color: ${colors.primary};
+    color: ${colors.primary};
+  }
+`;
+
 const EmptyStateCta = styled.button`
   display: inline-flex;
   align-items: center;
@@ -311,7 +360,7 @@ const actionButtonStyle = {
   minWidth: '1.6rem',
 } as const;
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenario }) => {
   const [dialogVisible, setDialogVisible] = useState(false);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [cloneDialogVisible, setCloneDialogVisible] = useState(false);
@@ -328,6 +377,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
     cloneScenario,
     exportScenario,
     importScenario,
+    loadExampleScenario,
   } = context;
 
   const handleSave = (scenario: Scenario) => {
@@ -384,6 +434,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
               <i className="pi pi-plus" />
               New Scenario
             </EmptyStateCta>
+            <ExampleDivider>or try an example</ExampleDivider>
+            <ExampleButtonRow>
+              {EXAMPLE_SCENARIOS.map((example) => (
+                <ExampleButton
+                  key={example.key}
+                  onClick={() => loadExampleScenario(example.template)}
+                  title={example.description}
+                >
+                  <i className="pi pi-bolt" />
+                  {example.label}
+                </ExampleButton>
+              ))}
+            </ExampleButtonRow>
           </EmptyState>
         )}
         {scenarios.map((scenario) => {
@@ -395,7 +458,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
               key={scenario.id}
               $isActive={isActive}
               onClick={() => {
-                setActiveScenario(scenario.id);
+                if (requestSwitchScenario) requestSwitchScenario(scenario.id);
+                else setActiveScenario(scenario.id);
               }}
             >
               <ScenarioRow>

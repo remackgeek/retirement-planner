@@ -1,0 +1,15 @@
+{
+  "_rationale": "After-tax pension $50k − living expenses $20k = $30k surplus per year. No income tax (Florida + after_tax), no portfolio growth. With no taxable account, ensureReinvestmentAccount auto-creates a $0 'Reinvestment' account. surplusContribution = $30k in every year; netCashFlow = $30k. After 5 years (index 5, age 75) the synthetic taxable balance is $150k; Roth stays at $0; portfolio total = $150k. Without auto-create the surplus would silently vanish and portfolio would stay at $0.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "surplusContribution", "value": 30000, "tolerance": 1, "_note": "50k income − 20k spending = 30k surplus" },
+    { "index": 0, "field": "netCashFlow", "value": 30000, "tolerance": 1 },
+    { "index": 3, "field": "surplusContribution", "value": 30000, "tolerance": 1 }
+  ],
+  "pathValues": [
+    { "index": 0, "age": 70, "value": 0, "tolerance": 1, "_note": "Year 0 starts pre-deposit at $0" },
+    { "index": 1, "age": 71, "value": 30000, "tolerance": 1, "_note": "After year 0 surplus deposit" },
+    { "index": 5, "age": 75, "value": 150000, "tolerance": 1, "_note": "5 × 30k surplus, no growth" }
+  ]
+}
