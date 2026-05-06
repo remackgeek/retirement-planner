@@ -34,6 +34,8 @@ YARP runs entirely in your web browser. **No account to create, no server, no up
 
 The first thing to do is create a baseline scenario that reflects your current plan. Don't try to optimize on the first pass — just get a realistic picture in.
 
+If you'd rather kick the tires before entering your own data, the empty sidebar offers three pre-populated example scenarios under **or try an example** (Near retirement, Retired early, Mid-career). The same options live under **Settings → Load example…** once you have scenarios of your own. Loading an example appends a new scenario and makes it active — you can edit, rename, or delete it freely.
+
 1. Click **+ New Scenario** in the sidebar and give it a name like "Baseline".
 2. Enter your **current age**, **planned retirement age**, and a **life expectancy** to plan to. Using a high number — 95 or 100 — gives you a margin against living longer than you expect.
 3. Add your **accounts** with their current balances. Group similar accounts if you want; YARP doesn't need every individual line.

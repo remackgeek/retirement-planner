@@ -6,6 +6,7 @@ import type { MenuItem } from 'primereact/menuitem';
 import { spacing, colors, fontSize, mediaQuery } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
 import ModelingDialog from '../../dialogs/ModelingDialog';
+import ExamplePickerDialog from '../../dialogs/ExamplePickerDialog';
 import AboutDialog from '../../dialogs/AboutDialog';
 import MarkdownViewerSidebar from '../../dialogs/MarkdownViewerSidebar';
 import userGuideContent from '../../docs/USER_GUIDE.md?raw';
@@ -93,15 +94,23 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   const reportsMenuRef = useRef<Menu>(null);
   const helpMenuRef = useRef<Menu>(null);
   const [modelingVisible, setModelingVisible] = useState(false);
+  const [examplePickerVisible, setExamplePickerVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
   const [userGuideVisible, setUserGuideVisible] = useState(false);
   const [modelDetailsVisible, setModelDetailsVisible] = useState(false);
 
   const menuItems: MenuItem[] = [
     {
+      label: 'Load example…',
+      icon: 'pi pi-bolt',
+      command: () => setExamplePickerVisible(true),
+    },
+    { separator: true },
+    {
       label: 'Modeling',
       icon: 'pi pi-chart-line',
       command: () => setModelingVisible(true),
+      disabled: !activeScenario,
     },
   ];
 
@@ -162,7 +171,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
             className="p-button-text p-button-sm"
             style={{ padding: '0.15rem 0.5rem' }}
             onClick={(e) => menuRef.current?.toggle(e)}
-            disabled={!activeScenario}
           />
           <Menu model={helpMenuItems} popup ref={helpMenuRef} />
           <Button
@@ -184,6 +192,13 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
           onSave={handleSave}
         />
       )}
+      <ExamplePickerDialog
+        visible={examplePickerVisible}
+        onHide={() => setExamplePickerVisible(false)}
+        onSelect={(example) => {
+          context?.loadExampleScenario(example.template);
+        }}
+      />
       <AboutDialog visible={aboutVisible} onHide={() => setAboutVisible(false)} />
       <MarkdownViewerSidebar
         title="User Guide"
