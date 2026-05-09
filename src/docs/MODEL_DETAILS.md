@@ -172,7 +172,7 @@ Inflation-adjusted income events (Social Security, pensions with COLA, etc.) com
 
 ### Federal Income Tax
 
-YARP uses **statically defined 2024, 2025, and 2026 tax brackets**. There is no automatic bracket inflation — for any year beyond 2026, the simulation reuses the **2026 brackets unchanged**. This is conservative; real brackets will inflate, but the magnitude depends on legislation.
+YARP uses **statically defined 2024, 2025, and 2026 tax brackets**. For any year beyond 2026, the 2026 bracket thresholds, standard deduction, and senior additional deduction are **inflation-indexed forward** using the scenario's configured inflation rate: each dollar-denominated threshold is multiplied by `(1 + inflationRate)^(year − 2026)`. Tax *rates* are never scaled — only the dollar limits. This matches how the IRS adjusts brackets annually via Chained CPI-U (the model uses headline CPI as an approximation; the real adjustment runs about 0.2–0.3 pp lower).
 
 Four filing statuses are supported: **single**, **married filing jointly (MFJ)**, **married filing separately (MFS)**, and **head of household (HOH)**. Bracket cutoffs and the standard deduction differ for each.
 
@@ -345,7 +345,7 @@ This is a deliberate choice. Stochastic mortality would inflate success rates ar
 
 ## Known Limitations
 
-- **No federal bracket inflation** — post-2026 brackets are static; real outcomes for late retirees may be slightly more favorable than projected.
+- **Federal bracket inflation uses headline CPI** — the model inflates post-2026 brackets using the scenario's `inflationRate`, but the IRS uses Chained CPI-U which historically runs ~0.2–0.3 pp lower. The difference is small and conservative (slightly over-indexes brackets, slightly under-taxes late years).
 - **No SS provisional thresholds inflation** — these are frozen by Congress, so this matches reality, but the resulting "tax torpedo" gets steeper over time.
 - **No stochastic inflation in cash flows** — only portfolio deflation uses per-run inflation; income/spending use the deterministic mean.
 - **No state tax on capital gains** — federal LTCG only.

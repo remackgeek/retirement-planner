@@ -191,7 +191,8 @@ function getNumQualifyingSeniors(
 function getUsualSeniorExtra(
   status: FilingStatus,
   taxYear: number,
-  numQualifying: number
+  numQualifying: number,
+  inflationRate?: number
 ): number {
   if (numQualifying === 0) return 0;
   // Use the most recent available year for future years
@@ -200,7 +201,7 @@ function getUsualSeniorExtra(
     .sort((a, b) => b - a);
   const effectiveYear =
     availableYears.find((year) => year <= taxYear) || availableYears[0];
-  const per = additionalSeniorPerByYear[effectiveYear][status];
+  const per = additionalSeniorPerByYear[effectiveYear][status] * inflationFactor(taxYear, inflationRate);
   return numQualifying * per;
 }
 
@@ -225,10 +226,20 @@ function getOBBBSeniorDeduction(
   return Math.max(0, baseSeniorDed - reduction);
 }
 
+// Brackets and standard deductions are projected forward from 2026 using the
+// scenario's inflationRate, matching how the IRS adjusts via Chained CPI-U.
+const BASE_INFLATION_YEAR = 2026;
+
+function inflationFactor(taxYear: number, inflationRate: number | undefined): number {
+  if (!inflationRate || taxYear <= BASE_INFLATION_YEAR) return 1;
+  return Math.pow(1 + inflationRate, taxYear - BASE_INFLATION_YEAR);
+}
+
 function calculateFederalTax(
   taxable: number,
   status: FilingStatus,
-  taxYear: number
+  taxYear: number,
+  inflationRate?: number
 ): number {
   // Use the most recent available year for future years
   const availableYears = Object.keys(bracketsByYear)
@@ -242,15 +253,17 @@ function calculateFederalTax(
       `No brackets available for tax year ${taxYear} and status ${status}`
     );
   }
+  const factor = inflationFactor(taxYear, inflationRate);
   let tax = 0;
   let prevUpper = 0;
   for (const bracket of brackets) {
-    const amountInBracket = Math.min(taxable, bracket.upper) - prevUpper;
+    const scaledUpper = bracket.upper === Infinity ? Infinity : bracket.upper * factor;
+    const amountInBracket = Math.min(taxable, scaledUpper) - prevUpper;
     if (amountInBracket > 0) {
       tax += amountInBracket * bracket.rate;
     }
-    if (taxable <= bracket.upper) break;
-    prevUpper = bracket.upper;
+    if (taxable <= scaledUpper) break;
+    prevUpper = scaledUpper;
   }
   return tax;
 }
@@ -264,9 +277,10 @@ function getCacheKey(
   filingStatus: FilingStatus,
   age: number,
   taxYear: number,
-  spouseAge: number | null
+  spouseAge: number | null,
+  inflationRate?: number
 ): string {
-  return `${netIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}`;
+  return `${netIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}_${inflationRate ?? 0}`;
 }
 
 function getNetCacheKey(
@@ -275,9 +289,10 @@ function getNetCacheKey(
   filingStatus: FilingStatus,
   age: number,
   taxYear: number,
-  spouseAge: number | null
+  spouseAge: number | null,
+  inflationRate?: number
 ): string {
-  return `net_${grossIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}`;
+  return `net_${grossIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}_${inflationRate ?? 0}`;
 }
 
 export function calculateGrossIncomeNeeded(
@@ -286,7 +301,8 @@ export function calculateGrossIncomeNeeded(
   filingStatus: FilingStatus,
   age: number,
   taxYear: number,
-  spouseAge: number | null = null
+  spouseAge: number | null = null,
+  inflationRate?: number
 ): number {
   const cacheKey = getCacheKey(
     netIncome,
@@ -294,7 +310,8 @@ export function calculateGrossIncomeNeeded(
     filingStatus,
     age,
     taxYear,
-    spouseAge
+    spouseAge,
+    inflationRate
   );
   if (taxCalculationCache.has(cacheKey)) {
     return taxCalculationCache.get(cacheKey)!;
@@ -317,7 +334,8 @@ export function calculateGrossIncomeNeeded(
     const usualExtra = getUsualSeniorExtra(
       filingStatus,
       taxYear,
-      numQualifying
+      numQualifying,
+      inflationRate
     );
     const obbbExtra = getOBBBSeniorDeduction(
       mid,
@@ -331,12 +349,12 @@ export function calculateGrossIncomeNeeded(
       .sort((a, b) => b - a);
     const deductionEffectiveYear =
       deductionYears.find((year) => year <= taxYear) || deductionYears[0];
-    const deduction =
-      standardDeductionsByYear[deductionEffectiveYear]?.[filingStatus] +
-      usualExtra +
-      obbbExtra;
+    const baseStdDed =
+      (standardDeductionsByYear[deductionEffectiveYear]?.[filingStatus] ?? 0) *
+      inflationFactor(taxYear, inflationRate);
+    const deduction = baseStdDed + usualExtra + obbbExtra;
     const taxable = Math.max(0, mid - deduction);
-    const federalTax = calculateFederalTax(taxable, filingStatus, taxYear);
+    const federalTax = calculateFederalTax(taxable, filingStatus, taxYear, inflationRate);
     const stateTax = mid * stateTaxRate;
     const computedNet = mid - federalTax - stateTax;
 
@@ -363,7 +381,8 @@ export function calculateNetFromGross(
   filingStatus: FilingStatus,
   age: number,
   taxYear: number,
-  spouseAge: number | null = null
+  spouseAge: number | null = null,
+  inflationRate?: number
 ): number {
   const cacheKey = getNetCacheKey(
     grossIncome,
@@ -371,7 +390,8 @@ export function calculateNetFromGross(
     filingStatus,
     age,
     taxYear,
-    spouseAge
+    spouseAge,
+    inflationRate
   );
   if (taxCalculationCache.has(cacheKey)) {
     return taxCalculationCache.get(cacheKey)!;
@@ -382,7 +402,7 @@ export function calculateNetFromGross(
   }
 
   const numQualifying = getNumQualifyingSeniors(filingStatus, age, spouseAge);
-  const usualExtra = getUsualSeniorExtra(filingStatus, taxYear, numQualifying);
+  const usualExtra = getUsualSeniorExtra(filingStatus, taxYear, numQualifying, inflationRate);
   const obbbExtra = getOBBBSeniorDeduction(
     grossIncome,
     filingStatus,
@@ -395,12 +415,12 @@ export function calculateNetFromGross(
     .sort((a, b) => b - a);
   const deductionEffectiveYear =
     deductionYears.find((year) => year <= taxYear) || deductionYears[0];
-  const deduction =
-    standardDeductionsByYear[deductionEffectiveYear]?.[filingStatus] +
-    usualExtra +
-    obbbExtra;
+  const baseStdDed =
+    (standardDeductionsByYear[deductionEffectiveYear]?.[filingStatus] ?? 0) *
+    inflationFactor(taxYear, inflationRate);
+  const deduction = baseStdDed + usualExtra + obbbExtra;
   const taxable = Math.max(0, grossIncome - deduction);
-  const federalTax = calculateFederalTax(taxable, filingStatus, taxYear);
+  const federalTax = calculateFederalTax(taxable, filingStatus, taxYear, inflationRate);
   const stateTax = grossIncome * stateTaxRate;
   const result = grossIncome - federalTax - stateTax;
   taxCalculationCache.set(cacheKey, result);
@@ -414,10 +434,11 @@ export type { FilingStatus };
  * (using the most recent available year for future years). Does not include
  * senior or OBBB additions — use `calculateNetFromGross` for full accuracy.
  */
-export function getStandardDeduction(status: FilingStatus, taxYear: number): number {
+export function getStandardDeduction(status: FilingStatus, taxYear: number, inflationRate?: number): number {
   const years = Object.keys(standardDeductionsByYear).map(Number).sort((a, b) => b - a);
   const effectiveYear = years.find((y) => y <= taxYear) ?? years[0];
-  return standardDeductionsByYear[effectiveYear]?.[status] ?? 0;
+  const base = standardDeductionsByYear[effectiveYear]?.[status] ?? 0;
+  return base * inflationFactor(taxYear, inflationRate);
 }
 
 /**
@@ -429,6 +450,7 @@ export function getFederalBracketIndex(
   taxable: number,
   status: FilingStatus,
   taxYear: number,
+  inflationRate?: number
 ): number {
   const availableYears = Object.keys(bracketsByYear)
     .map(Number)
@@ -437,8 +459,10 @@ export function getFederalBracketIndex(
     availableYears.find((year) => year <= taxYear) || availableYears[0];
   const brackets = bracketsByYear[effectiveYear]?.[status];
   if (!brackets) return 0;
+  const factor = inflationFactor(taxYear, inflationRate);
   for (let i = 0; i < brackets.length; i++) {
-    if (taxable <= brackets[i].upper) return i;
+    const scaledUpper = brackets[i].upper === Infinity ? Infinity : brackets[i].upper * factor;
+    if (taxable <= scaledUpper) return i;
   }
   return brackets.length - 1;
 }

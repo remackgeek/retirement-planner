@@ -167,7 +167,7 @@ export function estimateConversionImpact(
     const baseGross = Math.max(0, otherTaxableGross);
     const withConvGross = baseGross + convAmount;
     const baseNet = baseGross > 0
-      ? calculateNetFromGross(baseGross, stateTaxRate, userData.filingStatus, age, year, userData.spouseAge)
+      ? calculateNetFromGross(baseGross, stateTaxRate, userData.filingStatus, age, year, userData.spouseAge, userData.inflationRate)
       : 0;
     const withConvNet = calculateNetFromGross(
       withConvGross,
@@ -176,6 +176,7 @@ export function estimateConversionImpact(
       age,
       year,
       userData.spouseAge,
+      userData.inflationRate
     );
     const baseTax = baseGross - baseNet;
     const withConvTax = withConvGross - withConvNet;
@@ -275,6 +276,7 @@ export function estimateConversionImpact(
         startAge_,
         startYear,
         userData.spouseAge,
+        userData.inflationRate
       )
     : 0;
   const effRate = baseGrossAtStart > 0
@@ -350,11 +352,11 @@ export function crossesMultipleBracketsHeuristic(
       : userData.currentAge;
   const startYear = userData.referenceYear + (conversion.startAge - ownerAge);
   const { otherTaxableGross } = baselineOrdinaryGross(userData, startYear, userData.inflationRate);
-  const stdDed = getStandardDeduction(userData.filingStatus, startYear);
+  const stdDed = getStandardDeduction(userData.filingStatus, startYear, userData.inflationRate);
   const baseTaxable = Math.max(0, otherTaxableGross - stdDed);
   const withConvTaxable = Math.max(0, otherTaxableGross + conversion.amount - stdDed);
-  const baseIdx = getFederalBracketIndex(baseTaxable, userData.filingStatus, startYear);
-  const withConvIdx = getFederalBracketIndex(withConvTaxable, userData.filingStatus, startYear);
+  const baseIdx = getFederalBracketIndex(baseTaxable, userData.filingStatus, startYear, userData.inflationRate);
+  const withConvIdx = getFederalBracketIndex(withConvTaxable, userData.filingStatus, startYear, userData.inflationRate);
   return withConvIdx - baseIdx >= 2;
 }
 

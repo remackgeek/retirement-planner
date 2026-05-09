@@ -704,7 +704,8 @@ export function calculateAnnualCashFlow(
     spouseAge,
     balances,
     beginningTradBalances,
-    maxWithdrawal
+    maxWithdrawal,
+    inflationRate
   );
 }
 
@@ -723,7 +724,8 @@ function calculateAnnualCashFlowCore(
   // IRS rule: RMD for year N uses Dec 31 of year N-1 (beginning-of-year) balance.
   // Pass pre-growth balance from the simulation loop; falls back to current tradBal.
   beginningTradBalances?: { self: number; spouse: number },
-  maxWithdrawal?: number
+  maxWithdrawal?: number,
+  inflationRate?: number
 ): AnnualCashFlowBreakdown {
   const { ssGross, otherTaxableGross, afterTaxIncome, conversionGross } = income;
   const totalSpendingNet = spending.baseSpendingNet + spending.otherSpendingGoalsNet;
@@ -785,7 +787,8 @@ function calculateAnnualCashFlowCore(
         userData.filingStatus,
         age,
         year,
-        userData.spouseAge
+        userData.spouseAge,
+        inflationRate
       );
       ordinaryTax = combinedTaxable - net;
     }
@@ -936,7 +939,7 @@ function simulateOneRun(
     // 2. Cash flow.
     const postGrowth = sumBalances(balances);
     const cashFlow = calculateAnnualCashFlowCore(
-      userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances
+      userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, undefined, userData.inflationRate
     );
 
     let effectiveCashFlow: AnnualCashFlowBreakdown;
@@ -944,11 +947,11 @@ function simulateOneRun(
     const depleting = spendingExceedsIncome && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
     if (depleting && postGrowth <= 0) {
       effectiveCashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, 0
+        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, 0, userData.inflationRate
       );
     } else if (depleting) {
       effectiveCashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, postGrowth
+        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, postGrowth, userData.inflationRate
       );
     } else {
       effectiveCashFlow = cashFlow;

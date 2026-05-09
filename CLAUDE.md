@@ -110,7 +110,10 @@ projections, and good tax awareness without overwhelming the user.
   `living_expenses` goals support optional `yearlyDecreasePercent` for spending decay
 - **Tax** — aggregate income taxation; SS 50%/85% taxable fraction (IRS provisional
   income formula); standard deduction, filing status, state rates with optional
-  relocation timeline, senior/OBBB deductions
+  relocation timeline, senior/OBBB deductions. For years > 2026, federal bracket
+  thresholds and the standard deduction are inflated by `(1 + inflationRate)^(year − 2026)`
+  to match IRS Chained CPI-U indexing (using headline CPI as a proxy). SS provisional
+  income thresholds remain frozen by law.
 - **State timeline** — ordered list of `{ state, startYear? }` on `UserData`. First entry
   is current state (no startYear); subsequent entries are future relocations. Simulation
   resolves effective state per year via `getStateTaxRate(userData, year)`
