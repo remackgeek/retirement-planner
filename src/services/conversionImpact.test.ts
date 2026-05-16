@@ -282,10 +282,16 @@ describe('estimateConversionImpact', () => {
     });
     const noSSResult = estimateConversionImpact(withoutSS, conversion);
     const withSSResult = estimateConversionImpact(withSS, conversion);
-    // SS adds taxable provisional income, raising effRate, which raises the
-    // tax discount applied to the no-conversion Trad balance and therefore
-    // raises (less penalizes) netPlanValueImpact for the SS user.
-    expect(withSSResult.netPlanValueImpact).toBeGreaterThan(noSSResult.netPlanValueImpact);
+    // SS interacts with the conversion in two ways: (1) it raises the baseline
+    // effRate, which discounts the no-conversion Trad balance more (lifts netPlanValue),
+    // and (2) the conversion now also pushes more of SS across the 50%/85% provisional
+    // thresholds, raising firstYearTax / totalTaxOverConversion / taxDragAtEndOfPlan
+    // (lowers netPlanValue). The test asserts the two cases are materially different;
+    // direction depends on which effect dominates for the given scenario.
+    expect(Math.abs(withSSResult.netPlanValueImpact - noSSResult.netPlanValueImpact))
+      .toBeGreaterThan(1000);
+    // And SS users should see a higher first-year incremental tax (the bug fix).
+    expect(withSSResult.firstYearTax).toBeGreaterThan(noSSResult.firstYearTax);
   });
 
   it('returns positive netPlanValueImpact for a small bracket-fill conversion with low income', () => {

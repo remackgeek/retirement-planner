@@ -215,13 +215,22 @@ Because thresholds are frozen in nominal terms, the share of retirees with taxab
 
 ### State Taxes
 
-Configured as flat rates applied to **ordinary income only** (Traditional withdrawals, taxable Social Security, before-tax income events, Roth conversions). Capital gains from taxable accounts are **not** subject to state tax in the model — federal LTCG only.
+Configured as flat rates applied to ordinary income (Traditional withdrawals, taxable Social Security, before-tax income events, Roth conversions) **and** to capital gains from taxable-account withdrawals at the same state rate (most states treat LTCG as ordinary income).
 
 Multiple states are supported via a **relocation timeline**: enter a future move year and the simulation switches the state rate in that year.
 
-Two simplifications worth knowing:
+One simplification worth knowing:
 - **Social Security** is taxed at the full state rate even though several states (CA, NY, NJ, etc.) exempt SS from state income tax. If you live in such a state, the model slightly overstates state tax during SS years.
-- State **capital gains** are not modeled. If you live in a state that taxes capital gains as ordinary income (CA, etc.), the model slightly understates state tax during years with large taxable-account withdrawals.
+
+### Medicare IRMAA Surcharges
+
+Starting at age 65, Medicare Part B and Part D premiums include an **IRMAA** (Income-Related Monthly Adjustment Amount) surcharge for beneficiaries whose modified AGI exceeds tiered thresholds. The model uses the 2024 official tier table, inflation-indexed forward by `inflationRate`, and applies the IRS **2-year lookback** (year N's surcharge depends on year N-2's MAGI). Surcharge is per Medicare-enrolled person — so a married couple where both spouses are 65+ pays the surcharge twice.
+
+MFS tiers are approximated with the single tier table (the actual MFS table is compressed). Set `enableIRMAA: false` to disable.
+
+### Net Investment Income Tax (NIIT)
+
+A flat **3.8%** tax applied to the lesser of (a) net investment income or (b) MAGI above the threshold. Thresholds are statutory (NOT indexed for inflation): $200k for single/HoH, $250k for MFJ, $125k for MFS. Investment income is proxied by the taxable-account withdrawal (same proxy as federal LTCG). Set `enableNIIT: false` to disable.
 
 ### Deductions
 
@@ -348,9 +357,18 @@ This is a deliberate choice. Stochastic mortality would inflate success rates ar
 - **Federal bracket inflation uses headline CPI** — the model inflates post-2026 brackets using the scenario's `inflationRate`, but the IRS uses Chained CPI-U which historically runs ~0.2–0.3 pp lower. The difference is small and conservative (slightly over-indexes brackets, slightly under-taxes late years).
 - **No SS provisional thresholds inflation** — these are frozen by Congress, so this matches reality, but the resulting "tax torpedo" gets steeper over time.
 - **No stochastic inflation in cash flows** — only portfolio deflation uses per-run inflation; income/spending use the deterministic mean.
-- **No state tax on capital gains** — federal LTCG only.
+- **State tax on capital gains** is applied at the same flat state rate as ordinary income — accurate for most states but ignores special LTCG preferences (e.g., NH/TN dividend & interest tax, WA capital gains tax).
 - **No state SS exemption** — applied uniformly even in states that exempt SS (CA, NY, etc.).
-- **No cost-basis tracking** in taxable accounts; the entire withdrawal is treated as long-term capital gain.
+- **Flat federal LTCG rate** — the 0/15/20% federal LTCG brackets and ordinary-income-stacking interaction are not modeled; capital gains tax is `longTermCapGainsRate × fromTaxable`.
+- **No cost-basis tracking** in taxable accounts; the entire withdrawal is treated as long-term capital gain (and as investment income for NIIT).
+- **IRMAA tier table is 2024** inflation-indexed forward, not refreshed annually; thresholds and surcharge amounts will drift from real IRS figures as Medicare updates the table.
+- **IRMAA threshold indexing uses scenario `inflationRate`** as a proxy. CMS's actual formula tracks Part B premium growth and SS COLAs, which can drift from CPI over a 30-year horizon.
+- **MFS IRMAA tiers** are approximated with the single-filer table. The actual 2024 MFS table has a compressed 3-tier structure.
+- **NIIT investment-income proxy** is the gross taxable-account withdrawal (no cost-basis tracking), so NIIT is overstated when a significant portion of the withdrawal would actually be return-of-basis.
+- **First-2-years IRMAA lookback** comes from a single `priorWorkingMagi` value on `UserData` (used for both year 0 and year 1). Leave at 0 to assume no IRMAA in the first two retirement years.
+- **Existing scenarios upgrade behavior** — scenarios saved before the IRMAA/NIIT/state-LTCG additions load with IRMAA and NIIT enabled by default, so tax bills and success probability will differ from prior runs. Disable under Settings → Modeling → Tax to recover prior behavior.
+- **No ACA premium tax credit modeling** — pre-65 retirees on ACA-subsidized plans may face large effective marginal rates from subsidy phase-outs that the model does not capture.
+- **No surviving-spouse bracket shift** — filing status remains MFJ for the full horizon even after one spouse reaches life expectancy.
 - **No tax-loss harvesting**.
 - **No mortality modeling** — life expectancy is a hard endpoint (see *Horizon and Mortality* above).
 - **No Social Security claiming optimization** — you specify the start age directly.

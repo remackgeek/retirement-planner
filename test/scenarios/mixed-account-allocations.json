@@ -9,7 +9,7 @@
   "spendingGoals": [],
   "incomeEvents": [],
   "portfolioAssumptions": {
-    "stockReturn": 0.10,
+    "stockReturn": 0.1,
     "stockStdDev": 0,
     "bondReturn": 0.04,
     "bondStdDev": 0,
@@ -49,5 +49,7 @@
       "portfolioBalance": "50_50"
     }
   ],
-  "longTermCapGainsRate": 0.15
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
 }

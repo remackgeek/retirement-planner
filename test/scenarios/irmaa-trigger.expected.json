@@ -1,0 +1,10 @@
+{
+  "_rationale": "Year 0 IRMAA = 0 (no 2-year-prior MAGI). Year 1 IRMAA = 0 (only one year of history). Year 2 (age 67) IRMAA looks back to year 0's MAGI = $250,000 (pension). Single-filer tier 5 ($193k–$500k) surcharge = ($384.30 + $74.20) × 12 = $5,502 per Medicare enrollee × 1 (single) = $5,502. The simulation auto-creates a Reinvestment taxable account to absorb the year-0 surplus.",
+  "probability": 100,
+  "breakdownChecks": [
+    { "index": 0, "field": "otherTaxableGross", "value": 250000, "tolerance": 0.5, "_note": "Pension flows into ordinary income" },
+    { "index": 0, "field": "irmaaSurcharge", "value": 0, "tolerance": 0.01, "_note": "Year 0 has no lookback history" },
+    { "index": 1, "field": "irmaaSurcharge", "value": 0, "tolerance": 0.01, "_note": "Year 1 has only year 0 in history; need year-i-2 = year -1" },
+    { "index": 2, "field": "irmaaSurcharge", "value": 5502, "tolerance": 1, "_note": "Year 2 looks back to year 0 MAGI = $250k → single tier 5 surcharge" }
+  ]
+}

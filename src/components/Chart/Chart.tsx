@@ -264,7 +264,7 @@ function exportCsv(
     ...pathHeaders,
     'SS Gross', 'Other Taxable Income', 'After-Tax Income', 'Total Gross Income',
     'Base Spending', 'Goal Spending', 'Total Spending',
-    'Total Tax', 'Ordinary Income Tax', 'Capital Gains Tax', 'Portfolio Withdrawal',
+    'Total Tax', 'Ordinary Income Tax', 'Federal LTCG Tax', 'State LTCG Tax', 'NIIT (3.8%)', 'IRMAA Surcharge', 'Portfolio Withdrawal',
     'Withdrawal — Taxable', 'Withdrawal — Traditional', 'Withdrawal — Roth',
     'RMD Required', 'RMD Reinvested',
     'Roth Conversion',
@@ -296,7 +296,10 @@ function exportCsv(
       Math.round(toDisplay(bd.totalSpendingNet, bdF, displayCurrency)),
       Math.round(toDisplay(bd.totalTax, bdF, displayCurrency)),
       Math.round(toDisplay(bd.ordinaryTax, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.capitalGainsTax, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.federalCapGainsTax, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.stateCapGainsTax, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.niitTax, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.irmaaSurcharge, bdF, displayCurrency)),
       Math.round(toDisplay(bd.portfolioWithdrawal, bdF, displayCurrency)),
       Math.round(toDisplay(bd.withdrawalFromTaxable, bdF, displayCurrency)),
       Math.round(toDisplay(bd.withdrawalFromTraditional, bdF, displayCurrency)),
@@ -1022,10 +1025,13 @@ const Projections = ({
                     <span><span style={{ color: colors.income }}>Inc</span> {fmtM(toDisplay(selBd.totalGrossIncome, bdF, displayCurrency))}</span>
                     <span><span style={{ color: colors.spending }}>Spend</span> {fmtM(toDisplay(selBd.totalSpendingNet, bdF, displayCurrency))}</span>
                     <span>
-                      Tax {fmtM(toDisplay(selBd.totalTax, bdF, displayCurrency))}
+                      {selBd.irmaaSurcharge > 0.5 ? 'Tax+IRMAA' : 'Tax'} {fmtM(toDisplay(selBd.totalTax, bdF, displayCurrency))}
                       {(() => {
                         const rate = effectiveTaxRate(selBd);
-                        return rate !== null ? ` (${fmtRate(rate)})` : '';
+                        if (rate === null) return '';
+                        return selBd.irmaaSurcharge > 0.5
+                          ? ` (income tax ${fmtRate(rate)})`
+                          : ` (${fmtRate(rate)})`;
                       })()}
                     </span>
                   </div>
@@ -1345,7 +1351,13 @@ const Projections = ({
                               {/* Taxes */}
                               {dispTax > 0 && (() => {
                                 const dispOrdinaryTax = toDisplay(breakdown.ordinaryTax, pathFactor, displayCurrency);
-                                const dispCapGainsTax = toDisplay(breakdown.capitalGainsTax, pathFactor, displayCurrency);
+                                const dispCapGainsTax = toDisplay(
+                                  breakdown.federalCapGainsTax + breakdown.stateCapGainsTax,
+                                  pathFactor,
+                                  displayCurrency,
+                                );
+                                const dispNiit = toDisplay(breakdown.niitTax, pathFactor, displayCurrency);
+                                const dispIrmaa = toDisplay(breakdown.irmaaSurcharge, pathFactor, displayCurrency);
                                 return (
                                   <>
                                     <div style={categoryStyle}>
@@ -1360,18 +1372,34 @@ const Projections = ({
                                     )}
                                     {dispCapGainsTax > 0.5 && (
                                       <div style={itemStyle}>
-                                        <span>Capital Gains</span>
+                                        <span>Capital Gains (fed+state)</span>
                                         <span>${fmt(dispCapGainsTax)}</span>
+                                      </div>
+                                    )}
+                                    {dispNiit > 0.5 && (
+                                      <div style={itemStyle}>
+                                        <span>NIIT (3.8%)</span>
+                                        <span>${fmt(dispNiit)}</span>
+                                      </div>
+                                    )}
+                                    {dispIrmaa > 0.5 && (
+                                      <div style={itemStyle}>
+                                        <span>Medicare IRMAA</span>
+                                        <span>${fmt(dispIrmaa)}</span>
                                       </div>
                                     )}
                                     {(() => {
                                       const rate = effectiveTaxRate(breakdown);
-                                      return rate !== null ? (
+                                      if (rate === null) return null;
+                                      const label = breakdown.irmaaSurcharge > 0.5
+                                        ? 'Effective Tax Rate (excl. IRMAA)'
+                                        : 'Effective Rate';
+                                      return (
                                         <div style={itemStyle}>
-                                          <span>Effective Rate</span>
+                                          <span>{label}</span>
                                           <span>{fmtRate(rate)}</span>
                                         </div>
-                                      ) : null;
+                                      );
                                     })()}
                                   </>
                                 );

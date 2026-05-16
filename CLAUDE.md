@@ -97,8 +97,14 @@ projections, and good tax awareness without overwhelming the user.
   (`firstYearTax`, `totalTaxOverConversion`, `rmdReductionAt73`,
   `projectedRothAtEndOfPlan`, and `netPlanValueImpact` — a deterministic signed
   delta of plan value at life expectancy with vs. without the conversion,
-  including tax drag from paying conversion tax out of taxable accounts; v1
-  excludes IRMAA, SS taxability, NIIT, ACA, and surviving-spouse bracket shifts).
+  including tax drag from paying conversion tax out of taxable accounts. The
+  preview accounts for Social Security taxability (conversions can push more
+  of SS across the 50%/85% provisional thresholds). The main simulation
+  additionally models IRMAA (2-year lookback), NIIT (3.8%), and state tax on
+  LTCG — see the Tax section. The preview itself does not model IRMAA or NIIT
+  for the dialog estimate; those effects show up in the live Monte Carlo
+  probability. Still excluded everywhere: ACA premium tax credit cliffs,
+  surviving-spouse bracket shifts, and capital-gains-bracket stacking).
   New conversion events default to `colaType: 'inflation_adjusted'` so the
   entered amount is a real-dollar target across the conversion window. Inline
   warning hints fire when the configured amount is large relative to spending,
@@ -114,6 +120,24 @@ projections, and good tax awareness without overwhelming the user.
   thresholds and the standard deduction are inflated by `(1 + inflationRate)^(year − 2026)`
   to match IRS Chained CPI-U indexing (using headline CPI as a proxy). SS provisional
   income thresholds remain frozen by law.
+  Capital gains tax = federal flat `longTermCapGainsRate × fromTaxable` + state
+  `stateTaxRate × fromTaxable` (most states treat LTCG as ordinary income).
+  Federal 0/15/20% LTCG brackets and ordinary-income stacking interaction are not
+  modeled (flat rate only). `AnnualCashFlowBreakdown` exposes `federalCapGainsTax`
+  and `stateCapGainsTax` separately.
+  **IRMAA:** Medicare Part B + Part D premium surcharges from `IRMAA.ts` based on
+  the 2024 tier table (inflation-indexed forward by `inflationRate`). Driven by
+  the 2-year-prior MAGI proxy (`otherTaxableGross + withdrawalFromTraditional +
+  ssTaxableAmount + withdrawalFromTaxable`), applied per Medicare enrollee
+  (self ≥ 65 and/or spouse ≥ 65). Captured in `AnnualCashFlowBreakdown.irmaaSurcharge`.
+  Gated by `UserData.enableIRMAA` (default `true`). For the first two retirement
+  years (before the in-sim history covers the 2-year lookback),
+  `UserData.priorWorkingMagi` provides the lookback value; defaults to 0.
+  **NIIT:** 3.8% × min(investment income, MAGI − threshold) per `IRMAA.ts`.
+  Statutory thresholds (not inflation-indexed): single/HoH $200k, MFJ $250k,
+  MFS $125k. Investment-income proxy is `withdrawalFromTaxable` (same as federal
+  LTCG). Captured in `AnnualCashFlowBreakdown.niitTax`. Gated by
+  `UserData.enableNIIT` (default `true`).
 - **State timeline** — ordered list of `{ state, startYear? }` on `UserData`. First entry
   is current state (no startYear); subsequent entries are future relocations. Simulation
   resolves effective state per year via `getStateTaxRate(userData, year)`
@@ -528,7 +552,8 @@ Two assertion types are supported:
   `withdrawalFromTaxable`, `withdrawalFromTraditional`, `withdrawalFromRoth`, `totalTax`,
   `netCashFlow`, `ssGross`, `otherTaxableGross`, `afterTaxIncome`, `ssTaxableAmount`,
   `totalGrossIncome`, `baseSpendingNet`, `otherSpendingGoalsNet`, `totalSpendingNet`,
-  `rmdRequired`, `rmdExcess`, `rothConversionGross`, `ordinaryTax`, `capitalGainsTax`.
+  `rmdRequired`, `rmdExcess`, `rothConversionGross`, `ordinaryTax`,
+  `federalCapGainsTax`, `stateCapGainsTax`, `niitTax`, `irmaaSurcharge`.
 
 #### Key rules
 

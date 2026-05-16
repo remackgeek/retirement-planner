@@ -150,6 +150,9 @@ interface FormState {
   inflationRate: number;
   inflationStdDev: number;
   longTermCapGainsRate: number;
+  enableIRMAA: boolean;
+  enableNIIT: boolean;
+  priorWorkingMagi: number;
   simulationSettings: SimulationSettings;
   blackSwanEvents: BlackSwanEvent[];
   contributionLimits: ContributionLimits;
@@ -177,6 +180,9 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     inflationRate: s.inflationRate,
     inflationStdDev: s.inflationStdDev,
     longTermCapGainsRate: s.longTermCapGainsRate,
+    enableIRMAA: s.enableIRMAA !== false,
+    enableNIIT: s.enableNIIT !== false,
+    priorWorkingMagi: s.priorWorkingMagi ?? 0,
     simulationSettings: { ...s.simulationSettings },
     blackSwanEvents: s.portfolioAssumptions.blackSwanEvents
       ? s.portfolioAssumptions.blackSwanEvents.map((e) => ({ ...e }))
@@ -205,6 +211,9 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
       inflationRate: form.inflationRate,
       inflationStdDev: form.inflationStdDev,
       longTermCapGainsRate: form.longTermCapGainsRate,
+      enableIRMAA: form.enableIRMAA,
+      enableNIIT: form.enableNIIT,
+      priorWorkingMagi: form.priorWorkingMagi > 0 ? form.priorWorkingMagi : undefined,
       simulationSettings: form.simulationSettings,
       contributionLimits: form.contributionLimits,
       portfolioAssumptions: {
@@ -500,9 +509,63 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
         <Section>
           <SectionHeader>Tax</SectionHeader>
           <InputGroup>
-            <label>Long-term Capital Gains Rate</label>
+            <label>Long-term Capital Gains Rate (federal)</label>
             {pctField(form.longTermCapGainsRate, (v) => setForm({ ...form, longTermCapGainsRate: v }), 40)}
           </InputGroup>
+          <HelpText>
+            State tax on capital gains is applied automatically at the resident state's rate.
+          </HelpText>
+          <AssetRow>
+            <Checkbox
+              inputId="enable-irmaa"
+              checked={form.enableIRMAA}
+              onChange={(e) => setForm({ ...form, enableIRMAA: !!e.checked })}
+            />
+            <label htmlFor="enable-irmaa" style={{ fontSize: fontSize.sm, cursor: 'pointer' }}>
+              Apply Medicare IRMAA surcharges (age 65+)
+            </label>
+          </AssetRow>
+          <HelpText>
+            Part B + Part D premium surcharges from MAGI 2 years prior. Per Medicare-enrolled
+            person. 2024 tiers, inflation-indexed forward.
+          </HelpText>
+          {form.enableIRMAA && (
+            <InputGroup>
+              <label>
+                Last working year MAGI{scenario.filingStatus === 'mfj' ? ' (joint)' : ''}
+              </label>
+              <InputNumber
+                value={form.priorWorkingMagi}
+                onValueChange={(e) => setForm({ ...form, priorWorkingMagi: e.value ?? 0 })}
+                mode="currency"
+                currency="USD"
+                min={0}
+                inputStyle={{ width: '10rem' }}
+              />
+              <HelpText>
+                Used only for the first two retirement years, when the in-sim history
+                doesn't cover the IRS 2-year IRMAA lookback.{' '}
+                {scenario.filingStatus === 'mfj'
+                  ? "Enter the joint MAGI from the household's last working year."
+                  : "Enter the MAGI from your last working year."}
+                {' '}Leave 0 to assume no IRMAA in those years.
+              </HelpText>
+            </InputGroup>
+          )}
+          <AssetRow>
+            <Checkbox
+              inputId="enable-niit"
+              checked={form.enableNIIT}
+              onChange={(e) => setForm({ ...form, enableNIIT: !!e.checked })}
+            />
+            <label htmlFor="enable-niit" style={{ fontSize: fontSize.sm, cursor: 'pointer' }}>
+              Apply 3.8% Net Investment Income Tax
+            </label>
+          </AssetRow>
+          <HelpText>
+            3.8% on the lesser of investment income or MAGI above $200k (single) / $250k (MFJ).
+            Thresholds are statutory and not inflation-indexed.
+          </HelpText>
         </Section>
 
         <Section>

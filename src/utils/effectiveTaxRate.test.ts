@@ -17,7 +17,10 @@ const makeBd = (overrides: Partial<AnnualCashFlowBreakdown>): AnnualCashFlowBrea
   withdrawalFromRoth: 0,
   totalTax: 0,
   ordinaryTax: 0,
-  capitalGainsTax: 0,
+  federalCapGainsTax: 0,
+  stateCapGainsTax: 0,
+  irmaaSurcharge: 0,
+  niitTax: 0,
   netCashFlow: 0,
   rmdRequired: 0,
   rmdExcess: 0,
@@ -71,6 +74,25 @@ describe('effectiveTaxRate', () => {
 
   it('returns null when the denominator is zero', () => {
     expect(effectiveTaxRate(makeBd({ totalTax: 1_000 }))).toBeNull();
+  });
+
+  it('excludes irmaaSurcharge from the numerator (it is a Medicare premium, not income tax)', () => {
+    // totalTax includes $5k of IRMAA on top of $15k income tax. Rate should reflect
+    // only the $15k income-tax portion against $100k income.
+    const rate = effectiveTaxRate(makeBd({
+      totalGrossIncome: 100_000,
+      totalTax: 20_000,
+      irmaaSurcharge: 5_000,
+    }));
+    expect(rate).toBeCloseTo(0.15, 5);
+  });
+
+  it('returns null when IRMAA is the only "tax" (no actual income tax)', () => {
+    expect(effectiveTaxRate(makeBd({
+      totalGrossIncome: 50_000,
+      totalTax: 4_000,
+      irmaaSurcharge: 4_000,
+    }))).toBeNull();
   });
 
   it('returns null when conversion fully offsets the cash-flow base', () => {

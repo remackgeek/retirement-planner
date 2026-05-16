@@ -68,5 +68,7 @@
       "portfolioBalance": "60_40"
     }
   ],
-  "longTermCapGainsRate": 0.15
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
 }

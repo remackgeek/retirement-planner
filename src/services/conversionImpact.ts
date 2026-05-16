@@ -159,13 +159,17 @@ export function estimateConversionImpact(
 
     const age = userData.currentAge + (year - userData.referenceYear);
     const stateTaxRate = getStateTaxRate(userData, year);
-    const { otherTaxableGross } = baselineOrdinaryGross(userData, year, inflationRate);
+    const { ssGross, otherTaxableGross } = baselineOrdinaryGross(userData, year, inflationRate);
 
     // Incremental federal+state tax of adding the conversion to ordinary gross.
-    // SS taxability interactions are ignored here — the Impact Preview is a
-    // quick estimate, not a full tax sim.
-    const baseGross = Math.max(0, otherTaxableGross);
-    const withConvGross = baseGross + convAmount;
+    // Compute SS taxability for both branches — the conversion increases provisional
+    // income, which can push more of SS across the 50%/85% thresholds.
+    const baseOrdinary = Math.max(0, otherTaxableGross);
+    const withConvOrdinary = baseOrdinary + convAmount;
+    const baseSsTaxable = calculateSSTaxableAmount(ssGross, baseOrdinary, userData.filingStatus);
+    const withConvSsTaxable = calculateSSTaxableAmount(ssGross, withConvOrdinary, userData.filingStatus);
+    const baseGross = baseOrdinary + baseSsTaxable;
+    const withConvGross = withConvOrdinary + withConvSsTaxable;
     const baseNet = baseGross > 0
       ? calculateNetFromGross(baseGross, stateTaxRate, userData.filingStatus, age, year, userData.spouseAge, userData.inflationRate)
       : 0;

@@ -1,68 +1,68 @@
 {
-    "_description":  "Retirement contributions only â€” no spending, no growth, no tax. Verifies retirement_contribution (Roth) deposits into the target Roth account and respects start/end ages.",
-    "_rationale":  "100k initial Roth balance, 50k/yr Roth contribution ages 55â€“64 (10 years). 0% return, no spending, no wage income. Balance grows linearly: 100k + 50k*n. At age 64 (last year active), balance = 100k + 50k*10 = 600k. Ages 65+ balance stays flat at 600k. Success 100%.",
-    "_seed":  12345,
-    "name":  "Employment Savings Basic",
-    "currentAge":  55,
-    "lifeExpectancy":  75,
-    "referenceYear":  2026,
-    "spendingGoals":  [
-
-                      ],
-    "incomeEvents":  [
-                         {
-                             "id":  "emp-savings-1",
-                             "type":  "retirement_contribution",
-                             "contributionType":  "roth",
-                             "accountId":  "acct-1",
-                             "amount":  50000,
-                             "startAge":  55,
-                             "endAge":  64,
-                             "taxStatus":  "before_tax",
-                             "colaType":  "fixed",
-                             "name":  "Roth Contribution 1"
-                         }
-                     ],
-    "portfolioAssumptions":  {
-                                 "stockReturn":  0,
-                                 "stockStdDev":  0,
-                                 "bondReturn":  0,
-                                 "bondStdDev":  0,
-                                 "stockBondCorrelationEnabled":  false,
-                                 "stockBondCorrelation":  -0.2,
-                                 "returnDistribution":  "lognormal",
-                                 "degreesOfFreedom":  4,
-                                 "returnModel":  "parametric"
-                             },
-    "inflationRate":  0,
-    "inflationStdDev":  0,
-    "filingStatus":  "single",
-    "spouseAge":  null,
-    "stateTimeline":  [
-                          {
-                              "state":  "Florida"
-                          }
-                      ],
-    "simulationSettings":  {
-                               "numSimulations":  5000
-                           },
-    "accounts":  [
-                     {
-                         "id":  "acct-1",
-                         "name":  "Roth 1",
-                         "type":  "roth",
-                         "balance":  100000,
-                         "stockAllocation":  0.6,
-                         "portfolioBalance":  "60_40"
-                     }
-                 ],
-    "longTermCapGainsRate":  0.15,
-    "contributionLimits":  {
-                               "elective401k":  1000000,
-                               "iraLimit":  1000000,
-                               "catchUpAge":  50,
-                               "catchUp401k":  0,
-                               "catchUpIra":  0,
-                               "inflationAdjusted":  false
-                           }
+  "_description": "Retirement contributions only â€” no spending, no growth, no tax. Verifies retirement_contribution (Roth) deposits into the target Roth account and respects start/end ages.",
+  "_rationale": "100k initial Roth balance, 50k/yr Roth contribution ages 55â€“64 (10 years). 0% return, no spending, no wage income. Balance grows linearly: 100k + 50k*n. At age 64 (last year active), balance = 100k + 50k*10 = 600k. Ages 65+ balance stays flat at 600k. Success 100%.",
+  "_seed": 12345,
+  "name": "Employment Savings Basic",
+  "currentAge": 55,
+  "lifeExpectancy": 75,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "emp-savings-1",
+      "type": "retirement_contribution",
+      "contributionType": "roth",
+      "accountId": "acct-1",
+      "amount": 50000,
+      "startAge": 55,
+      "endAge": 64,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "name": "Roth Contribution 1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "contributionLimits": {
+    "elective401k": 1000000,
+    "iraLimit": 1000000,
+    "catchUpAge": 50,
+    "catchUp401k": 0,
+    "catchUpIra": 0,
+    "inflationAdjusted": false
+  },
+  "enableIRMAA": false,
+  "enableNIIT": false
 }

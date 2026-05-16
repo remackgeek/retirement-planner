@@ -1,85 +1,87 @@
 {
-    "_description":  "Realistic stochastic scenario with balanced portfolio, SS income, and taxes. The first scenario that exercises randomness.",
-    "_rationale":  "800k savings, balanced portfolio (6.5% mean, 10.5% stddev), 5k/mo retirement spending = 60k/yr. MFJ in Virginia (5.75% state tax). SS at 67 for 30k/yr (before-tax, fixed COLA, subject to 2034 haircut to 23.1k). With 3% inflation, spending inflates to ~108k by age 75 and ~146k by age 85. After tax grossing-up, gross withdrawals grow much faster than the portfolio. Challenging scenario â€” see expected file for probability range.",
-    "_seed":  42,
-    "name":  "Balanced Realistic",
-    "currentAge":  55,
-    "lifeExpectancy":  90,
-    "referenceYear":  2026,
-    "spendingGoals":  [
-                          {
-                              "id":  "base-spending-1",
-                              "type":  "living_expenses",
-                              "amount":  60000,
-                              "startAge":  60,
-                              "inflationAdjusted":  true,
-                              "name":  "Living Expenses 1"
-                          }
-                      ],
-    "incomeEvents":  [
-                         {
-                             "id":  "emp-savings-1",
-                             "type":  "retirement_contribution",
-                             "contributionType":  "pre_tax",
-                             "accountId":  "acct-1",
-                             "amount":  30000,
-                             "startAge":  55,
-                             "endAge":  60,
-                             "taxStatus":  "before_tax",
-                             "colaType":  "inflation_adjusted",
-                             "name":  "401k Contribution 1"
-                         },
-                         {
-                             "id":  "ss-1",
-                             "type":  "social_security",
-                             "amount":  30000,
-                             "startAge":  67,
-                             "taxStatus":  "before_tax",
-                             "colaType":  "fixed",
-                             "amountPeriod":  "annual",
-                             "name":  "Social Security 1"
-                         }
-                     ],
-    "portfolioAssumptions":  {
-                                 "stockReturn":  0.065,
-                                 "stockStdDev":  0.105,
-                                 "bondReturn":  0.065,
-                                 "bondStdDev":  0.105,
-                                 "stockBondCorrelationEnabled":  false,
-                                 "stockBondCorrelation":  -0.2,
-                                 "returnDistribution":  "lognormal",
-                                 "degreesOfFreedom":  4,
-                                 "returnModel":  "parametric"
-                             },
-    "inflationRate":  0.03,
-    "inflationStdDev":  0,
-    "filingStatus":  "mfj",
-    "spouseAge":  53,
-    "stateTimeline":  [
-                          {
-                              "state":  "Virginia"
-                          }
-                      ],
-    "simulationSettings":  {
-                               "numSimulations":  5000
-                           },
-    "accounts":  [
-                     {
-                         "id":  "acct-1",
-                         "name":  "Traditional 1",
-                         "type":  "traditional",
-                         "balance":  800000,
-                         "stockAllocation":  0.6,
-                         "portfolioBalance":  "60_40"
-                     }
-                 ],
-    "longTermCapGainsRate":  0.15,
-    "contributionLimits":  {
-                               "elective401k":  1000000,
-                               "iraLimit":  1000000,
-                               "catchUpAge":  50,
-                               "catchUp401k":  0,
-                               "catchUpIra":  0,
-                               "inflationAdjusted":  false
-                           }
+  "_description": "Realistic stochastic scenario with balanced portfolio, SS income, and taxes. The first scenario that exercises randomness.",
+  "_rationale": "800k savings, balanced portfolio (6.5% mean, 10.5% stddev), 5k/mo retirement spending = 60k/yr. MFJ in Virginia (5.75% state tax). SS at 67 for 30k/yr (before-tax, fixed COLA, subject to 2034 haircut to 23.1k). With 3% inflation, spending inflates to ~108k by age 75 and ~146k by age 85. After tax grossing-up, gross withdrawals grow much faster than the portfolio. Challenging scenario â€” see expected file for probability range.",
+  "_seed": 42,
+  "name": "Balanced Realistic",
+  "currentAge": 55,
+  "lifeExpectancy": 90,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 60000,
+      "startAge": 60,
+      "inflationAdjusted": true,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "emp-savings-1",
+      "type": "retirement_contribution",
+      "contributionType": "pre_tax",
+      "accountId": "acct-1",
+      "amount": 30000,
+      "startAge": 55,
+      "endAge": 60,
+      "taxStatus": "before_tax",
+      "colaType": "inflation_adjusted",
+      "name": "401k Contribution 1"
+    },
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "amount": 30000,
+      "startAge": 67,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "amountPeriod": "annual",
+      "name": "Social Security 1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0.065,
+    "stockStdDev": 0.105,
+    "bondReturn": 0.065,
+    "bondStdDev": 0.105,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0.03,
+  "inflationStdDev": 0,
+  "filingStatus": "mfj",
+  "spouseAge": 53,
+  "stateTimeline": [
+    {
+      "state": "Virginia"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 800000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "contributionLimits": {
+    "elective401k": 1000000,
+    "iraLimit": 1000000,
+    "catchUpAge": 50,
+    "catchUp401k": 0,
+    "catchUpIra": 0,
+    "inflationAdjusted": false
+  },
+  "enableIRMAA": false,
+  "enableNIIT": false
 }

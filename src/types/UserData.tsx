@@ -31,6 +31,12 @@ export interface UserData {
   spouseAge: number | null;
   stateTimeline: StateResidency[];
   longTermCapGainsRate: number; // flat rate applied to taxable-brokerage withdrawals
+  enableIRMAA?: boolean;        // Medicare IRMAA premium surcharges (default true)
+  enableNIIT?: boolean;         // 3.8% Net Investment Income Tax (default true)
+  // Your modified AGI in the year before retirement — used for the IRS 2-year
+  // IRMAA lookback in the first two retirement years (when the in-sim history
+  // doesn't yet exist). Single value, applied to both i=0 and i=1.
+  priorWorkingMagi?: number;
   contributionLimits?: ContributionLimits;
 }
 

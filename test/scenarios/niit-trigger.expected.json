@@ -1,0 +1,16 @@
+{
+  "_rationale": "Spending $300k forces a large taxable-account withdrawal at MAGI well above the $200k single NIIT threshold. Withdrawal w satisfies w·0.962 + 7600 = 300000 + 0.15w → solving: w − 0.15w − 0.038(w − 200000) = 300000 → 0.812w = 292400 → w = 360,098.52. Federal LTCG = 0.15·w = 54,014.78. State LTCG = 0 (Florida). NIIT = 0.038·(w − 200,000) = 6,083.74. Total tax 60,098.52; net cash flow 0. Balance after year 1 = 1,000,000 − 360,098.52 = 639,901.48.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 1000000, "tolerance": 1 },
+    { "index": 1, "age": 61, "value": 639901, "tolerance": 2 }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "withdrawalFromTaxable", "value": 360098.52, "tolerance": 1 },
+    { "index": 0, "field": "federalCapGainsTax", "value": 54014.78, "tolerance": 0.5 },
+    { "index": 0, "field": "stateCapGainsTax", "value": 0, "tolerance": 0.01, "_note": "Florida — no state income tax" },
+    { "index": 0, "field": "niitTax", "value": 6083.74, "tolerance": 0.5, "_note": "0.038 × ($360,098.52 − $200,000)" },
+    { "index": 0, "field": "irmaaSurcharge", "value": 0, "tolerance": 0.01 },
+    { "index": 0, "field": "ordinaryTax", "value": 0, "tolerance": 0.01 }
+  ]
+}

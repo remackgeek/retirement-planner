@@ -4,6 +4,7 @@ import {
   calculateNetFromGross,
   calculateSSTaxableAmount,
 } from './TaxCalculator';
+import { calculateIRMAA, calculateNIIT } from './IRMAA';
 import { getContributionLimits } from '../utils/contributionLimits';
 import {
   createReturnGenerator,
@@ -348,7 +349,10 @@ export interface AnnualCashFlowBreakdown {
   withdrawalFromRoth: number;
   totalTax: number;
   ordinaryTax: number;      // ordinary income tax (federal + state) on Traditional + SS + other taxable
-  capitalGainsTax: number;  // LTCG tax on taxable account withdrawals
+  federalCapGainsTax: number; // federal LTCG tax on taxable account withdrawals (longTermCapGainsRate × fromTaxable)
+  stateCapGainsTax: number;   // state tax on taxable account withdrawals (most states treat LTCG as ordinary)
+  irmaaSurcharge: number;     // Medicare IRMAA Part B+D surcharge (per enrollee × enrollee count); 0 if disabled or pre-65
+  niitTax: number;            // 3.8% Net Investment Income Tax on the lesser of investment income or MAGI excess
   netCashFlow: number;
   rmdRequired: number;  // IRS-mandated minimum from Traditional; 0 if age < 73
   rmdExcess: number;    // rmdRequired beyond spending need; reinvested to taxable
@@ -725,7 +729,10 @@ function calculateAnnualCashFlowCore(
   // Pass pre-growth balance from the simulation loop; falls back to current tradBal.
   beginningTradBalances?: { self: number; spouse: number },
   maxWithdrawal?: number,
-  inflationRate?: number
+  inflationRate?: number,
+  // 2-year-prior MAGI proxy used to determine the current year's IRMAA surcharge
+  // (IRS lookback rule). Caller passes undefined / 0 when unavailable.
+  priorMagi?: number,
 ): AnnualCashFlowBreakdown {
   const { ssGross, otherTaxableGross, afterTaxIncome, conversionGross } = income;
   const totalSpendingNet = spending.baseSpendingNet + spending.otherSpendingGoalsNet;
@@ -757,7 +764,17 @@ function calculateAnnualCashFlowCore(
   let rothConversion = 0;
   let capWasBinding = false;
   let ordinaryTax = 0;
-  let ltcgTax = 0;
+  let federalCapGainsTax = 0;
+  let stateCapGainsTax = 0;
+  let niitTax = 0;
+
+  // IRMAA is determined by the 2-year-prior MAGI, so it does not depend on this
+  // year's withdrawal — compute it once outside the fixed-point loop.
+  const irmaaEnabled = userData.enableIRMAA !== false;
+  const niitEnabled = userData.enableNIIT !== false;
+  const irmaaSurcharge = irmaaEnabled
+    ? calculateIRMAA(priorMagi ?? 0, userData.filingStatus, year, inflationRate ?? 0, age, spouseAge)
+    : 0;
 
   const MAX_ITERATIONS = 50;
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
@@ -792,8 +809,21 @@ function calculateAnnualCashFlowCore(
       );
       ordinaryTax = combinedTaxable - net;
     }
-    ltcgTax = fromTaxable * ltcgRate;
-    totalTax = ordinaryTax + ltcgTax;
+    federalCapGainsTax = fromTaxable * ltcgRate;
+    // Most states tax LTCG as ordinary income at the state rate. Apply the same
+    // state rate used for ordinary income above; state-specific LTCG preferences
+    // (e.g. WA capital gains tax) are not modeled.
+    stateCapGainsTax = fromTaxable * stateTaxRate;
+    // NIIT: 3.8% × min(investment income, MAGI − threshold). Investment-income
+    // proxy is the gross taxable-account withdrawal (same proxy as federal LTCG).
+    // MAGI proxy = ordinary gross + SS taxable portion + taxable-account withdrawal.
+    if (niitEnabled) {
+      const magi = ordinaryGross + ssTaxableAmount + fromTaxable;
+      niitTax = calculateNIIT(magi, fromTaxable, userData.filingStatus);
+    } else {
+      niitTax = 0;
+    }
+    totalTax = ordinaryTax + federalCapGainsTax + stateCapGainsTax + niitTax + irmaaSurcharge;
 
     const uncappedNewWithdrawal = Math.max(0, totalSpendingNet + totalTax - availableCash);
     const newWithdrawal = Math.min(uncappedNewWithdrawal, cap);
@@ -840,7 +870,10 @@ function calculateAnnualCashFlowCore(
     withdrawalFromRoth: fromRoth,
     totalTax,
     ordinaryTax,
-    capitalGainsTax: ltcgTax,
+    federalCapGainsTax,
+    stateCapGainsTax,
+    irmaaSurcharge,
+    niitTax,
     netCashFlow,
     rmdRequired,
     rmdExcess,
@@ -854,6 +887,14 @@ function calculateAnnualCashFlowCore(
     contributionsCappedAmount: income.contributionsCappedAmount,
     surplusContribution,
   };
+}
+
+// MAGI proxy for IRMAA lookback: ordinary taxable income + taxable SS portion +
+// gross taxable-account withdrawals (treated as investment income proxy, matching
+// the NIIT proxy). True MAGI adds tax-exempt muni interest and a few other items
+// the model doesn't track.
+function magiFromBreakdown(b: AnnualCashFlowBreakdown): number {
+  return b.otherTaxableGross + b.withdrawalFromTraditional + b.ssTaxableAmount + b.withdrawalFromTaxable;
 }
 
 interface SimRun {
@@ -936,10 +977,15 @@ function simulateOneRun(
       balances[id] *= sa * sf + (1 - sa) * bf;
     }
 
-    // 2. Cash flow.
+    // 2. Cash flow. IRMAA uses MAGI from 2 years prior; pull from completed
+    // breakdowns. First two retirement years fall back to userData.priorWorkingMagi
+    // (the user's last working year MAGI), defaulting to 0 if unset.
+    const priorMagi = i >= 2
+      ? magiFromBreakdown(breakdowns[i - 2])
+      : (userData.priorWorkingMagi ?? 0);
     const postGrowth = sumBalances(balances);
     const cashFlow = calculateAnnualCashFlowCore(
-      userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, undefined, userData.inflationRate
+      userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, undefined, userData.inflationRate, priorMagi
     );
 
     let effectiveCashFlow: AnnualCashFlowBreakdown;
@@ -947,11 +993,11 @@ function simulateOneRun(
     const depleting = spendingExceedsIncome && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
     if (depleting && postGrowth <= 0) {
       effectiveCashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, 0, userData.inflationRate
+        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, 0, userData.inflationRate, priorMagi
       );
     } else if (depleting) {
       effectiveCashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, postGrowth, userData.inflationRate
+        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, postGrowth, userData.inflationRate, priorMagi
       );
     } else {
       effectiveCashFlow = cashFlow;

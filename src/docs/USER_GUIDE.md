@@ -17,7 +17,7 @@ YARP is a **planning tool, not financial advice** — not a substitute for a fin
 
 Use it to **explore the shape of your retirement** — what decisions matter most, where your plan is fragile, how sensitive things are to assumptions. Projections are estimates; real outcomes will differ, sometimes substantially.
 
-It's **not** the right tool for: estate planning, healthcare-specific projections (Medicare premiums, IRMAA, long-term care), insurance products, real estate transactions, or tax-loss harvesting strategies. For those, see a professional.
+It's **not** the right tool for: estate planning, long-term care projections, insurance products, real estate transactions, or tax-loss harvesting strategies. For those, see a professional.
 
 ---
 
@@ -183,10 +183,17 @@ YARP figures federal and state income tax automatically each year. You configure
 - **Filing status** — Single, Married Filing Jointly, Married Filing Separately, or Head of Household
 - **Spouse age** — needed if you're married
 - **State** — pick from any of the 50 states + DC
-- **Long-term capital gains rate** — defaults to 15%, which is the federal middle bracket. Most retirees can leave this alone.
+- **Long-term capital gains rate** — defaults to 15%, which is the federal middle bracket. Most retirees can leave this alone. Your state's tax rate is **also** applied to capital gains automatically (most states tax LTCG as ordinary income).
 - **State relocation timeline** — if you plan to move to a different state in retirement, add the move year here. YARP will switch state rates at the right time.
 
 The standard deduction (including the larger amount you get at 65+) is applied automatically. Social Security taxation follows IRS rules — depending on your other income, between 0% and 85% of your benefit will be taxable.
+
+Two additional taxes show up as separate line items in the yearly detail:
+
+- **Medicare IRMAA** — once you're 65, your Medicare Part B and Part D premiums include a surcharge if your modified AGI was high two years ago. The surcharge is per Medicare enrollee, so a married couple where both are 65+ pays it twice. If you retired with a high-income final working year, set **Last working year MAGI** under Settings → Modeling so the first two retirement years correctly reflect the IRS lookback; otherwise YARP assumes $0 there and you won't see IRMAA until age 67. Toggle off under **Settings → Modeling → Tax** if you'd rather model premiums separately.
+- **NIIT** — a flat 3.8% on investment income above $200k MAGI (single) or $250k (MFJ). Mostly relevant for high-balance taxable accounts. Toggle off under **Settings → Modeling → Tax**.
+
+Both matter most in years with large Roth conversions, sizable RMDs, or big taxable-account withdrawals.
 
 ---
 

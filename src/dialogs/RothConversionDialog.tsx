@@ -443,19 +443,25 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
             <Disclaimer>
               <div>
                 <DisclaimerLabel>What this estimate includes:</DisclaimerLabel>{' '}
-                federal and state ordinary income tax on the converted amount, RMD
-                reduction at age 73, projected tax-free Roth growth, and a net
-                plan-value comparison that accounts for forgone Traditional growth
-                (taxed at your current baseline effective rate) and the opportunity
-                cost of conversion tax paid from taxable accounts.
+                federal and state ordinary income tax on the converted amount, the
+                Social Security taxability bump from the conversion pushing more of
+                SS across the 50%/85% provisional thresholds, RMD reduction at age
+                73, projected tax-free Roth growth, and a net plan-value comparison
+                that accounts for forgone Traditional growth (taxed at your current
+                baseline effective rate) and the opportunity cost of conversion tax
+                paid from taxable accounts.
+              </div>
+              <div>
+                <DisclaimerLabel>Modeled in the full simulation, not in this preview:</DisclaimerLabel>{' '}
+                Medicare IRMAA surcharges (two-year lookback) and the 3.8% Net
+                Investment Income Tax. Both affect the success probability and the
+                yearly detail rows, but not the tax numbers shown here.
               </div>
               <div>
                 <DisclaimerLabel>What it doesn't include:</DisclaimerLabel>{' '}
-                Medicare IRMAA surcharges (cliff-based, two-year lookback — can add
-                thousands per year), Social Security taxability interactions, the
-                3.8% Net Investment Income Tax, ACA premium tax credit effects before
-                65, and the surviving-spouse shift from joint to single brackets.
-                Each of these can materially change whether a conversion is
+                ACA premium tax credit effects before 65, the surviving-spouse shift
+                from joint to single brackets, and federal 0/15/20% LTCG bracket
+                stacking. Each can materially change whether a conversion is
                 worthwhile.
               </div>
               <div>

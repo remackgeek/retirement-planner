@@ -1,0 +1,17 @@
+{
+  "_rationale": "All spending pulls from taxable. Withdrawal w solves w·(1 − 0.15 − 0.08) = 50000 → w = 64935.07. Federal LTCG = 0.15 × w = 9740.26; State LTCG = 0.08 × w = 5194.81. MAGI proxy = w = 64935 < $200k NIIT threshold → NIIT = 0. Balance at end of year 1 = 1,000,000 − 64,935.07 = 935,064.93. Year 2 (age 61): again withdraw 64,935.07 → balance 870,129.86.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 1000000, "tolerance": 1, "note": "Starting balance" },
+    { "index": 1, "age": 61, "value": 935065, "tolerance": 2, "note": "After year-1 withdrawal" },
+    { "index": 2, "age": 62, "value": 870130, "tolerance": 2, "note": "After year-2 withdrawal" }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "withdrawalFromTaxable", "value": 64935.07, "tolerance": 1, "_note": "50000 / 0.77" },
+    { "index": 0, "field": "federalCapGainsTax", "value": 9740.26, "tolerance": 0.5, "_note": "0.15 × 64935" },
+    { "index": 0, "field": "stateCapGainsTax", "value": 5194.81, "tolerance": 0.5, "_note": "0.08 × 64935 (California)" },
+    { "index": 0, "field": "niitTax", "value": 0, "tolerance": 0.01, "_note": "MAGI $64,935 < $200k single threshold" },
+    { "index": 0, "field": "irmaaSurcharge", "value": 0, "tolerance": 0.01, "_note": "Age 60 — not yet on Medicare" },
+    { "index": 0, "field": "ordinaryTax", "value": 0, "tolerance": 0.01, "_note": "No ordinary income" }
+  ]
+}

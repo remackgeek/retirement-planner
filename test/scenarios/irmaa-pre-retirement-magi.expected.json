@@ -1,0 +1,18 @@
+{
+  "_rationale": "Year 0 IRMAA = $5,502 (priorWorkingMagi $300k → single tier 5). Year 1 IRMAA = $5,502 (still using priorWorkingMagi). Year 2 IRMAA = $0 because breakdowns[0]'s MAGI was 0 (no income, no withdrawal beyond tax-free Roth). Each year's $5,502 IRMAA pulls from Roth (tax-free, no LTCG/NIIT side effects). Balance trajectory: $100,000 → $94,498 → $88,996 → $88,996 (year 2 has no IRMAA so no withdrawal).",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 65, "value": 100000, "tolerance": 1 },
+    { "index": 1, "age": 66, "value": 94498, "tolerance": 1 },
+    { "index": 2, "age": 67, "value": 88996, "tolerance": 1 }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "irmaaSurcharge", "value": 5502, "tolerance": 1, "_note": "Single tier 5 from priorWorkingMagi $300k" },
+    { "index": 0, "field": "withdrawalFromRoth", "value": 5502, "tolerance": 1, "_note": "IRMAA paid from Roth (only account)" },
+    { "index": 0, "field": "totalTax", "value": 5502, "tolerance": 1 },
+    { "index": 1, "field": "irmaaSurcharge", "value": 5502, "tolerance": 1, "_note": "Year 1 still uses priorWorkingMagi (need year -1)" },
+    { "index": 1, "field": "withdrawalFromRoth", "value": 5502, "tolerance": 1 },
+    { "index": 2, "field": "irmaaSurcharge", "value": 0, "tolerance": 0.01, "_note": "Year 2 looks back to breakdowns[0].MAGI = 0" },
+    { "index": 2, "field": "withdrawalFromRoth", "value": 0, "tolerance": 0.01 }
+  ]
+}

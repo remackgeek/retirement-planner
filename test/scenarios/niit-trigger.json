@@ -1,20 +1,20 @@
 {
-  "_description": "Monthly retirement spending with yearlyDecreasePercent — tests compound spending decay. No growth, no inflation, no income, no tax.",
-  "_rationale": "500k savings, 60k/yr base spending with 5% yearly decrease starting at age 60. Year 0: 60k, Year 1: 57k, Year 2: 54150, etc. Spending = 60000 * 0.95^n. Total spent over 20 years ≈ 60000 * (1 - 0.95^20) / (1 - 0.95) = 794,227. 500k < 794k so will fail eventually.",
+  "_description": "NIIT 3.8% fires when MAGI exceeds the $200k single threshold and the withdrawal is from a taxable account.",
+  "_rationale": "Single, age 60, Florida (0% state). $1M taxable account, no other income, $300k living expenses, no growth. Withdrawal w solves w·(1 − 0.15) − 0.038·(w − 200000) = 300000 → 0.812w = 292400 → w = 360,098.52. Federal LTCG = 54,014.78; State LTCG = 0 (Florida); NIIT = 0.038 × (360,098.52 − 200,000) = 6,083.74. Total tax = 60,098.52. Net cash flow = 0. Balance year 1 = 1,000,000 − 360,098.52 = 639,901.48.",
   "_seed": 12345,
-  "name": "Yearly Decrease Percent",
+  "name": "NIIT Trigger",
   "currentAge": 60,
-  "lifeExpectancy": 80,
+  "lifeExpectancy": 61,
   "referenceYear": 2026,
   "spendingGoals": [
     {
-      "id": "base-spending-1",
+      "id": "le-1",
       "type": "living_expenses",
-      "amount": 60000,
+      "name": "Living Expenses",
+      "amount": 300000,
       "startAge": 60,
       "inflationAdjusted": false,
-      "yearlyDecreasePercent": 5,
-      "name": "Living Expenses 1"
+      "isOneTime": false
     }
   ],
   "incomeEvents": [],
@@ -34,9 +34,7 @@
   "filingStatus": "single",
   "spouseAge": null,
   "stateTimeline": [
-    {
-      "state": "Florida"
-    }
+    { "state": "Florida" }
   ],
   "simulationSettings": {
     "numSimulations": 5000
@@ -44,14 +42,14 @@
   "accounts": [
     {
       "id": "acct-1",
-      "name": "Traditional 1",
-      "type": "traditional",
-      "balance": 500000,
+      "name": "Taxable",
+      "type": "taxable",
+      "balance": 1000000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"
     }
   ],
   "longTermCapGainsRate": 0.15,
   "enableIRMAA": false,
-  "enableNIIT": false
+  "enableNIIT": true
 }
