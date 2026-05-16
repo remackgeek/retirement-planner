@@ -38,7 +38,12 @@ projections, and good tax awareness without overwhelming the user.
 - **Accounts** — 3 tax-profile types: `traditional` (withdrawals taxed as ordinary income),
   `roth` (withdrawals tax-free), `taxable` (withdrawals taxed at flat LTCG rate).
   Replaces the old single `currentSavings` field. All accounts share the scenario's
-  stock/bond allocation. Withdrawals follow a fixed waterfall: Taxable → Traditional → Roth.
+  stock/bond allocation. Withdrawals follow a fixed waterfall: when no RMD applies,
+  Taxable → Traditional → Roth. When an RMD applies (age ≥ 73), the forced RMD is
+  applied to spending+tax need first (RMD-first ordering); only the residual need
+  above the RMD pulls from Taxable, then Traditional-above-RMD, then Roth. This
+  prevents over-pulling from Taxable (and generating phantom federal/state LTCG and
+  NIIT) when the RMD's net-of-tax proceeds already cover the year's need.
   Employment-savings income events target a specific account via `accountId`.
   **RMD:** Traditional accounts trigger Required Minimum Distributions at age 73+ (SECURE 2.0,
   IRS Uniform Lifetime Table). The simulation forces `withdrawalFromTraditional ≥ rmdRequired`
@@ -88,9 +93,11 @@ projections, and good tax awareness without overwhelming the user.
   it is taxed as ordinary income, withdrawn pro-rata from Traditional accounts, and deposited
   pro-rata into Roth accounts. RMD is enforced first (IRS rule: RMD is not eligible for
   conversion); conversion is capped at the Traditional balance remaining after the forced
-  RMD/spending withdrawal. Tax is paid implicitly by the withdrawal waterfall — with a
-  Taxable account present, the added tax pulls from Taxable first; without one, tax pulls
-  from Traditional and effectively reduces the convertible amount. `ensureRothConversionAccount`
+  RMD/spending withdrawal. Tax is paid implicitly by the withdrawal waterfall — in RMD
+  years the marginal conversion tax is absorbed first by reducing RMD excess (since the
+  RMD is already pulled and taxed), then by Taxable when present, then by Traditional
+  (which effectively reduces the convertible amount). In non-RMD years, the tax pulls
+  from Taxable first when present, otherwise from Traditional. `ensureRothConversionAccount`
   auto-creates a `"Roth Conversion"` Roth account when conversions exist but no Roth accounts
   do. Per-year conversion amount is captured in `AnnualCashFlowBreakdown.rothConversionGross`.
   The dialog's Impact Preview surfaces `estimateConversionImpact()` results

@@ -152,11 +152,14 @@ This is a UI summary only — the simulation always uses each account's individu
 
 ## Withdrawal Waterfall
 
-Each year, after RMD is enforced, withdrawals follow a fixed sequence:
+Each year, withdrawals follow a fixed sequence:
 
-1. **Taxable** — drawn first (lowest tax cost)
-2. **Traditional** — ordinary income tax applies
-3. **Roth** — drawn last to preserve tax-advantaged growth
+1. **Traditional, up to the RMD** — the year's RMD is forced from Traditional regardless of spending need, so its gross is applied to spending+tax first. (When age < 73, RMD is $0 and this step is skipped.)
+2. **Taxable** — fills any remaining spending+tax need above the RMD (lowest tax cost on the residual)
+3. **Traditional, above the RMD** — fills any need still unmet
+4. **Roth** — drawn last to preserve tax-advantaged growth
+
+RMD-first ordering avoids over-pulling from Taxable in high-RMD years: when the RMD's net-of-tax proceeds already cover the year's spending, `withdrawalFromTaxable` stays at 0 and no federal/state LTCG or NIIT is generated. Excess RMD (the portion not consumed by spending+tax) reinvests into the first Taxable account.
 
 ### Spending Shortfall
 
@@ -372,4 +375,4 @@ This is a deliberate choice. Stochastic mortality would inflate success rates ar
 - **No tax-loss harvesting**.
 - **No mortality modeling** — life expectancy is a hard endpoint (see *Horizon and Mortality* above).
 - **No Social Security claiming optimization** — you specify the start age directly.
-- **Fixed withdrawal order** (Taxable → Traditional → Roth); no fill-to-bracket Roth conversion or tax-aware withdrawal ordering yet.
+- **Fixed withdrawal order** (RMD-first, then Taxable → Traditional-above-RMD → Roth); no fill-to-bracket Roth conversion or tax-aware withdrawal ordering yet.

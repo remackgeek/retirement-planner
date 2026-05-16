@@ -778,10 +778,21 @@ function calculateAnnualCashFlowCore(
 
   const MAX_ITERATIONS = 50;
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    fromTaxable = Math.min(withdrawal, taxableBal);
-    spendingFromTrad = Math.min(Math.max(0, withdrawal - fromTaxable), tradBal);
-    fromRoth = Math.max(0, withdrawal - fromTaxable - spendingFromTrad);
-    // Force Traditional withdrawal to satisfy RMD even if spending need is lower.
+    // RMD-first waterfall: the RMD will be pulled and taxed regardless, so apply its
+    // gross toward spending need before tapping Taxable. Without this, the loop
+    // over-pulls from Taxable to fill a gap the RMD already covers — generating
+    // phantom federal/state LTCG and NIIT. Order: Trad-up-to-RMD → Taxable →
+    // Trad-above-RMD → Roth. When rmdRequired = 0, this reduces to the original
+    // Taxable → Traditional → Roth waterfall.
+    const rmdSpendingPull = Math.min(withdrawal, rmdRequired, tradBal);
+    let remaining = withdrawal - rmdSpendingPull;
+    fromTaxable = Math.min(remaining, taxableBal);
+    remaining -= fromTaxable;
+    const tradAboveRmd = Math.max(0, tradBal - rmdRequired);
+    const spendingFromTradExtra = Math.min(remaining, tradAboveRmd);
+    remaining -= spendingFromTradExtra;
+    fromRoth = Math.max(0, remaining);
+    spendingFromTrad = rmdSpendingPull + spendingFromTradExtra;
     const forcedTrad = Math.min(Math.max(spendingFromTrad, rmdRequired), tradBal);
     rmdExcess = Math.max(0, forcedTrad - spendingFromTrad);
     // Roth conversion: taken from Traditional balance remaining after RMD/spending,
@@ -831,9 +842,15 @@ function calculateAnnualCashFlowCore(
 
     if (Math.abs(newWithdrawal - withdrawal) < 0.01) {
       withdrawal = newWithdrawal;
-      fromTaxable = Math.min(withdrawal, taxableBal);
-      spendingFromTrad = Math.min(Math.max(0, withdrawal - fromTaxable), tradBal);
-      fromRoth = Math.max(0, withdrawal - fromTaxable - spendingFromTrad);
+      const finalRmdSpendingPull = Math.min(withdrawal, rmdRequired, tradBal);
+      let finalRemaining = withdrawal - finalRmdSpendingPull;
+      fromTaxable = Math.min(finalRemaining, taxableBal);
+      finalRemaining -= fromTaxable;
+      const finalTradAboveRmd = Math.max(0, tradBal - rmdRequired);
+      const finalSpendingFromTradExtra = Math.min(finalRemaining, finalTradAboveRmd);
+      finalRemaining -= finalSpendingFromTradExtra;
+      fromRoth = Math.max(0, finalRemaining);
+      spendingFromTrad = finalRmdSpendingPull + finalSpendingFromTradExtra;
       const finalForcedTrad = Math.min(Math.max(spendingFromTrad, rmdRequired), tradBal);
       rmdExcess = Math.max(0, finalForcedTrad - spendingFromTrad);
       const finalAvailableForConversion = Math.max(0, tradBal - finalForcedTrad);

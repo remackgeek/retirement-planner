@@ -188,8 +188,11 @@ export function estimateConversionImpact(
 
     if (year === startYear) firstYearTax = incrementalTax;
     totalTaxOverConversion += incrementalTax;
-    // Conversion tax pulls from the taxable account first (per the withdrawal
-    // waterfall); track its forgone growth out to end of plan.
+    // Conversion tax is funded by the portfolio — either by pulling from Taxable
+    // (non-RMD years) or by reducing the RMD-excess deposit into Taxable (RMD
+    // years where RMD-net covers spending). Either way, end-of-plan Taxable is
+    // lower by `incrementalTax` compounded at the blended return; track that
+    // forgone growth as the conversion's opportunity cost.
     taxDragAtEndOfPlan += incrementalTax * Math.pow(1 + blendedReturn, Math.max(0, lastPlanYear - year));
 
     // Project Roth growth of this year's converted amount out to life expectancy.
