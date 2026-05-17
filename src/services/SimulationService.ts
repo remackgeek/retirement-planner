@@ -1147,3 +1147,45 @@ export function runSimulation(
     years,
   };
 }
+
+// Single-path deterministic projection using the nominal generator — the same
+// engine that drives the "Deterministic" chart line. Exposed so callers (e.g.,
+// the Roth Conversion dialog's Net impact preview) can compute with-vs-without
+// deltas without paying for a full Monte Carlo run.
+export function runDeterministicProjection(rawUserData: UserData): {
+  path: number[];
+  breakdowns: AnnualCashFlowBreakdown[];
+  inflation: number[];
+  years: number[];
+} {
+  clearTaxCalculationCache();
+  const userData = ensureRothConversionAccount(ensureReinvestmentAccount(rawUserData));
+  const currentYear = userData.referenceYear;
+  const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
+  const inflationRate = userData.inflationRate;
+
+  const stateTaxRateByYear: number[] = new Array(totalYears);
+  const ageByYear: number[] = new Array(totalYears);
+  const spouseAgeByYear: Array<number | null> = new Array(totalYears);
+  const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
+  const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
+  for (let i = 0; i < totalYears; i++) {
+    const year = currentYear + i;
+    stateTaxRateByYear[i] = getStateTaxRate(userData, year);
+    ageByYear[i] = userData.currentAge + i;
+    spouseAgeByYear[i] = userData.spouseAge !== null ? userData.spouseAge + i : null;
+    incomeByYear[i] = accumulateIncome(userData, year, inflationRate);
+    spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
+  }
+  const precomputes: Precomputes = {
+    stateTaxRateByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
+  };
+  const accountIndex = buildAccountIndex(userData);
+  const blackSwanLookup = buildBlackSwanLookup(userData);
+  const nominalGenerator = createNominalGenerator(userData);
+  const run = simulateOneRun(
+    userData, precomputes, accountIndex, nominalGenerator, 0, Math.random, blackSwanLookup
+  );
+  const years = Array.from({ length: totalYears }, (_, i) => currentYear + i);
+  return { path: run.path, breakdowns: run.breakdowns, inflation: run.inflation, years };
+}

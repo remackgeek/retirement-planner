@@ -10,6 +10,7 @@ import {
   STATE_TAX_RATES,
   IRS_UNIFORM_LIFETIME_TABLE,
   initialAccountBalances,
+  runDeterministicProjection,
 } from './SimulationService';
 
 export interface ConversionImpact {
@@ -151,7 +152,6 @@ export function estimateConversionImpact(
   let firstYearTax = 0;
   let totalTaxOverConversion = 0;
   let projectedRothAtEndOfPlan = 0;
-  let taxDragAtEndOfPlan = 0;
 
   for (let year = startYear; year <= Math.min(endYear, lastPlanYear); year++) {
     const convAmount = conversionAmountInYear(userData, conversion, year, inflationRate);
@@ -188,12 +188,6 @@ export function estimateConversionImpact(
 
     if (year === startYear) firstYearTax = incrementalTax;
     totalTaxOverConversion += incrementalTax;
-    // Conversion tax is funded by the portfolio — either by pulling from Taxable
-    // (non-RMD years) or by reducing the RMD-excess deposit into Taxable (RMD
-    // years where RMD-net covers spending). Either way, end-of-plan Taxable is
-    // lower by `incrementalTax` compounded at the blended return; track that
-    // forgone growth as the conversion's opportunity cost.
-    taxDragAtEndOfPlan += incrementalTax * Math.pow(1 + blendedReturn, Math.max(0, lastPlanYear - year));
 
     // Project Roth growth of this year's converted amount out to life expectancy.
     const yearsToLastPlan = Math.max(0, lastPlanYear - year);
@@ -227,73 +221,28 @@ export function estimateConversionImpact(
     rmdReductionAt73 = Math.max(0, tradNoConv / divisor - tradWithConv / divisor);
   }
 
-  // Net plan-value impact: project Traditional + Roth balances all the way to
-  // life expectancy under both branches (with conversions vs without), honoring
-  // RMDs after age 73 in each branch. Apply an estimated effective tax rate to
-  // remaining Traditional balances at end-of-plan so pre-tax dollars are
-  // compared apples-to-apples with tax-free Roth dollars. The opportunity cost
-  // of conversion tax paid from taxable accounts is captured via
-  // `taxDragAtEndOfPlan` and subtracted below.
-  let tradWithConvFull = initialTradBalance;
-  let tradNoConvFull = initialTradBalance;
-  let rothFromConv = 0;
-  const yearsToEnd = Math.max(0, lastPlanYear - userData.referenceYear);
-  const rmdMaxAge = 120;
-  // Iterate inclusive of `lastPlanYear` so the final-year conversion is reflected
-  // in rothFromConv / tradWithConvFull, matching the tax-loop bounds above.
-  for (let i = 0; i <= yearsToEnd; i++) {
-    const year = userData.referenceYear + i;
-    const ageThisYear = userData.currentAge + i;
-    tradWithConvFull *= 1 + blendedReturn;
-    tradNoConvFull *= 1 + blendedReturn;
-    rothFromConv *= 1 + blendedReturn;
-    const convAmount = conversionAmountInYear(userData, conversion, year, inflationRate);
-    if (convAmount > 0) {
-      tradWithConvFull = Math.max(0, tradWithConvFull - convAmount);
-      rothFromConv += convAmount;
-    }
-    if (ageThisYear >= 73) {
-      const lookupAge = Math.min(ageThisYear, rmdMaxAge);
-      const divisor = IRS_UNIFORM_LIFETIME_TABLE[lookupAge] ?? 26.5;
-      const rmdWith = tradWithConvFull / divisor;
-      const rmdNo = tradNoConvFull / divisor;
-      tradWithConvFull = Math.max(0, tradWithConvFull - rmdWith);
-      tradNoConvFull = Math.max(0, tradNoConvFull - rmdNo);
-    }
+  // Net plan-value impact: run the full deterministic simulation engine twice
+  // — once with this conversion event included, once with it stripped — and
+  // diff the end-of-plan portfolio balance. This is the same single-path
+  // engine that drives the "Deterministic" chart line, so the figure honors
+  // the withdrawal waterfall, RMD ordering, SS taxability, IRMAA, NIIT,
+  // state LTCG, and conversion-tax sourcing exactly as the live sim does.
+  // Skip if the conversion has no amount — both runs would be identical.
+  let netPlanValueImpact = 0;
+  if (conversion.amount > 0) {
+    // The dialog passes a draft conversion event (e.g. id 'preview') that may
+    // not yet exist in userData.incomeEvents. Build the "with" set by
+    // replacing any same-id event and appending if absent; the "without" set
+    // simply strips it.
+    const withoutEvents = userData.incomeEvents.filter((e) => e.id !== conversion.id);
+    const withEvents = [...withoutEvents, conversion];
+    const userDataWith: UserData = { ...userData, incomeEvents: withEvents };
+    const userDataWithout: UserData = { ...userData, incomeEvents: withoutEvents };
+    const withRun = runDeterministicProjection(userDataWith);
+    const withoutRun = runDeterministicProjection(userDataWithout);
+    const lastIdx = withRun.path.length - 1;
+    netPlanValueImpact = withRun.path[lastIdx] - withoutRun.path[lastIdx];
   }
-  // Effective tax rate proxy for end-of-plan Traditional balance: the average
-  // rate the user's *baseline* (non-conversion) ordinary income would pay at
-  // conversion start, including the IRS provisional-income taxable fraction of
-  // Social Security. This represents the rate the trad-no-conversion side
-  // would face on future withdrawals; using the conversion's own marginal rate
-  // would make conversion neutral by construction.
-  const baseAtStart = baselineOrdinaryGross(userData, startYear, inflationRate);
-  const ssTaxableAtStart = calculateSSTaxableAmount(
-    baseAtStart.ssGross,
-    baseAtStart.otherTaxableGross,
-    userData.filingStatus,
-  );
-  const baseGrossAtStart = baseAtStart.otherTaxableGross + ssTaxableAtStart;
-  const startAge_ = userData.currentAge + (startYear - userData.referenceYear);
-  const baseNetAtStart = baseGrossAtStart > 0
-    ? calculateNetFromGross(
-        baseGrossAtStart,
-        getStateTaxRate(userData, startYear),
-        userData.filingStatus,
-        startAge_,
-        startYear,
-        userData.spouseAge,
-        userData.inflationRate
-      )
-    : 0;
-  const effRate = baseGrossAtStart > 0
-    ? Math.min(0.4, Math.max(0, (baseGrossAtStart - baseNetAtStart) / baseGrossAtStart))
-    : 0.22;
-  const netPlanValueImpact =
-    rothFromConv +
-    tradWithConvFull * (1 - effRate) -
-    tradNoConvFull * (1 - effRate) -
-    taxDragAtEndOfPlan;
 
   return {
     firstYearTax,

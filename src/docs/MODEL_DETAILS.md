@@ -314,6 +314,8 @@ A `roth_conversion` income event moves money from Traditional to Roth accounts. 
 4. Tax owed on the conversion is paid implicitly by the regular waterfall — Taxable first if available, otherwise Traditional (which reduces the convertible amount further).
 5. If no Roth accounts exist, a `"Roth Conversion"` Roth account is auto-created.
 
+The Roth Conversion dialog's **Net impact on plan value** row is computed by running the deterministic projection (same single-path engine as the Deterministic chart line) twice — once with the conversion event included, once without — and diffing the end-of-plan portfolio balance. The other preview rows (first-year tax, total tax, RMD reduction, projected Roth at life expectancy) are fast closed-form estimates against your baseline income and do not include IRMAA or NIIT.
+
 ---
 
 ## Black Swan Events

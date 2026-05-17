@@ -102,15 +102,16 @@ projections, and good tax awareness without overwhelming the user.
   do. Per-year conversion amount is captured in `AnnualCashFlowBreakdown.rothConversionGross`.
   The dialog's Impact Preview surfaces `estimateConversionImpact()` results
   (`firstYearTax`, `totalTaxOverConversion`, `rmdReductionAt73`,
-  `projectedRothAtEndOfPlan`, and `netPlanValueImpact` — a deterministic signed
-  delta of plan value at life expectancy with vs. without the conversion,
-  including tax drag from paying conversion tax out of taxable accounts. The
-  preview accounts for Social Security taxability (conversions can push more
-  of SS across the 50%/85% provisional thresholds). The main simulation
-  additionally models IRMAA (2-year lookback), NIIT (3.8%), and state tax on
-  LTCG — see the Tax section. The preview itself does not model IRMAA or NIIT
-  for the dialog estimate; those effects show up in the live Monte Carlo
-  probability. Still excluded everywhere: ACA premium tax credit cliffs,
+  `projectedRothAtEndOfPlan`, and `netPlanValueImpact`). The first four are
+  fast closed-form estimates against the user's baseline ordinary income
+  (including SS taxability across the 50%/85% provisional thresholds).
+  `netPlanValueImpact` is computed differently: it calls
+  `runDeterministicProjection()` twice — once with the conversion event
+  included and once with it stripped — and diffs the end-of-plan portfolio
+  balance. That's the same single-path engine that drives the "Deterministic"
+  chart line, so the figure reflects the RMD-first withdrawal waterfall,
+  conversion-tax sourcing, IRMAA (2-year lookback), NIIT (3.8%), and state
+  tax on LTCG. Still excluded everywhere: ACA premium tax credit cliffs,
   surviving-spouse bracket shifts, and capital-gains-bracket stacking).
   New conversion events default to `colaType: 'inflation_adjusted'` so the
   entered amount is a real-dollar target across the conversion window. Inline

@@ -215,13 +215,16 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
       taxStatus: 'before_tax',
       colaType: formData.colaType,
     };
-    return estimateConversionImpact(userData, { id: 'preview', ...draft });
-  }, [userData, formData]);
+    return estimateConversionImpact(userData, {
+      id: editEvent?.id ?? 'preview',
+      ...draft,
+    });
+  }, [userData, formData, editEvent?.id]);
 
   const warnings = useMemo(() => {
     if (!formData.amount || formData.amount <= 0) return [] as string[];
     const draft: IncomeEvent = {
-      id: 'preview',
+      id: editEvent?.id ?? 'preview',
       type: 'roth_conversion',
       name: formData.name || 'Draft',
       owner: formData.owner,
@@ -249,7 +252,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
       );
     }
     return list;
-  }, [userData, formData]);
+  }, [userData, formData, editEvent?.id]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -442,27 +445,18 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
             </ImpactGrid>
             <Disclaimer>
               <div>
-                <DisclaimerLabel>What this estimate includes:</DisclaimerLabel>{' '}
-                federal and state ordinary income tax on the converted amount, the
-                Social Security taxability bump from the conversion pushing more of
-                SS across the 50%/85% provisional thresholds, RMD reduction at age
-                73, projected tax-free Roth growth, and a net plan-value comparison
-                that accounts for forgone Traditional growth (taxed at your current
-                baseline effective rate) and the opportunity cost of conversion tax
-                paid from taxable accounts.
+                <DisclaimerLabel>Tax rows above (first-year, total):</DisclaimerLabel>{' '}
+                quick incremental-tax estimates against your baseline ordinary
+                income, including the SS provisional-income bump. They don't
+                include IRMAA or NIIT — those effects are folded into the Net
+                impact row and the live success probability.
               </div>
               <div>
-                <DisclaimerLabel>Modeled in the full simulation, not in this preview:</DisclaimerLabel>{' '}
-                Medicare IRMAA surcharges (two-year lookback) and the 3.8% Net
-                Investment Income Tax. Both affect the success probability and the
-                yearly detail rows, but not the tax numbers shown here.
-              </div>
-              <div>
-                <DisclaimerLabel>What it doesn't include:</DisclaimerLabel>{' '}
-                ACA premium tax credit effects before 65, the surviving-spouse shift
-                from joint to single brackets, and federal 0/15/20% LTCG bracket
-                stacking. Each can materially change whether a conversion is
-                worthwhile.
+                <DisclaimerLabel>What it still doesn't include:</DisclaimerLabel>{' '}
+                ACA premium tax credit effects before 65, the surviving-spouse
+                shift from joint to single brackets, and federal 0/15/20% LTCG
+                bracket stacking. Each can materially change whether a conversion
+                is worthwhile.
               </div>
               <div>
                 Treat this as a starting point, not a recommendation. Talk to a tax
