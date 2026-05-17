@@ -135,7 +135,7 @@ Contributions are *deposit instructions* — they do not show up as spendable ca
 
 #### Contribution Limits
 
-YARP enforces IRS contribution caps per owner per account kind. Configure the limits under **Settings → Modeling → Contribution Limits**:
+YARP enforces IRS contribution caps per owner per account kind. Configure the limits under **Settings → Tax & IRS → Contribution Limits**:
 
 - 401(k)/403(b)/TSP elective deferral (default $23,000)
 - IRA limit (default $7,000)
@@ -192,8 +192,8 @@ The standard deduction (including the larger amount you get at 65+) is applied a
 
 Two additional taxes show up as separate line items in the yearly detail:
 
-- **Medicare IRMAA** — once you're 65, your Medicare Part B and Part D premiums include a surcharge if your modified AGI was high two years ago. The surcharge is per Medicare enrollee, so a married couple where both are 65+ pays it twice. If you retired with a high-income final working year, set **Last working year MAGI** under Settings → Modeling so the first two retirement years correctly reflect the IRS lookback; otherwise YARP assumes $0 there and you won't see IRMAA until age 67. Toggle off under **Settings → Modeling → Tax** if you'd rather model premiums separately.
-- **NIIT** — a flat 3.8% on investment income above $200k MAGI (single) or $250k (MFJ). Mostly relevant for high-balance taxable accounts. Toggle off under **Settings → Modeling → Tax**.
+- **Medicare IRMAA** — once you're 65, your Medicare Part B and Part D premiums include a surcharge if your modified AGI was high two years ago. The surcharge is per Medicare enrollee, so a married couple where both are 65+ pays it twice. If you retired with a high-income final working year, set **Last working year MAGI** under Settings → Tax & IRS so the first two retirement years correctly reflect the IRS lookback; otherwise YARP assumes $0 there and you won't see IRMAA until age 67. Toggle off under **Settings → Tax & IRS** if you'd rather model premiums separately.
+- **NIIT** — a flat 3.8% on investment income above $200k MAGI (single) or $250k (MFJ). Mostly relevant for high-balance taxable accounts. Toggle off under **Settings → Tax & IRS**.
 
 Both matter most in years with large Roth conversions, sizable RMDs, or big taxable-account withdrawals.
 
@@ -259,7 +259,14 @@ While in What If mode, **Compare with** is disabled (and vice versa) — they sh
 
 ---
 
-## Modeling Settings
+## Settings
+
+The **Settings** menu in the header has two dialogs:
+
+- **Modeling** — return generation (parametric vs. historical), distribution, asset correlation, inflation, Black Swan events, simulation run count.
+- **Tax & IRS** — long-term capital gains rate, IRMAA, NIIT, and IRS contribution limits.
+
+### Modeling
 
 Open **Settings → Modeling** to adjust the underlying assumptions. The defaults are reasonable for most people, but a few things are worth knowing:
 

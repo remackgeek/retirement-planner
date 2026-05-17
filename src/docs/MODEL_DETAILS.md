@@ -273,7 +273,7 @@ If the event's `accountId` doesn't match the contribution type (or is omitted), 
 
 ### Contribution Limits
 
-Per-scenario IRS limits are configured under Modeling → Contribution Limits:
+Per-scenario IRS limits are configured under Tax & IRS → Contribution Limits:
 
 - `elective401k` — 401(k)/403(b)/TSP elective deferral cap (default $23,000)
 - `iraLimit` — IRA cap (default $7,000)
@@ -371,7 +371,7 @@ This is a deliberate choice. Stochastic mortality would inflate success rates ar
 - **MFS IRMAA tiers** are approximated with the single-filer table. The actual 2024 MFS table has a compressed 3-tier structure.
 - **NIIT investment-income proxy** is the gross taxable-account withdrawal (no cost-basis tracking), so NIIT is overstated when a significant portion of the withdrawal would actually be return-of-basis.
 - **First-2-years IRMAA lookback** comes from a single `priorWorkingMagi` value on `UserData` (used for both year 0 and year 1). Leave at 0 to assume no IRMAA in the first two retirement years.
-- **Existing scenarios upgrade behavior** — scenarios saved before the IRMAA/NIIT/state-LTCG additions load with IRMAA and NIIT enabled by default, so tax bills and success probability will differ from prior runs. Disable under Settings → Modeling → Tax to recover prior behavior.
+- **Existing scenarios upgrade behavior** — scenarios saved before the IRMAA/NIIT/state-LTCG additions load with IRMAA and NIIT enabled by default, so tax bills and success probability will differ from prior runs. Disable under Settings → Tax & IRS to recover prior behavior.
 - **No ACA premium tax credit modeling** — pre-65 retirees on ACA-subsidized plans may face large effective marginal rates from subsidy phase-outs that the model does not capture.
 - **No surviving-spouse bracket shift** — filing status remains MFJ for the full horizon even after one spouse reaches life expectancy.
 - **No tax-loss harvesting**.

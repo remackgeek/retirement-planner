@@ -1,100 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { Scenario } from '../types/Scenario';
-import type { SimulationSettings, ContributionLimits } from '../types/UserData';
-import { getContributionLimits } from '../utils/contributionLimits';
+import type { SimulationSettings } from '../types/UserData';
 import type { ReturnDistribution, ReturnModel, BlackSwanEvent } from '../types/IncomeEvent';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, fontSize } from '../styles/theme';
 import BlackSwanEventsEditor from './BlackSwanEventsEditor';
 import {
   HISTORICAL_FIRST_YEAR,
   HISTORICAL_LAST_YEAR,
   HISTORICAL_YEARS,
 } from '../data/historicalReturns';
-
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.md};
-  padding: ${spacing.sm} 0;
-`;
-
-const Section = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.sm};
-`;
-
-const SectionHeader = styled.div`
-  font-size: ${fontSize.sm};
-  font-weight: 600;
-  color: ${colors.textSecondary};
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding-bottom: ${spacing.xs};
-  border-bottom: ${border.light};
-  margin-bottom: ${spacing.xs};
-`;
-
-const FieldRow = styled.div`
-  display: flex;
-  gap: ${spacing.md};
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.xs};
-
-  label {
-    font-size: ${fontSize.sm};
-    color: ${colors.textPrimary};
-  }
-`;
-
-const AssetRow = styled.div`
-  display: flex;
-  gap: ${spacing.md};
-  align-items: flex-end;
-`;
-
-const AssetLabel = styled.div`
-  flex: 0 0 4rem;
-  font-size: ${fontSize.sm};
-  color: ${colors.textSecondary};
-  padding-bottom: 0.4rem;
-`;
-
-const ColumnHeader = styled.div`
-  width: 8rem;
-  font-size: ${fontSize.sm};
-  color: ${colors.textPrimary};
-`;
-
-const BlendedRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${spacing.xs};
-  font-size: ${fontSize.sm};
-  color: ${colors.textSecondary};
-  padding-top: ${spacing.xs};
-  margin-bottom: ${spacing.md};
-`;
-
-const BlendedValue = styled.span`
-  font-weight: 600;
-  color: ${colors.textPrimary};
-`;
-
-const HelpText = styled.div`
-  font-size: ${fontSize.xs};
-  color: ${colors.textSecondary};
-`;
+import {
+  Form,
+  Section,
+  SectionHeader,
+  FieldRow,
+  InputGroup,
+  AssetRow,
+  AssetLabel,
+  ColumnHeader,
+  BlendedRow,
+  BlendedValue,
+  HelpText,
+  pctField,
+} from './SettingsDialogPrimitives';
 
 const simRunOptions = [
   { label: '1,000 (fast)', value: 1000 },
@@ -121,7 +54,6 @@ const blockSizeOptions = [
   { label: '10 years', value: 10 },
 ];
 
-// Years 1928–2024, descending (most recent first).
 const historicalStartYearOptions: { label: string; value: number }[] = Array.from(
   { length: HISTORICAL_YEARS },
   (_, i) => HISTORICAL_LAST_YEAR - i
@@ -149,13 +81,8 @@ interface FormState {
   historicalBlockSize: number;
   inflationRate: number;
   inflationStdDev: number;
-  longTermCapGainsRate: number;
-  enableIRMAA: boolean;
-  enableNIIT: boolean;
-  priorWorkingMagi: number;
   simulationSettings: SimulationSettings;
   blackSwanEvents: BlackSwanEvent[];
-  contributionLimits: ContributionLimits;
 }
 
 const ModelingDialog: React.FC<ModelingDialogProps> = ({
@@ -179,15 +106,10 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     historicalBlockSize: s.portfolioAssumptions.historicalBlockSize ?? 5,
     inflationRate: s.inflationRate,
     inflationStdDev: s.inflationStdDev,
-    longTermCapGainsRate: s.longTermCapGainsRate,
-    enableIRMAA: s.enableIRMAA !== false,
-    enableNIIT: s.enableNIIT !== false,
-    priorWorkingMagi: s.priorWorkingMagi ?? 0,
     simulationSettings: { ...s.simulationSettings },
     blackSwanEvents: s.portfolioAssumptions.blackSwanEvents
       ? s.portfolioAssumptions.blackSwanEvents.map((e) => ({ ...e }))
       : [],
-    contributionLimits: getContributionLimits(s),
   });
 
   const [form, setForm] = useState<FormState>(() => formFromScenario(scenario));
@@ -210,12 +132,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
       ...scenario,
       inflationRate: form.inflationRate,
       inflationStdDev: form.inflationStdDev,
-      longTermCapGainsRate: form.longTermCapGainsRate,
-      enableIRMAA: form.enableIRMAA,
-      enableNIIT: form.enableNIIT,
-      priorWorkingMagi: form.priorWorkingMagi > 0 ? form.priorWorkingMagi : undefined,
       simulationSettings: form.simulationSettings,
-      contributionLimits: form.contributionLimits,
       portfolioAssumptions: {
         ...scenario.portfolioAssumptions,
         stockReturn: form.stockReturn,
@@ -248,37 +165,16 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     </div>
   );
 
-  const isHistorical = form.returnModel !== 'parametric';
   const horizon = scenario.lifeExpectancy - scenario.currentAge + 1;
   const rollingRunCount = form.historicalWrapEnabled
     ? HISTORICAL_YEARS
     : Math.max(1, HISTORICAL_YEARS - horizon + 1);
 
-  const pctField = (
-    value: number,
-    onChange: (v: number) => void,
-    max = 50,
-    disabled = false
-  ) => (
-    <InputNumber
-      value={value * 100}
-      onValueChange={(e) => onChange((e.value ?? 0) / 100)}
-      mode="decimal"
-      minFractionDigits={1}
-      maxFractionDigits={1}
-      min={0}
-      max={max}
-      suffix="%"
-      inputStyle={{ width: '8rem' }}
-      disabled={disabled}
-    />
-  );
-
   return (
     <Dialog
       header="Modeling"
       visible={visible}
-      style={{ width: '28rem' }}
+      style={{ width: '32rem' }}
       onHide={onHide}
       footer={dialogFooter}
     >
@@ -306,6 +202,12 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
               style={{ width: '100%' }}
             />
           </InputGroup>
+
+          {form.returnModel === 'parametric' && (
+            <HelpText>
+              Random draws from the configured distribution and stock/bond parameters below.
+            </HelpText>
+          )}
 
           {form.returnModel === 'historical_single' && (
             <>
@@ -384,189 +286,122 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
             </>
           )}
 
-          {form.returnModel === 'parametric' && (
+          {form.returnModel !== 'parametric' && (
             <HelpText>
-              Random draws from the configured distribution and stock/bond parameters below.
+              Parametric assumptions (returns, distribution, correlation, inflation) are
+              unused — historical data drives returns and inflation directly.
             </HelpText>
           )}
         </Section>
 
-        <Section>
-          <SectionHeader>Portfolio Returns</SectionHeader>
-          {isHistorical && (
-            <HelpText>Historical mode uses recorded S&amp;P 500 and 10-yr Treasury returns.</HelpText>
-          )}
-          <AssetRow>
-            <AssetLabel />
-            <ColumnHeader>Expected Return</ColumnHeader>
-            <ColumnHeader>Std Dev</ColumnHeader>
-          </AssetRow>
-          <AssetRow>
-            <AssetLabel>Stocks</AssetLabel>
-            {pctField(form.stockReturn, (v) => setForm({ ...form, stockReturn: v }), 50, isHistorical)}
-            {pctField(form.stockStdDev, (v) => setForm({ ...form, stockStdDev: v }), 50, isHistorical)}
-          </AssetRow>
-          <AssetRow>
-            <AssetLabel>Bonds</AssetLabel>
-            {pctField(form.bondReturn, (v) => setForm({ ...form, bondReturn: v }), 50, isHistorical)}
-            {pctField(form.bondStdDev, (v) => setForm({ ...form, bondStdDev: v }), 50, isHistorical)}
-          </AssetRow>
-          <BlendedRow>
-            <span>Blended return (portfolio avg):</span>
-            <BlendedValue>{(blendedReturn * 100).toFixed(1)}%</BlendedValue>
-          </BlendedRow>
-        </Section>
+        {form.returnModel === 'parametric' && (
+          <>
+            <Section>
+              <SectionHeader>Portfolio Returns</SectionHeader>
+              <AssetRow>
+                <AssetLabel />
+                <ColumnHeader>Expected Return</ColumnHeader>
+                <ColumnHeader>Std Dev</ColumnHeader>
+              </AssetRow>
+              <AssetRow>
+                <AssetLabel>Stocks</AssetLabel>
+                {pctField(form.stockReturn, (v) => setForm({ ...form, stockReturn: v }))}
+                {pctField(form.stockStdDev, (v) => setForm({ ...form, stockStdDev: v }))}
+              </AssetRow>
+              <AssetRow>
+                <AssetLabel>Bonds</AssetLabel>
+                {pctField(form.bondReturn, (v) => setForm({ ...form, bondReturn: v }))}
+                {pctField(form.bondStdDev, (v) => setForm({ ...form, bondStdDev: v }))}
+              </AssetRow>
+              <BlendedRow>
+                <span>Blended return (portfolio avg):</span>
+                <BlendedValue>{(blendedReturn * 100).toFixed(1)}%</BlendedValue>
+              </BlendedRow>
+            </Section>
 
-        <Section>
-          <SectionHeader>Return Distribution</SectionHeader>
-          <InputGroup>
-            <label>Distribution</label>
-            <Dropdown
-              value={form.returnDistribution}
-              options={distributionOptions}
-              onChange={(e) => setForm({ ...form, returnDistribution: e.value })}
-              style={{ width: '100%' }}
-              disabled={isHistorical}
-            />
-          </InputGroup>
-          {form.returnDistribution === 'student_t' && (
-            <InputGroup>
-              <label>Degrees of Freedom</label>
-              <InputNumber
-                value={form.degreesOfFreedom}
-                onValueChange={(e) =>
-                  setForm({ ...form, degreesOfFreedom: e.value ?? 4 })
-                }
-                min={3}
-                max={12}
-                showButtons
-                inputStyle={{ width: '8rem' }}
-                disabled={isHistorical}
-              />
-              <HelpText>
-                Lower values = fatter tails (more extreme events). 4 is a common professional setting.
-              </HelpText>
-            </InputGroup>
-          )}
-        </Section>
+            <Section>
+              <SectionHeader>Return Distribution</SectionHeader>
+              <InputGroup>
+                <label>Distribution</label>
+                <Dropdown
+                  value={form.returnDistribution}
+                  options={distributionOptions}
+                  onChange={(e) => setForm({ ...form, returnDistribution: e.value })}
+                  style={{ width: '100%' }}
+                />
+              </InputGroup>
+              {form.returnDistribution === 'student_t' && (
+                <InputGroup>
+                  <label>Degrees of Freedom</label>
+                  <InputNumber
+                    value={form.degreesOfFreedom}
+                    onValueChange={(e) =>
+                      setForm({ ...form, degreesOfFreedom: e.value ?? 4 })
+                    }
+                    min={3}
+                    max={12}
+                    showButtons
+                    inputStyle={{ width: '8rem' }}
+                  />
+                  <HelpText>
+                    Lower values = fatter tails (more extreme events). 4 is a common professional setting.
+                  </HelpText>
+                </InputGroup>
+              )}
+            </Section>
 
-        <Section>
-          <SectionHeader>Asset Correlation</SectionHeader>
-          <AssetRow>
-            <Checkbox
-              inputId="stock-bond-correlation-enabled"
-              checked={form.stockBondCorrelationEnabled}
-              onChange={(e) =>
-                setForm({ ...form, stockBondCorrelationEnabled: !!e.checked })
-              }
-              disabled={isHistorical}
-            />
-            <label
-              htmlFor="stock-bond-correlation-enabled"
-              style={{ fontSize: fontSize.sm, cursor: 'pointer' }}
-            >
-              Apply stock/bond correlation
-            </label>
-          </AssetRow>
-          {form.stockBondCorrelationEnabled && (
-            <AssetRow>
-              <AssetLabel>Stocks vs Bonds</AssetLabel>
-              <InputNumber
-                value={form.stockBondCorrelation}
-                onValueChange={(e) =>
-                  setForm({ ...form, stockBondCorrelation: e.value ?? 0 })
-                }
-                mode="decimal"
-                minFractionDigits={2}
-                maxFractionDigits={2}
-                min={-1}
-                max={1}
-                step={0.05}
-                inputStyle={{ width: '8rem' }}
-                disabled={isHistorical}
-              />
-            </AssetRow>
-          )}
-        </Section>
+            <Section>
+              <SectionHeader>Asset Correlation</SectionHeader>
+              <AssetRow>
+                <Checkbox
+                  inputId="stock-bond-correlation-enabled"
+                  checked={form.stockBondCorrelationEnabled}
+                  onChange={(e) =>
+                    setForm({ ...form, stockBondCorrelationEnabled: !!e.checked })
+                  }
+                />
+                <label
+                  htmlFor="stock-bond-correlation-enabled"
+                  style={{ fontSize: fontSize.sm, cursor: 'pointer' }}
+                >
+                  Apply stock/bond correlation
+                </label>
+              </AssetRow>
+              {form.stockBondCorrelationEnabled && (
+                <AssetRow>
+                  <AssetLabel>Stocks vs Bonds</AssetLabel>
+                  <InputNumber
+                    value={form.stockBondCorrelation}
+                    onValueChange={(e) =>
+                      setForm({ ...form, stockBondCorrelation: e.value ?? 0 })
+                    }
+                    mode="decimal"
+                    minFractionDigits={2}
+                    maxFractionDigits={2}
+                    min={-1}
+                    max={1}
+                    step={0.05}
+                    inputStyle={{ width: '8rem' }}
+                  />
+                </AssetRow>
+              )}
+            </Section>
 
-        <Section>
-          <SectionHeader>Inflation</SectionHeader>
-          {isHistorical && (
-            <HelpText>Historical mode pairs recorded CPI with each year's returns.</HelpText>
-          )}
-          <FieldRow>
-            <InputGroup>
-              <label>Rate</label>
-              {pctField(form.inflationRate, (v) => setForm({ ...form, inflationRate: v }), 20, isHistorical)}
-            </InputGroup>
-            <InputGroup>
-              <label>Std Dev</label>
-              {pctField(form.inflationStdDev, (v) => setForm({ ...form, inflationStdDev: v }), 20, isHistorical)}
-            </InputGroup>
-          </FieldRow>
-        </Section>
-
-        <Section>
-          <SectionHeader>Tax</SectionHeader>
-          <InputGroup>
-            <label>Long-term Capital Gains Rate (federal)</label>
-            {pctField(form.longTermCapGainsRate, (v) => setForm({ ...form, longTermCapGainsRate: v }), 40)}
-          </InputGroup>
-          <HelpText>
-            State tax on capital gains is applied automatically at the resident state's rate.
-          </HelpText>
-          <AssetRow>
-            <Checkbox
-              inputId="enable-irmaa"
-              checked={form.enableIRMAA}
-              onChange={(e) => setForm({ ...form, enableIRMAA: !!e.checked })}
-            />
-            <label htmlFor="enable-irmaa" style={{ fontSize: fontSize.sm, cursor: 'pointer' }}>
-              Apply Medicare IRMAA surcharges (age 65+)
-            </label>
-          </AssetRow>
-          <HelpText>
-            Part B + Part D premium surcharges from MAGI 2 years prior. Per Medicare-enrolled
-            person. 2024 tiers, inflation-indexed forward.
-          </HelpText>
-          {form.enableIRMAA && (
-            <InputGroup>
-              <label>
-                Last working year MAGI{scenario.filingStatus === 'mfj' ? ' (joint)' : ''}
-              </label>
-              <InputNumber
-                value={form.priorWorkingMagi}
-                onValueChange={(e) => setForm({ ...form, priorWorkingMagi: e.value ?? 0 })}
-                mode="currency"
-                currency="USD"
-                min={0}
-                inputStyle={{ width: '10rem' }}
-              />
-              <HelpText>
-                Used only for the first two retirement years, when the in-sim history
-                doesn't cover the IRS 2-year IRMAA lookback.{' '}
-                {scenario.filingStatus === 'mfj'
-                  ? "Enter the joint MAGI from the household's last working year."
-                  : "Enter the MAGI from your last working year."}
-                {' '}Leave 0 to assume no IRMAA in those years.
-              </HelpText>
-            </InputGroup>
-          )}
-          <AssetRow>
-            <Checkbox
-              inputId="enable-niit"
-              checked={form.enableNIIT}
-              onChange={(e) => setForm({ ...form, enableNIIT: !!e.checked })}
-            />
-            <label htmlFor="enable-niit" style={{ fontSize: fontSize.sm, cursor: 'pointer' }}>
-              Apply 3.8% Net Investment Income Tax
-            </label>
-          </AssetRow>
-          <HelpText>
-            3.8% on the lesser of investment income or MAGI above $200k (single) / $250k (MFJ).
-            Thresholds are statutory and not inflation-indexed.
-          </HelpText>
-        </Section>
+            <Section>
+              <SectionHeader>Inflation</SectionHeader>
+              <FieldRow>
+                <InputGroup>
+                  <label>Rate</label>
+                  {pctField(form.inflationRate, (v) => setForm({ ...form, inflationRate: v }), 20)}
+                </InputGroup>
+                <InputGroup>
+                  <label>Std Dev</label>
+                  {pctField(form.inflationStdDev, (v) => setForm({ ...form, inflationStdDev: v }), 20)}
+                </InputGroup>
+              </FieldRow>
+            </Section>
+          </>
+        )}
 
         <Section>
           <SectionHeader>Black Swan Events</SectionHeader>
@@ -579,118 +414,6 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
             yearMax={scenario.referenceYear + scenario.lifeExpectancy - scenario.currentAge}
             baseAge={scenario.currentAge}
           />
-        </Section>
-
-        <Section>
-          <SectionHeader>Contribution Limits</SectionHeader>
-          <FieldRow>
-            <InputGroup>
-              <label>401(k) Elective</label>
-              <InputNumber
-                value={form.contributionLimits.elective401k}
-                onValueChange={(e) =>
-                  setForm({
-                    ...form,
-                    contributionLimits: { ...form.contributionLimits, elective401k: e.value ?? 0 },
-                  })
-                }
-                mode="currency"
-                currency="USD"
-                min={0}
-                inputStyle={{ width: '8rem' }}
-              />
-            </InputGroup>
-            <InputGroup>
-              <label>IRA Limit</label>
-              <InputNumber
-                value={form.contributionLimits.iraLimit}
-                onValueChange={(e) =>
-                  setForm({
-                    ...form,
-                    contributionLimits: { ...form.contributionLimits, iraLimit: e.value ?? 0 },
-                  })
-                }
-                mode="currency"
-                currency="USD"
-                min={0}
-                inputStyle={{ width: '8rem' }}
-              />
-            </InputGroup>
-          </FieldRow>
-          <FieldRow>
-            <InputGroup>
-              <label>Catch-up Age</label>
-              <InputNumber
-                value={form.contributionLimits.catchUpAge}
-                onValueChange={(e) =>
-                  setForm({
-                    ...form,
-                    contributionLimits: { ...form.contributionLimits, catchUpAge: e.value ?? 50 },
-                  })
-                }
-                min={0}
-                max={100}
-                inputStyle={{ width: '6rem' }}
-              />
-            </InputGroup>
-            <InputGroup>
-              <label>401(k) Catch-up</label>
-              <InputNumber
-                value={form.contributionLimits.catchUp401k}
-                onValueChange={(e) =>
-                  setForm({
-                    ...form,
-                    contributionLimits: { ...form.contributionLimits, catchUp401k: e.value ?? 0 },
-                  })
-                }
-                mode="currency"
-                currency="USD"
-                min={0}
-                inputStyle={{ width: '8rem' }}
-              />
-            </InputGroup>
-            <InputGroup>
-              <label>IRA Catch-up</label>
-              <InputNumber
-                value={form.contributionLimits.catchUpIra}
-                onValueChange={(e) =>
-                  setForm({
-                    ...form,
-                    contributionLimits: { ...form.contributionLimits, catchUpIra: e.value ?? 0 },
-                  })
-                }
-                mode="currency"
-                currency="USD"
-                min={0}
-                inputStyle={{ width: '8rem' }}
-              />
-            </InputGroup>
-          </FieldRow>
-          <AssetRow>
-            <Checkbox
-              inputId="contribution-limits-inflation"
-              checked={form.contributionLimits.inflationAdjusted}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  contributionLimits: {
-                    ...form.contributionLimits,
-                    inflationAdjusted: !!e.checked,
-                  },
-                })
-              }
-            />
-            <label
-              htmlFor="contribution-limits-inflation"
-              style={{ fontSize: fontSize.sm, cursor: 'pointer' }}
-            >
-              Adjust caps for inflation each year
-            </label>
-          </AssetRow>
-          <HelpText>
-            Caps are enforced per-owner per-kind. Excess contributions are not deposited;
-            the dollars remain in spendable cash via the originating wage event.
-          </HelpText>
         </Section>
 
         <Section style={{ marginTop: spacing.md }}>
