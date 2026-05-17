@@ -3,7 +3,6 @@ import styled from 'styled-components';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { RetirementContext } from '../../context/RetirementContext';
 import { runSimulation } from '../../services/SimulationService';
-import { clearTaxCalculationCache } from '../../services/TaxCalculator';
 import Projections from '../Chart/Chart';
 import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
@@ -119,7 +118,6 @@ const Content: React.FC<{
     setIsCalculating(true);
     if (pendingRun.current != null) window.clearTimeout(pendingRun.current);
     pendingRun.current = window.setTimeout(() => {
-      clearTaxCalculationCache();
       const result = runSimulation(activeScenario);
       setResults(result);
       setIsCalculating(false);
@@ -163,7 +161,6 @@ const Content: React.FC<{
     if (!whatIfSnapshot) { setWhatIfSnapshotResults(null); return; }
     setWhatIfSnapshotResults(null);
     const id = window.setTimeout(() => {
-      clearTaxCalculationCache();
       setWhatIfSnapshotResults(runSimulation(whatIfSnapshot));
     }, 0);
     return () => window.clearTimeout(id);

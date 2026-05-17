@@ -3,6 +3,7 @@ import type { Account, AccountType, AccountKind } from '../types/Account';
 import {
   calculateNetFromGross,
   calculateSSTaxableAmount,
+  clearTaxCalculationCache,
 } from './TaxCalculator';
 import { calculateIRMAA, calculateNIIT } from './IRMAA';
 import { getContributionLimits } from '../utils/contributionLimits';
@@ -12,15 +13,6 @@ import {
   buildBlackSwanLookup,
   applyBlackSwan,
   type ReturnGenerator,
-} from './ReturnGenerator';
-
-// Re-export math primitives for tests/consumers that pulled them from this module
-// before the ReturnGenerator extraction.
-export {
-  lognormalParams,
-  standardNormalRandom,
-  studentTRandom,
-  standardizedTRandom,
 } from './ReturnGenerator';
 
 // State tax rates (from user's table, converted to decimal)
@@ -111,6 +103,47 @@ function getStateTaxRate(userData: UserData, year: number): number {
   return STATE_TAX_RATES[effectiveState] || 0;
 }
 
+// ---------------- Account index (precompute) ----------------
+
+// Precomputed account lookup tables — hoisted out of the per-year-per-run
+// hot path. Treat as immutable per simulation; mutating mid-run silently
+// desyncs balances and contribution routing. See the "Precompute phase" note
+// above the Precomputes interface.
+interface AccountIndex {
+  byId: Map<string, Account>;
+  byType: Record<AccountType, Account[]>;
+  firstTaxable: Account | null;
+  // event.id → resolved deposit-target account.id, for retirement_contribution events.
+  // Built once so depositContributions doesn't re-resolve per year per run.
+  contributionTargetByEventId: Map<string, string>;
+  // account.id → stockAllocation, for the inner growth loop.
+  allocationById: Map<string, number>;
+}
+
+function buildAccountIndex(userData: UserData): AccountIndex {
+  const byId = new Map<string, Account>();
+  const byType: Record<AccountType, Account[]> = { taxable: [], traditional: [], roth: [] };
+  const allocationById = new Map<string, number>();
+  for (const a of userData.accounts) {
+    byId.set(a.id, a);
+    byType[a.type].push(a);
+    allocationById.set(a.id, a.stockAllocation);
+  }
+  const contributionTargetByEventId = new Map<string, string>();
+  for (const e of userData.incomeEvents) {
+    if (e.type !== 'retirement_contribution') continue;
+    const id = resolveContributionAccountId(userData, e);
+    if (id) contributionTargetByEventId.set(e.id, id);
+  }
+  return {
+    byId,
+    byType,
+    firstTaxable: byType.taxable[0] ?? null,
+    contributionTargetByEventId,
+    allocationById,
+  };
+}
+
 // ---------------- Account helpers ----------------
 
 export function initialAccountBalances(userData: UserData): Record<string, number> {
@@ -148,16 +181,15 @@ function sumBalancesOfTypeAndOwner(
   return sum;
 }
 
-// Subtract `amount` from all accounts of a given type, proportional to their current balance.
-function subtractFromType(
-  accounts: Account[],
+// Subtract `amount` from a precomputed list of accounts, proportional to current balance.
+function subtractFromAccounts(
+  typeAccounts: Account[],
   balances: Record<string, number>,
-  type: AccountType,
   amount: number
 ): void {
   if (amount <= 0) return;
-  const typeAccounts = accounts.filter((a) => a.type === type);
-  const typeTotal = typeAccounts.reduce((s, a) => s + (balances[a.id] ?? 0), 0);
+  let typeTotal = 0;
+  for (const a of typeAccounts) typeTotal += balances[a.id] ?? 0;
   if (typeTotal <= 0) return;
   const actual = Math.min(amount, typeTotal);
   for (const a of typeAccounts) {
@@ -167,18 +199,16 @@ function subtractFromType(
   }
 }
 
-// Add `amount` to all accounts of a given type, proportional to their current balance.
+// Add `amount` to a precomputed list of accounts, proportional to current balance.
 // If no balances exist in the type, deposits to the first account of that type (if any).
-function addToType(
-  accounts: Account[],
+function addToAccounts(
+  typeAccounts: Account[],
   balances: Record<string, number>,
-  type: AccountType,
   amount: number
 ): void {
-  if (amount <= 0) return;
-  const typeAccounts = accounts.filter((a) => a.type === type);
-  if (typeAccounts.length === 0) return;
-  const typeTotal = typeAccounts.reduce((s, a) => s + (balances[a.id] ?? 0), 0);
+  if (amount <= 0 || typeAccounts.length === 0) return;
+  let typeTotal = 0;
+  for (const a of typeAccounts) typeTotal += balances[a.id] ?? 0;
   if (typeTotal <= 0) {
     const first = typeAccounts[0];
     balances[first.id] = (balances[first.id] ?? 0) + amount;
@@ -229,39 +259,20 @@ function resolveContributionAccountId(
   return userData.accounts[0]?.id ?? null;
 }
 
-// Distribute a positive surplus (netCashFlow > 0) into the first taxable account.
-// ensureReinvestmentAccount guarantees a taxable account exists when the simulation
-// can possibly produce surplus, so the no-target case shouldn't fire in practice.
-// Note: retirement_contribution deposits are handled separately (see depositContributions),
-// not via this surplus pathway.
-function distributeDeposit(
-  userData: UserData,
-  amount: number,
-  balances: Record<string, number>
-): void {
-  if (amount <= 0) return;
-  const target = userData.accounts.find((a) => a.type === 'taxable');
-  if (!target) return;
-  balances[target.id] = (balances[target.id] ?? 0) + amount;
-}
-
-// Deposit retirement contributions (employee + employer match) into target accounts.
+// Deposit retirement contributions (employee + employer match) into precomputed targets.
 // Routing: pre_tax → traditional, roth → roth, after_tax → taxable. Employer match
 // is deposited to the same target as the employee contribution (a documented
 // simplification — pre-SECURE 2.0 employer match always went to the pre-tax bucket;
 // modeling it consistently with the employee contribution is the cleaner approximation).
 function depositContributions(
-  userData: UserData,
+  accountIndex: AccountIndex,
   contributions: ContributionDeposit[],
   balances: Record<string, number>
 ): void {
-  if (userData.accounts.length === 0) return;
   for (const c of contributions) {
     const total = c.employeeAmount + c.employerMatch;
     if (total <= 0) continue;
-    const event = userData.incomeEvents.find((e) => e.id === c.eventId);
-    if (!event) continue;
-    const targetId = resolveContributionAccountId(userData, event);
+    const targetId = accountIndex.contributionTargetByEventId.get(c.eventId);
     if (!targetId) continue;
     balances[targetId] = (balances[targetId] ?? 0) + total;
   }
@@ -270,30 +281,31 @@ function depositContributions(
 // Apply the per-bucket withdrawals from a cash-flow breakdown to the account balances,
 // then deposit retirement contributions and any positive netCashFlow surplus.
 function applyCashFlow(
-  userData: UserData,
+  accountIndex: AccountIndex,
   breakdown: AnnualCashFlowBreakdown,
   contributions: ContributionDeposit[],
   balances: Record<string, number>
 ): void {
-  subtractFromType(userData.accounts, balances, 'taxable', breakdown.withdrawalFromTaxable);
-  subtractFromType(userData.accounts, balances, 'traditional', breakdown.withdrawalFromTraditional);
-  subtractFromType(userData.accounts, balances, 'roth', breakdown.withdrawalFromRoth);
+  subtractFromAccounts(accountIndex.byType.taxable, balances, breakdown.withdrawalFromTaxable);
+  subtractFromAccounts(accountIndex.byType.traditional, balances, breakdown.withdrawalFromTraditional);
+  subtractFromAccounts(accountIndex.byType.roth, balances, breakdown.withdrawalFromRoth);
   // Deposit Roth conversion into Roth accounts (pro-rata). A receiving Roth is
   // guaranteed by ensureRothConversionAccount when any conversion event exists.
   if (breakdown.rothConversionGross > 0) {
-    addToType(userData.accounts, balances, 'roth', breakdown.rothConversionGross);
+    addToAccounts(accountIndex.byType.roth, balances, breakdown.rothConversionGross);
   }
   // Deposit RMD excess into the first taxable account (already ensured to exist by caller).
-  if (breakdown.rmdExcess > 0) {
-    const taxableTarget = userData.accounts.find((a) => a.type === 'taxable');
-    if (taxableTarget) {
-      balances[taxableTarget.id] = (balances[taxableTarget.id] ?? 0) + breakdown.rmdExcess;
-    }
+  if (breakdown.rmdExcess > 0 && accountIndex.firstTaxable) {
+    const id = accountIndex.firstTaxable.id;
+    balances[id] = (balances[id] ?? 0) + breakdown.rmdExcess;
   }
   // Retirement contributions (explicit deposit instructions, independent of surplus).
-  depositContributions(userData, contributions, balances);
-  if (breakdown.netCashFlow > 0) {
-    distributeDeposit(userData, breakdown.netCashFlow, balances);
+  depositContributions(accountIndex, contributions, balances);
+  // Surplus: deposit any positive netCashFlow into the first taxable account.
+  // ensureReinvestmentAccount guarantees one exists when surplus is possible.
+  if (breakdown.netCashFlow > 0 && accountIndex.firstTaxable) {
+    const id = accountIndex.firstTaxable.id;
+    balances[id] = (balances[id] ?? 0) + breakdown.netCashFlow;
   }
 }
 
@@ -759,7 +771,6 @@ function calculateAnnualCashFlowCore(
   let fromTaxable = 0;
   let fromTrad = 0;
   let fromRoth = 0;
-  let spendingFromTrad = 0;
   let rmdExcess = 0;
   let rothConversion = 0;
   let capWasBinding = false;
@@ -776,32 +787,47 @@ function calculateAnnualCashFlowCore(
     ? calculateIRMAA(priorMagi ?? 0, userData.filingStatus, year, inflationRate ?? 0, age, spouseAge)
     : 0;
 
-  const MAX_ITERATIONS = 50;
-  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    // RMD-first waterfall: the RMD will be pulled and taxed regardless, so apply its
-    // gross toward spending need before tapping Taxable. Without this, the loop
-    // over-pulls from Taxable to fill a gap the RMD already covers — generating
-    // phantom federal/state LTCG and NIIT. Order: Trad-up-to-RMD → Taxable →
-    // Trad-above-RMD → Roth. When rmdRequired = 0, this reduces to the original
-    // Taxable → Traditional → Roth waterfall.
-    const rmdSpendingPull = Math.min(withdrawal, rmdRequired, tradBal);
-    let remaining = withdrawal - rmdSpendingPull;
-    fromTaxable = Math.min(remaining, taxableBal);
-    remaining -= fromTaxable;
+  // RMD-first waterfall: the RMD will be pulled and taxed regardless, so apply its
+  // gross toward spending need before tapping Taxable. Without this, the loop
+  // over-pulls from Taxable to fill a gap the RMD already covers — generating
+  // phantom federal/state LTCG and NIIT. Order: Trad-up-to-RMD → Taxable →
+  // Trad-above-RMD → Roth. When rmdRequired = 0, this reduces to the original
+  // Taxable → Traditional → Roth waterfall.
+  function computeWaterfall(w: number) {
+    const rmdSpendingPull = Math.min(w, rmdRequired, tradBal);
+    let remaining = w - rmdSpendingPull;
+    const ft = Math.min(remaining, taxableBal);
+    remaining -= ft;
     const tradAboveRmd = Math.max(0, tradBal - rmdRequired);
     const spendingFromTradExtra = Math.min(remaining, tradAboveRmd);
     remaining -= spendingFromTradExtra;
-    fromRoth = Math.max(0, remaining);
-    spendingFromTrad = rmdSpendingPull + spendingFromTradExtra;
-    const forcedTrad = Math.min(Math.max(spendingFromTrad, rmdRequired), tradBal);
-    rmdExcess = Math.max(0, forcedTrad - spendingFromTrad);
+    const fr = Math.max(0, remaining);
+    const sft = rmdSpendingPull + spendingFromTradExtra;
+    const forcedTrad = Math.min(Math.max(sft, rmdRequired), tradBal);
+    const rmdExc = Math.max(0, forcedTrad - sft);
     // Roth conversion: taken from Traditional balance remaining after RMD/spending,
     // routed to Roth. Taxed as ordinary income (added to fromTrad for tax calc).
     // IRS rule: RMD must be satisfied first (not eligible for conversion) — handled
     // implicitly because forcedTrad is already reserved here.
     const availableForConversion = Math.max(0, tradBal - forcedTrad);
-    rothConversion = Math.min(Math.max(0, conversionGross), availableForConversion);
-    fromTrad = forcedTrad + rothConversion;
+    const rc = Math.min(Math.max(0, conversionGross), availableForConversion);
+    return {
+      fromTaxable: ft,
+      fromTrad: forcedTrad + rc,
+      fromRoth: fr,
+      rmdExcess: rmdExc,
+      rothConversion: rc,
+    };
+  }
+
+  const MAX_ITERATIONS = 50;
+  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    const w = computeWaterfall(withdrawal);
+    fromTaxable = w.fromTaxable;
+    fromTrad = w.fromTrad;
+    fromRoth = w.fromRoth;
+    rmdExcess = w.rmdExcess;
+    rothConversion = w.rothConversion;
 
     const ordinaryGross = otherTaxableGross + fromTrad;
     ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, userData.filingStatus);
@@ -842,20 +868,12 @@ function calculateAnnualCashFlowCore(
 
     if (Math.abs(newWithdrawal - withdrawal) < 0.01) {
       withdrawal = newWithdrawal;
-      const finalRmdSpendingPull = Math.min(withdrawal, rmdRequired, tradBal);
-      let finalRemaining = withdrawal - finalRmdSpendingPull;
-      fromTaxable = Math.min(finalRemaining, taxableBal);
-      finalRemaining -= fromTaxable;
-      const finalTradAboveRmd = Math.max(0, tradBal - rmdRequired);
-      const finalSpendingFromTradExtra = Math.min(finalRemaining, finalTradAboveRmd);
-      finalRemaining -= finalSpendingFromTradExtra;
-      fromRoth = Math.max(0, finalRemaining);
-      spendingFromTrad = finalRmdSpendingPull + finalSpendingFromTradExtra;
-      const finalForcedTrad = Math.min(Math.max(spendingFromTrad, rmdRequired), tradBal);
-      rmdExcess = Math.max(0, finalForcedTrad - spendingFromTrad);
-      const finalAvailableForConversion = Math.max(0, tradBal - finalForcedTrad);
-      rothConversion = Math.min(Math.max(0, conversionGross), finalAvailableForConversion);
-      fromTrad = finalForcedTrad + rothConversion;
+      const finalW = computeWaterfall(withdrawal);
+      fromTaxable = finalW.fromTaxable;
+      fromTrad = finalW.fromTrad;
+      fromRoth = finalW.fromRoth;
+      rmdExcess = finalW.rmdExcess;
+      rothConversion = finalW.rothConversion;
       break;
     }
     withdrawal = newWithdrawal;
@@ -924,6 +942,11 @@ interface SimRun {
   failedYear: number;
 }
 
+// Precompute phase convention: anything that doesn't depend on per-run randomness
+// or evolving balances belongs here, hoisted out of the per-year-per-run inner loop.
+// If you're tempted to call `find` / `filter` over `userData.*` inside `simulateOneRun`,
+// hoist it into a precompute instead. See also `AccountIndex` and `buildBlackSwanLookup`.
+//
 // Per-year precomputes shared across every run. Pulled out of the hot loop and
 // passed by reference into simulateOneRun.
 interface Precomputes {
@@ -944,6 +967,7 @@ interface Precomputes {
 function simulateOneRun(
   userData: UserData,
   precomputes: Precomputes,
+  accountIndex: AccountIndex,
   generator: ReturnGenerator,
   runIndex: number,
   random: () => number,
@@ -951,10 +975,6 @@ function simulateOneRun(
 ): SimRun {
   const currentYear = userData.referenceYear;
   const totalYears = precomputes.ageByYear.length;
-
-  const allocationById = new Map<string, number>(
-    userData.accounts.map((a) => [a.id, a.stockAllocation])
-  );
 
   const balances = initialAccountBalances(userData);
   const path: number[] = [];
@@ -990,7 +1010,7 @@ function simulateOneRun(
     stockFactors.push(sf);
     bondFactors.push(bf);
     for (const id in balances) {
-      const sa = allocationById.get(id) ?? 0.6; // fallback for synthetic accounts added mid-run
+      const sa = accountIndex.allocationById.get(id) ?? 0.6; // fallback for synthetic accounts
       balances[id] *= sa * sf + (1 - sa) * bf;
     }
 
@@ -1000,33 +1020,22 @@ function simulateOneRun(
     const priorMagi = i >= 2
       ? magiFromBreakdown(breakdowns[i - 2])
       : (userData.priorWorkingMagi ?? 0);
+    // Pass postGrowth as maxWithdrawal so the calc caps at the available portfolio
+    // when depleting. In solvent years the cap doesn't bind and the result is
+    // identical to an uncapped call. Depletion is then detected via spendingShortfall.
     const postGrowth = sumBalances(balances);
-    const cashFlow = calculateAnnualCashFlowCore(
-      userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, undefined, userData.inflationRate, priorMagi
+    const cap = Math.max(0, postGrowth);
+    const effectiveCashFlow = calculateAnnualCashFlowCore(
+      userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi
     );
-
-    let effectiveCashFlow: AnnualCashFlowBreakdown;
-    const spendingExceedsIncome = cashFlow.totalSpendingNet > cashFlow.totalGrossIncome;
-    const depleting = spendingExceedsIncome && (postGrowth <= 0 || postGrowth + cashFlow.netCashFlow < 0);
-    if (depleting && postGrowth <= 0) {
-      effectiveCashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, 0, userData.inflationRate, priorMagi
-      );
-    } else if (depleting) {
-      effectiveCashFlow = calculateAnnualCashFlowCore(
-        userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, postGrowth, userData.inflationRate, priorMagi
-      );
-    } else {
-      effectiveCashFlow = cashFlow;
-    }
     breakdowns.push(effectiveCashFlow);
 
-    if (depleting) {
+    if (effectiveCashFlow.spendingShortfall > 0) {
       if (!failed) failedYear = i;
       failed = true;
     }
 
-    applyCashFlow(userData, effectiveCashFlow, yearIncome.contributions, balances);
+    applyCashFlow(accountIndex, effectiveCashFlow, yearIncome.contributions, balances);
     // Clamp against float drift.
     for (const id in balances) if (balances[id] < 0) balances[id] = 0;
 
@@ -1057,6 +1066,11 @@ export function runSimulation(
   nominalInflation: number[];
   years: number[];
 } {
+  // Tax cache key is per-(taxable, status, age, year, ...) — across a 5000-run MC
+  // the cache fills with millions of pathologically-unique entries that mostly never
+  // hit. Clear at the top of each simulation so cache hits come only from the
+  // fixed-point loop iterating the same combinedTaxable ± delta within one year.
+  clearTaxCalculationCache();
   const userData = ensureRothConversionAccount(ensureReinvestmentAccount(rawUserData));
   const currentYear = userData.referenceYear;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
@@ -1080,6 +1094,7 @@ export function runSimulation(
     stateTaxRateByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
   };
 
+  const accountIndex = buildAccountIndex(userData);
   const generator = createReturnGenerator(userData, random);
   const blackSwanLookup = buildBlackSwanLookup(userData);
   const numRuns = generator.getNumRuns();
@@ -1087,7 +1102,7 @@ export function runSimulation(
   let successCount = 0;
   const allRuns: SimRun[] = new Array(numRuns);
   for (let r = 0; r < numRuns; r++) {
-    const run = simulateOneRun(userData, precomputes, generator, r, random, blackSwanLookup);
+    const run = simulateOneRun(userData, precomputes, accountIndex, generator, r, random, blackSwanLookup);
     allRuns[r] = run;
     if (!run.failed) successCount++;
   }
@@ -1111,7 +1126,7 @@ export function runSimulation(
   // reflect it just like the stochastic runs do.
   const nominalGenerator = createNominalGenerator(userData);
   const nominalRun = simulateOneRun(
-    userData, precomputes, nominalGenerator, 0, random, blackSwanLookup
+    userData, precomputes, accountIndex, nominalGenerator, 0, random, blackSwanLookup
   );
 
   return {

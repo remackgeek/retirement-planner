@@ -1,12 +1,3 @@
-// taxCalculator.ts
-// This module provides a service for calculating the gross income needed to achieve a desired net income
-// after federal and state taxes, considering tax year, filing status, age, and optional spouse age for MFJ.
-// It incorporates 2024-2026 tax brackets, standard deductions, senior deductions, and OBBB changes (2025-2028).
-// Drop this file into your src/services/ directory or similar, then import and use in your React components.
-// Example usage in a React component:
-// import { calculateGrossIncomeNeeded } from './services/taxCalculator';
-// const gross = calculateGrossIncomeNeeded(50000, 0.05, 'single', 65, 2025);
-
 type FilingStatus = 'single' | 'mfs' | 'mfj' | 'hoh';
 
 interface Bracket {
@@ -271,18 +262,6 @@ function calculateFederalTax(
 // Memoization cache for tax calculations
 const taxCalculationCache = new Map<string, number>();
 
-function getCacheKey(
-  netIncome: number,
-  stateTaxRate: number,
-  filingStatus: FilingStatus,
-  age: number,
-  taxYear: number,
-  spouseAge: number | null,
-  inflationRate?: number
-): string {
-  return `${netIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}_${inflationRate ?? 0}`;
-}
-
 function getNetCacheKey(
   grossIncome: number,
   stateTaxRate: number,
@@ -293,86 +272,6 @@ function getNetCacheKey(
   inflationRate?: number
 ): string {
   return `net_${grossIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}_${inflationRate ?? 0}`;
-}
-
-export function calculateGrossIncomeNeeded(
-  netIncome: number,
-  stateTaxRate: number,
-  filingStatus: FilingStatus,
-  age: number,
-  taxYear: number,
-  spouseAge: number | null = null,
-  inflationRate?: number
-): number {
-  const cacheKey = getCacheKey(
-    netIncome,
-    stateTaxRate,
-    filingStatus,
-    age,
-    taxYear,
-    spouseAge,
-    inflationRate
-  );
-  if (taxCalculationCache.has(cacheKey)) {
-    return taxCalculationCache.get(cacheKey)!;
-  }
-
-  if (netIncome < 0 || stateTaxRate < 0 || stateTaxRate >= 1) {
-    throw new Error('Invalid input values');
-  }
-
-  let low = netIncome;
-  let high = netIncome * 3; // Increased initial guess for high-tax scenarios
-
-  const maxIterations = 1000;
-  let iterations = 0;
-
-  const numQualifying = getNumQualifyingSeniors(filingStatus, age, spouseAge);
-
-  while (high - low > 0.01 && iterations < maxIterations) {
-    const mid = (low + high) / 2;
-    const usualExtra = getUsualSeniorExtra(
-      filingStatus,
-      taxYear,
-      numQualifying,
-      inflationRate
-    );
-    const obbbExtra = getOBBBSeniorDeduction(
-      mid,
-      filingStatus,
-      taxYear,
-      numQualifying
-    );
-    // Use the most recent available year for standard deductions
-    const deductionYears = Object.keys(standardDeductionsByYear)
-      .map(Number)
-      .sort((a, b) => b - a);
-    const deductionEffectiveYear =
-      deductionYears.find((year) => year <= taxYear) || deductionYears[0];
-    const baseStdDed =
-      (standardDeductionsByYear[deductionEffectiveYear]?.[filingStatus] ?? 0) *
-      inflationFactor(taxYear, inflationRate);
-    const deduction = baseStdDed + usualExtra + obbbExtra;
-    const taxable = Math.max(0, mid - deduction);
-    const federalTax = calculateFederalTax(taxable, filingStatus, taxYear, inflationRate);
-    const stateTax = mid * stateTaxRate;
-    const computedNet = mid - federalTax - stateTax;
-
-    if (computedNet < netIncome) {
-      low = mid;
-    } else {
-      high = mid;
-    }
-    iterations++;
-  }
-
-  if (iterations >= maxIterations) {
-    console.warn('Max iterations reached; result may not be precise.');
-  }
-
-  const result = Math.round(low * 100) / 100; // Round to nearest cent
-  taxCalculationCache.set(cacheKey, result);
-  return result;
 }
 
 export function calculateNetFromGross(
@@ -510,10 +409,3 @@ export function calculateSSTaxableAmount(
 export function clearTaxCalculationCache(): void {
   taxCalculationCache.clear();
 }
-
-// Optional: Export a hook for React usage if you want to memoize or handle async (though sync here)
-import { useCallback } from 'react';
-
-export const useTaxCalculator = () => {
-  return useCallback(calculateGrossIncomeNeeded, []);
-};

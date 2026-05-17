@@ -4,9 +4,8 @@ import {
   calculateRMD,
   IRS_UNIFORM_LIFETIME_TABLE,
   runSimulation,
-  studentTRandom,
-  standardizedTRandom,
 } from './SimulationService';
+import { studentTRandom, standardizedTRandom } from './ReturnGenerator';
 import type { UserData } from '../types/UserData';
 import { createSeededRandom } from '../../test/utils/seededRandom';
 

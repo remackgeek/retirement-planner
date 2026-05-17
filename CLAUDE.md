@@ -18,7 +18,7 @@ projections, and good tax awareness without overwhelming the user.
 
 - `src/components/` — UI (Sidebar, Chart, AccountsManager, SpendingGoalsManager, IncomeEventsManager)
 - `src/context/RetirementContext.tsx` — global state, IndexedDB, schema migrations
-- `src/services/SimulationService.tsx` — Monte Carlo engine (5000 runs, log-normal)
+- `src/services/SimulationService.ts` — Monte Carlo engine (5000 runs, log-normal)
 - `src/services/TaxCalculator.ts` — federal + state tax, memoized, 2024-2026 brackets
 - `src/dialogs/` — type-specific edit dialogs (e.g., `SocialSecurityDialog`),
   shared `IncomeEventDialog` for other types, type-selection pickers, import/export
@@ -53,7 +53,7 @@ projections, and good tax awareness without overwhelming the user.
   account also receives general surplus (see Surplus handling below) — never two synthetics.
   Roth accounts are exempt.
   **Surplus handling:** any year with `netCashFlow > 0` deposits the surplus into the
-  first taxable account via `distributeDeposit`. There is no fallback chain to
+  first taxable account (handled inline in `applyCashFlow`). There is no fallback chain to
   Traditional/Roth — `ensureReinvestmentAccount` (called once in `runSimulation`)
   guarantees a taxable account exists whenever none is configured, so surplus is never
   silently discarded. `AnnualCashFlowBreakdown.surplusContribution` records the
@@ -388,6 +388,12 @@ tests and any call-site that doesn't have precomputed values. The simulation tri
 `Content.tsx` is debounced 250ms so rapid field edits don't fire redundant Monte Carlo
 runs. Chart.js props (`chartData`, `options`, `htmlAnnotations`) are wrapped in `useMemo`
 with precise deps; `Projections` is wrapped in `React.memo`.
+
+Account-level lookups (by id, by type, first taxable, contribution target by event id,
+allocation by id) are precomputed once into an `AccountIndex` and threaded through
+`simulateOneRun` / `applyCashFlow` so the hot loop never re-scans `userData.accounts`.
+New helpers that depend only on static `userData` should be hoisted into a precompute
+(see the comment above the `Precomputes` interface).
 
 Future direction:
 
