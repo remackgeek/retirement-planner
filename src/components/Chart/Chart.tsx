@@ -26,6 +26,7 @@ import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/them
 import { useUIState } from '../../context/UIStateContext';
 import { RetirementContext } from '../../context/RetirementContext';
 import { toDisplay, pathToDisplay, type DisplayCurrency } from '../../utils/displayCurrency';
+import { formatCurrencyShort } from '../../utils/formatCurrencyShort';
 import type { Account } from '../../types/Account';
 import { eventTypeIcons, goalTypeIcons } from '../../utils/defaultName';
 import { getProbabilityTier } from '../../utils/probabilityTier';
@@ -854,29 +855,11 @@ const Projections = ({
           const medVal = pathToDisplay(median[hoveredIndex] ?? 0, getF(medianInflation), displayCurrency);
           const dwnVal = pathToDisplay(downside[hoveredIndex] ?? 0, getF(downsideInflation), displayCurrency);
 
-          const yoyDelta = (path: number[], inf: number[]) => {
-            if (hoveredIndex === 0) return null;
-            return pathToDisplay(path[hoveredIndex] ?? 0, inf[hoveredIndex] ?? 1, displayCurrency)
-                 - pathToDisplay(path[hoveredIndex - 1] ?? 0, inf[hoveredIndex - 1] ?? 1, displayCurrency);
-          };
-          const nomDelta = yoyDelta(nominal, nominalInflation);
-          const medDelta = yoyDelta(median, medianInflation);
-          const dwnDelta = yoyDelta(downside, downsideInflation);
-
           const selInf = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
           const selBd = (view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns)[hoveredIndex];
           const bdF = getF(selInf);
           const shortfall = toDisplay(selBd.spendingShortfall ?? 0, bdF, displayCurrency);
           const net = toDisplay(selBd.netCashFlow, bdF, displayCurrency);
-
-          const fmtM = (v: number) => {
-            const a = Math.abs(v);
-            if (a >= 1_000_000) return `$${(a / 1_000_000).toFixed(1)}M`;
-            if (a >= 1_000) return `$${Math.round(a / 1_000)}K`;
-            return `$${Math.round(a)}`;
-          };
-          const fmtD = (d: number | null) =>
-            d === null ? null : `${d >= 0 ? '+' : '−'}${fmtM(Math.abs(d))}`;
 
           // Side-by-side tooltip data — sourced from compare scenario in compare
           // mode, or from the What If snapshot in What If mode.
@@ -893,10 +876,6 @@ const Projections = ({
             ? (view === 'median' ? overlaySource.medianBreakdowns : view === 'nominal' ? overlaySource.nominalBreakdowns : overlaySource.downsideBreakdowns)
             : null;
           const cVal = cPath && cInfArr ? pathToDisplay(cPath[hoveredIndex] ?? 0, cInfArr[hoveredIndex] ?? 1, displayCurrency) : null;
-          const cDelta = cPath && cInfArr && hoveredIndex > 0
-            ? pathToDisplay(cPath[hoveredIndex] ?? 0, cInfArr[hoveredIndex] ?? 1, displayCurrency)
-              - pathToDisplay(cPath[hoveredIndex - 1] ?? 0, cInfArr[hoveredIndex - 1] ?? 1, displayCurrency)
-            : null;
           const cBd = cBds?.[hoveredIndex] ?? null;
           const cBdF = cInfArr?.[hoveredIndex] ?? 1;
 
@@ -904,10 +883,13 @@ const Projections = ({
           const primaryLabel = whatIfActive ? 'Draft' : userData.name;
           const overlayLabel = whatIfActive ? 'Original' : compareScenario?.name;
 
-          const pathRows: Array<{ mode: ViewMode; val: number; delta: number | null }> = [
-            { mode: 'nominal',  val: nomVal, delta: nomDelta },
-            { mode: 'median',   val: medVal, delta: medDelta },
-            { mode: 'downside', val: dwnVal, delta: dwnDelta },
+          const fmtM = (v: number) =>
+            formatCurrencyShort(v, isComparing ? 'precise' : 'compact');
+
+          const pathRows: Array<{ mode: ViewMode; val: number }> = [
+            { mode: 'nominal',  val: nomVal },
+            { mode: 'median',   val: medVal },
+            { mode: 'downside', val: dwnVal },
           ];
 
           return (
@@ -923,7 +905,7 @@ const Projections = ({
               padding: `${spacing.xs} ${spacing.sm}`,
               fontSize: fontSize.xs,
               boxShadow: `0 2px 8px ${colors.shadowLight}`,
-              minWidth: isComparing ? '18rem' : '13rem',
+              minWidth: isComparing ? '16rem' : '11rem',
               lineHeight: '1.5',
             }}>
               <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textPrimary, fontSize: fontSize.sm }}>
@@ -938,17 +920,9 @@ const Projections = ({
                   <div style={{ display: 'flex', gap: spacing.sm, marginBottom: spacing.xs }}>
                     <div style={{ flex: 1, color: colors.textPrimary }}>
                       {fmtM(view === 'nominal' ? nomVal : view === 'median' ? medVal : dwnVal)}
-                      {(() => {
-                        const d = fmtD(view === 'nominal' ? nomDelta : view === 'median' ? medDelta : dwnDelta);
-                        const delta = view === 'nominal' ? nomDelta : view === 'median' ? medDelta : dwnDelta;
-                        return d ? <span style={{ color: (delta ?? 0) >= 0 ? colors.income : colors.danger }}> {d}</span> : null;
-                      })()}
                     </div>
                     <div style={{ flex: 1, color: colors.textPrimary, opacity: 0.75 }}>
                       {cVal !== null ? fmtM(cVal) : '—'}
-                      {cDelta !== null && cVal !== null && (
-                        <span style={{ color: cDelta >= 0 ? colors.income : colors.danger }}> {fmtD(cDelta)}</span>
-                      )}
                     </div>
                   </div>
                   <div style={{ borderTop: border.light, margin: `${spacing.xs} 0` }} />
@@ -987,8 +961,7 @@ const Projections = ({
                 </>
               ) : (
                 <>
-                  {pathRows.map(({ mode, val, delta }) => {
-                    const d = fmtD(delta);
+                  {pathRows.map(({ mode, val }) => {
                     const isSelected = view === mode;
                     return (
                       <div key={mode} style={{
@@ -1006,14 +979,6 @@ const Projections = ({
                         }} />
                         <span style={{ width: '5rem', color: colors.textPrimary }}>{VIEW_LABELS[mode]}</span>
                         <span style={{ flex: 1, textAlign: 'right', color: colors.textPrimary }}>{fmtM(val)}</span>
-                        {d !== null && (
-                          <span style={{
-                            minWidth: '3.5rem', textAlign: 'right',
-                            color: (delta ?? 0) >= 0 ? colors.income : colors.danger,
-                          }}>
-                            {d}
-                          </span>
-                        )}
                       </div>
                     );
                   })}
