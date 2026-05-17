@@ -3,6 +3,8 @@
 > *"Essentially, all models are wrong, but some are useful."*
 > — George E. P. Box & Norman R. Draper, *Empirical Model-Building and Response Surfaces* (1987)
 
+**App URL:** [yarp.bluewiz.net](https://yarp.bluewiz.net)
+
 ---
 
 ## What YARP Is For
@@ -306,4 +308,4 @@ To restore or move to a new device, click **Import** and select the file. You ca
 - **Help → Model Details** — full technical reference for the simulation engine, tax math, and known limitations
 - **Help → About** — version and license info
 
-Found a bug or want to suggest an improvement? Open a ticket on the [GitHub Issues page](https://github.com/remackgeek/retirement-planner/issues), or open **Help → About YARP** for project and build details.
+Found a bug or want to suggest an improvement? Open a ticket on the [GitHub Issues page](https://github.com/remackgeek/retirement-planner/issues). The app lives at [yarp.bluewiz.net](https://yarp.bluewiz.net) — open **Help → About YARP** for project and build details.
