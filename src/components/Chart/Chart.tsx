@@ -15,6 +15,7 @@ import htmlAnnotationsPlugin, {
 } from '../../plugins/chartHtmlAnnotations';
 import chartBlackSwanShadingPlugin from '../../plugins/chartBlackSwanShading';
 import chartCrosshairPlugin from '../../plugins/chartCrosshair';
+import chartPercentileBandPlugin from '../../plugins/chartPercentileBand';
 import {
   type AnnualCashFlowBreakdown,
 } from '../../services/SimulationService';
@@ -42,7 +43,8 @@ ChartJS.register(
   Legend,
   htmlAnnotationsPlugin,
   chartBlackSwanShadingPlugin,
-  chartCrosshairPlugin
+  chartCrosshairPlugin,
+  chartPercentileBandPlugin
 );
 
 type ViewMode = 'median' | 'nominal' | 'downside';
@@ -55,7 +57,7 @@ const VIEW_COLORS: Record<ViewMode, string> = {
 
 const VIEW_LABELS: Record<ViewMode, string> = {
   median: 'Median',
-  nominal: 'Deterministic',
+  nominal: 'Projected',
   downside: 'Downside',
 };
 
@@ -145,6 +147,23 @@ const ActionButton = styled.button<{ $variant?: 'danger' | 'primary' | 'neutral'
   &:hover { background: ${colors.bgHover}; }
 `;
 
+const BandToggle = styled.button<{ $active: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: ${spacing.xs};
+  height: 1.65rem;
+  padding: 0 ${spacing.sm};
+  font-size: ${fontSize.xs};
+  font-family: inherit;
+  line-height: 1;
+  background: ${props => props.$active ? colors.bgMedium : 'transparent'};
+  color: ${props => props.$active ? colors.textPrimary : colors.textSecondary};
+  border: ${border.standard};
+  border-radius: ${border.radius};
+  cursor: pointer;
+  &:hover { background: ${colors.bgHover}; }
+`;
+
 const ChartSubtitleRow = styled.div`
   display: flex;
   align-items: center;
@@ -212,10 +231,11 @@ const LegendSwatch = styled.span<{ $color: string; $dashed?: boolean }>`
 `;
 
 const DataToggle = styled.button<{ $active: boolean }>`
-  margin-left: auto;
-  padding: 2px ${spacing.sm};
+  height: 1.65rem;
+  padding: 0 ${spacing.sm};
   font-size: ${fontSize.xs};
   font-family: inherit;
+  line-height: 1;
   background: ${props => props.$active ? colors.primary : colors.bgMedium};
   color: ${props => props.$active ? '#fff' : colors.textPrimary};
   border: ${border.standard};
@@ -224,6 +244,7 @@ const DataToggle = styled.button<{ $active: boolean }>`
   display: inline-flex;
   align-items: center;
   gap: ${spacing.xs};
+  & > i { font-size: ${fontSize.xs}; }
   &:hover { background: ${props => props.$active ? colors.primary : colors.bgHover}; }
 `;
 
@@ -253,13 +274,15 @@ function exportCsv(
   currentAge: number,
   displayCurrency: DisplayCurrency,
   options: { nominalHidden: boolean; medianDownsideHidden: boolean },
+  band: { p10: number[]; p90: number[] } | null,
 ) {
   const modeLabel = displayCurrency === 'real' ? "today's dollars" : 'nominal dollars';
   const timestamp = new Date().toISOString();
   const comment = `# scenario: ${scenarioName} | exported: ${timestamp} | values in ${modeLabel}`;
   const pathHeaders: string[] = [];
-  if (!options.nominalHidden) pathHeaders.push('Deterministic Portfolio ($)');
+  if (!options.nominalHidden) pathHeaders.push('Projected Portfolio ($)');
   if (!options.medianDownsideHidden) pathHeaders.push('Median Portfolio ($)', 'Downside Portfolio ($)');
+  if (band) pathHeaders.push('Band p10 ($)', 'Band p90 ($)');
   const header = [
     'Age', 'Year',
     ...pathHeaders,
@@ -283,6 +306,12 @@ function exportCsv(
     if (!options.medianDownsideHidden) {
       pathCells.push(Math.round(pathToDisplay(median[i] ?? 0, medianInflation[i] ?? 1, displayCurrency)));
       pathCells.push(Math.round(pathToDisplay(downside[i] ?? 0, downsideInflation[i] ?? 1, displayCurrency)));
+    }
+    if (band) {
+      // Band values displayed using the deterministic inflation deflator —
+      // matches the chart's band rendering.
+      pathCells.push(Math.round(pathToDisplay(band.p10[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)));
+      pathCells.push(Math.round(pathToDisplay(band.p90[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)));
     }
     return [
       currentAge + i,
@@ -365,6 +394,7 @@ const Projections = ({
     medianStockFactors, medianBondFactors, medianBreakdowns,
     downsideStockFactors, downsideBondFactors, downsideBreakdowns,
     medianInflation, downsideInflation, nominalInflation,
+    percentileBand, mcStats,
   } = results;
 
   const { displayCurrency, setDisplayCurrency } = useUIState();
@@ -378,6 +408,9 @@ const Projections = ({
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [view, setView] = useState<ViewMode>('nominal');
   const [showData, setShowData] = useState(false);
+  // Session-only toggle: shaded 10th–90th percentile band on the chart.
+  // Defaults on. Not on UserData — this is a view preference, not a modeling knob.
+  const [showBand, setShowBand] = useState(true);
 
   // Different return models expose different views:
   //  - parametric:           median + nominal + downside (full Monte Carlo + parametric mean)
@@ -398,6 +431,15 @@ const Projections = ({
       ? ['median', 'downside']
       : ['median', 'nominal', 'downside'];
 
+  // The chart's primary line is the deterministic projection when available,
+  // falling back to the median path in modes that don't compute a deterministic
+  // baseline (historical_rolling, historical_bootstrap). Independent of `view`,
+  // which now drives the data table only.
+  const chartPrimaryMode: ViewMode = nominalHidden ? 'median' : 'nominal';
+  const chartPrimaryPath: number[] = chartPrimaryMode === 'median' ? median : nominal;
+  const chartPrimaryInflation: number[] = chartPrimaryMode === 'median' ? medianInflation : nominalInflation;
+  const bandActive = showBand && !!percentileBand && !whatIfActive;
+
   const buildExportFn = useCallback(() => {
     const bdInflation = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
     const bdBreakdowns = view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns;
@@ -409,8 +451,9 @@ const Projections = ({
       userData.currentAge,
       displayCurrency,
       { nominalHidden, medianDownsideHidden },
+      percentileBand,
     );
-  }, [view, userData, years, nominal, median, downside, medianInflation, nominalInflation, downsideInflation, medianBreakdowns, nominalBreakdowns, downsideBreakdowns, displayCurrency, nominalHidden, medianDownsideHidden]);
+  }, [view, userData, years, nominal, median, downside, medianInflation, nominalInflation, downsideInflation, medianBreakdowns, nominalBreakdowns, downsideBreakdowns, displayCurrency, nominalHidden, medianDownsideHidden, percentileBand]);
 
   useEffect(() => {
     onRegisterExport?.(buildExportFn);
@@ -450,6 +493,10 @@ const Projections = ({
   const chartData = useMemo(() => {
     const toDisplayPath = (path: number[], infArr: number[]) =>
       path.map((v, i) => pathToDisplay(v, infArr[i] ?? 1, displayCurrency));
+    // Only called for the compare overlay (dashed). Solid datasets are pushed
+    // inline below. Border width is constant — it used to track `view`, but
+    // `view` no longer drives the chart, so coupling line thickness to the
+    // data-table selector would be surprising.
     const makeDataset = (label: string, mode: ViewMode, data: number[], dashed = false, dashColor?: string) => {
       const color = dashed
         ? (dashColor ?? VIEW_COLORS[mode] + '80')
@@ -459,21 +506,23 @@ const Projections = ({
         data,
         borderColor: color,
         backgroundColor: color,
-        borderWidth: dashed ? (view === mode ? 3 : 2) : (view === mode ? 4 : 1.5),
+        borderWidth: 2,
         borderDash: dashed ? [6, 3] : [],
         pointRadius: 0,
       };
     };
     const datasets: ReturnType<typeof makeDataset>[] = [];
 
-    // In What If mode: just two lines for the current view —
-    // snapshot as gray solid, draft (active) as dashed amber.
+    // In What If mode: snapshot vs draft, both rendered as the chart's primary
+    // line (Deterministic when available, else Median). Locking to the primary
+    // mode keeps the comparison reproducible — Deterministic projections coincide
+    // at entry when no edits have been made, instead of diverging from RNG noise.
     if (whatIfActive && whatIfSnapshotResults) {
       const snap = whatIfSnapshotResults;
-      const sPath = view === 'median' ? snap.median : view === 'nominal' ? snap.nominal : snap.downside;
-      const sInf = view === 'median' ? snap.medianInflation : view === 'nominal' ? snap.nominalInflation : snap.downsideInflation;
-      const aPath = view === 'median' ? median : view === 'nominal' ? nominal : downside;
-      const aInf = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
+      const sPath = chartPrimaryMode === 'nominal' ? snap.nominal : snap.median;
+      const sInf  = chartPrimaryMode === 'nominal' ? snap.nominalInflation : snap.medianInflation;
+      const aPath = chartPrimaryPath;
+      const aInf  = chartPrimaryInflation;
       datasets.push({
         label: 'Original',
         data: toDisplayPath(sPath, sInf),
@@ -486,36 +535,36 @@ const Projections = ({
       datasets.push({
         label: 'Draft',
         data: toDisplayPath(aPath, aInf),
-        borderColor: VIEW_COLORS[view] + '80',
-        backgroundColor: VIEW_COLORS[view] + '80',
+        borderColor: colors.draftOverlay,
+        backgroundColor: colors.draftOverlay,
         borderWidth: 2,
         borderDash: [6, 3],
         pointRadius: 0,
       });
     } else {
-      if (!medianDownsideHidden) {
-        datasets.push(makeDataset('Median', 'median', toDisplayPath(median, medianInflation)));
-      }
-      if (!nominalHidden) {
-        datasets.push(makeDataset('Deterministic', 'nominal', toDisplayPath(nominal, nominalInflation)));
-      }
-      if (!medianDownsideHidden) {
-        datasets.push(makeDataset('Downside (10th percentile)', 'downside', toDisplayPath(downside, downsideInflation)));
-      }
+      // Chart shows only the primary line (Deterministic when available, else Median).
+      // The shaded 10–90 band rendered by chartPercentileBandPlugin replaces the
+      // separate Median and Downside lines. The data table still exposes all three
+      // views via its own selector.
+      datasets.push({
+        label: VIEW_LABELS[chartPrimaryMode],
+        data: toDisplayPath(chartPrimaryPath, chartPrimaryInflation),
+        borderColor: VIEW_COLORS[chartPrimaryMode],
+        backgroundColor: VIEW_COLORS[chartPrimaryMode],
+        borderWidth: 3,
+        borderDash: [],
+        pointRadius: 0,
+      });
       if (compareResults && compareScenario) {
-        const cPath = view === 'median' ? compareResults.median
-                    : view === 'nominal' ? compareResults.nominal
-                    : compareResults.downside;
-        const cInf = view === 'median' ? compareResults.medianInflation
-                   : view === 'nominal' ? compareResults.nominalInflation
-                   : compareResults.downsideInflation;
+        const cPath = chartPrimaryMode === 'nominal' ? compareResults.nominal : compareResults.median;
+        const cInf = chartPrimaryMode === 'nominal' ? compareResults.nominalInflation : compareResults.medianInflation;
         if (cPath && cInf) {
-          datasets.push(makeDataset(compareScenario.name, view, toDisplayPath(cPath, cInf), true));
+          datasets.push(makeDataset(compareScenario.name, chartPrimaryMode, toDisplayPath(cPath, cInf), true));
         }
       }
     }
     return { labels, datasets };
-  }, [labels, median, nominal, downside, medianInflation, nominalInflation, downsideInflation, displayCurrency, view, nominalHidden, medianDownsideHidden, compareResults, compareScenario, whatIfActive, whatIfSnapshotResults]);
+  }, [labels, median, nominal, downside, medianInflation, nominalInflation, downsideInflation, displayCurrency, nominalHidden, medianDownsideHidden, compareResults, compareScenario, whatIfActive, whatIfSnapshotResults, chartPrimaryMode, chartPrimaryPath, chartPrimaryInflation]);
 
   // Group income events / spending goals by their start year once, then iterate
   // years to build the annotation list. Avoids N × M filter passes per render.
@@ -587,6 +636,18 @@ const Projections = ({
       crosshair: {
         activeIndex: hoveredIndex,
       },
+      percentileBand: {
+        // Deflate using the deterministic inflation series so band edges live in
+        // the same display-currency space as the primary line.
+        p10: bandActive && percentileBand
+          ? percentileBand.p10.map((v: number, i: number) => pathToDisplay(v, nominalInflation[i] ?? 1, displayCurrency))
+          : [],
+        p90: bandActive && percentileBand
+          ? percentileBand.p90.map((v: number, i: number) => pathToDisplay(v, nominalInflation[i] ?? 1, displayCurrency))
+          : [],
+        enabled: bandActive,
+        color: colors.chartBand,
+      },
     },
     scales: {
       x: {
@@ -601,7 +662,7 @@ const Projections = ({
         },
       },
     },
-  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years, hoveredIndex]);
+  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years, hoveredIndex, bandActive, percentileBand, nominalInflation, displayCurrency]);
 
 
   const snapshotProb = whatIfSnapshotResults?.probability;
@@ -732,14 +793,44 @@ const Projections = ({
           </>
         ) : (
           <>
-            <span>Chance of Success: {isCalculating ? '—' : `${probability}%`}</span>
+            <span className="chance-tier-badge" style={{ cursor: 'help' }}>Chance of Success: {isCalculating ? '—' : `${probability}%`}</span>
             {!isCalculating && (() => {
               const tierInfo = getProbabilityTier(probability);
+              const lastIdx = years.length - 1;
+              const defl = nominalInflation[lastIdx] ?? 1;
+              const dispEnd = (v: number) => pathToDisplay(v, defl, displayCurrency);
+              const fmtAge = (age: number | null) => age == null ? 'never' : `age ${age}`;
+              const fmtMoney = (v: number) => formatCurrencyShort(v, 'compact');
+              // Tooltip text colors: default PrimeReact tooltip has a dark background,
+              // so we use light grays here (not the dark theme.colors.textPrimary).
+              const tipLabel = 'rgba(255,255,255,0.7)';
+              const tipValue = 'rgba(255,255,255,0.95)';
+              const tipSep = 'rgba(255,255,255,0.2)';
               return (
                 <>
                   <PrimeTooltip target=".chance-tier-badge" position="bottom" showDelay={150}>
-                    <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
-                      {tierInfo.tooltip}
+                    <div style={{ maxWidth: '22rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                      <div style={{ marginBottom: spacing.xs }}>{tierInfo.tooltip}</div>
+                      {mcStats && (
+                        <>
+                          <div style={{ borderTop: `1px solid ${tipSep}`, margin: `${spacing.xs} 0` }} />
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'auto auto',
+                            columnGap: spacing.md,
+                            rowGap: '2px',
+                          }}>
+                            <span style={{ color: tipLabel }}>Median ending balance</span>
+                            <span style={{ color: tipValue, fontWeight: 500, textAlign: 'right' }}>{fmtMoney(dispEnd(mcStats.medianEndingBalance))}</span>
+                            <span style={{ color: tipLabel }}>10th-pctile ending</span>
+                            <span style={{ color: tipValue, fontWeight: 500, textAlign: 'right' }}>{fmtMoney(dispEnd(mcStats.p10EndingBalance))}</span>
+                            <span style={{ color: tipLabel }}>Median depletion</span>
+                            <span style={{ color: tipValue, fontWeight: 500, textAlign: 'right' }}>{fmtAge(mcStats.medianDepletionAge)}</span>
+                            <span style={{ color: tipLabel }}>Worst-decile depletion</span>
+                            <span style={{ color: tipValue, fontWeight: 500, textAlign: 'right' }}>{fmtAge(mcStats.worstDecileDepletionAge)}</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </PrimeTooltip>
                   <TierBadge
@@ -758,10 +849,10 @@ const Projections = ({
               {onEnterWhatIf && (
                 <>
                   <PrimeTooltip target=".whatif-button" position="bottom" showDelay={150}>
-                    <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                    <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
                       {compareScenario
-                        ? 'End comparison to start What If mode'
-                        : 'Experiment with changes — your saved scenario stays untouched'}
+                        ? 'End comparison first, then you can enter What If mode.'
+                        : 'Try changes to this scenario without committing. The original stays untouched as a reference line; your edits appear as a dashed draft line. Discard to revert, Save to keep, or Save as New to spin off a copy.'}
                     </div>
                   </PrimeTooltip>
                   <WhatIfButton
@@ -777,10 +868,10 @@ const Projections = ({
                 <>
                   <Menu ref={compareMenuRef} model={compareMenuItems} popup />
                   <PrimeTooltip target=".compare-with-button" position="bottom" showDelay={150}>
-                    <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                    <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
                       {compareDisabled
-                        ? 'End What If mode to compare scenarios'
-                        : 'Overlay another scenario as a dashed line'}
+                        ? 'End What If mode first, then you can compare this scenario against another.'
+                        : 'Pick another scenario to overlay on the chart — compare projected paths, success probabilities, and yearly cash flow side by side. Useful for "is plan A better than plan B?"'}
                     </div>
                   </PrimeTooltip>
                   <CompareWithButton
@@ -804,13 +895,13 @@ const Projections = ({
               <strong>Today's Dollars</strong>: Values adjusted for inflation (what your money can actually buy today).
             </div>
             <div>
-              <strong>Nominal Dollars</strong>: Raw future dollar amounts with no inflation adjustment.
+              <strong>Future Dollars</strong>: Raw future dollar amounts with no inflation adjustment.
             </div>
           </div>
         </PrimeTooltip>
         <CurrencyPillGroup className="currency-pill-group">
           <CurrencyPillButton $active={displayCurrency === 'real'} onClick={() => setDisplayCurrency('real')}>Today's $</CurrencyPillButton>
-          <CurrencyPillButton $active={displayCurrency === 'nominal'} onClick={() => setDisplayCurrency('nominal')}>Nominal $</CurrencyPillButton>
+          <CurrencyPillButton $active={displayCurrency === 'nominal'} onClick={() => setDisplayCurrency('nominal')}>Future $</CurrencyPillButton>
         </CurrencyPillGroup>
       </ChartSubtitleRow>
       <div
@@ -851,29 +942,38 @@ const Projections = ({
 
           const getF = (inf: number[]) => inf[hoveredIndex] ?? 1;
 
-          const nomVal = pathToDisplay(nominal[hoveredIndex] ?? 0, getF(nominalInflation), displayCurrency);
           const medVal = pathToDisplay(median[hoveredIndex] ?? 0, getF(medianInflation), displayCurrency);
-          const dwnVal = pathToDisplay(downside[hoveredIndex] ?? 0, getF(downsideInflation), displayCurrency);
 
-          const selInf = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
-          const selBd = (view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns)[hoveredIndex];
-          const bdF = getF(selInf);
-          const shortfall = toDisplay(selBd.spendingShortfall ?? 0, bdF, displayCurrency);
-          const net = toDisplay(selBd.netCashFlow, bdF, displayCurrency);
+          // For the hover popup, all values reflect the chart's primary line
+          // (Deterministic when available, else Median) — not the view selector,
+          // which only drives the data table.
+          const primaryBd = (chartPrimaryMode === 'nominal' ? nominalBreakdowns : medianBreakdowns)[hoveredIndex];
+          const primaryF = getF(chartPrimaryInflation);
+          const primaryNet = toDisplay(primaryBd.netCashFlow, primaryF, displayCurrency);
+          const primaryShortfall = toDisplay(primaryBd.spendingShortfall ?? 0, primaryF, displayCurrency);
+          const primaryVal = pathToDisplay(chartPrimaryPath[hoveredIndex] ?? 0, primaryF, displayCurrency);
+          const bandLow = percentileBand
+            ? pathToDisplay(percentileBand.p10[hoveredIndex] ?? 0, getF(nominalInflation), displayCurrency)
+            : null;
+          const bandHigh = percentileBand
+            ? pathToDisplay(percentileBand.p90[hoveredIndex] ?? 0, getF(nominalInflation), displayCurrency)
+            : null;
 
           // Side-by-side tooltip data — sourced from compare scenario in compare
-          // mode, or from the What If snapshot in What If mode.
+          // mode, or from the What If snapshot in What If mode. Both overlays
+          // render the chart's primary line (Deterministic when available),
+          // so the popup matches.
           const overlaySource = whatIfActive && whatIfSnapshotResults
             ? whatIfSnapshotResults
             : compareResults;
           const cPath = overlaySource
-            ? (view === 'median' ? overlaySource.median : view === 'nominal' ? overlaySource.nominal : overlaySource.downside)
+            ? (chartPrimaryMode === 'nominal' ? overlaySource.nominal : overlaySource.median)
             : null;
           const cInfArr = overlaySource
-            ? (view === 'median' ? overlaySource.medianInflation : view === 'nominal' ? overlaySource.nominalInflation : overlaySource.downsideInflation)
+            ? (chartPrimaryMode === 'nominal' ? overlaySource.nominalInflation : overlaySource.medianInflation)
             : null;
           const cBds = overlaySource
-            ? (view === 'median' ? overlaySource.medianBreakdowns : view === 'nominal' ? overlaySource.nominalBreakdowns : overlaySource.downsideBreakdowns)
+            ? (chartPrimaryMode === 'nominal' ? overlaySource.nominalBreakdowns : overlaySource.medianBreakdowns)
             : null;
           const cVal = cPath && cInfArr ? pathToDisplay(cPath[hoveredIndex] ?? 0, cInfArr[hoveredIndex] ?? 1, displayCurrency) : null;
           const cBd = cBds?.[hoveredIndex] ?? null;
@@ -885,12 +985,6 @@ const Projections = ({
 
           const fmtM = (v: number) =>
             formatCurrencyShort(v, isComparing ? 'precise' : 'compact');
-
-          const pathRows: Array<{ mode: ViewMode; val: number }> = [
-            { mode: 'nominal',  val: nomVal },
-            { mode: 'median',   val: medVal },
-            { mode: 'downside', val: dwnVal },
-          ];
 
           return (
             <div style={{
@@ -914,12 +1008,12 @@ const Projections = ({
               {isComparing ? (
                 <>
                   <div style={{ display: 'flex', gap: spacing.sm, marginBottom: '2px' }}>
-                    <span style={{ flex: 1, fontWeight: 'bold', color: VIEW_COLORS[view] }}>{primaryLabel}</span>
-                    <span style={{ flex: 1, fontWeight: 'bold', color: VIEW_COLORS[view] + '99' }}>{overlayLabel}</span>
+                    <span style={{ flex: 1, fontWeight: 'bold', color: whatIfActive ? colors.draftOverlay : VIEW_COLORS[chartPrimaryMode] }}>{primaryLabel}</span>
+                    <span style={{ flex: 1, fontWeight: 'bold', color: whatIfActive ? colors.textMuted : VIEW_COLORS[chartPrimaryMode] + '99' }}>{overlayLabel}</span>
                   </div>
                   <div style={{ display: 'flex', gap: spacing.sm, marginBottom: spacing.xs }}>
                     <div style={{ flex: 1, color: colors.textPrimary }}>
-                      {fmtM(view === 'nominal' ? nomVal : view === 'median' ? medVal : dwnVal)}
+                      {fmtM(primaryVal)}
                     </div>
                     <div style={{ flex: 1, color: colors.textPrimary, opacity: 0.75 }}>
                       {cVal !== null ? fmtM(cVal) : '—'}
@@ -932,7 +1026,7 @@ const Projections = ({
                     return (
                       <div key={field} style={{ display: 'flex', gap: spacing.sm, color: colors.textSecondary }}>
                         <span style={{ color: labelColors[i], minWidth: '2.8rem' }}>{labels[i]}</span>
-                        <span style={{ flex: 1 }}>{fmtM(toDisplay(selBd[field], bdF, displayCurrency))}</span>
+                        <span style={{ flex: 1 }}>{fmtM(toDisplay(primaryBd[field], primaryF, displayCurrency))}</span>
                         <span style={{ flex: 1, opacity: 0.75 }}>
                           {cBd ? fmtM(toDisplay(cBd[field], cBdF, displayCurrency)) : '—'}
                         </span>
@@ -941,8 +1035,8 @@ const Projections = ({
                   })}
                   <div style={{ display: 'flex', gap: spacing.sm, marginTop: '1px' }}>
                     <span style={{ color: colors.textSecondary, minWidth: '2.8rem' }}>Net</span>
-                    <span style={{ flex: 1, color: net >= 0 ? colors.income : colors.danger, fontWeight: 'bold' }}>
-                      {net >= 0 ? '+' : '−'}{fmtM(Math.abs(net))}
+                    <span style={{ flex: 1, color: primaryNet >= 0 ? colors.income : colors.danger, fontWeight: 'bold' }}>
+                      {primaryNet >= 0 ? '+' : '−'}{fmtM(Math.abs(primaryNet))}
                     </span>
                     {cBd && (() => {
                       const cNet = toDisplay(cBd.netCashFlow, cBdF, displayCurrency);
@@ -953,7 +1047,7 @@ const Projections = ({
                       );
                     })()}
                   </div>
-                  {shortfall > 0.5 && (
+                  {primaryShortfall > 0.5 && (
                     <div style={{ color: colors.danger, marginTop: spacing.xs, fontWeight: 'bold' }}>
                       Portfolio Depleted
                     </div>
@@ -961,51 +1055,76 @@ const Projections = ({
                 </>
               ) : (
                 <>
-                  {pathRows.map(({ mode, val }) => {
-                    const isSelected = view === mode;
-                    return (
-                      <div key={mode} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.3rem',
-                        fontWeight: isSelected ? 'bold' : 'normal',
-                        opacity: isSelected ? 1 : 0.55,
-                        marginBottom: '1px',
-                      }}>
-                        <span style={{
-                          width: 7, height: 7, borderRadius: '50%',
-                          backgroundColor: VIEW_COLORS[mode],
-                          flexShrink: 0, display: 'inline-block',
-                        }} />
-                        <span style={{ width: '5rem', color: colors.textPrimary }}>{VIEW_LABELS[mode]}</span>
-                        <span style={{ flex: 1, textAlign: 'right', color: colors.textPrimary }}>{fmtM(val)}</span>
-                      </div>
-                    );
-                  })}
+                  {/* Primary line value (Deterministic when available, else Median) */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                    fontWeight: 'bold', marginBottom: '1px',
+                  }}>
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%',
+                      backgroundColor: VIEW_COLORS[chartPrimaryMode],
+                      flexShrink: 0, display: 'inline-block',
+                    }} />
+                    <span style={{ width: '5rem', color: colors.textPrimary }}>{VIEW_LABELS[chartPrimaryMode]}</span>
+                    <span style={{ flex: 1, textAlign: 'right', color: colors.textPrimary }}>{fmtM(primaryVal)}</span>
+                  </div>
+                  {/* 10–90 band range from Monte Carlo */}
+                  {bandLow !== null && bandHigh !== null && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '0.3rem',
+                      opacity: 0.7, marginBottom: '1px',
+                    }}>
+                      <span style={{
+                        width: 14, height: 6,
+                        backgroundColor: colors.chartBand,
+                        border: `1px solid ${colors.borderMedium}`,
+                        flexShrink: 0, display: 'inline-block',
+                      }} />
+                      <span style={{ width: '4.4rem', color: colors.textSecondary, fontSize: fontSize.xs }}>Likely</span>
+                      <span style={{ flex: 1, textAlign: 'right', color: colors.textSecondary }}>
+                        {fmtM(bandLow)} – {fmtM(bandHigh)}
+                      </span>
+                    </div>
+                  )}
+                  {/* Median path value, subdued — only useful when it differs from the primary (i.e. not in nominalHidden mode where median IS the primary) */}
+                  {chartPrimaryMode !== 'median' && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '0.3rem',
+                      opacity: 0.55, marginBottom: '1px',
+                    }}>
+                      <span style={{
+                        width: 7, height: 7, borderRadius: '50%',
+                        backgroundColor: VIEW_COLORS.median,
+                        flexShrink: 0, display: 'inline-block',
+                      }} />
+                      <span style={{ width: '5rem', color: colors.textPrimary }}>{VIEW_LABELS.median}</span>
+                      <span style={{ flex: 1, textAlign: 'right', color: colors.textPrimary }}>{fmtM(medVal)}</span>
+                    </div>
+                  )}
                   <div style={{ borderTop: border.light, margin: `${spacing.xs} 0` }} />
-                  <div style={{ color: VIEW_COLORS[view], fontWeight: 'bold', marginBottom: '2px' }}>
-                    {VIEW_LABELS[view]}
+                  <div style={{ color: VIEW_COLORS[chartPrimaryMode], fontWeight: 'bold', marginBottom: '2px' }}>
+                    {VIEW_LABELS[chartPrimaryMode]}
                   </div>
                   <div style={{ display: 'flex', gap: spacing.sm, color: colors.textSecondary, flexWrap: 'wrap' }}>
-                    <span><span style={{ color: colors.income }}>Inc</span> {fmtM(toDisplay(selBd.totalGrossIncome, bdF, displayCurrency))}</span>
-                    <span><span style={{ color: colors.spending }}>Spend</span> {fmtM(toDisplay(selBd.totalSpendingNet, bdF, displayCurrency))}</span>
+                    <span><span style={{ color: colors.income }}>Inc</span> {fmtM(toDisplay(primaryBd.totalGrossIncome, primaryF, displayCurrency))}</span>
+                    <span><span style={{ color: colors.spending }}>Spend</span> {fmtM(toDisplay(primaryBd.totalSpendingNet, primaryF, displayCurrency))}</span>
                     <span>
-                      {selBd.irmaaSurcharge > 0.5 ? 'Tax+IRMAA' : 'Tax'} {fmtM(toDisplay(selBd.totalTax, bdF, displayCurrency))}
+                      {primaryBd.irmaaSurcharge > 0.5 ? 'Tax+IRMAA' : 'Tax'} {fmtM(toDisplay(primaryBd.totalTax, primaryF, displayCurrency))}
                       {(() => {
-                        const rate = effectiveTaxRate(selBd);
+                        const rate = effectiveTaxRate(primaryBd);
                         if (rate === null) return '';
-                        return selBd.irmaaSurcharge > 0.5
+                        return primaryBd.irmaaSurcharge > 0.5
                           ? ` (income tax ${fmtRate(rate)})`
                           : ` (${fmtRate(rate)})`;
                       })()}
                     </span>
                   </div>
                   <div style={{ marginTop: '1px', color: colors.textSecondary }}>
-                    Net <span style={{ color: net >= 0 ? colors.income : colors.danger, fontWeight: 'bold' }}>
-                      {net >= 0 ? '+' : '−'}{fmtM(Math.abs(net))}
+                    Net <span style={{ color: primaryNet >= 0 ? colors.income : colors.danger, fontWeight: 'bold' }}>
+                      {primaryNet >= 0 ? '+' : '−'}{fmtM(Math.abs(primaryNet))}
                     </span>
                   </div>
-                  {shortfall > 0.5 && (
+                  {primaryShortfall > 0.5 && (
                     <div style={{ color: colors.danger, marginTop: spacing.xs, fontWeight: 'bold' }}>
                       Portfolio Depleted
                     </div>
@@ -1017,36 +1136,132 @@ const Projections = ({
         })()}
       </div>
       <LegendRow>
-        {visibleViewModes.map(mode => (
-          <LegendButton
-            key={mode}
-            $active={view === mode}
-            $color={VIEW_COLORS[mode]}
-            onClick={() => setView(mode)}
-          >
-            <LegendSwatch $color={VIEW_COLORS[mode]} />
-            {VIEW_LABELS[mode]}
-          </LegendButton>
-        ))}
+        {whatIfActive ? (
+          // What If chart is locked to the primary line (Deterministic when
+          // available, else Median). Show static swatches for Original (gray
+          // solid) and Draft (dashed amber-ish) so the user knows which is which.
+          <>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: spacing.xs, fontSize: fontSize.sm, color: colors.textSecondary, padding: `2px ${spacing.sm}` }}>
+              <LegendSwatch $color={colors.textMuted} />
+              Original ({VIEW_LABELS[chartPrimaryMode]})
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: spacing.xs, fontSize: fontSize.sm, color: colors.textSecondary, padding: `2px ${spacing.sm}` }}>
+              <LegendSwatch $color={colors.draftOverlay} $dashed />
+              Draft ({VIEW_LABELS[chartPrimaryMode]})
+            </span>
+          </>
+        ) : (
+          <>
+            <PrimeTooltip target=".projected-label" position="bottom" showDelay={150}>
+              <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                {chartPrimaryMode === 'nominal'
+                  ? 'A single projection using your average return assumptions, with no market randomness. The expected path.'
+                  : 'The middle outcome across all Monte Carlo runs (the historical mode in use has no deterministic baseline).'}
+              </div>
+            </PrimeTooltip>
+            <span
+              className="projected-label"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: spacing.xs, fontSize: fontSize.sm, color: colors.textSecondary, padding: `2px ${spacing.sm}`, cursor: 'help' }}
+            >
+              <LegendSwatch $color={VIEW_COLORS[chartPrimaryMode]} />
+              {VIEW_LABELS[chartPrimaryMode]}
+            </span>
+            {bandActive && (
+              <>
+                <PrimeTooltip target=".likely-range-label" position="bottom" showDelay={150}>
+                  <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                    The shaded region covers the 10th–90th percentile of simulated futures — 80% of Monte Carlo runs land inside this band each year.
+                  </div>
+                </PrimeTooltip>
+                <span
+                  className="likely-range-label"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: spacing.xs, fontSize: fontSize.sm, color: colors.textSecondary, padding: `2px ${spacing.sm}`, cursor: 'help' }}
+                >
+                  <span style={{
+                    display: 'inline-block', width: 18, height: 8,
+                    background: colors.chartBand,
+                    border: `1px solid ${colors.borderMedium}`,
+                  }} />
+                  Likely range
+                </span>
+              </>
+            )}
+          </>
+        )}
         {compareScenario && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: spacing.xs, fontSize: fontSize.sm, color: colors.textSecondary, padding: `2px ${spacing.sm}` }}>
-            <LegendSwatch $color={VIEW_COLORS[view] + '80'} $dashed />
+            <LegendSwatch $color={VIEW_COLORS[chartPrimaryMode] + '80'} $dashed />
             {compareScenario.name}
           </span>
         )}
-        <DataToggle $active={showData} onClick={() => setShowData(d => !d)}>
-          <i className="pi pi-table" />
-          Data
-        </DataToggle>
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: spacing.md }}>
+          {percentileBand && !whatIfActive && (
+            <>
+              <PrimeTooltip target=".band-toggle-btn" position="bottom" showDelay={150}>
+                <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                  {showBand
+                    ? 'Hide the shaded Likely range band on the chart.'
+                    : 'Show the shaded Likely range band — the 10th–90th percentile of simulated futures.'}
+                </div>
+              </PrimeTooltip>
+              <BandToggle
+                className="band-toggle-btn"
+                $active={showBand}
+                onClick={() => setShowBand(b => !b)}
+              >
+                <span style={{
+                  display: 'inline-block', width: 14, height: 8,
+                  background: colors.chartBand,
+                  border: `1px solid ${colors.borderMedium}`,
+                }} />
+                {showBand ? 'Hide band' : 'Show band'}
+              </BandToggle>
+            </>
+          )}
+          <PrimeTooltip target=".data-toggle-btn" position="bottom" showDelay={150}>
+            <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+              {showData
+                ? 'Hide the year-by-year data table.'
+                : 'Show the year-by-year data table — balance, income, spending, taxes, and withdrawals for each year. Switch between Median / Projected / Downside views and export to CSV.'}
+            </div>
+          </PrimeTooltip>
+          <DataToggle
+            className="data-toggle-btn"
+            $active={showData}
+            onClick={() => setShowData(d => !d)}
+          >
+            <i className="pi pi-table" />
+            Data
+          </DataToggle>
+        </span>
       </LegendRow>
       {showData && (
         <div style={{ marginTop: spacing.xs }}>
+          {visibleViewModes.length > 1 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: spacing.xs,
+              padding: `${spacing.xs} 0`, fontSize: fontSize.xs, color: colors.textSecondary,
+            }}>
+              <span style={{ marginRight: spacing.xs }}>Table view:</span>
+              {visibleViewModes.map(mode => (
+                <LegendButton
+                  key={mode}
+                  $active={view === mode}
+                  $color={VIEW_COLORS[mode]}
+                  onClick={() => setView(mode)}
+                >
+                  <LegendSwatch $color={VIEW_COLORS[mode]} />
+                  {VIEW_LABELS[mode]}
+                </LegendButton>
+              ))}
+            </div>
+          )}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
                   <td colSpan={6} style={{ padding: `${spacing.xs} ${spacing.sm} 0`, fontSize: fontSize.xs, color: colors.textMuted, textAlign: 'right', border: 'none' }}>
-                    All values in {displayCurrency === 'real' ? "today's" : 'nominal'} dollars
+                    All values in {displayCurrency === 'real' ? "today's" : 'future'} dollars
                   </td>
                 </tr>
                 <tr style={{ backgroundColor: colors.bgMedium }}>

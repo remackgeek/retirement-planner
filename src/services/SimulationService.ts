@@ -1046,6 +1046,18 @@ function simulateOneRun(
   return { path, stockFactors, bondFactors, breakdowns, inflation, failed, failedYear };
 }
 
+export interface PercentileBand {
+  p10: number[];
+  p90: number[];
+}
+
+export interface McStats {
+  medianEndingBalance: number;
+  p10EndingBalance: number;
+  medianDepletionAge: number | null;
+  worstDecileDepletionAge: number | null;
+}
+
 export function runSimulation(
   rawUserData: UserData,
   random: () => number = Math.random
@@ -1065,6 +1077,8 @@ export function runSimulation(
   nominalBreakdowns: AnnualCashFlowBreakdown[];
   nominalInflation: number[];
   years: number[];
+  percentileBand: PercentileBand | null;
+  mcStats: McStats | null;
 } {
   // Tax cache key is per-(taxable, status, age, year, ...) — across a 5000-run MC
   // the cache fills with millions of pathologically-unique entries that mostly never
@@ -1117,6 +1131,48 @@ export function runSimulation(
   const medianRun = sorted[Math.floor(numRuns * 0.5)];
   const downsideRun = sorted[Math.floor(numRuns * 0.1)];
 
+  // Year-by-year percentile envelope and ending-balance / depletion stats.
+  // Skipped when there aren't enough runs to compute meaningful percentiles
+  // (e.g. historical_single mode has numRuns === 1).
+  let percentileBand: PercentileBand | null = null;
+  let mcStats: McStats | null = null;
+  if (numRuns >= 10) {
+    const p10Idx = Math.floor(numRuns * 0.1);
+    const p90Idx = Math.floor(numRuns * 0.9);
+    const p50Idx = Math.floor(numRuns * 0.5);
+    const p10 = new Array<number>(totalYears);
+    const p90 = new Array<number>(totalYears);
+    const colBuf = new Array<number>(numRuns);
+    for (let y = 0; y < totalYears; y++) {
+      for (let r = 0; r < numRuns; r++) colBuf[r] = allRuns[r].path[y];
+      colBuf.sort((a, b) => a - b);
+      p10[y] = colBuf[p10Idx];
+      p90[y] = colBuf[p90Idx];
+    }
+    percentileBand = { p10, p90 };
+
+    const finals = new Array<number>(numRuns);
+    for (let r = 0; r < numRuns; r++) finals[r] = allRuns[r].path[totalYears - 1];
+    finals.sort((a, b) => a - b);
+
+    // Depletion year: failedYear when failed, Infinity for survivors. Sort ascending
+    // so the p10 index lands on the earliest-depleting decile, p50 on the median.
+    const depletionYears = new Array<number>(numRuns);
+    for (let r = 0; r < numRuns; r++) {
+      depletionYears[r] = allRuns[r].failed ? allRuns[r].failedYear : Infinity;
+    }
+    depletionYears.sort((a, b) => a - b);
+    const medianDepYear = depletionYears[p50Idx];
+    const worstDecileDepYear = depletionYears[p10Idx];
+
+    mcStats = {
+      medianEndingBalance: finals[p50Idx],
+      p10EndingBalance: finals[p10Idx],
+      medianDepletionAge: Number.isFinite(medianDepYear) ? userData.currentAge + medianDepYear : null,
+      worstDecileDepletionAge: Number.isFinite(worstDecileDepYear) ? userData.currentAge + worstDecileDepYear : null,
+    };
+  }
+
   const years = Array.from({ length: totalYears }, (_, i) => currentYear + i);
 
   // Deterministic nominal projection: blended mean return every year, deterministic
@@ -1145,6 +1201,8 @@ export function runSimulation(
     nominalBreakdowns: nominalRun.breakdowns,
     nominalInflation: nominalRun.inflation,
     years,
+    percentileBand,
+    mcStats,
   };
 }
 

@@ -1168,3 +1168,126 @@ describe('runSimulation — Student\'s t return distribution', () => {
     expect(tResult.median).not.toEqual(logResult.median);
   });
 });
+
+describe('runSimulation — percentile band and MC stats', () => {
+  const stochasticUserData = makeUserData({
+    currentAge: 60,
+    lifeExpectancy: 75,
+    accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+    portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.04, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+    inflationRate: 0,
+    simulationSettings: { numSimulations: 200 },
+  });
+
+  it('returns a percentileBand with one p10/p90 entry per year', () => {
+    const result = runSimulation(stochasticUserData, createSeededRandom(7));
+    const totalYears = stochasticUserData.lifeExpectancy - stochasticUserData.currentAge + 1;
+    expect(result.percentileBand).not.toBeNull();
+    expect(result.percentileBand!.p10).toHaveLength(totalYears);
+    expect(result.percentileBand!.p90).toHaveLength(totalYears);
+  });
+
+  it('p10 <= p90 every year, and p10 == p90 == initial balance at year 0', () => {
+    const result = runSimulation(stochasticUserData, createSeededRandom(11));
+    const { p10, p90 } = result.percentileBand!;
+    const initial = stochasticUserData.accounts.reduce((s, a) => s + a.balance, 0);
+    expect(p10[0]).toBeCloseTo(initial, 0);
+    expect(p90[0]).toBeCloseTo(initial, 0);
+    for (let i = 0; i < p10.length; i++) {
+      expect(p10[i]).toBeLessThanOrEqual(p90[i]);
+    }
+  });
+
+  it('mcStats ending balances bracket the median path final balance', () => {
+    const result = runSimulation(stochasticUserData, createSeededRandom(13));
+    const lastIdx = result.median.length - 1;
+    // p10 ending <= p50 ending; median path's final balance should sit between p10 and p90
+    expect(result.mcStats!.p10EndingBalance).toBeLessThanOrEqual(result.mcStats!.medianEndingBalance);
+    expect(result.median[lastIdx]).toBeGreaterThanOrEqual(result.mcStats!.p10EndingBalance * 0.5);
+  });
+
+  it('mcStats depletion ages are null when nearly all runs survive', () => {
+    // No spending, big balance → 0 failures → both depletion ages null.
+    const result = runSimulation(stochasticUserData, createSeededRandom(17));
+    expect(result.probability).toBe(100);
+    expect(result.mcStats!.medianDepletionAge).toBeNull();
+    expect(result.mcStats!.worstDecileDepletionAge).toBeNull();
+  });
+
+  it('mcStats depletion ages are finite when most runs deplete', () => {
+    // Tiny portfolio, huge spending → every run depletes early.
+    const depleted = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 75,
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 50_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      portfolioAssumptions: { stockReturn: 0.03, stockStdDev: 0.05, bondReturn: 0.03, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      inflationRate: 0,
+      simulationSettings: { numSimulations: 200 },
+      spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 30_000, startAge: 60, inflationAdjusted: false }],
+      incomeEvents: [{ id: 'i1', name: 'Other Income 1', type: 'other_income', amount: 1_000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' }],
+    });
+    const result = runSimulation(depleted, createSeededRandom(23));
+    expect(result.mcStats!.medianDepletionAge).not.toBeNull();
+    expect(result.mcStats!.worstDecileDepletionAge).not.toBeNull();
+    // Worst decile depletes no later than median.
+    expect(result.mcStats!.worstDecileDepletionAge!).toBeLessThanOrEqual(result.mcStats!.medianDepletionAge!);
+    // Depletion ages are within the plan horizon.
+    expect(result.mcStats!.medianDepletionAge!).toBeGreaterThanOrEqual(60);
+    expect(result.mcStats!.medianDepletionAge!).toBeLessThanOrEqual(75);
+  });
+
+  it('historical_single mode (numRuns === 1) returns null band and null stats', () => {
+    const single = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 75,
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      portfolioAssumptions: {
+        stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.04, bondStdDev: 0.05,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        returnModel: 'historical_single', historicalStartYear: 1970,
+      },
+    });
+    const result = runSimulation(single, createSeededRandom(29));
+    expect(result.percentileBand).toBeNull();
+    expect(result.mcStats).toBeNull();
+  });
+
+  it('parametric with numSimulations < 10 returns null band and null stats', () => {
+    // Guard threshold is `numRuns < 10` regardless of return model.
+    const small = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 65,
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.04, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 5 },
+    });
+    const result = runSimulation(small, createSeededRandom(31));
+    expect(result.percentileBand).toBeNull();
+    expect(result.mcStats).toBeNull();
+  });
+});
+
+describe('runSimulation — deterministic projection reproducibility', () => {
+  // The What If chart relies on the nominal/deterministic projection being
+  // reproducible across calls — that's what makes Draft and Original lines
+  // coincide when no edits have been made. If anyone introduces a stochastic
+  // factor into the nominal generator, this test will catch it.
+  it('two independent runs on the same UserData produce identical nominal paths', () => {
+    const userData = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 70,
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 750_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.04, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      inflationRate: 0.025,
+      simulationSettings: { numSimulations: 50 },
+      spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 30_000, startAge: 60, inflationAdjusted: true }],
+    });
+    // Different random seeds — only the Monte Carlo paths should change.
+    // The deterministic (`nominal`) projection should be identical.
+    const r1 = runSimulation(userData, createSeededRandom(1));
+    const r2 = runSimulation(userData, createSeededRandom(99999));
+    expect(r2.nominal).toEqual(r1.nominal);
+    expect(r2.nominalInflation).toEqual(r1.nominalInflation);
+  });
+});

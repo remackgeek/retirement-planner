@@ -379,6 +379,15 @@ The deterministic (Nominal) path uses `nominalBreakdowns` returned by `runSimula
 alongside the nominal path array. The yearly data detail rows show the breakdown for
 whichever view is selected.
 
+**Percentile band + MC stats:** `runSimulation()` also returns `percentileBand:
+{ p10: number[]; p90: number[] } | null` (year-by-year envelope, computed
+independently of the representative runs — no breakdowns attached) and
+`mcStats: { medianEndingBalance, p10EndingBalance, medianDepletionAge,
+worstDecileDepletionAge } | null`. Both are `null` when `numRuns < 10` (e.g.
+`historical_single` mode). The band powers the chart's shaded region via
+`chartPercentileBand` plugin; the stats power the header strip. Depletion ages
+use the same `spendingShortfall > 0` definition that drives `failed`/`failedYear`.
+
 **Performance architecture:** `runSimulation()` precomputes balance-independent inputs
 once before the Monte Carlo loop — `lognormalParams` for stock/bond/inflation, and
 per-year arrays (`stateTaxRateByYear`, `ageByYear`, `incomeByYear`, `spendingByYear`).
@@ -457,6 +466,7 @@ Current plugins:
 - `chartHtmlAnnotations` — renders income/spending event badges as HTML elements over the chart
 - `chartBlackSwanShading` — draws vertical shaded bands for portfolio stress events
 - `chartCrosshair` — draws a dashed vertical line at the hovered year index
+- `chartPercentileBand` — fills the 10th–90th percentile region beneath the projected line (year-by-year envelope; toggled via the session-only `showBand` flag in `Projections`). Also installs an `afterDataLimits` hook that extends the y-axis to include the band's full lower edge and the upper edge up to `Y_CAP_MULT × max(line)` (constant `2.0`) — keeps the projected line visually prominent when the band has heavy upside tails.
 
 ### Top bar: Settings menu
 
@@ -478,12 +488,27 @@ Both dialogs are disabled when no active scenario.
 
 ### Implemented UX
 
-- **View selection**: radio control (Median / Deterministic / Downside) in the yearly
-  data header; selected path renders bold on the chart; portfolio balance, income/spending/
-  tax detail rows, and portfolio growth all reflect the selected path. Depleted years on
-  downside/median paths show a shortfall indicator in the detail row.
+- **Chart rendering**: chart shows the **Projected** line (or Median when no
+  deterministic baseline exists — `historical_rolling` / `historical_bootstrap`)
+  plus a shaded **Likely range** band (`chartPercentileBand` plugin) — a
+  year-by-year envelope of the 10th–90th percentile across all Monte Carlo
+  runs. Median and Downside no longer render as separate chart lines. The
+  `mcStats` summary (median ending balance, p10 ending balance, median
+  depletion age, worst-decile depletion age) lives inside the tier-badge
+  tooltip beside "Chance of Success", not on the page as a separate strip.
+  A `Hide band` toggle sits next to the `Data` button on the bottom legend
+  row. Internal UI labels use friendly names: `Projected` (not Deterministic),
+  `Likely range` (not "10th–90th percentile"), `Future $` (not Nominal $).
+  The underlying `DisplayCurrency` type and `view` mode strings remain
+  `'nominal'` / `'real'` — UI rename only.
+- **What If mode**: chart locks to the primary (Projected / Median) line — Original (gray solid) vs Draft (amber dashed) — regardless of `view`. Band is hidden in What If. This makes Draft and Original coincide at entry because the deterministic projection is reproducible. `Content.tsx` still calls `runSimulation(whatIfSnapshot)` redundantly when entering What If (the deterministic projection makes the redundant run user-invisible, just wasteful). Intentionally deferred — don't "fix" by reusing `results` without revisiting the locking decision.
+- **Table view selection**: the Median / Projected / Downside radio lives
+  in the yearly data table header (only when the table is expanded). It drives
+  the table's portfolio column, income/spending/tax detail rows, and CSV export
+  — but does NOT change what the chart renders. Depleted years on
+  downside/median paths still show a shortfall indicator in the detail row.
 - **CSV export**: download button in yearly data header exports all three portfolio paths
-  plus full income/spending/tax breakdown per year as a `.csv` file
+  plus the band p10/p90 columns and the full income/spending/tax breakdown per year as a `.csv` file
 - **Scenario comparison**: "Compare with ▾" button in the chart heading (right-aligned via
   `margin-left: auto`) opens a PrimeReact `Menu` popup listing other scenarios. Selecting
   one overlays the compared scenario's currently-selected path as a dashed line on the

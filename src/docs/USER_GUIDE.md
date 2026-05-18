@@ -154,7 +154,7 @@ A Roth conversion moves money from your Traditional accounts into your Roth acco
 
 The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation.
 
-The Roth Conversion dialog shows an **Impact Preview** with a deterministic estimate of first-year tax, total tax over the conversion window, RMD reduction at 73, and projected tax-free Roth at life expectancy. The **Net impact on plan value** row signs the trade-off in dollar terms (green when the conversion pays off, red when it costs more than it saves). That row runs the full deterministic simulation twice — once with the conversion, once without — and diffs the end-of-plan balance, so it reflects everything the Deterministic chart line does: the RMD withdrawal waterfall, IRMAA surcharges, NIIT, state tax on LTCG, and how conversion tax is sourced from your accounts. Multi-year conversions default to **inflation-adjusted**, so the amount you enter is a real-dollar target — turn that off if you mean a fixed nominal schedule. If you configure a conversion that is unusually large relative to your spending, crosses two or more federal brackets in a single year, or would convert most of your Traditional balance, the dialog shows an inline hint — these are advisory only and never block saving.
+The Roth Conversion dialog shows an **Impact Preview** with a deterministic estimate of first-year tax, total tax over the conversion window, RMD reduction at 73, and projected tax-free Roth at life expectancy. The **Net impact on plan value** row signs the trade-off in dollar terms (green when the conversion pays off, red when it costs more than it saves). That row runs the full deterministic simulation twice — once with the conversion, once without — and diffs the end-of-plan balance, so it reflects everything the Projected chart line does: the RMD withdrawal waterfall, IRMAA surcharges, NIIT, state tax on LTCG, and how conversion tax is sourced from your accounts. Multi-year conversions default to **inflation-adjusted**, so the amount you enter is a real-dollar target — turn that off if you mean a fixed nominal schedule. If you configure a conversion that is unusually large relative to your spending, crosses two or more federal brackets in a single year, or would convert most of your Traditional balance, the dialog shows an inline hint — these are advisory only and never block saving.
 
 ---
 
@@ -203,15 +203,21 @@ Both matter most in years with large Roth conversions, sizable RMDs, or big taxa
 
 The chart shows your portfolio balance over time, displayed in **today's dollars** (so the numbers are comparable to what you spend now).
 
-You'll see three lines:
+You'll see:
 
-| Line | What it represents |
+| Element | What it represents |
 |---|---|
-| **Median** | A typical outcome — the middle of all simulated futures |
-| **Deterministic** | What happens with no market randomness, using your average return assumptions (hidden when a Historical return model is active) |
-| **Downside** | A bad outcome — the 10th-percentile result |
+| **Projected line** | What happens with no market randomness, using your average return assumptions. The primary line on the chart. (In Historical: Rolling / Bootstrap modes there is no projected baseline, so the **Median** line takes its place.) |
+| **Likely range** (shaded band) | The 10th–90th percentile range from the Monte Carlo runs — 80% of simulated futures land inside this band each year. Wider band = more uncertainty. Toggle with the **Hide band** button on the legend row. |
 
-Use the **Median / Deterministic / Downside** selector to switch which line drives the year-by-year detail below the chart. Pay attention to the Downside path — if your plan looks fine on Median but craters on Downside, you have sequence-of-returns risk to think about.
+Hover the **Chance of Success** percentage to see Monte Carlo summary stats that the chart can't easily show:
+
+- **Median ending balance** — middle outcome for your final portfolio balance
+- **10th-pctile ending** — bad-but-not-worst final balance (90% of runs do better)
+- **Median depletion** — the age at which your portfolio runs out in the median run (`never` when more than half of runs survive)
+- **Worst-decile depletion** — the age at which the bottom 10% of runs deplete (`never` when more than 90% survive)
+
+The **Yearly Data** panel below the chart has its own Median / Projected / Downside view selector — use it to inspect what a representative bad run (Downside) or a typical run (Median) looks like year by year. The chart itself stays focused on the Projected line plus the Likely range.
 
 If you've added Black Swan stress events (specific years where YARP forces a market crash), they'll show up as shaded vertical bands on the chart.
 
@@ -227,14 +233,14 @@ You can **export the whole table to CSV** using the button in the header — use
 
 ---
 
-## Real vs Nominal
+## Today's $ vs Future $
 
 There's a toggle to switch between:
 
-- **Real (today's dollars)** — adjusted for inflation. Use this. The numbers are comparable to your current life and budget.
-- **Nominal (future dollars)** — actual dollar amounts that would print on statements decades from now. They look bigger because of inflation, but they don't represent more spending power.
+- **Today's $** — adjusted for inflation. Use this. The numbers are comparable to your current life and budget.
+- **Future $** — actual dollar amounts that would print on statements decades from now. They look bigger because of inflation, but they don't represent more spending power.
 
-Most retirement planning is done in real terms.
+Most retirement planning is done in today's dollars.
 
 ---
 
@@ -248,7 +254,9 @@ This is the most useful feature for actually making decisions: rather than askin
 
 ## What If? Mode
 
-Click **What If?** above the chart to enter an experimental mode. A snapshot of your scenario is held in memory; the chart shows the original as a solid line and your live edits as a dashed amber **Draft** line. Edit accounts, income events, or spending goals normally — only the dashed line moves.
+Click **What If?** above the chart to enter an experimental mode. A snapshot of your scenario is held in memory; the chart shows the original as a solid gray line and your live edits as a dashed amber **Draft** line. Edit accounts, income events, or spending goals normally — only the dashed line moves.
+
+In What If mode both lines always render the **Projected** baseline so the two paths start identical when no edits have been made. The data table's Median / Projected / Downside view selector still lets you inspect representative runs in the year-by-year detail — but it no longer changes what the chart plots.
 
 Three exit actions:
 - **Discard** — restore the scenario to its original state.

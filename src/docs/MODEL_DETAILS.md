@@ -14,9 +14,22 @@ A run is **successful** if portfolio balance never reaches $0 before life expect
 
 ### Representative Paths
 
-Rather than year-by-year percentile envelopes (which are smooth but synthetic — no actual run produces them), YARP selects the **single simulation run** whose final balance is closest to the 50th percentile (Median) or 10th percentile (Downside) of all final balances.
+YARP selects the **single simulation run** whose final balance is closest to the 50th percentile (Median) or 10th percentile (Downside) of all final balances. These representative runs power the **yearly data table** breakdowns — the same year's stock and bond return factors drive every line of that run's detail, so income, spending, taxes, withdrawals, and balance evolve consistently from a real return sequence.
 
-This means median/downside paths are coherent: the same year's stock and bond return factors drive every line of that run's yearly detail. Tradeoff: the chart lines are slightly less smooth than envelope-based projections, but every number you see is internally consistent and can be attributed to a real return sequence.
+### Percentile Band (chart shading)
+
+Separately, the chart's shaded **10th–90th percentile band** is computed as a **year-by-year percentile envelope**: at each year independently, all run balances are sorted and the 10th and 90th percentile values are taken. The band is therefore synthetic — no single simulated future traces its edges — but it gives the most honest visual summary of uncertainty over time, which the representative-run lines cannot. The band uses the deterministic inflation series as its display-currency deflator. It is skipped when fewer than 10 runs are available (e.g. `historical_single` mode).
+
+### Monte Carlo Stats
+
+The tier-badge tooltip beside *Chance of Success* surfaces four MC summary numbers, all computed once from the full run pool:
+
+- **Median ending balance** — p50 of final-year balances
+- **10th-percentile ending balance** — p10 of final-year balances
+- **Median depletion age** — p50 of (per-run) first year the portfolio's spending shortfall is positive, converted to age; `null` when more than half of runs survive
+- **Worst-decile depletion age** — p10 of the same per-run depletion years; `null` when more than 90% of runs survive
+
+Depletion is detected via `AnnualCashFlowBreakdown.spendingShortfall > 0`, the same definition the success probability uses.
 
 ---
 
@@ -314,7 +327,7 @@ A `roth_conversion` income event moves money from Traditional to Roth accounts. 
 4. Tax owed on the conversion is paid implicitly by the regular waterfall — Taxable first if available, otherwise Traditional (which reduces the convertible amount further).
 5. If no Roth accounts exist, a `"Roth Conversion"` Roth account is auto-created.
 
-The Roth Conversion dialog's **Net impact on plan value** row is computed by running the deterministic projection (same single-path engine as the Deterministic chart line) twice — once with the conversion event included, once without — and diffing the end-of-plan portfolio balance. The other preview rows (first-year tax, total tax, RMD reduction, projected Roth at life expectancy) are fast closed-form estimates against your baseline income and do not include IRMAA or NIIT.
+The Roth Conversion dialog's **Net impact on plan value** row is computed by running the deterministic projection (same single-path engine as the Projected chart line) twice — once with the conversion event included, once without — and diffing the end-of-plan portfolio balance. The other preview rows (first-year tax, total tax, RMD reduction, projected Roth at life expectancy) are fast closed-form estimates against your baseline income and do not include IRMAA or NIIT.
 
 ---
 

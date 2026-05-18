@@ -46,6 +46,9 @@ const palette = {
   // Black swan shading (semi-transparent red band on chart)
   red500Alpha08: 'rgba(220, 38, 38, 0.08)',
 
+  // Percentile band shading (semi-transparent neutral on chart)
+  gray400Alpha12: 'rgba(156, 163, 175, 0.18)',
+
   // Greens
   green600: '#008000',
   green100: '#dcfce7',
@@ -126,6 +129,9 @@ export const colors = {
 
   // Black swan event shading (semi-transparent vertical band)
   blackSwanShade: palette.red500Alpha08,
+
+  // Monte Carlo 10th–90th percentile band (filled region under projected line)
+  chartBand: palette.gray400Alpha12,
 
   // What If draft overlay (dashed line for the experimental scenario)
   draftOverlay: palette.amber500,
