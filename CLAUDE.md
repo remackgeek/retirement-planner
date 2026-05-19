@@ -587,12 +587,18 @@ Two assertion types are supported:
   { "index": 0, "field": "withdrawalFromRoth", "value": 50000, "tolerance": 5, "_note": "..." }
   ```
   Use `value` for exact checks (with optional `tolerance`), or `min`/`max` for range
-  checks. Valid fields: all keys of `AnnualCashFlowBreakdown` — `portfolioWithdrawal`,
-  `withdrawalFromTaxable`, `withdrawalFromTraditional`, `withdrawalFromRoth`, `totalTax`,
-  `netCashFlow`, `ssGross`, `otherTaxableGross`, `afterTaxIncome`, `ssTaxableAmount`,
-  `totalGrossIncome`, `baseSpendingNet`, `otherSpendingGoalsNet`, `totalSpendingNet`,
-  `rmdRequired`, `rmdExcess`, `rothConversionGross`, `ordinaryTax`,
-  `federalCapGainsTax`, `stateCapGainsTax`, `niitTax`, `irmaaSurcharge`.
+  checks. Valid fields: all top-level keys of `AnnualCashFlowBreakdown` —
+  `portfolioWithdrawal`, `withdrawalFromTaxable`, `withdrawalFromTraditional`,
+  `withdrawalFromRoth`, `totalTax`, `netCashFlow`, `ssGross`, `otherTaxableGross`,
+  `afterTaxIncome`, `ssTaxableAmount`, `totalGrossIncome`, `baseSpendingNet`,
+  `otherSpendingGoalsNet`, `totalSpendingNet`, `rmdRequired`, `rmdExcess`,
+  `rothConversionGross`, `ordinaryTax`, `federalCapGainsTax`, `stateCapGainsTax`,
+  `niitTax`, `irmaaSurcharge`. Audit intermediates (`audit.federalBracketIndex`,
+  `audit.ssZone`, `audit.incomeEventTaxBreakdown`, `audit.accountFlows`, etc.) are
+  nested under `audit` and **not** checkable via `breakdownChecks` — the runner
+  does flat key lookup. Assert these in unit tests against `runSimulation()` /
+  `calculateAnnualCashFlow()` directly, or against the detailed variants in
+  `TaxCalculator` / `IRMAA`.
 
 #### Key rules
 

@@ -256,6 +256,47 @@ A flat **3.8%** tax applied to the lesser of (a) net investment income or (b) MA
   - 6% phase-out above $75,000 AGI (single) / $150,000 AGI (joint)
   - Active **2025–2028 only** — does not apply in later retirement years
 
+### Tax Audit Fields
+
+Every `AnnualCashFlowBreakdown` carries an `audit` sub-object capturing the intermediate values that the tax model computes and would otherwise discard. These power the **Tax Audit** and **Income Detail** tabs in the yearly data view, and ship as extra columns in the CSV export. Each representative path (median, projected, downside) has its own audit data driven by that path's actual flows.
+
+- **Ordinary income tax** — `agi` (= otherTaxableGross + Traditional withdrawal + SS taxable portion), `standardDeduction`, `seniorAddOn`, `obbbReduction`, `totalDeductions`, `taxableIncome`, `federalBracketIndex` (0=10% rate through 6=37% rate), `federalMarginalRate`, `federalOrdinaryTax`, `stateOrdinaryTax`, and `federalBrackets[]` (per-bracket dollars-in-bracket and tax-in-bracket for the year's inflation-indexed thresholds).
+- **Social Security taxability** — `ssProvisionalIncome` (= otherTaxableGross + ½ × ssGross), the frozen IRS `ssProvisionalThreshold1`/`Threshold2`, and the `ssZone` hit (`none` / `50%` / `85%` / `mfs-flat`).
+- **IRMAA** — `irmaaLookbackMagi` (2-year-prior MAGI used for this year's surcharge), `irmaaTierIndex` (0..5 in the inflation-indexed tier table), `irmaaTierUpperScaled` (inflation-indexed upper bound of the hit tier), `irmaaMonthlySurcharge` and `irmaaPerEnrolleeAnnual` (Part B + Part D), `irmaaEnrolleeCount` (count of Medicare-enrolled spouses age 65+).
+- **NIIT** — `niitMagi`, `niitThreshold` (frozen, not inflation-indexed), `niitMagiExcess`, `niitInvestmentIncome` (= gross taxable-account withdrawal), `niitTaxableBase` (= min of the two, × 3.8% = niitTax).
+- **RMD per owner** — `rmdSelf` / `rmdSpouse` totals, `rmdDivisorSelf` / `rmdDivisorSpouse` (IRS Uniform Lifetime Table divisor for the owner's age, 0 when no RMD), `rmdBoyBalanceSelf` / `rmdBoyBalanceSpouse` (beginning-of-year Traditional balance per owner, from before this year's growth).
+- **State** — `effectiveStateName`: which `stateTimeline` entry's flat rate applied this year.
+
+#### Per-event ordinary tax attribution (marginal stack)
+
+`audit.incomeEventTaxBreakdown` is an array of per-event marginal-tax records. Events are walked in IRS stacking order:
+
+1. Wages (each `wage_income` event)
+2. Other ordinary before-tax events (pension, rental, annuity, sale, work-during-retirement, other-income)
+3. Pre-tax retirement contributions (negative, with cumulative ordinary gross floored at zero)
+4. Traditional withdrawal for spending need (synthetic source `traditional_withdrawal`, gross = `withdrawalFromTraditional − rothConversionGross`)
+5. Roth conversion event(s)
+6. Social Security (aggregated; if multiple SS events, the marginal tax is split proportionally by gross)
+
+Each entry's `marginalTax` is the incremental federal+state ordinary-tax delta when its `taxableContribution` is added on top of the prior cumulative gross. Marginal rates sum to `ordinaryTax` modulo floor-at-zero rounding (any drift is surfaced as a reconciliation row in the UI). Capital-gains tax, NIIT, and IRMAA are not attributed to specific events — they sit in the Tax Audit tab as separate sections.
+
+#### Per-account flows
+
+`audit.accountFlows` is one row per account that had any movement this year:
+
+- `withdrawal` — dollars taken out of this account (pro-rata across each tax-type group: Taxable → Traditional → Roth waterfall).
+- `deposit` — dollars added (Roth conversion arrival, RMD excess reinvestment, retirement contribution, surplus contribution).
+
+A single account can have both in the same year (e.g., a Taxable account that paid for spending then received the surplus reinvestment). Growth (return-driven balance change) is not represented here — it's part of the path itself, shown on the Summary tab.
+
+#### Performance & invariants
+
+Audit data is computed for **every** breakdown — all 5000 Monte Carlo runs × ~30 years, plus the deterministic projection — not just the representative paths. The per-breakdown cost is roughly one `calculateNetFromGrossDetailed` call plus ~5–10 extra `calculateNetFromGross` calls for the marginal stack; in profiling this added under 2s to a typical 5000-run simulation. Don't move audit computation into a representative-runs-only post-pass without also making the deterministic projection populate it — both the chart's Yearly Data table and the CSV export depend on `audit` being present on every breakdown they touch.
+
+`audit.accountFlows` is the one exception: it's populated by `applyCashFlow` (not by the core cash-flow calc) because it depends on the actual pro-rata distribution over current account balances, which is only known after the withdrawal sinks run. Callers of `calculateAnnualCashFlow` (the public wrapper) that don't subsequently invoke `applyCashFlow` will see `accountFlows` as `undefined`; tests that need it should drive `runSimulation()` instead.
+
+Synthetic stack-step IDs `SYNTHETIC_TRAD_WITHDRAWAL_ID` and `SYNTHETIC_SS_AGGREGATE_ID` are exported from `SimulationService.ts` so UI / tests can match against them without duplicating the literal `__trad_withdrawal__` / `__ss_aggregate__` strings.
+
 ---
 
 ## Required Minimum Distributions

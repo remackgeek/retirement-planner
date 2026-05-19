@@ -2,10 +2,15 @@ import type { UserData } from '../types/UserData';
 import type { Account, AccountType, AccountKind } from '../types/Account';
 import {
   calculateNetFromGross,
+  calculateNetFromGrossDetailed,
   calculateSSTaxableAmount,
+  calculateSSTaxableAmountDetailed,
   clearTaxCalculationCache,
+  type FederalBracketDetail,
+  type FilingStatus,
+  type SsZone,
 } from './TaxCalculator';
-import { calculateIRMAA, calculateNIIT } from './IRMAA';
+import { calculateIRMAA, calculateIRMAADetailed, calculateNIIT, calculateNIITDetailed } from './IRMAA';
 import { getContributionLimits } from '../utils/contributionLimits';
 import {
   createReturnGenerator,
@@ -90,6 +95,15 @@ export function calculateRMD(tradBalance: number, age: number): number {
 }
 
 function getStateTaxRate(userData: UserData, year: number): number {
+  return STATE_TAX_RATES[getEffectiveStateName(userData, year)] || 0;
+}
+
+// Resolve the active state name for a given calendar year by walking the
+// scenario's stateTimeline. Used by the tax-audit detail rendering to label
+// which state's rate applied this year (the federal/state ordinary-tax split
+// is more interpretable when the user can see "this is California's 8% on
+// gross").
+export function getEffectiveStateName(userData: UserData, year: number): string {
   const timeline = userData.stateTimeline;
   let effectiveState = timeline[0].state;
   for (let i = 1; i < timeline.length; i++) {
@@ -100,7 +114,7 @@ function getStateTaxRate(userData: UserData, year: number): number {
       break;
     }
   }
-  return STATE_TAX_RATES[effectiveState] || 0;
+  return effectiveState;
 }
 
 // ---------------- Account index (precompute) ----------------
@@ -182,10 +196,13 @@ function sumBalancesOfTypeAndOwner(
 }
 
 // Subtract `amount` from a precomputed list of accounts, proportional to current balance.
+// Optional `sink` accumulates the per-account amount actually withdrawn — used by the
+// Tax Audit view to surface which account each dollar came from.
 function subtractFromAccounts(
   typeAccounts: Account[],
   balances: Record<string, number>,
-  amount: number
+  amount: number,
+  sink?: Map<string, number>
 ): void {
   if (amount <= 0) return;
   let typeTotal = 0;
@@ -196,15 +213,18 @@ function subtractFromAccounts(
     const bal = balances[a.id] ?? 0;
     const share = (bal / typeTotal) * actual;
     balances[a.id] = Math.max(0, bal - share);
+    if (sink && share > 0) sink.set(a.id, (sink.get(a.id) ?? 0) + share);
   }
 }
 
 // Add `amount` to a precomputed list of accounts, proportional to current balance.
 // If no balances exist in the type, deposits to the first account of that type (if any).
+// Optional `sink` accumulates the per-account amount actually deposited.
 function addToAccounts(
   typeAccounts: Account[],
   balances: Record<string, number>,
-  amount: number
+  amount: number,
+  sink?: Map<string, number>
 ): void {
   if (amount <= 0 || typeAccounts.length === 0) return;
   let typeTotal = 0;
@@ -212,12 +232,14 @@ function addToAccounts(
   if (typeTotal <= 0) {
     const first = typeAccounts[0];
     balances[first.id] = (balances[first.id] ?? 0) + amount;
+    if (sink) sink.set(first.id, (sink.get(first.id) ?? 0) + amount);
     return;
   }
   for (const a of typeAccounts) {
     const bal = balances[a.id] ?? 0;
     const share = (bal / typeTotal) * amount;
     balances[a.id] = bal + share;
+    if (sink && share > 0) sink.set(a.id, (sink.get(a.id) ?? 0) + share);
   }
 }
 
@@ -267,7 +289,8 @@ function resolveContributionAccountId(
 function depositContributions(
   accountIndex: AccountIndex,
   contributions: ContributionDeposit[],
-  balances: Record<string, number>
+  balances: Record<string, number>,
+  sink?: Map<string, number>
 ): void {
   for (const c of contributions) {
     const total = c.employeeAmount + c.employerMatch;
@@ -275,6 +298,7 @@ function depositContributions(
     const targetId = accountIndex.contributionTargetByEventId.get(c.eventId);
     if (!targetId) continue;
     balances[targetId] = (balances[targetId] ?? 0) + total;
+    if (sink) sink.set(targetId, (sink.get(targetId) ?? 0) + total);
   }
 }
 
@@ -286,27 +310,70 @@ function applyCashFlow(
   contributions: ContributionDeposit[],
   balances: Record<string, number>
 ): void {
-  subtractFromAccounts(accountIndex.byType.taxable, balances, breakdown.withdrawalFromTaxable);
-  subtractFromAccounts(accountIndex.byType.traditional, balances, breakdown.withdrawalFromTraditional);
-  subtractFromAccounts(accountIndex.byType.roth, balances, breakdown.withdrawalFromRoth);
+  const withdrawalSink = new Map<string, number>();
+  const depositSink = new Map<string, number>();
+  subtractFromAccounts(accountIndex.byType.taxable, balances, breakdown.withdrawalFromTaxable, withdrawalSink);
+  subtractFromAccounts(accountIndex.byType.traditional, balances, breakdown.withdrawalFromTraditional, withdrawalSink);
+  subtractFromAccounts(accountIndex.byType.roth, balances, breakdown.withdrawalFromRoth, withdrawalSink);
   // Deposit Roth conversion into Roth accounts (pro-rata). A receiving Roth is
   // guaranteed by ensureRothConversionAccount when any conversion event exists.
   if (breakdown.rothConversionGross > 0) {
-    addToAccounts(accountIndex.byType.roth, balances, breakdown.rothConversionGross);
+    addToAccounts(accountIndex.byType.roth, balances, breakdown.rothConversionGross, depositSink);
   }
   // Deposit RMD excess into the first taxable account (already ensured to exist by caller).
   if (breakdown.rmdExcess > 0 && accountIndex.firstTaxable) {
     const id = accountIndex.firstTaxable.id;
     balances[id] = (balances[id] ?? 0) + breakdown.rmdExcess;
+    depositSink.set(id, (depositSink.get(id) ?? 0) + breakdown.rmdExcess);
   }
   // Retirement contributions (explicit deposit instructions, independent of surplus).
-  depositContributions(accountIndex, contributions, balances);
+  depositContributions(accountIndex, contributions, balances, depositSink);
   // Surplus: deposit any positive netCashFlow into the first taxable account.
   // ensureReinvestmentAccount guarantees one exists when surplus is possible.
   if (breakdown.netCashFlow > 0 && accountIndex.firstTaxable) {
     const id = accountIndex.firstTaxable.id;
     balances[id] = (balances[id] ?? 0) + breakdown.netCashFlow;
+    depositSink.set(id, (depositSink.get(id) ?? 0) + breakdown.netCashFlow);
   }
+
+  // Surface per-account flows for the Tax Audit view. One row per account that
+  // had any movement this year — withdrawal + deposit on the same row when both
+  // happened (e.g. a taxable account that paid for spending then received the
+  // surplus deposit). Lookup is via accountIndex.byId so we resolve the
+  // up-to-date account name and type even for synthetic Reinvestment / Roth
+  // Conversion accounts injected by ensure*Account.
+  const seen = new Set<string>();
+  const rows: AccountFlowRow[] = [];
+  withdrawalSink.forEach((amount, id) => {
+    if (amount <= 0) return;
+    seen.add(id);
+    const acct = accountIndex.byId.get(id);
+    rows.push({
+      accountId: id,
+      accountName: acct?.name ?? id,
+      accountType: acct?.type ?? 'taxable',
+      withdrawal: amount,
+      deposit: depositSink.get(id) ?? 0,
+    });
+  });
+  depositSink.forEach((amount, id) => {
+    if (seen.has(id) || amount <= 0) return;
+    const acct = accountIndex.byId.get(id);
+    rows.push({
+      accountId: id,
+      accountName: acct?.name ?? id,
+      accountType: acct?.type ?? 'taxable',
+      withdrawal: 0,
+      deposit: amount,
+    });
+  });
+  // breakdown.audit.accountFlows is populated here — not inside
+  // calculateAnnualCashFlowCore — because it depends on the actual pro-rata
+  // distribution over current account balances, which is only known once the
+  // withdrawal sinks have run. Callers of the public calculateAnnualCashFlow
+  // wrapper that don't subsequently call applyCashFlow will see accountFlows
+  // as undefined; tests that need it should drive runSimulation.
+  if (breakdown.audit) breakdown.audit.accountFlows = rows;
 }
 
 // Ensure a taxable account exists to receive (a) excess RMD reinvestment from
@@ -377,6 +444,112 @@ export interface AnnualCashFlowBreakdown {
   employerMatch: number;            // employer match deposited (routed to same target as employee contribution)
   contributionsCappedAmount: number; // total employee contribution dollars cut by IRS caps this year
   surplusContribution: number;       // positive netCashFlow deposited to taxable as general surplus this year
+  audit?: AnnualAuditBreakdown;      // IRS-audit-level intermediates (always populated; optional for back-compat)
+}
+
+// Per-event ordinary-income source as it actually fed the year's tax calc.
+// Built once in accumulateIncome (precompute phase) so the hot loop doesn't
+// rewalk userData.incomeEvents.
+export interface EventIncomeRecord {
+  eventId: string;
+  eventName: string;
+  eventType: string;        // IncomeEvent['type']
+  gross: number;            // post-inflation, post-haircut, post-cap amount
+  // Classification drives the marginal-stack ordering for tax attribution.
+  // 'ordinary' covers wage_income and all before_tax pension/rental/annuity/etc.
+  // 'pre_tax_contribution' is a NEGATIVE-direction reduction to ordinary income
+  //   (gross is positive; in the stack it subtracts).
+  // 'social_security' is special-cased (provisional-income formula).
+  // 'roth_conversion' is added at the top of the ordinary stack.
+  // 'after_tax' / 'roth_contribution' / 'after_tax_contribution' carry no
+  //   ordinary tax burden.
+  classification:
+    | 'ordinary'
+    | 'pre_tax_contribution'
+    | 'social_security'
+    | 'roth_conversion'
+    | 'after_tax'
+    | 'roth_contribution'
+    | 'after_tax_contribution';
+}
+
+export interface AccountFlowRow {
+  accountId: string;
+  accountName: string;
+  accountType: AccountType;
+  withdrawal: number;    // positive dollars taken out of this account this year
+  deposit: number;       // positive dollars added to this account this year
+}
+
+// Per-event marginal-stack tax attribution: events are ordered IRS-style
+// (wages → other before-tax → pre-tax-deduction → Trad withdrawal for spending
+// → Roth conversion → SS), and each entry's marginalTax is the incremental
+// federal+state ordinary tax delta when that source is stacked on top of the
+// prior cumulative gross. Marginal rates sum-to-total within ~rounding.
+export interface IncomeEventTaxAttribution {
+  eventId: string;
+  eventName: string;
+  eventType: string;       // event type or synthetic source label (e.g. 'traditional_withdrawal')
+  gross: number;
+  taxableContribution: number;  // signed: pre-tax contributions are negative
+  marginalTax: number;
+  marginalRate: number;    // marginalTax / |taxableContribution| (0 when contribution is 0)
+}
+
+// IRS-audit-level intermediates surfaced for the Tax Audit detail view. Always
+// populated for every representative breakdown (median / projected / downside);
+// also computed inside the MC hot loop for all runs, but only the
+// representative-run audit data is actually rendered.
+export interface AnnualAuditBreakdown {
+  // ----- Tax (federal + state ordinary) -----
+  agi: number;                       // grossIncome handed to the deduction step (= otherTaxableGross + fromTrad + ssTaxableAmount)
+  standardDeduction: number;
+  seniorAddOn: number;
+  obbbReduction: number;             // OBBB ("Old Age Bonus" temporary 2025–2028) extra senior deduction
+  totalDeductions: number;
+  taxableIncome: number;
+  federalBracketIndex: number;       // 0..6 (10% .. 37%)
+  federalMarginalRate: number;
+  federalOrdinaryTax: number;
+  stateOrdinaryTax: number;
+  federalBrackets: FederalBracketDetail[];
+  numQualifyingSeniors: number;
+  effectiveStateName: string;
+
+  // ----- Social Security taxability -----
+  ssProvisionalIncome: number;
+  ssProvisionalThreshold1: number;
+  ssProvisionalThreshold2: number;
+  ssZone: SsZone;
+
+  // ----- IRMAA -----
+  irmaaLookbackMagi: number;
+  irmaaTierIndex: number;
+  irmaaTierUpperScaled: number;      // inflation-indexed upper bound of the hit tier
+  irmaaPerEnrolleeAnnual: number;
+  irmaaEnrolleeCount: number;
+  irmaaMonthlySurcharge: number;     // per-enrollee monthly Part B + Part D surcharge
+
+  // ----- NIIT -----
+  niitMagi: number;
+  niitThreshold: number;
+  niitMagiExcess: number;
+  niitInvestmentIncome: number;
+  niitTaxableBase: number;
+
+  // ----- RMD per owner -----
+  rmdSelf: number;
+  rmdSpouse: number;
+  rmdDivisorSelf: number;            // 0 when no RMD (age < 73 or no traditional balance)
+  rmdDivisorSpouse: number;
+  rmdBoyBalanceSelf: number;         // beginning-of-year Traditional balance, self-owned
+  rmdBoyBalanceSpouse: number;
+
+  // ----- Per-event tax attribution -----
+  incomeEventTaxBreakdown: IncomeEventTaxAttribution[];
+
+  // ----- Per-account flows (populated by applyCashFlow) -----
+  accountFlows?: AccountFlowRow[];
 }
 
 // Per-event contribution deposit instruction emitted by accumulateIncome and consumed
@@ -402,6 +575,10 @@ export interface AccumulatedIncome {
   employerMatch: number;
   contributions: ContributionDeposit[];
   contributionsCappedAmount: number;
+  // Per-event records for the Tax Audit / Income Detail tab. Built once during
+  // precompute. Cap scaling is reflected in the recorded gross (cap applies in
+  // the same pass that produces this list).
+  eventBreakdowns: EventIncomeRecord[];
 }
 
 // Resolve the cap-classification kind for a given target account.
@@ -451,6 +628,7 @@ function accumulateIncome(
   let afterTaxContributions = 0;
   let employerMatchTotal = 0;
   const contributions: ContributionDeposit[] = [];
+  const eventBreakdowns: EventIncomeRecord[] = [];
 
   // Pre-pass: build wage-amount lookup keyed by event id so contributions linked to
   // a wage event can compute employer-match base off the inflated wage amount.
@@ -469,7 +647,15 @@ function accumulateIncome(
     // Roth conversions are a Trad->Roth transfer: taxed as ordinary income but
     // NOT added to cash available for spending. Tracked separately.
     if (event.type === 'roth_conversion') {
-      conversionGross += Math.max(0, amount);
+      const v = Math.max(0, amount);
+      conversionGross += v;
+      eventBreakdowns.push({
+        eventId: event.id,
+        eventName: event.name ?? 'Roth Conversion',
+        eventType: event.type,
+        gross: v,
+        classification: 'roth_conversion',
+      });
       return;
     }
 
@@ -498,18 +684,29 @@ function accumulateIncome(
       }
       contributions.push({ eventId: event.id, employeeAmount, employerMatch: match });
       employerMatchTotal += match;
+      let classification: EventIncomeRecord['classification'];
       switch (event.contributionType) {
         case 'pre_tax':
           preTaxContributions += employeeAmount;
+          classification = 'pre_tax_contribution';
           break;
         case 'roth':
           rothContributions += employeeAmount;
+          classification = 'roth_contribution';
           break;
         case 'after_tax':
         default:
           afterTaxContributions += employeeAmount;
+          classification = 'after_tax_contribution';
           break;
       }
+      eventBreakdowns.push({
+        eventId: event.id,
+        eventName: event.name ?? 'Retirement Contribution',
+        eventType: event.type,
+        gross: employeeAmount,
+        classification,
+      });
       return;
     }
 
@@ -517,6 +714,13 @@ function accumulateIncome(
       // Wage income is taxable ordinary income (always before_tax).
       wageIncomeGross += amount;
       otherTaxableGross += amount;
+      eventBreakdowns.push({
+        eventId: event.id,
+        eventName: event.name ?? 'Wages',
+        eventType: event.type,
+        gross: amount,
+        classification: 'ordinary',
+      });
       return;
     }
 
@@ -528,10 +732,31 @@ function accumulateIncome(
 
     if (event.taxStatus === 'after_tax') {
       afterTaxIncome += effectiveAmount;
+      eventBreakdowns.push({
+        eventId: event.id,
+        eventName: event.name ?? event.type,
+        eventType: event.type,
+        gross: effectiveAmount,
+        classification: 'after_tax',
+      });
     } else if (event.type === 'social_security') {
       ssGross += effectiveAmount;
+      eventBreakdowns.push({
+        eventId: event.id,
+        eventName: event.name ?? 'Social Security',
+        eventType: event.type,
+        gross: effectiveAmount,
+        classification: 'social_security',
+      });
     } else {
       otherTaxableGross += effectiveAmount;
+      eventBreakdowns.push({
+        eventId: event.id,
+        eventName: event.name ?? event.type,
+        eventType: event.type,
+        gross: effectiveAmount,
+        classification: 'ordinary',
+      });
     }
   });
 
@@ -630,6 +855,23 @@ function accumulateIncome(
   // available cash via the wage event. No explicit re-injection needed.
   otherTaxableGross = Math.max(0, otherTaxableGross - preTaxContributions);
 
+  // Sync per-event records' gross with the (possibly cap-scaled) contribution
+  // amounts so the Tax Audit view shows the actual deposited dollars.
+  if (contributionsCappedAmount > 0) {
+    const empByEvent = new Map<string, number>();
+    for (const c of contributions) empByEvent.set(c.eventId, c.employeeAmount);
+    for (const r of eventBreakdowns) {
+      if (
+        r.classification === 'pre_tax_contribution' ||
+        r.classification === 'roth_contribution' ||
+        r.classification === 'after_tax_contribution'
+      ) {
+        const scaled = empByEvent.get(r.eventId);
+        if (scaled !== undefined) r.gross = scaled;
+      }
+    }
+  }
+
   return {
     ssGross,
     otherTaxableGross,
@@ -642,6 +884,7 @@ function accumulateIncome(
     employerMatch: employerMatchTotal,
     contributions,
     contributionsCappedAmount,
+    eventBreakdowns,
   };
 }
 
@@ -686,6 +929,159 @@ function accumulateSpending(
   });
 
   return { baseSpendingNet, otherSpendingGoalsNet };
+}
+
+// Synthetic event IDs used by the marginal-stack attribution for sources that
+// aren't a user-configured income event (Traditional withdrawal for spending,
+// aggregated SS step). Exported so UI / tests can match against them without
+// duplicating the literal strings.
+export const SYNTHETIC_TRAD_WITHDRAWAL_ID = '__trad_withdrawal__';
+export const SYNTHETIC_SS_AGGREGATE_ID = '__ss_aggregate__';
+
+// Marginal-stack per-event tax attribution. Events are walked in IRS-style
+// stacking order so each event's `marginalTax` is the incremental federal+state
+// ordinary-tax delta when added on top of the prior cumulative gross. Marginal
+// rates sum to the total ordinary tax (modulo rounding). Exported for testing.
+export function computeMarginalStackAttribution(args: {
+  eventBreakdowns: EventIncomeRecord[];
+  ssGross: number;
+  ssTaxableAmount: number;
+  fromTrad: number;
+  rothConversionTotal: number;
+  filingStatus: FilingStatus;
+  stateTaxRate: number;
+  age: number;
+  taxYear: number;
+  spouseAge: number | null;
+  inflationRate: number | undefined;
+}): IncomeEventTaxAttribution[] {
+  const {
+    eventBreakdowns, ssGross, ssTaxableAmount, fromTrad, rothConversionTotal,
+    filingStatus, stateTaxRate, age, taxYear, spouseAge, inflationRate,
+  } = args;
+
+  // 1. Build the ordered list of stack steps.
+  type Step = {
+    event: { id: string; name: string; type: string; gross: number };
+    signedTaxable: number;          // signed contribution to ordinary gross
+    kind: 'ordinary' | 'pre_tax' | 'ss' | 'trad_withdrawal' | 'roth_conversion';
+  };
+  const steps: Step[] = [];
+  // Ordinary income events (wages, pension, rental, etc.)
+  for (const r of eventBreakdowns) {
+    if (r.classification === 'ordinary') {
+      steps.push({
+        event: { id: r.eventId, name: r.eventName, type: r.eventType, gross: r.gross },
+        signedTaxable: r.gross,
+        kind: 'ordinary',
+      });
+    }
+  }
+  // Pre-tax contributions (reduce ordinary, signed-negative)
+  for (const r of eventBreakdowns) {
+    if (r.classification === 'pre_tax_contribution') {
+      steps.push({
+        event: { id: r.eventId, name: r.eventName, type: r.eventType, gross: r.gross },
+        signedTaxable: -r.gross,
+        kind: 'pre_tax',
+      });
+    }
+  }
+  // Synthetic: Traditional withdrawal for spending need (excludes conversion).
+  const tradForSpending = Math.max(0, fromTrad - rothConversionTotal);
+  if (tradForSpending > 0) {
+    steps.push({
+      event: { id: SYNTHETIC_TRAD_WITHDRAWAL_ID, name: 'Traditional Withdrawal (spending+RMD)', type: 'traditional_withdrawal', gross: tradForSpending },
+      signedTaxable: tradForSpending,
+      kind: 'trad_withdrawal',
+    });
+  }
+  // Roth conversion events. If multiple, scale each to match `rothConversionTotal`
+  // exactly (the calc caps conversion at the Trad balance after RMD/spending).
+  const conversionRecords = eventBreakdowns.filter((r) => r.classification === 'roth_conversion');
+  const conversionRequested = conversionRecords.reduce((s, r) => s + r.gross, 0);
+  if (rothConversionTotal > 0 && conversionRequested > 0) {
+    const scale = rothConversionTotal / conversionRequested;
+    for (const r of conversionRecords) {
+      const actualGross = r.gross * scale;
+      steps.push({
+        event: { id: r.eventId, name: r.eventName, type: r.eventType, gross: actualGross },
+        signedTaxable: actualGross,
+        kind: 'roth_conversion',
+      });
+    }
+  }
+  // Social Security step. If multiple SS events, aggregate into one step then
+  // split the marginal tax proportionally across the events.
+  const ssRecords = eventBreakdowns.filter((r) => r.classification === 'social_security');
+  const ssRecordsTotal = ssRecords.reduce((s, r) => s + r.gross, 0);
+  if (ssGross > 0) {
+    steps.push({
+      event: { id: SYNTHETIC_SS_AGGREGATE_ID, name: 'Social Security (aggregate)', type: 'social_security', gross: ssGross },
+      signedTaxable: ssTaxableAmount,
+      kind: 'ss',
+    });
+  }
+
+  // 2. Walk the stack, recording each step's marginal tax. Cumulative ordinary
+  // gross is floored at zero after each step (matches accumulateIncome's
+  // Math.max(0, otherTaxableGross - preTaxContributions) for negative steps).
+  const attributions: IncomeEventTaxAttribution[] = [];
+  let cumulativeOrdinary = 0;
+  let prevTax = 0;
+  for (const step of steps) {
+    let stepCumulative = cumulativeOrdinary;
+    if (step.kind !== 'ss') {
+      stepCumulative = Math.max(0, stepCumulative + step.signedTaxable);
+    }
+    const combinedTaxable = stepCumulative + (step.kind === 'ss' ? step.signedTaxable : 0);
+    let totalTax = 0;
+    if (combinedTaxable > 0) {
+      totalTax = combinedTaxable - calculateNetFromGross(
+        combinedTaxable, stateTaxRate, filingStatus, age, taxYear, spouseAge, inflationRate,
+      );
+    }
+    const marginalTax = totalTax - prevTax;
+    if (step.kind === 'ss' && ssRecords.length > 1 && ssRecordsTotal > 0) {
+      // Split SS marginal tax across multiple SS events proportionally by gross.
+      for (const r of ssRecords) {
+        const portion = r.gross / ssRecordsTotal;
+        attributions.push({
+          eventId: r.eventId,
+          eventName: r.eventName,
+          eventType: r.eventType,
+          gross: r.gross,
+          taxableContribution: ssTaxableAmount * portion,
+          marginalTax: marginalTax * portion,
+          marginalRate: r.gross > 0 ? (marginalTax * portion) / r.gross : 0,
+        });
+      }
+    } else if (step.kind === 'ss' && ssRecords.length === 1) {
+      const r = ssRecords[0];
+      attributions.push({
+        eventId: r.eventId,
+        eventName: r.eventName,
+        eventType: r.eventType,
+        gross: r.gross,
+        taxableContribution: ssTaxableAmount,
+        marginalTax,
+        marginalRate: r.gross > 0 ? marginalTax / r.gross : 0,
+      });
+    } else {
+      attributions.push({
+        eventId: step.event.id,
+        eventName: step.event.name,
+        eventType: step.event.type,
+        gross: step.event.gross,
+        taxableContribution: step.signedTaxable,
+        marginalTax,
+        marginalRate: step.signedTaxable !== 0 ? marginalTax / Math.abs(step.signedTaxable) : 0,
+      });
+    }
+    cumulativeOrdinary = stepCumulative;
+    prevTax = totalTax;
+  }
+  return attributions;
 }
 
 export function calculateAnnualCashFlow(
@@ -765,6 +1161,10 @@ function calculateAnnualCashFlowCore(
   const selfRmd = calculateRMD(selfTradBal, age);
   const spouseRmd = spouseAge !== null ? calculateRMD(spouseTradBal, spouseAge) : 0;
   const rmdRequired = selfRmd + spouseRmd;
+  const selfRmdDivisor = selfRmd > 0 ? (IRS_UNIFORM_LIFETIME_TABLE[Math.min(age, 114)] ?? 2.9) : 0;
+  const spouseRmdDivisor = spouseAge !== null && spouseRmd > 0
+    ? (IRS_UNIFORM_LIFETIME_TABLE[Math.min(spouseAge, 114)] ?? 2.9)
+    : 0;
   let withdrawal = Math.min(Math.max(0, totalSpendingNet - availableCash), cap);
   let totalTax = 0;
   let ssTaxableAmount = 0;
@@ -841,7 +1241,7 @@ function calculateAnnualCashFlowCore(
         userData.filingStatus,
         age,
         year,
-        userData.spouseAge,
+        spouseAge,
         inflationRate
       );
       ordinaryTax = combinedTaxable - net;
@@ -890,6 +1290,79 @@ function calculateAnnualCashFlowCore(
   const uncappedNeed = Math.max(0, totalSpendingNet + totalTax - availableCash);
   const spendingShortfall = capWasBinding ? Math.max(0, uncappedNeed - withdrawal) : 0;
 
+  // ---- Tax Audit intermediates (always computed; cheap recomputation of values
+  // that the fixed-point loop already produced internally) ----
+  const ordinaryGrossFinal = otherTaxableGross + fromTrad;
+  const combinedTaxableFinal = ordinaryGrossFinal + ssTaxableAmount;
+  const detailedTax = combinedTaxableFinal > 0
+    ? calculateNetFromGrossDetailed(
+        combinedTaxableFinal, stateTaxRate, userData.filingStatus, age, year, spouseAge, inflationRate,
+      )
+    : null;
+  const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal, userData.filingStatus);
+  const irmaaDetail = irmaaEnabled
+    ? calculateIRMAADetailed(priorMagi ?? 0, userData.filingStatus, year, inflationRate ?? 0, age, spouseAge)
+    : null;
+  const niitMagiFinal = ordinaryGrossFinal + ssTaxableAmount + fromTaxable;
+  const niitDetail = niitEnabled
+    ? calculateNIITDetailed(niitMagiFinal, fromTaxable, userData.filingStatus)
+    : null;
+  const eventTaxAttr = computeMarginalStackAttribution({
+    eventBreakdowns: income.eventBreakdowns,
+    ssGross,
+    ssTaxableAmount,
+    fromTrad,
+    rothConversionTotal: rothConversion,
+    filingStatus: userData.filingStatus,
+    stateTaxRate,
+    age,
+    taxYear: year,
+    spouseAge,
+    inflationRate,
+  });
+  const audit: AnnualAuditBreakdown = {
+    agi: combinedTaxableFinal,
+    standardDeduction: detailedTax?.standardDeduction ?? 0,
+    seniorAddOn: detailedTax?.seniorAddOn ?? 0,
+    obbbReduction: detailedTax?.obbbReduction ?? 0,
+    totalDeductions: detailedTax?.totalDeductions ?? 0,
+    taxableIncome: detailedTax?.taxableIncome ?? 0,
+    federalBracketIndex: detailedTax?.federalBracketIndex ?? 0,
+    federalMarginalRate: detailedTax?.federalMarginalRate ?? 0,
+    federalOrdinaryTax: detailedTax?.federalTax ?? 0,
+    stateOrdinaryTax: detailedTax?.stateTax ?? 0,
+    federalBrackets: detailedTax?.federalBrackets ?? [],
+    numQualifyingSeniors: detailedTax?.numQualifyingSeniors ?? 0,
+    effectiveStateName: getEffectiveStateName(userData, year),
+
+    ssProvisionalIncome: ssDetail.provisionalIncome,
+    ssProvisionalThreshold1: ssDetail.threshold1,
+    ssProvisionalThreshold2: ssDetail.threshold2,
+    ssZone: ssDetail.zone,
+
+    irmaaLookbackMagi: irmaaDetail?.lookbackMagi ?? 0,
+    irmaaTierIndex: irmaaDetail?.tierIndex ?? 0,
+    irmaaTierUpperScaled: irmaaDetail?.tierUpperScaled ?? 0,
+    irmaaPerEnrolleeAnnual: irmaaDetail?.perEnrolleeAnnual ?? 0,
+    irmaaEnrolleeCount: irmaaDetail?.enrolleeCount ?? 0,
+    irmaaMonthlySurcharge: irmaaDetail?.monthlySurcharge ?? 0,
+
+    niitMagi: niitDetail?.magi ?? 0,
+    niitThreshold: niitDetail?.threshold ?? 0,
+    niitMagiExcess: niitDetail?.magiExcess ?? 0,
+    niitInvestmentIncome: niitDetail?.investmentIncome ?? 0,
+    niitTaxableBase: niitDetail?.taxableBase ?? 0,
+
+    rmdSelf: selfRmd,
+    rmdSpouse: spouseRmd,
+    rmdDivisorSelf: selfRmdDivisor,
+    rmdDivisorSpouse: spouseRmdDivisor,
+    rmdBoyBalanceSelf: selfTradBal,
+    rmdBoyBalanceSpouse: spouseTradBal,
+
+    incomeEventTaxBreakdown: eventTaxAttr,
+  };
+
   return {
     ssGross,
     otherTaxableGross,
@@ -921,6 +1394,7 @@ function calculateAnnualCashFlowCore(
     employerMatch: income.employerMatch,
     contributionsCappedAmount: income.contributionsCappedAmount,
     surplusContribution,
+    audit,
   };
 }
 

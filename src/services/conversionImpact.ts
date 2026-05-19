@@ -158,6 +158,14 @@ export function estimateConversionImpact(
     if (convAmount <= 0) continue;
 
     const age = userData.currentAge + (year - userData.referenceYear);
+    // Year-adjusted spouse age so the senior add-on (and any other age-keyed
+    // tax adjustment) qualifies correctly as the spouse ages through the
+    // conversion window. Passing today's `userData.spouseAge` would freeze
+    // the spouse's eligibility at the reference year.
+    const spouseAgeYear =
+      userData.spouseAge !== null
+        ? userData.spouseAge + (year - userData.referenceYear)
+        : null;
     const stateTaxRate = getStateTaxRate(userData, year);
     const { ssGross, otherTaxableGross } = baselineOrdinaryGross(userData, year, inflationRate);
 
@@ -171,7 +179,7 @@ export function estimateConversionImpact(
     const baseGross = baseOrdinary + baseSsTaxable;
     const withConvGross = withConvOrdinary + withConvSsTaxable;
     const baseNet = baseGross > 0
-      ? calculateNetFromGross(baseGross, stateTaxRate, userData.filingStatus, age, year, userData.spouseAge, userData.inflationRate)
+      ? calculateNetFromGross(baseGross, stateTaxRate, userData.filingStatus, age, year, spouseAgeYear, userData.inflationRate)
       : 0;
     const withConvNet = calculateNetFromGross(
       withConvGross,
@@ -179,7 +187,7 @@ export function estimateConversionImpact(
       userData.filingStatus,
       age,
       year,
-      userData.spouseAge,
+      spouseAgeYear,
       userData.inflationRate
     );
     const baseTax = baseGross - baseNet;

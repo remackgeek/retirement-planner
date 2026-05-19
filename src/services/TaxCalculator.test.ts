@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { calculateSSTaxableAmount } from './TaxCalculator';
+import {
+  calculateSSTaxableAmount,
+  calculateSSTaxableAmountDetailed,
+  calculateNetFromGross,
+  calculateNetFromGrossDetailed,
+} from './TaxCalculator';
 
 describe('calculateSSTaxableAmount', () => {
   describe('edge cases', () => {
@@ -99,5 +104,68 @@ describe('calculateSSTaxableAmount', () => {
     it('returns 85% with high other income', () => {
       expect(calculateSSTaxableAmount(30000, 100000, 'mfs')).toBe(25500);
     });
+  });
+});
+
+describe('calculateSSTaxableAmountDetailed', () => {
+  it('reports the zone hit and provisional income', () => {
+    const d1 = calculateSSTaxableAmountDetailed(24000, 0, 'single');
+    expect(d1.zone).toBe('none');
+    expect(d1.provisionalIncome).toBe(12000);
+
+    const d2 = calculateSSTaxableAmountDetailed(20000, 20000, 'single');
+    expect(d2.zone).toBe('50%');
+    expect(d2.taxable).toBe(2500);
+
+    const d3 = calculateSSTaxableAmountDetailed(24000, 30000, 'single');
+    expect(d3.zone).toBe('85%');
+    expect(d3.threshold2).toBe(34000);
+
+    const d4 = calculateSSTaxableAmountDetailed(20000, 100000, 'mfs');
+    expect(d4.zone).toBe('mfs-flat');
+    expect(d4.taxable).toBe(17000);
+
+    const d5 = calculateSSTaxableAmountDetailed(0, 50000, 'single');
+    expect(d5.zone).toBe('none');
+    expect(d5.taxable).toBe(0);
+  });
+});
+
+describe('calculateNetFromGrossDetailed', () => {
+  it('reports bracket-by-bracket allocation matching total federal tax', () => {
+    // Single filer, age 50 (no senior add-on), 2026, $100,000 gross.
+    // Std deduction 2026 single: $16,100. Taxable: $83,900.
+    // Brackets 2026 single: 10% to $12,400; 12% to $50,400; 22% to $105,700; ...
+    // Tax: 12,400 * 0.10 = 1,240
+    //    + (50,400 - 12,400) * 0.12 = 4,560
+    //    + (83,900 - 50,400) * 0.22 = 7,370
+    //    = 13,170
+    const d = calculateNetFromGrossDetailed(100000, 0, 'single', 50, 2026, null, 0);
+    expect(d.standardDeduction).toBe(16100);
+    expect(d.totalDeductions).toBe(16100);
+    expect(d.taxableIncome).toBe(83900);
+    expect(d.federalBracketIndex).toBe(2); // 22% bracket
+    expect(d.federalMarginalRate).toBe(0.22);
+    expect(Math.round(d.federalTax)).toBe(13170);
+    expect(d.federalBrackets.reduce((s, b) => s + b.taxInBracket, 0)).toBeCloseTo(d.federalTax, 2);
+
+    // Per-bracket allocation
+    expect(Math.round(d.federalBrackets[0].taxInBracket)).toBe(1240);
+    expect(Math.round(d.federalBrackets[1].taxInBracket)).toBe(4560);
+    expect(Math.round(d.federalBrackets[2].taxInBracket)).toBe(7370);
+    expect(d.federalBrackets[3].taxInBracket).toBe(0);
+  });
+
+  it('matches calculateNetFromGross for the same inputs', () => {
+    const detailed = calculateNetFromGrossDetailed(75000, 0.05, 'mfj', 65, 2026, 65, 0);
+    const plain = calculateNetFromGross(75000, 0.05, 'mfj', 65, 2026, 65, 0);
+    expect(detailed.net).toBeCloseTo(plain, 2);
+  });
+
+  it('captures senior add-on for age >= 65', () => {
+    const d = calculateNetFromGrossDetailed(50000, 0, 'single', 67, 2026, null, 0);
+    // 2026 single age-65+ extra: $2,050 per qualifying senior; OBBB also applies through 2028.
+    expect(d.numQualifyingSeniors).toBe(1);
+    expect(d.seniorAddOn).toBe(2050);
   });
 });

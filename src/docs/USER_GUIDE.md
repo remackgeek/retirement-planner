@@ -229,7 +229,13 @@ Below the chart, expand **Yearly Data** for a complete breakdown of each year: b
 
 This is where you go when something on the chart looks surprising — expand the year in question and you can see exactly what's happening.
 
-You can **export the whole table to CSV** using the button in the header — useful for sharing with an advisor or sanity-checking against another tool.
+When you expand a year, the detail panel has three tabs:
+
+- **Summary** — the high-level income / spending / tax / cash-flow numbers, plus portfolio withdrawal breakdown and RMD/Roth-conversion notes. Use this for an at-a-glance read.
+- **Tax Audit** — IRS-level intermediates so you can verify the model's arithmetic. Shows AGI, the full federal bracket table with the dollars and tax landing in each rate, your standard deduction broken into the base + senior add-on + temporary OBBB bonus, the Social Security provisional-income calc with which 50%/85% zone you hit, the IRMAA lookback MAGI with the exact tier and per-enrollee surcharge, the NIIT MAGI excess and 3.8% base, and per-owner RMD with the IRS Uniform Lifetime Table divisor and beginning-of-year Traditional balance.
+- **Income Detail** — per-income-event ordinary tax attribution using marginal stacking (events are layered in IRS order so each event's tax is its incremental delta on top of the prior stack — pre-tax contributions appear as negative reductions). Also shows per-account flows: which account each dollar of withdrawal came from and which account received each deposit (Roth conversion, RMD excess, retirement contribution, surplus reinvestment).
+
+You can **export the whole table to CSV** using the button in the header — useful for sharing with an advisor or sanity-checking against another tool. The CSV includes scalar audit columns (AGI, deductions, bracket index, marginal rate, federal vs state split, SS zone, IRMAA tier, NIIT components, per-owner RMD). Per-event and per-account tables are in-app only — they don't fit a flat CSV cleanly.
 
 ---
 

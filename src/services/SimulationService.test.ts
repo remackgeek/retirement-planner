@@ -2,8 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateAnnualCashFlow,
   calculateRMD,
+  computeMarginalStackAttribution,
+  getEffectiveStateName,
   IRS_UNIFORM_LIFETIME_TABLE,
   runSimulation,
+  SYNTHETIC_TRAD_WITHDRAWAL_ID,
+  type EventIncomeRecord,
 } from './SimulationService';
 import { studentTRandom, standardizedTRandom } from './ReturnGenerator';
 import type { UserData } from '../types/UserData';
@@ -1289,5 +1293,270 @@ describe('runSimulation — deterministic projection reproducibility', () => {
     const r2 = runSimulation(userData, createSeededRandom(99999));
     expect(r2.nominal).toEqual(r1.nominal);
     expect(r2.nominalInflation).toEqual(r1.nominalInflation);
+  });
+});
+
+describe('getEffectiveStateName', () => {
+  it('returns the first entry for a single-state timeline', () => {
+    const ud = makeUserData({ stateTimeline: [{ state: 'Florida' }] });
+    expect(getEffectiveStateName(ud, 2026)).toBe('Florida');
+    expect(getEffectiveStateName(ud, 2080)).toBe('Florida');
+  });
+
+  it('switches to the next entry once startYear is reached', () => {
+    const ud = makeUserData({
+      stateTimeline: [
+        { state: 'California' },
+        { state: 'Texas', startYear: 2030 },
+      ],
+    });
+    expect(getEffectiveStateName(ud, 2026)).toBe('California');
+    expect(getEffectiveStateName(ud, 2029)).toBe('California');
+    expect(getEffectiveStateName(ud, 2030)).toBe('Texas');
+    expect(getEffectiveStateName(ud, 2050)).toBe('Texas');
+  });
+
+  it('walks multiple future transitions in order', () => {
+    const ud = makeUserData({
+      stateTimeline: [
+        { state: 'California' },
+        { state: 'Nevada', startYear: 2030 },
+        { state: 'Florida', startYear: 2040 },
+      ],
+    });
+    expect(getEffectiveStateName(ud, 2028)).toBe('California');
+    expect(getEffectiveStateName(ud, 2035)).toBe('Nevada');
+    expect(getEffectiveStateName(ud, 2045)).toBe('Florida');
+  });
+
+  it('stops at the first non-yet-active entry (later entries cannot leapfrog)', () => {
+    const ud = makeUserData({
+      stateTimeline: [
+        { state: 'California' },
+        { state: 'Nevada', startYear: 2050 },
+        { state: 'Florida', startYear: 2040 },
+      ],
+    });
+    // 2045: Nevada (2050) not yet active, so the walk stops there.
+    // Florida's startYear is earlier but appears later in the list — not picked.
+    expect(getEffectiveStateName(ud, 2045)).toBe('California');
+  });
+});
+
+describe('computeMarginalStackAttribution', () => {
+  // Helper to build event records (matches accumulateIncome output shape).
+  const r = (
+    id: string,
+    name: string,
+    type: string,
+    gross: number,
+    classification: EventIncomeRecord['classification'],
+  ): EventIncomeRecord => ({ eventId: id, eventName: name, eventType: type, gross, classification });
+
+  const baseArgs = {
+    ssGross: 0,
+    ssTaxableAmount: 0,
+    fromTrad: 0,
+    rothConversionTotal: 0,
+    filingStatus: 'single' as const,
+    stateTaxRate: 0,
+    age: 65,
+    taxYear: 2026,
+    spouseAge: null,
+    inflationRate: 0,
+  };
+
+  it('returns empty array when there are no income sources', () => {
+    const out = computeMarginalStackAttribution({ ...baseArgs, eventBreakdowns: [] });
+    expect(out).toEqual([]);
+  });
+
+  it('attributes the full ordinary tax to a single ordinary event', () => {
+    // $50k pension, 2026 single, age 65 → std ded $16,100 + senior $2,050 + OBBB $6,000 = $24,150
+    // Taxable $25,850 → fed tax $1,240 + $1,614 = $2,854.
+    const events = [r('p1', 'Pension', 'pension_income', 50_000, 'ordinary')];
+    const out = computeMarginalStackAttribution({ ...baseArgs, eventBreakdowns: events });
+    expect(out).toHaveLength(1);
+    expect(out[0].eventId).toBe('p1');
+    expect(out[0].marginalTax).toBeCloseTo(2854, 0);
+  });
+
+  it('wages absorbed by deductions get 0 marginal tax; pension picks up the rest', () => {
+    const events = [
+      r('w1', 'Wages', 'wage_income', 20_000, 'ordinary'),
+      r('p1', 'Pension', 'pension_income', 30_000, 'ordinary'),
+    ];
+    const out = computeMarginalStackAttribution({ ...baseArgs, eventBreakdowns: events });
+    expect(out).toHaveLength(2);
+    expect(out[0].eventId).toBe('w1');
+    expect(out[0].marginalTax).toBe(0); // $20k fully absorbed by $24,150 deductions
+    expect(out[1].eventId).toBe('p1');
+    expect(out[1].marginalTax).toBeCloseTo(2854, 0); // pension brings total tax up
+    // Reconciliation: sum should match
+    const sum = out.reduce((s, e) => s + e.marginalTax, 0);
+    expect(sum).toBeCloseTo(2854, 0);
+  });
+
+  it('pre-tax contribution reduces the cumulative ordinary stack', () => {
+    // $50k wages + $10k pre-tax 401k → ordinary stack = $40k, tax on $40k - $24,150 = $15,850.
+    const events = [
+      r('w1', 'Wages', 'wage_income', 50_000, 'ordinary'),
+      r('c1', '401k', 'retirement_contribution', 10_000, 'pre_tax_contribution'),
+    ];
+    const out = computeMarginalStackAttribution({ ...baseArgs, eventBreakdowns: events });
+    expect(out).toHaveLength(2);
+    expect(out[1].taxableContribution).toBe(-10_000);
+    expect(out[1].marginalTax).toBeLessThan(0); // tax reduced
+    // After pre-tax: tax on $40k (taxable $15,850 → fed tax 10%*$12,400 + 12%*$3,450 = $1,654)
+    // After wages alone: tax on $50k (taxable $25,850 → $2,854)
+    // Pre-tax marginal = $1,654 - $2,854 = -$1,200
+    expect(out[0].marginalTax + out[1].marginalTax).toBeCloseTo(1654, 0);
+  });
+
+  it('pre-tax greater than wages floors cumulative at zero', () => {
+    const events = [
+      r('w1', 'Wages', 'wage_income', 10_000, 'ordinary'),
+      r('c1', '401k', 'retirement_contribution', 15_000, 'pre_tax_contribution'),
+    ];
+    const out = computeMarginalStackAttribution({ ...baseArgs, eventBreakdowns: events });
+    // Wage step: $10k cumulative, fully absorbed by deductions → tax 0.
+    // Pre-tax step: cumulative max(0, $10k - $15k) = 0 → tax still 0. Marginal = 0 - 0 = 0.
+    expect(out[0].marginalTax).toBe(0);
+    expect(out[1].marginalTax).toBe(0);
+  });
+
+  it('synthetic Traditional withdrawal appears as a stack step', () => {
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: [r('p1', 'Pension', 'pension_income', 20_000, 'ordinary')],
+      fromTrad: 30_000,
+    });
+    expect(out).toHaveLength(2);
+    expect(out[1].eventId).toBe(SYNTHETIC_TRAD_WITHDRAWAL_ID);
+    expect(out[1].gross).toBe(30_000);
+    // Total ordinary $50k, same tax as wages+pension test
+    const sum = out.reduce((s, e) => s + e.marginalTax, 0);
+    expect(sum).toBeCloseTo(2854, 0);
+  });
+
+  it('roth conversion event appears as a stack step with proportional scaling', () => {
+    // User requested $30k conversion but actual was capped at $20k.
+    const events = [
+      r('p1', 'Pension', 'pension_income', 20_000, 'ordinary'),
+      r('rc1', 'Roth Conv', 'roth_conversion', 30_000, 'roth_conversion'),
+    ];
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      fromTrad: 20_000,           // = conversion only (no spending pull)
+      rothConversionTotal: 20_000, // capped at $20k
+    });
+    const convOut = out.find((e) => e.eventId === 'rc1');
+    expect(convOut).toBeDefined();
+    expect(convOut!.gross).toBeCloseTo(20_000, 4); // scaled down to actual
+  });
+
+  it('two SS events split the SS step proportionally by gross', () => {
+    // Self SS $20k + spouse SS $10k, no other income.
+    // Total SS $30k; provisional = $15k (50% × $30k) → below $25k single threshold → 0 taxable.
+    // So ssTaxableAmount = 0, marginal tax for the SS step = 0. Use a higher provisional
+    // bump to actually trigger taxability.
+    const events = [
+      r('p1', 'Pension', 'pension_income', 50_000, 'ordinary'),
+      r('ss1', 'My SS', 'social_security', 20_000, 'social_security'),
+      r('ss2', 'Spouse SS', 'social_security', 10_000, 'social_security'),
+    ];
+    // For single age 65: provisional = $50k + $15k = $65k > $34k → 85% zone.
+    // ssTaxable = min(0.85*(65000-34000) + min(4500, 0.5*30000), 0.85*30000) = min(30850, 25500) = 25500.
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      ssGross: 30_000,
+      ssTaxableAmount: 25_500,
+    });
+    const ssRows = out.filter((e) => e.eventType === 'social_security');
+    expect(ssRows).toHaveLength(2);
+    // Proportional split: 20/30 vs 10/30
+    expect(ssRows[0].marginalTax / ssRows[1].marginalTax).toBeCloseTo(2.0, 2);
+  });
+
+  it('reconciliation: sum of marginal taxes equals total ordinary tax', () => {
+    const events = [
+      r('w1', 'Wages', 'wage_income', 40_000, 'ordinary'),
+      r('p1', 'Pension', 'pension_income', 25_000, 'ordinary'),
+      r('ss1', 'SS', 'social_security', 24_000, 'social_security'),
+    ];
+    // Ordinary gross $65k. Provisional = $65k + $12k = $77k > $34k → 85% zone.
+    // ssTaxable = min(0.85*(77000-34000) + 4500, 0.85*24000) = min(41050, 20400) = 20400.
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      ssGross: 24_000,
+      ssTaxableAmount: 20_400,
+    });
+    // Computed total ordinary tax via the same path:
+    //   combinedTaxable = $65k + $20.4k = $85.4k
+    //   deductions = $24,150 (single age 65, 2026, OBBB phaseout: gross > $75k → reduction)
+    //   OBBB: $6000 - 6%*($85,400 - $75,000) = $6000 - $624 = $5,376
+    //   total dedns = $16,100 + $2,050 + $5,376 = $23,526
+    //   taxable = $61,874 → fed tax 10%*$12,400 + 12%*$38,000 + 22%*$11,474 = $1,240 + $4,560 + $2,524.28 = $8,324.28
+    const sum = out.reduce((s, e) => s + e.marginalTax, 0);
+    expect(sum).toBeCloseTo(8324, 0);
+  });
+});
+
+describe('audit.accountFlows (via runSimulation)', () => {
+  it('captures pro-rata withdrawals across two Traditional accounts', () => {
+    const ud = makeUserData({
+      currentAge: 73,
+      lifeExpectancy: 75,
+      spendingGoals: [baseSpending(2000)], // $24k/yr forces a withdrawal
+      accounts: [
+        { id: 'trad-a', name: 'Trad A', type: 'traditional', balance: 200_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'trad-b', name: 'Trad B', type: 'traditional', balance: 100_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 100 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    expect(bd.audit).toBeDefined();
+    expect(bd.audit!.accountFlows).toBeDefined();
+    const tradRows = bd.audit!.accountFlows!.filter((r) => r.accountType === 'traditional');
+    // Both Traditional accounts should appear (RMD forces pull from both, pro-rata).
+    const ids = tradRows.map((r) => r.accountId).sort();
+    expect(ids).toEqual(['trad-a', 'trad-b']);
+    // Pro-rata: 2:1 ratio (200k : 100k)
+    const aRow = tradRows.find((r) => r.accountId === 'trad-a')!;
+    const bRow = tradRows.find((r) => r.accountId === 'trad-b')!;
+    expect(aRow.withdrawal / bRow.withdrawal).toBeCloseTo(2.0, 1);
+  });
+
+  it('captures surplus deposit into the synthetic Reinvestment account', () => {
+    // High income, no spending, no taxable account → surplus auto-creates Reinvestment.
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 61,
+      incomeEvents: [
+        {
+          id: 'pension',
+          type: 'pension_income',
+          name: 'Pension',
+          amount: 50_000,
+          startAge: 60,
+          taxStatus: 'after_tax',
+          colaType: 'fixed',
+        } as any,
+      ],
+      accounts: [
+        { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 100_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      simulationSettings: { numSimulations: 50 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    const reinvest = bd.audit!.accountFlows!.find((r) => r.accountId === 'reinvestment-auto');
+    expect(reinvest).toBeDefined();
+    expect(reinvest!.deposit).toBeGreaterThan(0);
   });
 });

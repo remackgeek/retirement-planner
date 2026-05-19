@@ -1,0 +1,66 @@
+{
+  "_description": "Audit-level breakdown reconciliation: per-event marginal tax stack and per-account flows. Single filer age 65, FL (0% state), with a wage event ($20k) and a pension event ($30k). 2026.",
+  "_rationale": "Deterministic, zero-growth setup. Year 0 (age 65) has gross = $50k. 2026 single std deduction $16,100. Single age-65 senior add-on $2,050. OBBB extra senior deduction: $6,000 base - 6% × ($50,000 - $75,000)=0 since gross < threshold, so full $6,000. Total deductions = $16,100 + $2,050 + $6,000 = $24,150. Taxable = $25,850. Federal tax: 12,400 × 0.10 + (25,850 - 12,400) × 0.12 = 1,240 + 1,614 = $2,854. No state tax (FL). Per-event marginal stack: wages first (gross $20k, taxable contribution $20k, marginal tax = 0 since deductions wipe it out → tax on $20k - $24,150 deduction = 0); pension second (adds $30k, taxable $50k - $24,150 = $25,850, federal tax $2,854). So pension's marginal tax = $2,854 - $0 = $2,854, marginal rate ~9.5%. Sum = $2,854 = ordinaryTax. NIIT and IRMAA disabled.",
+  "_seed": 12345,
+  "name": "Audit Breakdown Basic",
+  "currentAge": 65,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "wage-1",
+      "type": "wage_income",
+      "name": "Part-time Wages",
+      "amount": 20000,
+      "startAge": 65,
+      "endAge": 65,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    },
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "name": "Pension",
+      "amount": 30000,
+      "startAge": 65,
+      "endAge": 65,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    { "state": "Florida" }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

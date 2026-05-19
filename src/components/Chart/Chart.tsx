@@ -22,6 +22,9 @@ import {
 import React, { useState, useMemo, useEffect, useRef, useContext, useCallback } from 'react';
 import styled from 'styled-components';
 import { Menu } from 'primereact/menu';
+import { TabView, TabPanel } from 'primereact/tabview';
+import YearTaxAudit from './YearTaxAudit';
+import YearIncomeDetail from './YearIncomeDetail';
 import CloneScenarioDialog from '../../dialogs/CloneScenarioDialog';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
 import { useUIState } from '../../context/UIStateContext';
@@ -283,6 +286,9 @@ function exportCsv(
   if (!options.nominalHidden) pathHeaders.push('Projected Portfolio ($)');
   if (!options.medianDownsideHidden) pathHeaders.push('Median Portfolio ($)', 'Downside Portfolio ($)');
   if (band) pathHeaders.push('Band p10 ($)', 'Band p90 ($)');
+  // Scalar audit columns are appended after the core columns. Per-event tax
+  // attribution and per-account flows are NOT exported — they don't fit a flat
+  // one-row-per-year CSV cleanly. See the Income Detail tab in the app for those.
   const header = [
     'Age', 'Year',
     ...pathHeaders,
@@ -294,6 +300,13 @@ function exportCsv(
     'Roth Conversion',
     'Surplus Contribution',
     'Net Cash Flow',
+    // ---- audit columns ----
+    'AGI', 'Standard Deduction', 'Senior Add-On', 'OBBB Reduction', 'Total Deductions', 'Taxable Income',
+    'Federal Bracket Index', 'Federal Marginal Rate', 'Federal Ordinary Tax', 'State Ordinary Tax', 'Effective State',
+    'SS Provisional Income', 'SS Zone',
+    'IRMAA Lookback MAGI', 'IRMAA Tier', 'IRMAA Per-Enrollee Annual', 'IRMAA Enrollees',
+    'NIIT MAGI', 'NIIT Threshold', 'NIIT MAGI Excess', 'NIIT Taxable Base',
+    'RMD Self', 'RMD Spouse', 'RMD Divisor Self', 'RMD Divisor Spouse', 'BoY Trad Bal Self', 'BoY Trad Bal Spouse',
   ].join(',');
 
   const rows = years.map((year, i) => {
@@ -339,6 +352,35 @@ function exportCsv(
       Math.round(toDisplay(bd.rothConversionGross, bdF, displayCurrency)),
       Math.round(toDisplay(bd.surplusContribution, bdF, displayCurrency)),
       Math.round(toDisplay(bd.netCashFlow, bdF, displayCurrency)),
+      // ---- audit columns ----
+      Math.round(toDisplay(bd.audit?.agi ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.standardDeduction ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.seniorAddOn ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.obbbReduction ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.totalDeductions ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.taxableIncome ?? 0, bdF, displayCurrency)),
+      bd.audit?.federalBracketIndex ?? 0,
+      ((bd.audit?.federalMarginalRate ?? 0) * 100).toFixed(2) + '%',
+      Math.round(toDisplay(bd.audit?.federalOrdinaryTax ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.stateOrdinaryTax ?? 0, bdF, displayCurrency)),
+      // Quote the state name in case it contains a comma (e.g., "Washington, DC").
+      `"${(bd.audit?.effectiveStateName ?? '').replace(/"/g, '""')}"`,
+      Math.round(toDisplay(bd.audit?.ssProvisionalIncome ?? 0, bdF, displayCurrency)),
+      bd.audit?.ssZone ?? 'none',
+      Math.round(toDisplay(bd.audit?.irmaaLookbackMagi ?? 0, bdF, displayCurrency)),
+      bd.audit?.irmaaTierIndex ?? 0,
+      Math.round(toDisplay(bd.audit?.irmaaPerEnrolleeAnnual ?? 0, bdF, displayCurrency)),
+      bd.audit?.irmaaEnrolleeCount ?? 0,
+      Math.round(toDisplay(bd.audit?.niitMagi ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.niitThreshold ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.niitMagiExcess ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.niitTaxableBase ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.rmdSelf ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.rmdSpouse ?? 0, bdF, displayCurrency)),
+      (bd.audit?.rmdDivisorSelf ?? 0).toFixed(1),
+      (bd.audit?.rmdDivisorSpouse ?? 0).toFixed(1),
+      Math.round(toDisplay(bd.audit?.rmdBoyBalanceSelf ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.rmdBoyBalanceSpouse ?? 0, bdF, displayCurrency)),
     ].join(',');
   });
 
@@ -1456,6 +1498,10 @@ const Projections = ({
                             border: border.standard,
                             fontSize: fontSize.sm,
                           }}>
+                            <TabView
+                              panelContainerStyle={{ padding: spacing.sm, background: 'transparent' }}
+                            >
+                              <TabPanel header="Summary">
                             <div style={{ maxWidth: '32rem' }}>
                               {/* Growth */}
                               <div style={categoryStyle}>
@@ -1666,6 +1712,23 @@ const Projections = ({
                                 </div>
                               )}
                             </div>
+                              </TabPanel>
+                              <TabPanel header="Tax Audit">
+                                <YearTaxAudit
+                                  breakdown={breakdown}
+                                  pathFactor={pathFactor}
+                                  displayCurrency={displayCurrency}
+                                  year={year}
+                                />
+                              </TabPanel>
+                              <TabPanel header="Income Detail">
+                                <YearIncomeDetail
+                                  breakdown={breakdown}
+                                  pathFactor={pathFactor}
+                                  displayCurrency={displayCurrency}
+                                />
+                              </TabPanel>
+                            </TabView>
                           </td>
                         </tr>
                       );

@@ -1,0 +1,17 @@
+{
+  "_rationale": "Age 65, single, FL. Year 0 gross income = $50k ($20k wages + $30k pension). 2026 single std deduction $16,100 + senior add-on $2,050 + OBBB $6,000 (gross < $75k phaseout threshold so no reduction). Total deductions $24,150. Taxable $25,850. Federal tax = 12,400*0.10 + (25,850-12,400)*0.12 = 1,240 + 1,614 = $2,854. No state tax (FL). Total tax = $2,854. Roth account funds all spending need; portfolio stays roughly flat at $500k since no spending goals and after-tax cash flow (gross - tax = $47,146) is surplus reinvested into the auto-created Reinvestment taxable account. Account ends ~$500k + $47,146 net cash flow.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "totalGrossIncome", "value": 50000, "_note": "wage $20k + pension $30k" },
+    { "index": 0, "field": "wageIncomeGross", "value": 20000, "_note": "single wage event" },
+    { "index": 0, "field": "otherTaxableGross", "value": 50000, "_note": "wage + pension both before_tax → ordinary" },
+    { "index": 0, "field": "ordinaryTax", "value": 2854, "tolerance": 2, "_note": "Federal tax on $25,850 taxable income" },
+    { "index": 0, "field": "totalTax", "value": 2854, "tolerance": 2, "_note": "Ordinary only; no state, no LTCG, no NIIT/IRMAA" },
+    { "index": 0, "field": "federalCapGainsTax", "value": 0, "_note": "No taxable account withdrawal" },
+    { "index": 0, "field": "stateCapGainsTax", "value": 0, "_note": "FL has 0% state rate" },
+    { "index": 0, "field": "irmaaSurcharge", "value": 0, "_note": "IRMAA disabled" },
+    { "index": 0, "field": "niitTax", "value": 0, "_note": "NIIT disabled" },
+    { "index": 0, "field": "rmdRequired", "value": 0, "_note": "No traditional balance" }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "_rationale": "Year-by-year tax walks the spouse aging across 65 AND the OBBB senior bonus sunsetting after 2028.\n\nYear 0 (2026, self 67, spouse 63): 1 senior. Std ded $32,200 + senior $1,650 + OBBB $6,000 = $39,850. Taxable $10,150. Tax 10% × $10,150 = $1,015.\nYear 1 (2027, self 68, spouse 64): same → $1,015.\nYear 2 (2028, self 69, spouse 65): 2 seniors, OBBB still active. Ded $32,200 + $3,300 + $12,000 = $47,500. Taxable $2,500. Tax $250.\nYear 3 (2029, self 70, spouse 66): 2 seniors, OBBB EXPIRED. Ded $32,200 + $3,300 = $35,500. Taxable $14,500. Tax 10% × $14,500 = $1,450.\nYear 4 (2030, self 71, spouse 67): same as year 3 → $1,450.\n\nThe pre-fix bug would freeze spouse at 63 throughout, giving 1 senior every year: years 0–2 ded $39,850 → tax $1,015; years 3–4 ded $33,850 → tax $1,615. So years 2/3 are the diagnostic points — buggy values are $1,015 (vs fix $250) and $1,615 (vs fix $1,450).",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "ordinaryTax", "value": 1015, "tolerance": 2, "_note": "2026, self 67, spouse 63 → 1 senior, OBBB active" },
+    { "index": 1, "field": "ordinaryTax", "value": 1015, "tolerance": 2, "_note": "2027, self 68, spouse 64 → 1 senior, OBBB active" },
+    { "index": 2, "field": "ordinaryTax", "value": 250, "tolerance": 2, "_note": "2028, self 69, spouse 65 → 2 seniors, OBBB still active (the bug's locking point — buggy value would be 1015)" },
+    { "index": 3, "field": "ordinaryTax", "value": 1450, "tolerance": 2, "_note": "2029, self 70, spouse 66 → 2 seniors, OBBB EXPIRED (buggy value would be 1615 with spouse still 1-senior)" },
+    { "index": 4, "field": "ordinaryTax", "value": 1450, "tolerance": 2, "_note": "2030, same as year 3" },
+    { "index": 0, "field": "totalTax", "value": 1015, "tolerance": 2, "_note": "no LTCG, no NIIT, no IRMAA, no state — totalTax = ordinaryTax" },
+    { "index": 2, "field": "totalTax", "value": 250, "tolerance": 2 },
+    { "index": 3, "field": "totalTax", "value": 1450, "tolerance": 2 }
+  ]
+}
