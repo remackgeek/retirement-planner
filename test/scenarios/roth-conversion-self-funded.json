@@ -1,19 +1,19 @@
 {
-  "_description": "Single-year $50k Roth conversion at age 65 with no tax. Verifies Trad drops by 50k and Roth rises by 50k, with ordinaryTax=0 (Florida + single standard deduction covers $50k below the taxable threshold minus brackets).",
-  "_rationale": "Age 65, Traditional $200k + Roth $0. One-time $50k conversion in year 0. No state tax (Florida). Filing single, age 65 → standard deduction ≈ $15,000 + senior extra ≈ $1,950 ≈ $16,950. $50k conversion produces $33,050 taxable, 10% bracket ≈ $1,160 + 12% bracket on balance. So some tax applies. To fully zero tax, use MFJ with both 65+ (deduction ~$30k). Using MFJ 65+/65+: std deduction ≈ $31,000 + senior extra for both. Conversion well within deduction → ordinaryTax ≈ 0.",
+  "_description": "$50k Roth conversion with NO Taxable account, verifying hybrid sourcing falls back to withholding tax from the conversion itself (IRS Form 1099-R Box 4 mechanic). Single filer, FL, age 60.",
+  "_rationale": "Single age 60, FL (no state tax), Trad $500k, Roth $0, NO Taxable. One-time $50k conversion. Federal tax on $50k single 60: std ded ~$15.75k → ~$34.25k taxable → ~$4-5k federal tax. Under hybrid: no Taxable + no RMD-excess (age 60), so the full conv tax is withheld from the conversion (rothConversionTaxWithheld ≈ $4-5k). The conversion still executes the full $50k gross — rothConversionGross = $50k, withdrawalFromTraditional = $50k. The Roth deposit (computed in applyCashFlow as gross − withheld) lands at ~$45k. This is the core hybrid behavior: instead of capping to $16k (prior PR), the conversion proceeds at the user's requested size with mathematically suboptimal but practical self-funded tax.",
   "_seed": 12345,
-  "name": "Roth Conversion — Simple No Tax",
-  "currentAge": 65,
-  "lifeExpectancy": 70,
+  "name": "Roth Conversion — Self-Funded (no Taxable)",
+  "currentAge": 60,
+  "lifeExpectancy": 63,
   "referenceYear": 2026,
   "spendingGoals": [],
   "incomeEvents": [
     {
       "id": "conv-1",
       "type": "roth_conversion",
-      "name": "Test Conversion",
+      "name": "Self-Funded Conversion",
       "amount": 50000,
-      "startAge": 65,
+      "startAge": 60,
       "isOneTime": true,
       "taxStatus": "before_tax",
       "colaType": "fixed"
@@ -32,8 +32,8 @@
   },
   "inflationRate": 0,
   "inflationStdDev": 0,
-  "filingStatus": "mfj",
-  "spouseAge": 65,
+  "filingStatus": "single",
+  "spouseAge": null,
   "stateTimeline": [
     {
       "state": "Florida"
@@ -47,7 +47,7 @@
       "id": "trad-1",
       "name": "Traditional 1",
       "type": "traditional",
-      "balance": 200000,
+      "balance": 500000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"
     },

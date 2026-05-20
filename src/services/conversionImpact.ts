@@ -21,6 +21,16 @@ export interface ConversionImpact {
   rmdReductionAt73: number;         // $ reduction in the first-year RMD attributable to conversion
   projectedRothAtEndOfPlan: number; // nominal Roth value from conversions at life expectancy
   netPlanValueImpact: number;       // signed delta of plan value at life expectancy (with vs without)
+  // True-cap detection: years where Trad balance (after RMD/spending) limited the conversion
+  // below the user's requested amount. Rare — only fires when the Trad bucket itself is too small.
+  conversionShortfallYears: number;
+  conversionShortfallDollars: number;
+  // Withholding detection: years where Taxable + RMD-excess couldn't cover the marginal
+  // ordinary tax, so a portion of the conversion was withheld for tax (IRS Form 1099-R Box 4).
+  // The conversion still executes at the requested Trad pull, but the Roth deposit shrinks
+  // by the withheld amount. Mathematically suboptimal vs. paying from Taxable.
+  conversionWithheldYears: number;
+  conversionWithheldDollars: number;
 }
 
 // Incremental conversion tax helper. Uses the federal-only `calculateNetFromGross`
@@ -163,6 +173,10 @@ export function estimateConversionImpact(
       rmdReductionAt73: 0,
       projectedRothAtEndOfPlan: 0,
       netPlanValueImpact: 0,
+      conversionShortfallYears: 0,
+      conversionShortfallDollars: 0,
+      conversionWithheldYears: 0,
+      conversionWithheldDollars: 0,
     };
   }
 
@@ -262,12 +276,18 @@ export function estimateConversionImpact(
   // the withdrawal waterfall, RMD ordering, SS taxability, IRMAA, NIIT,
   // state LTCG, and conversion-tax sourcing exactly as the live sim does.
   // Skip if the conversion has no amount — both runs would be identical.
+  // Two detections from the same `withRun` breakdowns:
+  //   - Shortfall: rothConversionRequested > rothConversionGross → Trad balance
+  //     itself was insufficient (true cap; very rare).
+  //   - Withholding: rothConversionTaxWithheld > 0 → Taxable + RMD-excess couldn't
+  //     fund the marginal ordinary tax, so part of the conversion was withheld for
+  //     tax. Conversion still executes but Roth deposit shrinks.
   let netPlanValueImpact = 0;
+  let conversionShortfallYears = 0;
+  let conversionShortfallDollars = 0;
+  let conversionWithheldYears = 0;
+  let conversionWithheldDollars = 0;
   if (conversion.amount > 0) {
-    // The dialog passes a draft conversion event (e.g. id 'preview') that may
-    // not yet exist in userData.incomeEvents. Build the "with" set by
-    // replacing any same-id event and appending if absent; the "without" set
-    // simply strips it.
     const withoutEvents = userData.incomeEvents.filter((e) => e.id !== conversion.id);
     const withEvents = [...withoutEvents, conversion];
     const userDataWith: UserData = { ...userData, incomeEvents: withEvents };
@@ -276,6 +296,16 @@ export function estimateConversionImpact(
     const withoutRun = runDeterministicProjection(userDataWithout);
     const lastIdx = withRun.path.length - 1;
     netPlanValueImpact = withRun.path[lastIdx] - withoutRun.path[lastIdx];
+    for (const b of withRun.breakdowns) {
+      if (b.rothConversionRequested > b.rothConversionGross + 0.5) {
+        conversionShortfallYears += 1;
+        conversionShortfallDollars += b.rothConversionRequested - b.rothConversionGross;
+      }
+      if (b.rothConversionTaxWithheld > 0.5) {
+        conversionWithheldYears += 1;
+        conversionWithheldDollars += b.rothConversionTaxWithheld;
+      }
+    }
   }
 
   return {
@@ -284,6 +314,10 @@ export function estimateConversionImpact(
     rmdReductionAt73,
     projectedRothAtEndOfPlan,
     netPlanValueImpact,
+    conversionShortfallYears,
+    conversionShortfallDollars,
+    conversionWithheldYears,
+    conversionWithheldDollars,
   };
 }
 

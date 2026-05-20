@@ -1,9 +1,12 @@
 {
-  "_rationale": "Auto-injected Roth account receives the $20k conversion. Because the scenario also auto-adds an RMD reinvestment taxable account (current age 60 reaches RMD age within lifeExpectancy 63? No — 73-60=13 years, lifeExpectancy-currentAge=3, so no RMD account is auto-added). Tax draws from conversion itself via the waterfall. Structural check: rothConversionGross = 20k, withdrawalFromTraditional ≈ 20k + small tax.",
+  "_rationale": "Single age 60, no Taxable, $20k conversion, $100k Trad. Under hybrid sourcing: conversion executes fully ($20k Trad pull), tax withheld from conversion since no Taxable + no RMD-excess. Federal tax on $20k single 60: std ded ~$15.75k → ~$4.25k taxable → 10% bracket ≈ $425. rothConversionGross = $20k, rothConversionTaxWithheld ≈ $400, Roth deposit ≈ $19,600.",
   "probability": 100,
   "tolerance": 1.0,
   "breakdownChecks": [
-    { "index": 0, "field": "rothConversionGross", "value": 20000, "tolerance": 1, "_note": "Full conversion; Trad has $100k, conversion needs $20k" },
-    { "index": 0, "field": "withdrawalFromTraditional", "min": 20000, "max": 24000, "_note": "Conversion + small tax drawn via waterfall" }
+    { "index": 0, "field": "rothConversionGross", "value": 20000, "tolerance": 1, "_note": "Full conversion executes; withholding covers tax" },
+    { "index": 0, "field": "rothConversionRequested", "value": 20000, "tolerance": 1, "_note": "Requested matches actual (no Trad-balance shortfall)" },
+    { "index": 0, "field": "rothConversionTaxWithheld", "min": 200, "max": 800, "_note": "Federal tax on ~$4k taxable income, withheld from the conversion" },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 20000, "tolerance": 5, "_note": "Full Trad pull for conversion; tax withheld from this amount" },
+    { "index": 0, "field": "ordinaryTax", "min": 200, "max": 800, "_note": "10% bracket on ~$4k" }
   ]
 }

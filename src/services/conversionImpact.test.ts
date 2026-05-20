@@ -77,10 +77,19 @@ describe('estimateConversionImpact', () => {
     // Note: the chart's path is recorded at year-start, so a conversion in
     // the literal terminal year produces a zero path delta — that's an
     // expected property of the deterministic-path measure, not a bug.
+    // A Taxable account is required for the conversion to execute fully under
+    // the new sourcing rule (conv ordinary tax sources from Taxable + RMD-excess
+    // only); without it, the engine would cap the conversion at the zero-tax
+    // headroom and the diff vs. baseline would collapse to zero.
     const userData = baseUserData({
       currentAge: 60,
       lifeExpectancy: 65,
       filingStatus: 'single',
+      accounts: [
+        { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
     });
     const conversion = makeConversion({
       amount: 50000,

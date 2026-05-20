@@ -1,23 +1,34 @@
 {
-  "_description": "5-year recurring Roth conversion ages 65-69 with 3% inflation and inflation_adjusted COLA. Verifies multi-year execution and COLA escalation.",
-  "_rationale": "Age 65, conversion 65-69 (5 years), initial amount $30k, COLA=inflation_adjusted with inflation=3%. Year 0 (age 65): $30,000. Year 1: $30,000 × 1.03 = $30,900. Year 2: ~$31,827. Year 4 (age 69): $30,000 × 1.03^4 ≈ $33,764.20. Year 5 (age 70): conversion ended, rothConversionGross=0. Traditional $500k, Roth $0, Taxable $50k to cover tax. Verify conversion gross matches COLA schedule and zeroes out after endAge.",
+  "_description": "Regression guard for the explicit 'taxable_first' override. Identical inputs to spending-bracket-aware-conv.json but with spendingWithdrawalOrder forced to taxable_first. Verifies that power users can opt out of the smart default and get the conservative waterfall.",
+  "_rationale": "Single age 60, FL, $60k spending, $50k conv 60-62. Under explicit taxable_first: Trad pull = conv principal only ($50k); all $60k spending + conv tax cascade pulled from Taxable (no Trad spending pull within bracket headroom). Sharp contrast with the bracket_aware sibling scenario where withdrawalFromTraditional > $60k.",
   "_seed": 12345,
-  "name": "Roth Conversion — Multi-Year COLA",
-  "currentAge": 65,
-  "lifeExpectancy": 71,
+  "name": "Bracket-aware override — taxable_first",
+  "currentAge": 60,
+  "lifeExpectancy": 64,
   "referenceYear": 2026,
-  "spendingGoals": [],
+  "spendingGoals": [
+    {
+      "type": "living_expenses",
+      "name": "Living Expenses",
+      "amountPeriod": "annual",
+      "startAge": 60,
+      "isOneTime": false,
+      "inflationAdjusted": false,
+      "amount": 60000,
+      "id": "living-1"
+    }
+  ],
   "incomeEvents": [
     {
       "id": "conv-1",
       "type": "roth_conversion",
       "name": "Annual Conversion",
-      "amount": 30000,
-      "startAge": 65,
-      "endAge": 69,
+      "amount": 50000,
+      "startAge": 60,
+      "endAge": 62,
       "isOneTime": false,
       "taxStatus": "before_tax",
-      "colaType": "inflation_adjusted"
+      "colaType": "fixed"
     }
   ],
   "portfolioAssumptions": {
@@ -31,10 +42,10 @@
     "degreesOfFreedom": 4,
     "returnModel": "parametric"
   },
-  "inflationRate": 0.03,
+  "inflationRate": 0,
   "inflationStdDev": 0,
-  "filingStatus": "mfj",
-  "spouseAge": 65,
+  "filingStatus": "single",
+  "spouseAge": null,
   "stateTimeline": [
     {
       "state": "Florida"
@@ -64,7 +75,7 @@
       "id": "tax-1",
       "name": "Taxable 1",
       "type": "taxable",
-      "balance": 50000,
+      "balance": 100000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"
     }

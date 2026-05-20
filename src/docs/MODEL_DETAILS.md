@@ -165,7 +165,9 @@ This is a UI summary only — the simulation always uses each account's individu
 
 ## Withdrawal Waterfall
 
-Each year, withdrawals follow a fixed sequence:
+Each year, withdrawals follow a fixed sequence. Two strategies are available, selected per scenario via `UserData.spendingWithdrawalOrder`.
+
+### `'taxable_first'` (default when no Roth conversions are scheduled)
 
 1. **Traditional, up to the RMD** — the year's RMD is forced from Traditional regardless of spending need, so its gross is applied to spending+tax first. (When age < 73, RMD is $0 and this step is skipped.)
 2. **Taxable** — fills any remaining spending+tax need above the RMD (lowest tax cost on the residual)
@@ -173,6 +175,20 @@ Each year, withdrawals follow a fixed sequence:
 4. **Roth** — drawn last to preserve tax-advantaged growth
 
 RMD-first ordering avoids over-pulling from Taxable in high-RMD years: when the RMD's net-of-tax proceeds already cover the year's spending, `withdrawalFromTaxable` stays at 0 and no federal/state LTCG or NIIT is generated. Excess RMD (the portion not consumed by spending+tax) reinvests into the first Taxable account.
+
+### `'bracket_aware'` (default when any Roth conversion event is scheduled)
+
+Inserts a **Traditional-up-to-12%-bracket-headroom** step before Taxable, so spending pulls from Traditional cheaply in low-bracket years instead of burning Taxable at LTCG rates. Order becomes:
+
+1. **Traditional, up to the RMD** (as above)
+2. **Traditional, up to bracket headroom** — the additional Traditional spending pull is capped so that conversion + this Trad pull + SS-taxable portion together stay within the top of the 12% federal bracket. Headroom is precomputed per year as `max(0, top_of_12% − max(0, (otherTaxableGross + conversionGross + ssTaxable) − stdDed))`, and the full mandatory RMD is subtracted from it at the per-year level. Conv- and SS-inclusive means a Trad pull within headroom is guaranteed to keep the year inside the 12% bracket.
+3. **Taxable** — spending overflow
+4. **Traditional, above headroom**
+5. **Roth** — last resort
+
+**This setting only changes the spending source — it does NOT change conversion size or conversion-tax sourcing.** Conversion tax still follows the hybrid sourcing rule (RMD-excess → Taxable → withhold). The point of `bracket_aware` is to **preserve Taxable for the high-`mt` conversion years** by paying for low-bracket-year spending from Traditional cheaply. See CLAUDE.md "Cross-year spending source policy" for the rationale, blind spots, and tradeoffs.
+
+Set `spendingWithdrawalOrder: 'taxable_first'` explicitly on a conversion-bearing scenario to opt out of the smart default and use the conservative waterfall.
 
 ### Spending Shortfall
 
@@ -387,7 +403,8 @@ A `roth_conversion` income event moves money from Traditional to Roth accounts. 
 1. RMD is enforced first; the conversion amount is **capped at the Traditional balance remaining after RMD and spending withdrawals**.
 2. Converted amount is taxed as **ordinary income** in the year of conversion.
 3. Withdrawal is pro-rata across Traditional accounts; deposit is pro-rata across Roth accounts.
-4. Tax owed on the conversion is paid implicitly by the regular waterfall — Taxable first if available, otherwise Traditional (which reduces the convertible amount further).
+4. **Conversion tax sourcing is hybrid**, in priority order: (1) RMD-excess cash (already pulled from Trad as part of the forced RMD; using it costs nothing extra), (2) Taxable balance not consumed by spending, (3) withheld from the conversion itself (IRS Form 1099-R Box 4). Tax is **never** pulled from Traditional-above-RMD or Roth — paying conversion tax from Trad would shrink the conversion's tax arbitrage; paying from Roth would deplete the dollars just deposited. When Taxable + RMD-excess can't cover the marginal ordinary tax, the conversion still executes at the requested gross — but the Roth deposit shrinks by the withheld amount. This matches real-world Vanguard/Fidelity withholding mechanics. Withholding is mathematically suboptimal vs. paying tax from Taxable (you give up some of the arbitrage), so the Roth Conversion dialog warns when it activates and advises adding Taxable funds or reducing the conversion. The breakdown surfaces `rothConversionGross` (Trad pull), `rothConversionRequested` (user intent), `rothConversionTaxFromTaxable`, `rothConversionTaxFromRmdExcess`, and `rothConversionTaxWithheld`.
+6. **Smart spending waterfall**: when any Roth conversion event is in the scenario, the engine defaults `UserData.spendingWithdrawalOrder` to `'bracket_aware'` so spending pulls from Traditional in low-bracket years instead of burning Taxable. This preserves Taxable for the high-`mt` conversion years and improves the conversion's net wealth impact — but it only reorders spending sources, it does NOT change the conversion size or conversion-tax sourcing. See **Withdrawal Waterfall** above for the mechanics.
 5. If no Roth accounts exist, a `"Roth Conversion"` Roth account is auto-created.
 
 The Roth Conversion dialog's **Net impact on plan value** row is computed by running the deterministic projection (same single-path engine as the Projected chart line) twice — once with the conversion event included, once without — and diffing the end-of-plan portfolio balance. The other preview rows (first-year tax, total tax, RMD reduction, projected Roth at life expectancy) are fast closed-form estimates against your baseline income and do not include IRMAA or NIIT.

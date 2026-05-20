@@ -81,5 +81,6 @@
   ],
   "longTermCapGainsRate": 0.15,
   "enableIRMAA": false,
-  "enableNIIT": true
+  "enableNIIT": true,
+  "spendingWithdrawalOrder": "taxable_first"
 }

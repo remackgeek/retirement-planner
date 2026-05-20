@@ -1,10 +1,13 @@
 {
-  "_rationale": "MFJ both 65+ has standard deduction ≈ $30,000 + senior extras. $50k conversion yields ~$50k ordinary gross. After deduction ~$20k remains taxable, so there IS some federal tax. To achieve zero federal tax we test only that conversion happens correctly (balance moves) and let ordinaryTax be whatever falls out. We focus on structural verifications: rothConversionGross=50000, withdrawalFromTraditional covers conversion+any tax withdrawal, final Roth balance = 50000 + 0 (growth=0), Traditional = 200000-50000 = 150000 minus tax paid out of Traditional if any (none — tax paid from Taxable but there is no Taxable, so... hmm). Actually with no Taxable account, tax on conversion must come from somewhere — it'll pull from Traditional (next in waterfall after Taxable). So withdrawalFromTraditional = conversion + small tax amount, and the net effect is Trad drops by (50k+tax) and Roth gains 50k. Verify rothConversionGross = 50000 exactly.",
+  "_rationale": "MFJ both 65+, no Taxable, $50k conversion against $200k Trad. Under hybrid sourcing: conversion executes the full $50k. With MFJ 65+/65+ standard deduction (incl. senior add-ons + OBBB) of ~$47-48k for 2026, taxable income on a $50k conversion is just $2-3k → ~$250 in the 10% bracket. That small residual tax is withheld from the conversion itself. rothConversionGross = $50k, rothConversionTaxWithheld ≈ $250, Roth deposit ≈ $49,750.",
   "probability": 100,
   "tolerance": 1.0,
   "breakdownChecks": [
-    { "index": 0, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Full $50k conversion executed" },
+    { "index": 0, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Full conversion executes" },
+    { "index": 0, "field": "rothConversionRequested", "value": 50000, "tolerance": 1, "_note": "Requested matches actual" },
+    { "index": 0, "field": "rothConversionTaxWithheld", "min": 0, "max": 600, "_note": "Tiny residual federal tax above MFJ 65+ deduction, withheld" },
     { "index": 1, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "One-time: no conversion in year 1" },
-    { "index": 0, "field": "withdrawalFromTraditional", "min": 50000, "max": 56000, "_note": "Conversion (50k) plus any tax covered by waterfall" }
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 50000, "tolerance": 5, "_note": "Full Trad pull for conversion" },
+    { "index": 0, "field": "ordinaryTax", "min": 0, "max": 600, "_note": "Tiny tax on the few k above MFJ 65+ deduction" }
   ]
 }

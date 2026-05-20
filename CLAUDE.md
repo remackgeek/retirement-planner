@@ -93,11 +93,22 @@ projections, and good tax awareness without overwhelming the user.
   it is taxed as ordinary income, withdrawn pro-rata from Traditional accounts, and deposited
   pro-rata into Roth accounts. RMD is enforced first (IRS rule: RMD is not eligible for
   conversion); conversion is capped at the Traditional balance remaining after the forced
-  RMD/spending withdrawal. Tax is paid implicitly by the withdrawal waterfall — in RMD
-  years the marginal conversion tax is absorbed first by reducing RMD excess (since the
-  RMD is already pulled and taxed), then by Taxable when present, then by Traditional
-  (which effectively reduces the convertible amount). In non-RMD years, the tax pulls
-  from Taxable first when present, otherwise from Traditional. `ensureRothConversionAccount`
+  RMD/spending withdrawal. **Conversion ordinary tax sourcing is hybrid**, in priority
+  order (see "Intents and funding sources" below): (1) RMD-excess cash, (2) Taxable
+  balance not consumed by spending, (3) withheld from the conversion itself (IRS Form
+  1099-R Box 4 mechanic). It is **never** pulled from Traditional-above-RMD or Roth —
+  that would defeat the conversion's arbitrage. When Taxable + RMD-excess can't cover
+  the marginal ordinary tax, the conversion still executes at the user's requested gross,
+  but the Roth deposit shrinks by the withheld portion (mathematically suboptimal vs.
+  paying from Taxable, but matches real-world Vanguard/Fidelity withholding behavior
+  and keeps the UX honest). `AnnualCashFlowBreakdown` surfaces this via
+  `rothConversionGross` (Trad pull / IRS conversion amount),
+  `rothConversionTaxFromTaxable`, `rothConversionTaxFromRmdExcess`, and
+  `rothConversionTaxWithheld`. The Roth deposit (in `applyCashFlow`) is
+  `rothConversionGross − rothConversionTaxWithheld`. The dialog warns when withholding
+  activates in any year of the deterministic projection (via
+  `conversionWillBeWithheldYears`/`Dollars` from `estimateConversionImpact`).
+  `ensureRothConversionAccount`
   auto-creates a `"Roth Conversion"` Roth account when conversions exist but no Roth accounts
   do. Per-year conversion amount is captured in `AnnualCashFlowBreakdown.rothConversionGross`.
   The dialog's Impact Preview surfaces `estimateConversionImpact()` results
@@ -174,6 +185,226 @@ projections, and good tax awareness without overwhelming the user.
   per-state profile via `getStateTaxProfile(stateName, year)`. The selectable state list
   is sourced from `SELECTABLE_STATES` (includes `"New York City"` as a pseudo-state with
   NYC local tax). Per-year precomputes hold both `stateNameByYear` and `stateProfileByYear`.
+
+## Intents and funding sources
+
+A recurring class of bug in the simulation engine: **phantom tax** — sourcing the tax on
+a tax-generating event from an account whose withdrawal amplifies the same tax bill, so
+the fixed-point loop converges to an over-taxed answer. Two archetypes have hit so far:
+
+1. **RMD double-pull** (fixed): The naive waterfall ignored that RMD already pulls and
+   taxes Trad cash, then over-pulled Taxable to cover spending — generating phantom
+   LTCG/NIIT on cash the RMD already provided. Fix: RMD-first ordering in
+   `computeSpendingWaterfall` (Trad-up-to-RMD → Taxable → Trad-above-RMD → Roth).
+2. **Roth conversion tax leak** (fixed): The waterfall lumped conversion ordinary tax
+   into the spending pull, which when Taxable ran out fell back to Trad-above-RMD or
+   Roth — paying conversion tax from the same Traditional being converted (or from
+   the Roth just funded). Fix: source conversion ordinary tax exclusively from Taxable
+   + RMD-excess; cap the conversion when neither can fund the marginal tax.
+
+**The principle:** when a new feature generates tax, declare its funding source
+explicitly. Do not rely on the spending waterfall to absorb it. The waterfall covers
+spending + spending-related tax only.
+
+**Canonical intent → funding-source table:**
+
+| Intent              | Gross driver                                | Funding source for its tax                          |
+|---------------------|---------------------------------------------|-----------------------------------------------------|
+| RMD                 | IRS Uniform Lifetime Table                  | Self-funding (RMD net is cash)                      |
+| Spending withdrawal | `totalSpendingNet`                          | RMD-first → **Cash** → Taxable → Trad → Roth        |
+| Roth conversion     | User-entered (or future: fill-to-bracket)   | RMD-excess → **Cash** → Taxable → withhold from conversion (IRS 1099-R Box 4) |
+| Surplus deposit     | `netCashFlow > 0`                           | n/a, deposit to first Taxable (or Cash if it exists) |
+
+*Cash* is **not yet a modeled account type** — it's reserved in the table so the
+sourcing rule survives the future Cash addition with no rewording. Today, "Cash" steps
+in the precedence are no-ops; Taxable does the work.
+
+**Implementation:** see `calculateAnnualCashFlowCore` in
+[src/services/SimulationService.ts](src/services/SimulationService.ts):
+- `computeSpendingWaterfall(w)` is spending-only (no conversion). It returns
+  `spendingFromTaxable`, `forcedTrad`, `spendingFromRoth`, `rmdExc`.
+- Inside the fixed-point loop, after the spending pull, conversion principal is sized
+  by `tradAvailForConv = tradBal − forcedTrad` (RMD must be satisfied first — IRS
+  rule).
+- The conversion's marginal ordinary tax `mt` is split across three sources in
+  priority order: `ctRmd = min(mt, rmdExc)`,
+  `ctTaxable = min(mt − ctRmd, taxableBal − spendingFromTaxable)`, then
+  `ctWithheld = mt − ctRmd − ctTaxable`. The first two are paid from external account
+  flows; the third is withheld from the conversion's own Trad pull.
+- `rothConversionGross` is the IRS-conventional conversion amount (Trad pull, added to
+  `withdrawalFromTraditional`). `applyCashFlow` deposits
+  `rothConversionGross − rothConversionTaxWithheld` to Roth.
+- The breakdown surfaces all three sourcing fields plus `rothConversionRequested`
+  (user intent before any Trad-balance cap).
+- The conv-tax-funded Taxable pull does add incremental LTCG/NIIT to `totalTax`; that
+  cascade falls through the normal fixed-point loop and is funded by the spending
+  withdrawal (a small acceptable residual — 15–20% of the saved phantom-tax leak).
+
+**Liquid-cash mental model (future refactor target, not committed):** forced inflows
+(income, SS, RMD net) fill a bucket; discretionary withdrawals fill only the gap. The
+RMD-first branch in `computeSpendingWaterfall` is this idea wedged into one function.
+Future refactors should move toward it generically, which would naturally subsume
+both the RMD-first and conv-tax-sourcing fixes.
+
+## Decision-making layers
+
+Cash-flow decisions in the engine stack in three layers, inside-out. Each layer
+is built on the one below; new features attach at the highest applicable layer.
+
+1. **Intent + funding sources** (section above) — single-year sourcing rules:
+   *"where does the tax for THIS taxable event come from?"* RMD, spending
+   withdrawal, conversion tax all answered here. The phantom-tax principle
+   lives at this layer.
+2. **Cross-year spending source policy** (section below) — *"where should THIS
+   YEAR'S spending come from, given the multi-year plan?"* Answered by
+   `UserData.spendingWithdrawalOrder`.
+3. **Tax-strategy plug-in** (future, not implemented) — *"given the scenario,
+   choose layer-2 policies + conversion sizing + ACA/IRMAA constraints."*
+   See "Layer 3 (future): tax-strategy plug-in framework" below for the
+   roadmap, design sketch, and the structural fix it provides for the
+   smart-default's bundled-comparison property.
+
+## Cross-year spending source policy
+
+> **Disclaimer (load-bearing):** `UserData.spendingWithdrawalOrder` changes
+> **only where living-expenses cash comes from**. It does NOT change the
+> conversion gross, the conversion-tax sourcing rule, or any other intent.
+> Treating it as "smart conversion sizing" would be wrong — see layer 3
+> (tax-strategy plug-in framework) for that future feature.
+
+The spending waterfall (RMD → Taxable → Trad-above-RMD → Roth) is correct on a
+single-year basis but **greedy across years**. In pre-pension/pre-SS years,
+spending-from-Taxable burns the most flexible bucket at low effective rates
+(LTCG drag), leaving none for later high-`mt` conversion years. A
+planner-aware retiree would pull spending from Trad in low-bracket years
+(filling the 12% federal bracket cheaply) and preserve Taxable for the
+high-`mt` years.
+
+**Implementation:** `UserData.spendingWithdrawalOrder`:
+
+- `'taxable_first'` — current waterfall. Default for scenarios without
+  conversions. Conservative; preserves Traditional.
+- `'bracket_aware'` — RMD → Trad up to 12%-federal-bracket headroom
+  (conv- and SS-inclusive) → Taxable → Trad-above-headroom → Roth. Default
+  for scenarios with any `roth_conversion` event.
+
+When the field is undefined, the engine resolves it via
+`resolveSpendingWithdrawalOrder` in
+[src/services/SimulationService.ts](src/services/SimulationService.ts) at
+sim start: presence of a conversion event → `'bracket_aware'`; otherwise
+`'taxable_first'`.
+
+The bracket headroom is **conv- and SS-inclusive**: precomputed per year as
+`max(0, top_of_12% − max(0, (otherTaxableGross + conversionGross + ssTaxable) − stdDed))`
+where `ssTaxable` is computed via `calculateSSTaxableAmount` using ordinary
+income inclusive of conversion. Including conversion AND SS in the baseline
+is load-bearing: without conv, Trad spending pull + conv could combine to
+push past 22%; without SS, the same overshoot can happen for retirees who
+claim SS during the conversion window.
+
+**No coordination is needed between this layer and the conv-tax sourcing
+rule above.** Conversion tax still prefers Taxable (withholding from the
+conv pull is mathematically inferior since it loses Roth growth on the
+withheld dollars). The two systems share a single Taxable bucket but
+compete for distinct dollars (spending overflow vs conv tax); the
+conv-inclusive headroom keeps Trad pulls within bracket so the picture
+stays consistent.
+
+**Deductions modeled in the headroom:** base standard deduction *plus*
+the long-standing IRS age-65 senior bonus (`getUsualSeniorExtra`). The
+temporary OBBB extra deduction (2025-2028, AGI-phased) is deliberately
+omitted — it's AGI-dependent, which would force a fixed point against
+the Trad pull itself. Leaving it out keeps the headroom honestly
+conservative through 2028 and bit-for-bit identical after the sunset.
+
+**Blind spots (heuristic, not optimum):**
+- Doesn't account for IRMAA tier cliffs — pulling Trad lifts 2-year-prior
+  MAGI lookback and could trigger a future tier.
+- Doesn't optimize against NIIT thresholds.
+- Doesn't use state retirement-income exclusions (VA 65+ age deduction,
+  NY $20k pension exclusion, etc.) in the headroom calc — federal 12%
+  dominates the decision in most states.
+- OBBB extra senior deduction (2025-2028) is not in the headroom; bracket-
+  aware is slightly conservative for low-AGI seniors during the OBBB window.
+- SS-torpedo second-order effect: the headroom uses SS-taxable computed
+  against ordinary income *without* the spending Trad pull. A Trad pull that
+  bumps SS into a higher taxable fraction can cause minor overshoot; bounded
+  by the 85% SS-taxable ceiling.
+- Uses the *requested* conversion (not the executed) in headroom — if
+  conversion gets capped by Trad balance late in the window, headroom is
+  conservatively tight; bracket_aware under-pulls Trad slightly. Never unsafe.
+- Doesn't change the conversion size — that's a future layer-3 strategy.
+
+## Layer 3 (future): tax-strategy plug-in framework
+
+The smart-default switch in layer 2 has a known property: when a user adds
+a Roth conversion event, two things change at once — the conversion itself
+*and* the spending waterfall (auto-switches to `'bracket_aware'`). Any
+"with vs without" comparison (`estimateConversionImpact.netPlanValueImpact`,
+the What If overlay in [src/components/Content/Content.tsx](src/components/Content/Content.tsx))
+captures both effects bundled. The dollar attribution to "the conversion"
+is therefore inflated by whatever value the waterfall switch contributed.
+
+Patching the comparison sites to hold the waterfall constant is a band-aid.
+The structural fix is **layer 3: tax-strategy plug-ins**. Each strategy
+is an explicit, named property of the scenario (not a content-driven
+auto-default), making side-by-side comparisons honest by construction.
+
+**Shape (sketch):**
+
+```ts
+type TaxStrategy = {
+  name: string;
+  // Per-year: given the running scenario state, return (a) spending source
+  // policy and (b) any conversion-size adjustment vs the user-entered amount.
+  decide(args: {
+    year: number;
+    runningState: SimulationState;
+    userData: UserData;
+  }): {
+    spendingOrder: ResolvedSpendingOrder;
+    conversionAdjustment?: { eventId: string; adjustedAmount: number };
+  };
+};
+```
+
+**Strategies on the roadmap** (none implemented yet):
+
+- `'conservative'` — Taxable-first, conv as entered. (= today's default for
+  no-conv scenarios.)
+- `'bracket_aware_spending'` — what layer 2 ships. (= today's default for
+  conv scenarios.)
+- `'fill_to_bracket_conversion'` — auto-size conversions to top of a target
+  bracket (12%, 22%, 24%), respecting Taxable funding.
+- `'irmaa_cliff_avoider'` — caps conversions to stay one tier below the
+  next IRMAA threshold in the lookback year.
+- `'aca_premium_credit_preserver'` — pre-65 retirees on ACA subsidies;
+  caps conv + spending Trad pull to stay below the subsidy-phaseout cliff.
+
+**Deliberate non-goal: multi-year optimizer.** A full optimizer (DP / RL /
+Bellman over the lifetime tax-and-withdrawal joint decision) is a research
+project, not production code. Production planners (ProjectionLab,
+NewRetirement, RighteousDuck) all use *heuristics* — each addresses a
+specific real-world planning constraint, named clearly, and users pick the
+one that matches their situation. We follow that pattern.
+
+**Deferred items the framework subsumes when implemented:**
+
+- `'pro_rata'` spending order — would split the spending gap across
+  Trad-above-RMD and Taxable proportionally to their balances. Not in the
+  current enum; was speculatively included in an early draft and dropped
+  when it stayed unimplemented. Tracked here for the layer-3 strategy
+  catalog; re-adding to the enum is a one-line type change.
+- State retirement-income exclusions in the bracket-headroom calc (VA
+  65+ age deduction, NY $20k pension exclusion, etc.).
+- Full SS-torpedo modeling in headroom (currently uses a static
+  approximation — see "Blind spots" above).
+- IRMAA + NIIT cliff awareness in conversion sizing.
+- Dialog UI for selecting a strategy (currently JSON-only).
+- Liquid-cash bucket internal refactor (cleaner accounting that subsumes
+  the RMD-first branch and the bracket-aware branch into one principled
+  per-year cash-flow model). Not a behavior change; an internal cleanup
+  that makes layer 3 easier to implement.
 
 ## In-App Documentation
 

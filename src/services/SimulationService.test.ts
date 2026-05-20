@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateAnnualCashFlow,
   calculateRMD,
+  computeBracketHeadroomForTrad,
   computeMarginalStackAttribution,
   getEffectiveStateName,
   IRS_UNIFORM_LIFETIME_TABLE,
+  resolveSpendingWithdrawalOrder,
   runSimulation,
   SYNTHETIC_TRAD_WITHDRAWAL_ID,
   type EventIncomeRecord,
@@ -1586,5 +1588,189 @@ describe('audit.accountFlows (via runSimulation)', () => {
     const reinvest = bd.audit!.accountFlows!.find((r) => r.accountId === 'reinvestment-auto');
     expect(reinvest).toBeDefined();
     expect(reinvest!.deposit).toBeGreaterThan(0);
+  });
+});
+
+describe('resolveSpendingWithdrawalOrder', () => {
+  it('returns the explicit field value when set', () => {
+    expect(
+      resolveSpendingWithdrawalOrder(makeUserData({ spendingWithdrawalOrder: 'taxable_first' })),
+    ).toBe('taxable_first');
+    expect(
+      resolveSpendingWithdrawalOrder(makeUserData({ spendingWithdrawalOrder: 'bracket_aware' })),
+    ).toBe('bracket_aware');
+  });
+
+  it("defaults to 'taxable_first' when no roth_conversion event exists", () => {
+    expect(resolveSpendingWithdrawalOrder(makeUserData())).toBe('taxable_first');
+  });
+
+  it("defaults to 'bracket_aware' when any roth_conversion event exists", () => {
+    const ud = makeUserData({
+      incomeEvents: [{
+        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 25_000,
+        startAge: 65, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed',
+      }],
+    });
+    expect(resolveSpendingWithdrawalOrder(ud)).toBe('bracket_aware');
+  });
+
+  it('honors an explicit override even when a conversion exists', () => {
+    const ud = makeUserData({
+      spendingWithdrawalOrder: 'taxable_first',
+      incomeEvents: [{
+        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 25_000,
+        startAge: 65, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed',
+      }],
+    });
+    expect(resolveSpendingWithdrawalOrder(ud)).toBe('taxable_first');
+  });
+
+  it('falls back to the content-aware default when the field holds an unknown value', () => {
+    // Legacy 'pro_rata' (dropped from the enum) and outright typos must not
+    // silently behave like taxable_first with no signal — they fall through
+    // to the content-aware default. This is the S3 fix.
+    const noConv = makeUserData({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      spendingWithdrawalOrder: 'pro_rata' as any,
+    });
+    expect(resolveSpendingWithdrawalOrder(noConv)).toBe('taxable_first');
+    const withConv = makeUserData({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      spendingWithdrawalOrder: 'foobar' as any,
+      incomeEvents: [{
+        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 25_000,
+        startAge: 65, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed',
+      }],
+    });
+    expect(resolveSpendingWithdrawalOrder(withConv)).toBe('bracket_aware');
+  });
+});
+
+describe('computeBracketHeadroomForTrad', () => {
+  // Minimal AccumulatedIncome stub — only the fields the helper reads.
+  const incomeOf = (overrides: { ssGross?: number; otherTaxableGross?: number; conversionGross?: number } = {}) => ({
+    ssGross: overrides.ssGross ?? 0,
+    otherTaxableGross: overrides.otherTaxableGross ?? 0,
+    afterTaxIncome: 0,
+    conversionGross: overrides.conversionGross ?? 0,
+    wageIncomeGross: 0,
+    preTaxContributions: 0,
+    rothContributions: 0,
+    afterTaxContributions: 0,
+    employerMatch: 0,
+    contributions: [],
+    contributionsCappedAmount: 0,
+    eventBreakdowns: [],
+  });
+
+  // Default test ages: 60-year-old single filer, no spouse, no senior bonus.
+  const AGE_NO_SENIOR = 60;
+  const NO_SPOUSE = null;
+
+  it('returns top-of-12% + standard-deduction headroom when baseline is zero', () => {
+    // 2026 single: 12% ceiling 50400, std ded 16100 (no senior bonus at age 60).
+    // Headroom = top_of_12% − max(0, 0 − stdDed) = top_of_12% − 0 = 50400.
+    const headroom = computeBracketHeadroomForTrad(makeUserData(), incomeOf(), 2026, 0, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroom).toBe(50400);
+  });
+
+  it('shrinks headroom when a conversion partially fills the bracket', () => {
+    // 2026 single age 60: std ded 16100, conv $50k → baseline taxable income 33900.
+    // Headroom = 50400 − 33900 = 16500.
+    const headroom = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ conversionGross: 50_000 }), 2026, 0, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroom).toBeGreaterThan(15_000);
+    expect(headroom).toBeLessThan(17_000);
+  });
+
+  it('clamps headroom to zero when baseline ordinary already exceeds the 12% bracket', () => {
+    const headroom = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ otherTaxableGross: 100_000 }), 2026, 0, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroom).toBe(0);
+  });
+
+  it('includes SS-taxable in the baseline (regression for the H1 bug)', () => {
+    // Single, SS $25k, no other income, no conversion.
+    // Provisional income = 0 + 0.5*25k = 12500 < 25k threshold → ssTaxable = 0.
+    const headroomLowSS = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ ssGross: 25_000 }), 2026, 0, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroomLowSS).toBe(50400);
+
+    // Single, SS $30k, conv $50k. Conv lifts provisional income past the 85% threshold.
+    // baselineTaxable ≈ $50k + 85%×$30k − $16.1k ≈ $59,400 > top_of_12% ($50,400) → headroom = 0.
+    const headroomHighSS = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ ssGross: 30_000, conversionGross: 50_000 }), 2026, 0, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroomHighSS).toBe(0);
+  });
+
+  it('inflation-indexes the top-of-12% ceiling and standard deduction', () => {
+    const headroom2030 = computeBracketHeadroomForTrad(makeUserData(), incomeOf(), 2030, 0.03, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroom2030).toBeCloseTo(50400 * Math.pow(1.03, 4), 0);
+  });
+
+  it('includes the senior bonus in the deduction for age 65+ filers (T1 regression)', () => {
+    // 2026 single age 60, conv $30k: baselineTaxable = 30000 − 16100 = 13900.
+    // Headroom = 50400 − 13900 = 36500.
+    const headroomYoung = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ conversionGross: 30_000 }), 2026, 0, 60, NO_SPOUSE);
+    expect(headroomYoung).toBe(36500);
+
+    // Same scenario but age 65: senior bonus $2050 → total deduction 18150 →
+    // baselineTaxable = 30000 − 18150 = 11850. Headroom = 50400 − 11850 = 38550.
+    // Without the T1 fix the senior bonus is ignored and headroom = 36500.
+    const headroomSenior = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ conversionGross: 30_000 }), 2026, 0, 65, NO_SPOUSE);
+    expect(headroomSenior).toBe(38550);
+    expect(headroomSenior - headroomYoung).toBe(2050);
+  });
+
+  it('counts both seniors for MFJ when both filers are age 65+', () => {
+    const ud = makeUserData({ filingStatus: 'mfj', spouseAge: 65 });
+    // 2026 MFJ both 65+: base 32200, senior extra 1650 × 2 = 3300, total 35500.
+    // No conv: baselineTaxable = 0. Headroom = top_of_12% MFJ 2026 = 100800.
+    const headroomBothSeniors = computeBracketHeadroomForTrad(ud, incomeOf(), 2026, 0, 65, 65);
+    expect(headroomBothSeniors).toBe(100800);
+
+    // Add $80k conv → baselineTaxable = 80000 − 35500 = 44500. Headroom = 100800 − 44500 = 56300.
+    const headroomWithConv = computeBracketHeadroomForTrad(ud, incomeOf({ conversionGross: 80_000 }), 2026, 0, 65, 65);
+    expect(headroomWithConv).toBe(56300);
+  });
+});
+
+describe('bracket_aware spending waterfall — coordination invariant', () => {
+  // The plan promised: in years where the bracket-aware Trad spending pull is
+  // active AND Taxable can absorb the spending overflow (no spill to
+  // Trad-above-headroom), federal bracket index stays ≤ 1 (the 12% bracket).
+  // When Taxable runs out the spillover falls to Trad-above-headroom and
+  // bracket may exceed 12% — that's the existing taxable_first fallback,
+  // not a bracket_aware violation. The scenario below sizes Taxable large
+  // enough that the invariant holds across the full conv window.
+  it('keeps federalBracketIndex ≤ 1 across the conv window when Taxable absorbs the overflow', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 64,
+      spendingGoals: [{
+        id: 'living-1', name: 'Living', type: 'living_expenses' as const,
+        amount: 60_000, amountPeriod: 'annual' as const, startAge: 60,
+        isOneTime: false, inflationAdjusted: false,
+      }],
+      incomeEvents: [{
+        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 50_000,
+        startAge: 60, endAge: 62, isOneTime: false, taxStatus: 'before_tax', colaType: 'fixed',
+      }],
+      accounts: [
+        { id: 't-1', name: 'Trad 1', type: 'traditional', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'r-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        // Taxable large enough to absorb 3 years of spending overflow + conv tax + LTCG cascade.
+        { id: 'b-1', name: 'Taxable 1', type: 'taxable', balance: 400_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      simulationSettings: { numSimulations: 10 },
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+    });
+    const result = runSimulation(ud, createSeededRandom(42));
+    // First 3 years are conv-active.
+    for (let i = 0; i < 3; i++) {
+      const bd = result.nominalBreakdowns[i];
+      expect(bd.rothConversionGross).toBeGreaterThan(0);  // conv firing
+      // bracketIndex 0 = 10%, 1 = 12%. The smart-default headroom guarantees
+      // the conv + Trad spending pull stay within the 12% bracket so long as
+      // Taxable absorbs the spending overflow.
+      expect(bd.audit!.federalBracketIndex).toBeLessThanOrEqual(1);
+    }
   });
 });

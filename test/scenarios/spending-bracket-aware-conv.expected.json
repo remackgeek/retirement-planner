@@ -1,0 +1,14 @@
+{
+  "_rationale": "Smart default (bracket_aware) is active because the scenario has a roth_conversion event and spendingWithdrawalOrder is undefined. Year 1 (age 60): 12% bracket headroom = ~$16,150 (top of 12% taxable income $50,400 minus baseline conv taxable income $34,250). $60k spending → pull ~$16k Trad first (taxed at 12% federal, 0 FL), then ~$44k from Taxable + LTCG cascade. Total Trad pull (spending + conv) ≈ $66k; Taxable pull (spending portion + LTCG-cascade) ≈ $52k. Conv tax ($3.8k federal on $50k single, plus interaction with Trad pull) sourced from Taxable (no withholding). Year 3 (age 62, conv ends after this): same shape. Year 4 (age 63): no more conv, baseline ordinary = 0, headroom is full 12%-bracket-plus-std-ded but withdrawal only needs to cover $60k spending → Trad pull capped at remaining $500k less prior years. Key invariants: withdrawalFromTraditional > 50k in conv years (spending Trad pull active), federal bracket index ≤ 1 (stays in 12%), rothConversionTaxWithheld = 0 (Taxable still funds conv tax).",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Full conversion executes year 1" },
+    { "index": 0, "field": "withdrawalFromTraditional", "min": 60000, "max": 75000, "_note": "Trad pull = conv $50k + spending Trad pull within 12% headroom ($10-25k)" },
+    { "index": 0, "field": "rothConversionTaxWithheld", "value": 0, "tolerance": 0.01, "_note": "Taxable funds conv tax; no withholding" },
+    { "index": 0, "field": "rothConversionTaxFromTaxable", "min": 3000, "max": 7000, "_note": "Conv ordinary tax sourced from Taxable" },
+    { "index": 0, "field": "withdrawalFromTaxable", "min": 30000, "max": 60000, "_note": "Spending overflow + conv tax + LTCG cascade from Taxable" },
+    { "index": 2, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Year 3 (age 62) still in conv window" },
+    { "index": 3, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "Year 4 (age 63) past endAge — no conv" }
+  ]
+}

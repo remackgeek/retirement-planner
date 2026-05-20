@@ -1,23 +1,33 @@
 {
-  "_description": "5-year recurring Roth conversion ages 65-69 with 3% inflation and inflation_adjusted COLA. Verifies multi-year execution and COLA escalation.",
-  "_rationale": "Age 65, conversion 65-69 (5 years), initial amount $30k, COLA=inflation_adjusted with inflation=3%. Year 0 (age 65): $30,000. Year 1: $30,000 × 1.03 = $30,900. Year 2: ~$31,827. Year 4 (age 69): $30,000 × 1.03^4 ≈ $33,764.20. Year 5 (age 70): conversion ended, rothConversionGross=0. Traditional $500k, Roth $0, Taxable $50k to cover tax. Verify conversion gross matches COLA schedule and zeroes out after endAge.",
+  "_description": "Bracket-aware + RMD coordination. Age 73 MFJ both 65+, $30k conv + $50k spending. Verifies the smart waterfall stays within the 12% bracket when RMD + conv + bracket-aware spending pull all stack.",
+  "_rationale": "RMD = $1M/26.5 ≈ $37,736. Spending $50k > RMD: forcedTrad = $50k, conv = $30k → withdrawalFromTraditional = $80k. Bracket check: $80k − MFJ-65+ deduction ~$33k = ~$47k taxable income, below top of 12% MFJ 2026 (~$103,500). With Taxable present and bracket headroom large, bracket_aware pulls the spending overflow ($12k+) from Trad; total Trad pull = RMD + bracket-aware spending + conv = ~$80k, all within 12%.",
   "_seed": 12345,
-  "name": "Roth Conversion — Multi-Year COLA",
-  "currentAge": 65,
-  "lifeExpectancy": 71,
+  "name": "Bracket-aware + RMD interaction",
+  "currentAge": 73,
+  "lifeExpectancy": 75,
   "referenceYear": 2026,
-  "spendingGoals": [],
+  "spendingGoals": [
+    {
+      "type": "living_expenses",
+      "name": "Living Expenses",
+      "amountPeriod": "annual",
+      "startAge": 73,
+      "isOneTime": false,
+      "inflationAdjusted": false,
+      "amount": 50000,
+      "id": "living-1"
+    }
+  ],
   "incomeEvents": [
     {
       "id": "conv-1",
       "type": "roth_conversion",
-      "name": "Annual Conversion",
+      "name": "Conversion",
       "amount": 30000,
-      "startAge": 65,
-      "endAge": 69,
-      "isOneTime": false,
+      "startAge": 73,
+      "isOneTime": true,
       "taxStatus": "before_tax",
-      "colaType": "inflation_adjusted"
+      "colaType": "fixed"
     }
   ],
   "portfolioAssumptions": {
@@ -31,10 +41,10 @@
     "degreesOfFreedom": 4,
     "returnModel": "parametric"
   },
-  "inflationRate": 0.03,
+  "inflationRate": 0,
   "inflationStdDev": 0,
   "filingStatus": "mfj",
-  "spouseAge": 65,
+  "spouseAge": 73,
   "stateTimeline": [
     {
       "state": "Florida"
@@ -48,7 +58,7 @@
       "id": "trad-1",
       "name": "Traditional 1",
       "type": "traditional",
-      "balance": 500000,
+      "balance": 1000000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"
     },
@@ -71,6 +81,5 @@
   ],
   "longTermCapGainsRate": 0.15,
   "enableIRMAA": false,
-  "enableNIIT": false,
-  "spendingWithdrawalOrder": "taxable_first"
+  "enableNIIT": false
 }

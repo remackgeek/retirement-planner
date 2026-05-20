@@ -1,23 +1,22 @@
 {
-  "_description": "5-year recurring Roth conversion ages 65-69 with 3% inflation and inflation_adjusted COLA. Verifies multi-year execution and COLA escalation.",
-  "_rationale": "Age 65, conversion 65-69 (5 years), initial amount $30k, COLA=inflation_adjusted with inflation=3%. Year 0 (age 65): $30,000. Year 1: $30,000 × 1.03 = $30,900. Year 2: ~$31,827. Year 4 (age 69): $30,000 × 1.03^4 ≈ $33,764.20. Year 5 (age 70): conversion ended, rothConversionGross=0. Traditional $500k, Roth $0, Taxable $50k to cover tax. Verify conversion gross matches COLA schedule and zeroes out after endAge.",
+  "_description": "$50k Roth conversion with a healthy Taxable account, verifying the new sourcing rule: conversion ordinary tax pulls from Taxable, not Traditional. Single filer, FL, age 60.",
+  "_rationale": "Single age 60, FL (no state tax), Trad $500k, Roth $0, Taxable $50k. One-time $50k conversion. 2026 single std deduction ~$15,750 → ~$34,250 taxable income → ~$4,000–$5,000 federal tax. Under new sourcing rule: conv ordinary tax (~$4k) pulls from Taxable, not from extra Trad. Expected: withdrawalFromTraditional = exactly 50,000 (conversion principal only), withdrawalFromTaxable ≈ $4k (the conv tax), rothConversionGross = 50,000 fully executed.",
   "_seed": 12345,
-  "name": "Roth Conversion — Multi-Year COLA",
-  "currentAge": 65,
-  "lifeExpectancy": 71,
+  "name": "Roth Conversion — Tax From Taxable",
+  "currentAge": 60,
+  "lifeExpectancy": 63,
   "referenceYear": 2026,
   "spendingGoals": [],
   "incomeEvents": [
     {
       "id": "conv-1",
       "type": "roth_conversion",
-      "name": "Annual Conversion",
-      "amount": 30000,
-      "startAge": 65,
-      "endAge": 69,
-      "isOneTime": false,
+      "name": "Test Conversion",
+      "amount": 50000,
+      "startAge": 60,
+      "isOneTime": true,
       "taxStatus": "before_tax",
-      "colaType": "inflation_adjusted"
+      "colaType": "fixed"
     }
   ],
   "portfolioAssumptions": {
@@ -31,10 +30,10 @@
     "degreesOfFreedom": 4,
     "returnModel": "parametric"
   },
-  "inflationRate": 0.03,
+  "inflationRate": 0,
   "inflationStdDev": 0,
-  "filingStatus": "mfj",
-  "spouseAge": 65,
+  "filingStatus": "single",
+  "spouseAge": null,
   "stateTimeline": [
     {
       "state": "Florida"

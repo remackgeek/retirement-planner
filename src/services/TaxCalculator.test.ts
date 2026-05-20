@@ -4,6 +4,7 @@ import {
   calculateSSTaxableAmountDetailed,
   calculateNetFromGross,
   calculateNetFromGrossDetailed,
+  getBracketCeilingTaxableIncome,
 } from './TaxCalculator';
 
 describe('calculateSSTaxableAmount', () => {
@@ -167,5 +168,46 @@ describe('calculateNetFromGrossDetailed', () => {
     // 2026 single age-65+ extra: $2,050 per qualifying senior; OBBB also applies through 2028.
     expect(d.numQualifyingSeniors).toBe(1);
     expect(d.seniorAddOn).toBe(2050);
+  });
+});
+
+describe('getBracketCeilingTaxableIncome', () => {
+  it('returns the top of the 12% bracket for single 2026', () => {
+    // 2026 single brackets: 10% to 12400, 12% to 50400
+    expect(getBracketCeilingTaxableIncome('single', 1, 2026, 0)).toBe(50400);
+  });
+
+  it('returns the top of the 12% bracket for MFJ 2026', () => {
+    // 2026 MFJ brackets: 10% to 24800, 12% to 100800
+    expect(getBracketCeilingTaxableIncome('mfj', 1, 2026, 0)).toBe(100800);
+  });
+
+  it('returns the top of the 10% bracket (index 0)', () => {
+    expect(getBracketCeilingTaxableIncome('single', 0, 2026, 0)).toBe(12400);
+  });
+
+  it('returns Infinity for the top (37%) bracket', () => {
+    // index 6 = 37% bracket, upper bound Infinity in source data
+    expect(getBracketCeilingTaxableIncome('single', 6, 2026, 0)).toBe(Infinity);
+  });
+
+  it('returns 0 for negative bracket index', () => {
+    expect(getBracketCeilingTaxableIncome('single', -1, 2026, 0)).toBe(0);
+  });
+
+  it('returns 0 for out-of-range bracket index', () => {
+    expect(getBracketCeilingTaxableIncome('single', 99, 2026, 0)).toBe(0);
+  });
+
+  it('inflation-indexes bracket ceilings forward of the source year', () => {
+    // 2030 with 3% inflation: 4 years forward from the 2026 source.
+    // 2026 single 12% ceiling = 50400 → 50400 * 1.03^4 ≈ 56,727.
+    const expected = 50400 * Math.pow(1.03, 2030 - 2026);
+    expect(getBracketCeilingTaxableIncome('single', 1, 2030, 0.03)).toBeCloseTo(expected, 2);
+  });
+
+  it('does not extrapolate behind the source year', () => {
+    // Inflation factor stays at 1.0 for years <= the latest source year.
+    expect(getBracketCeilingTaxableIncome('single', 1, 2026, 0.03)).toBe(50400);
   });
 });

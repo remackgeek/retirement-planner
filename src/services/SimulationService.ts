@@ -6,6 +6,10 @@ import {
   calculateSSTaxableAmount,
   calculateSSTaxableAmountDetailed,
   clearTaxCalculationCache,
+  getBracketCeilingTaxableIncome,
+  getNumQualifyingSeniors,
+  getStandardDeduction,
+  getUsualSeniorExtra,
   type FederalBracketDetail,
   type FilingStatus,
   type SsZone,
@@ -270,8 +274,13 @@ function applyCashFlow(
   subtractFromAccounts(accountIndex.byType.roth, balances, breakdown.withdrawalFromRoth, withdrawalSink);
   // Deposit Roth conversion into Roth accounts (pro-rata). A receiving Roth is
   // guaranteed by ensureRothConversionAccount when any conversion event exists.
+  // The deposit is the gross conversion minus any withheld tax (when Taxable +
+  // RMD-excess couldn't cover the marginal ordinary tax — IRS Form 1099-R Box 4).
   if (breakdown.rothConversionGross > 0) {
-    addToAccounts(accountIndex.byType.roth, balances, breakdown.rothConversionGross, depositSink);
+    const rothDeposit = breakdown.rothConversionGross - breakdown.rothConversionTaxWithheld;
+    if (rothDeposit > 0) {
+      addToAccounts(accountIndex.byType.roth, balances, rothDeposit, depositSink);
+    }
   }
   // Deposit RMD excess into the first taxable account (already ensured to exist by caller).
   if (breakdown.rmdExcess > 0 && accountIndex.firstTaxable) {
@@ -389,7 +398,19 @@ export interface AnnualCashFlowBreakdown {
   netCashFlow: number;
   rmdRequired: number;  // IRS-mandated minimum from Traditional; 0 if age < 73
   rmdExcess: number;    // rmdRequired beyond spending need; reinvested to taxable
-  rothConversionGross: number;  // amount converted from Traditional to Roth this year
+  // Gross conversion amount = Trad withdrawal for the conversion = IRS Form
+  // 1099-R Box 1 (gross distribution). Roth deposit = this minus rothConversionTaxWithheld.
+  // May be < requested only when capped by available Trad balance (a rare true cap).
+  rothConversionGross: number;
+  rothConversionRequested: number;  // user-configured conversion amount before any cap
+  rothConversionTaxFromTaxable: number;  // portion of conversion ordinary tax pulled from Taxable
+  rothConversionTaxFromRmdExcess: number;  // portion of conversion ordinary tax absorbed by RMD-excess cash
+  // Portion of conversion ordinary tax withheld from the conversion itself
+  // (IRS Form 1099-R Box 4 mechanic). Subtracted from the Roth deposit by
+  // applyCashFlow. Non-zero when Taxable + RMD-excess can't cover the marginal
+  // ordinary tax; surfaces a dialog warning advising the user that withholding
+  // is suboptimal vs. funding from Taxable.
+  rothConversionTaxWithheld: number;
   spendingShortfall: number;  // unmet spending+tax need when portfolio cap was binding; 0 otherwise
   wageIncomeGross: number;          // sum of wage_income events (already included in otherTaxableGross before any pre-tax deduction)
   preTaxContributions: number;      // employee pre_tax contributions deposited to Traditional this year
@@ -1090,10 +1111,15 @@ export function calculateAnnualCashFlow(
 
   const stateName = getEffectiveStateName(userData, year);
   const { profile: stateProfile, resolvedKey: stateResolvedKey } = getStateTaxProfile(stateName, year);
+  const income = accumulateIncome(userData, year, inflationRate);
+  const spendingOrder = resolveSpendingWithdrawalOrder(userData);
+  const bracketHeadroom = spendingOrder === 'bracket_aware'
+    ? computeBracketHeadroomForTrad(userData, income, year, inflationRate, userData.currentAge + i, spouseAge)
+    : 0;
   return calculateAnnualCashFlowCore(
     userData,
     year,
-    accumulateIncome(userData, year, inflationRate),
+    income,
     accumulateSpending(userData, year, inflationRate),
     stateProfile,
     stateResolvedKey,
@@ -1102,8 +1128,58 @@ export function calculateAnnualCashFlow(
     balances,
     beginningTradBalances,
     maxWithdrawal,
-    inflationRate
+    inflationRate,
+    undefined,
+    spendingOrder,
+    bracketHeadroom,
   );
+}
+
+/**
+ * Per-year 12%-federal-bracket headroom for additional Traditional spending
+ * pulls, **conv-inclusive, SS-inclusive, and senior-bonus-inclusive**.
+ *
+ * The deduction used here matches the tax calc's `baseStdDed + usualExtra`
+ * (the long-standing IRS age-65 add-on, deterministic by age/year). It
+ * deliberately omits the temporary OBBB extra deduction — that's
+ * AGI-dependent and would force a fixed point. Skipping it keeps the
+ * headroom honestly conservative across the 2025-2028 OBBB window and
+ * bit-for-bit identical after the sunset.
+ *
+ * Used by the `bracket_aware` spending waterfall — see CLAUDE.md
+ * "Cross-year spending source policy" for the rationale and remaining
+ * blind spots.
+ *
+ * Note: SS taxability is sensitive to the conversion-spending Trad pull
+ * itself (more ordinary income → more SS provisional → higher ss-taxable
+ * fraction). The precompute uses ordinary income WITHOUT the spending Trad
+ * pull, so a Trad pull that materially bumps SS into a higher fraction
+ * could slightly overshoot 12%. Conservative compromise: precompute is
+ * static (balance-independent), and the SS fraction maxes at 85%, so the
+ * residual error is bounded.
+ */
+export function computeBracketHeadroomForTrad(
+  userData: UserData,
+  income: AccumulatedIncome,
+  year: number,
+  inflationRate: number,
+  age: number,
+  spouseAge: number | null,
+): number {
+  const ordForSS = income.otherTaxableGross + income.conversionGross;
+  const ssTaxable = income.ssGross > 0
+    ? calculateSSTaxableAmount(income.ssGross, ordForSS, userData.filingStatus)
+    : 0;
+  const baselineOrdGross = ordForSS + ssTaxable;
+  const stdDed = getStandardDeduction(userData.filingStatus, year, inflationRate);
+  const numQualifying = getNumQualifyingSeniors(userData.filingStatus, age, spouseAge);
+  const seniorExtra = getUsualSeniorExtra(userData.filingStatus, year, numQualifying, inflationRate);
+  const totalDed = stdDed + seniorExtra;
+  // bracketIndex 1 = top of 12% bracket (above 10% bracket, below 22%)
+  const topOf12 = getBracketCeilingTaxableIncome(userData.filingStatus, 1, year, inflationRate);
+  if (!isFinite(topOf12)) return 0;
+  const baselineTaxable = Math.max(0, baselineOrdGross - totalDed);
+  return Math.max(0, topOf12 - baselineTaxable);
 }
 
 // Fast-path: accepts precomputed per-year inputs so the MC loop can hoist
@@ -1130,6 +1206,12 @@ function calculateAnnualCashFlowCore(
   // 2-year-prior MAGI proxy used to determine the current year's IRMAA surcharge
   // (IRS lookback rule). Caller passes undefined / 0 when unavailable.
   priorMagi?: number,
+  // Resolved spending-source strategy (see resolveSpendingWithdrawalOrder).
+  // Public wrapper resolves it; fast-path passes the precomputed value.
+  spendingOrder: ResolvedSpendingOrder = 'taxable_first',
+  // Max additional Trad-spending dollars that stay within the 12% federal
+  // bracket, **conv-inclusive**. Only consulted when spendingOrder === 'bracket_aware'.
+  bracketHeadroomForTrad: number = 0,
 ): AnnualCashFlowBreakdown {
   const { ssGross, otherTaxableGross, afterTaxIncome, conversionGross } = income;
   const totalSpendingNet = spending.baseSpendingNet + spending.otherSpendingGoalsNet;
@@ -1154,6 +1236,9 @@ function calculateAnnualCashFlowCore(
   const spouseRmdDivisor = spouseAge !== null && spouseRmd > 0
     ? (IRS_UNIFORM_LIFETIME_TABLE[Math.min(spouseAge, 114)] ?? 2.9)
     : 0;
+  // `withdrawal` is the SPENDING portion only: dollars pulled from the portfolio
+  // to cover spending + spending-related tax beyond what income provides. Conversion
+  // ordinary tax is sourced separately from Taxable + RMD-excess (see below).
   let withdrawal = Math.min(Math.max(0, totalSpendingNet - availableCash), cap);
   let totalTax = 0;
   let ssTaxableAmount = 0;
@@ -1162,6 +1247,7 @@ function calculateAnnualCashFlowCore(
   let fromRoth = 0;
   let rmdExcess = 0;
   let rothConversion = 0;
+  let rothConversionRequested = Math.max(0, conversionGross);
   let capWasBinding = false;
   let ordinaryTax = 0;
   let federalCapGainsTax = 0;
@@ -1170,6 +1256,16 @@ function calculateAnnualCashFlowCore(
   let stateOrdinaryTaxOnly = 0;
   let stateResultFinal: StateTaxResult | null = null;
   let niitTax = 0;
+  // Conversion tax sourcing — populated inside the loop. `convTaxFromTaxable` is
+  // the Taxable pull added specifically to cover the conversion's ordinary tax
+  // delta; `convTaxFromRmdExc` is the part absorbed by RMD-excess cash before
+  // any reinvestment. Their sum is the conversion's marginal ordinary tax.
+  let convTaxFromTaxable = 0;
+  let convTaxFromRmdExc = 0;
+  // Conversion tax withheld from the conversion's own Trad pull when Taxable +
+  // RMD-excess can't cover the marginal ordinary tax. The Roth deposit shrinks
+  // by this amount; the Trad pull stays at the requested conversion gross.
+  let convTaxWithheld = 0;
 
   // IRMAA is determined by the 2-year-prior MAGI, so it does not depend on this
   // year's withdrawal — compute it once outside the fixed-point loop.
@@ -1179,53 +1275,146 @@ function calculateAnnualCashFlowCore(
     ? calculateIRMAA(priorMagi ?? 0, userData.filingStatus, year, inflationRate ?? 0, age, spouseAge)
     : 0;
 
-  // RMD-first waterfall: the RMD will be pulled and taxed regardless, so apply its
-  // gross toward spending need before tapping Taxable. Without this, the loop
-  // over-pulls from Taxable to fill a gap the RMD already covers — generating
-  // phantom federal/state LTCG and NIIT. Order: Trad-up-to-RMD → Taxable →
-  // Trad-above-RMD → Roth. When rmdRequired = 0, this reduces to the original
-  // Taxable → Traditional → Roth waterfall.
-  function computeWaterfall(w: number) {
+  // Spending waterfall: RMD-up-to-spending → Taxable → Trad-above-RMD → Roth.
+  // The RMD-first ordering avoids over-pulling Taxable to fill a gap the RMD
+  // already covers (phantom LTCG/NIIT). Conversion is NOT included here —
+  // conversion principal and conversion tax are handled separately so that
+  // conversion tax never leaks into Trad-above-RMD or Roth (which would defeat
+  // the conversion's tax arbitrage). See CLAUDE.md "Intents and funding sources".
+  //
+  // Under spendingOrder === 'bracket_aware', a Trad-spending pull is inserted
+  // BEFORE Taxable, up to `bracketHeadroomForTrad`. The headroom is conv-inclusive
+  // (precomputed), so the Trad pull + active conversion together stay within the
+  // 12% federal bracket. This is the "Cross-year spending source policy" layer
+  // documented in CLAUDE.md — it preserves Taxable for high-mt conversion years.
+  function computeSpendingWaterfall(w: number) {
     const rmdSpendingPull = Math.min(w, rmdRequired, tradBal);
     let remaining = w - rmdSpendingPull;
+
+    let tradLowBracketPull = 0;
+    if (spendingOrder === 'bracket_aware' && bracketHeadroomForTrad > 0) {
+      const tradAboveRmd = Math.max(0, tradBal - rmdRequired);
+      // The FULL `rmdRequired` is mandatorily pulled and taxed as ordinary
+      // income — it consumes bracket headroom regardless of whether it covered
+      // spending. Subtracting `rmdSpendingPull` (which can be < rmdRequired
+      // when RMD exceeds spending) would let `tradLowBracketPull` claim
+      // bracket space that the RMD excess already used, bumping actual
+      // taxable income past top-of-12%. Use rmdRequired here.
+      const headroomAfterRmd = Math.max(0, bracketHeadroomForTrad - rmdRequired);
+      tradLowBracketPull = Math.min(remaining, headroomAfterRmd, tradAboveRmd);
+      remaining -= tradLowBracketPull;
+    }
     const ft = Math.min(remaining, taxableBal);
     remaining -= ft;
-    const tradAboveRmd = Math.max(0, tradBal - rmdRequired);
-    const spendingFromTradExtra = Math.min(remaining, tradAboveRmd);
+    const tradAboveHeadroom = Math.max(0, tradBal - rmdRequired - tradLowBracketPull);
+    const spendingFromTradExtra = Math.min(remaining, tradAboveHeadroom);
     remaining -= spendingFromTradExtra;
     const fr = Math.max(0, remaining);
-    const sft = rmdSpendingPull + spendingFromTradExtra;
+    const sft = rmdSpendingPull + tradLowBracketPull + spendingFromTradExtra;
     const forcedTrad = Math.min(Math.max(sft, rmdRequired), tradBal);
     const rmdExc = Math.max(0, forcedTrad - sft);
-    // Roth conversion: taken from Traditional balance remaining after RMD/spending,
-    // routed to Roth. Taxed as ordinary income (added to fromTrad for tax calc).
-    // IRS rule: RMD must be satisfied first (not eligible for conversion) — handled
-    // implicitly because forcedTrad is already reserved here.
-    const availableForConversion = Math.max(0, tradBal - forcedTrad);
-    const rc = Math.min(Math.max(0, conversionGross), availableForConversion);
     return {
-      fromTaxable: ft,
-      fromTrad: forcedTrad + rc,
-      fromRoth: fr,
-      rmdExcess: rmdExc,
-      rothConversion: rc,
+      spendingFromTaxable: ft,
+      forcedTrad,
+      spendingFromRoth: fr,
+      rmdExc,
+    };
+  }
+
+  // Compute the year's ordinary tax (federal + state ordinary + locality) for
+  // a hypothetical Traditional withdrawal `tradVal`, holding the Taxable LTCG
+  // pull constant at `ltcgVal`. Used to compute the conversion's marginal
+  // ordinary tax (= tax-with-conversion minus baseline-without-conversion);
+  // that delta drives the conv-tax sourcing split (RMD-excess / Taxable /
+  // withheld).
+  function computeOrdinaryTaxFor(tradVal: number, ltcgVal: number): {
+    ordinaryTax: number;
+    federalOrdinaryTax: number;
+    ssTaxable: number;
+    stateRes: StateTaxResult;
+  } {
+    const ord = otherTaxableGross + tradVal;
+    const ssTax = calculateSSTaxableAmount(ssGross, ord, userData.filingStatus);
+    const comb = ord + ssTax;
+    const fed = comb > 0
+      ? comb - calculateNetFromGross(comb, userData.filingStatus, age, year, spouseAge, inflationRate)
+      : 0;
+    const sres = computeStateTax(stateProfile, {
+      ordinaryGross: income.otherTaxableGross,
+      ssTaxableFederal: ssTax,
+      ssGross,
+      traditionalWithdrawal: tradVal,
+      ltcgFromTaxable: ltcgVal,
+      age,
+      spouseAge,
+      filingStatus: userData.filingStatus,
+      year,
+      inflationRate: inflationRate ?? 0,
+      disableStateRetirementExclusion: userData.disableStateRetirementExclusion,
+    }, stateResolvedKey);
+    return {
+      ordinaryTax: fed + sres.stateOrdinaryTax + sres.stateLocalitySurcharge,
+      federalOrdinaryTax: fed,
+      ssTaxable: ssTax,
+      stateRes: sres,
     };
   }
 
   const MAX_ITERATIONS = 50;
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const w = computeWaterfall(withdrawal);
-    fromTaxable = w.fromTaxable;
-    fromTrad = w.fromTrad;
-    fromRoth = w.fromRoth;
-    rmdExcess = w.rmdExcess;
-    rothConversion = w.rothConversion;
+    const sw = computeSpendingWaterfall(withdrawal);
 
+    // Conversion principal capped by Trad balance remaining after forcedTrad
+    // (RMD must be satisfied first — IRS rule that RMD is not eligible for
+    // conversion).
+    const tradAvailForConv = Math.max(0, tradBal - sw.forcedTrad);
+    let convCandidate = Math.min(rothConversionRequested, tradAvailForConv);
+
+    // Baseline ordinary tax (no conversion) at the current spending waterfall.
+    const baseTax = computeOrdinaryTaxFor(sw.forcedTrad, sw.spendingFromTaxable);
+
+    const marginalOrdTax = (rc: number): number => {
+      if (rc <= 0) return 0;
+      const r = computeOrdinaryTaxFor(sw.forcedTrad + rc, sw.spendingFromTaxable);
+      return Math.max(0, r.ordinaryTax - baseTax.ordinaryTax);
+    };
+
+    // Conversion ordinary tax is funded in priority order:
+    //   1. RMD-excess cash (already pulled from Trad as part of forcedTrad; using
+    //      it for conv tax costs nothing extra)
+    //   2. Taxable balance not consumed by spending
+    //   3. Withheld from the conversion itself (IRS Form 1099-R Box 4 mechanic) —
+    //      Trad pull still equals convCandidate, but the Roth deposit shrinks by
+    //      the withheld amount. This is mathematically suboptimal vs. paying from
+    //      Taxable (gives up some of the conversion's arbitrage) but always lets
+    //      the conversion execute. The dialog surfaces a warning when withholding
+    //      is non-zero.
+    // Conversion tax is NEVER pulled from Trad-above-RMD or Roth — that's the
+    // phantom-tax leak the prior PR fixed.
+    const mt = marginalOrdTax(convCandidate);
+    const ctRmd = Math.min(mt, sw.rmdExc);
+    const taxableRemainingForConvTax = Math.max(0, taxableBal - sw.spendingFromTaxable);
+    const ctTaxable = Math.min(mt - ctRmd, taxableRemainingForConvTax);
+    const ctWithheld = Math.max(0, mt - ctRmd - ctTaxable);
+
+    // Final per-account flows for this iteration. Trad pull is the full
+    // convCandidate; the Roth deposit (applied in applyCashFlow) subtracts
+    // ctWithheld from rothConversionGross.
+    fromTaxable = sw.spendingFromTaxable + ctTaxable;
+    fromTrad = sw.forcedTrad + convCandidate;
+    fromRoth = sw.spendingFromRoth;
+    rothConversion = convCandidate;
+    convTaxFromTaxable = ctTaxable;
+    convTaxFromRmdExc = ctRmd;
+    convTaxWithheld = ctWithheld;
+    rmdExcess = sw.rmdExc - ctRmd;
+
+    // Full tax recomputation with final pulls (captures LTCG/NIIT on the extra
+    // Taxable pull used to pay conversion tax).
     const ordinaryGross = otherTaxableGross + fromTrad;
     ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, userData.filingStatus);
     const combinedTaxable = ordinaryGross + ssTaxableAmount;
 
-    ordinaryTax = 0;
     let federalOrdinaryTaxIter = 0;
     if (combinedTaxable > 0) {
       const fedNet = calculateNetFromGross(
@@ -1238,8 +1427,6 @@ function calculateAnnualCashFlowCore(
       );
       federalOrdinaryTaxIter = combinedTaxable - fedNet;
     }
-    // Profile-based state tax: honors per-state SS rule, retirement-income
-    // exclusion, graduated brackets, state std deduction, LTCG rule, locality.
     const stateRes = computeStateTax(stateProfile, {
       ordinaryGross: income.otherTaxableGross,
       ssTaxableFederal: ssTaxableAmount,
@@ -1259,9 +1446,6 @@ function calculateAnnualCashFlowCore(
     stateCapGainsTax = stateRes.stateCapGainsTax;
     ordinaryTax = federalOrdinaryTaxIter + stateOrdinaryTaxOnly + stateLocalitySurcharge;
     federalCapGainsTax = fromTaxable * ltcgRate;
-    // NIIT: 3.8% × min(investment income, MAGI − threshold). Investment-income
-    // proxy is the gross taxable-account withdrawal (same proxy as federal LTCG).
-    // MAGI proxy = ordinary gross + SS taxable portion + taxable-account withdrawal.
     if (niitEnabled) {
       const magi = ordinaryGross + ssTaxableAmount + fromTaxable;
       niitTax = calculateNIIT(magi, fromTaxable, userData.filingStatus);
@@ -1270,32 +1454,35 @@ function calculateAnnualCashFlowCore(
     }
     totalTax = ordinaryTax + federalCapGainsTax + stateCapGainsTax + niitTax + irmaaSurcharge;
 
-    const uncappedNewWithdrawal = Math.max(0, totalSpendingNet + totalTax - availableCash);
+    // Spending withdrawal sized to cover spending + tax − availableCash − (conv
+    // tax funded separately). `mt` (conv ordinary tax) is paid from Taxable +
+    // rmdExc, so the spending pull doesn't need to cover it.
+    const uncappedNewWithdrawal = Math.max(0, totalSpendingNet + totalTax - availableCash - mt);
     const newWithdrawal = Math.min(uncappedNewWithdrawal, cap);
     capWasBinding = uncappedNewWithdrawal > cap;
 
     if (Math.abs(newWithdrawal - withdrawal) < 0.01) {
       withdrawal = newWithdrawal;
-      const finalW = computeWaterfall(withdrawal);
-      fromTaxable = finalW.fromTaxable;
-      fromTrad = finalW.fromTrad;
-      fromRoth = finalW.fromRoth;
-      rmdExcess = finalW.rmdExcess;
-      rothConversion = finalW.rothConversion;
       break;
     }
     withdrawal = newWithdrawal;
   }
 
+  // Conversion ordinary tax (mt) is funded from Taxable + RMD-excess, not from
+  // the spending withdrawal. So neither the surplus calc nor the spendingShortfall
+  // should attribute mt to the spending-side cash gap.
+  const mtFinal = convTaxFromTaxable + convTaxFromRmdExc;
   const netCashFlow = capWasBinding
     ? -withdrawal || 0
-    : availableCash - totalTax - totalSpendingNet;
+    : availableCash + mtFinal - totalTax - totalSpendingNet;
   // Surplus is the portion of netCashFlow deposited to a taxable account as general
   // reinvestment. Zero when the cap was binding (no surplus possible) or when net
   // cash flow is non-positive. ensureReinvestmentAccount guarantees a taxable target.
+  // rmdExcess (the residual after conv-tax consumption) is deposited separately
+  // by applyCashFlow.
   const surplusContribution = capWasBinding ? 0 : Math.max(0, netCashFlow);
 
-  const uncappedNeed = Math.max(0, totalSpendingNet + totalTax - availableCash);
+  const uncappedNeed = Math.max(0, totalSpendingNet + totalTax - availableCash - mtFinal);
   const spendingShortfall = capWasBinding ? Math.max(0, uncappedNeed - withdrawal) : 0;
 
   // ---- Tax Audit intermediates (always computed; cheap recomputation of values
@@ -1416,6 +1603,10 @@ function calculateAnnualCashFlowCore(
     rmdRequired,
     rmdExcess,
     rothConversionGross: rothConversion,
+    rothConversionRequested,
+    rothConversionTaxFromTaxable: convTaxFromTaxable,
+    rothConversionTaxFromRmdExcess: convTaxFromRmdExc,
+    rothConversionTaxWithheld: convTaxWithheld,
     spendingShortfall,
     wageIncomeGross: income.wageIncomeGross,
     preTaxContributions: income.preTaxContributions,
@@ -1466,6 +1657,34 @@ interface Precomputes {
     baseSpendingNet: number;
     otherSpendingGoalsNet: number;
   }>;
+  /** Max additional Trad-spending dollars per year that stay within the 12%
+   *  federal bracket, **conv-inclusive** (the year's conversion gross is already
+   *  in the baseline). Used by `computeSpendingWaterfall` under
+   *  `spendingWithdrawalOrder === 'bracket_aware'`. Zero when no headroom
+   *  (high-bracket years) or when the strategy is `taxable_first`. */
+  bracketHeadroomForTradByYear: number[];
+  /** Resolved spending-source strategy for the scenario. Computed once via
+   *  `resolveSpendingWithdrawalOrder` so each MC run doesn't re-scan
+   *  `incomeEvents`. */
+  spendingOrder: ResolvedSpendingOrder;
+}
+
+// Resolve the spending-source strategy for the scenario. Content-aware default:
+// if any roth_conversion event exists, default to 'bracket_aware' (preserves
+// Taxable for high-mt conversion years); otherwise 'taxable_first' (current
+// conservative behavior). User can override via UserData.spendingWithdrawalOrder.
+//
+// Unknown values (legacy 'pro_rata' from a prior enum draft, typos in
+// hand-edited JSON, etc.) are NOT trusted — they fall through to the
+// content-aware default rather than silently behaving like taxable_first
+// with no signal. The TypeScript type prevents this for code-authored
+// scenarios; the runtime check covers JSON-imported scenarios.
+export type ResolvedSpendingOrder = 'taxable_first' | 'bracket_aware';
+export function resolveSpendingWithdrawalOrder(userData: UserData): ResolvedSpendingOrder {
+  const v = userData.spendingWithdrawalOrder;
+  if (v === 'taxable_first' || v === 'bracket_aware') return v;
+  const hasConversion = userData.incomeEvents.some((e) => e.type === 'roth_conversion');
+  return hasConversion ? 'bracket_aware' : 'taxable_first';
 }
 
 // Execute a single simulation run (Monte Carlo sim, historical slice, or nominal
@@ -1483,6 +1702,9 @@ function simulateOneRun(
 ): SimRun {
   const currentYear = userData.referenceYear;
   const totalYears = precomputes.ageByYear.length;
+  // Spending-source strategy is resolved once in the precompute layer
+  // (runSimulation / runDeterministicProjection) so each MC run reuses it.
+  const spendingOrder = precomputes.spendingOrder;
 
   const balances = initialAccountBalances(userData);
   const path: number[] = [];
@@ -1537,7 +1759,8 @@ function simulateOneRun(
     const postGrowth = sumBalances(balances);
     const cap = Math.max(0, postGrowth);
     const effectiveCashFlow = calculateAnnualCashFlowCore(
-      userData, year, yearIncome, yearSpending, yearStateProfile, yearStateResolvedKey, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi
+      userData, year, yearIncome, yearSpending, yearStateProfile, yearStateResolvedKey, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi,
+      spendingOrder, precomputes.bracketHeadroomForTradByYear[i],
     );
     breakdowns.push(effectiveCashFlow);
 
@@ -1608,6 +1831,8 @@ export function runSimulation(
   const spouseAgeByYear: Array<number | null> = new Array(totalYears);
   const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
   const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
+  const bracketHeadroomForTradByYear: number[] = new Array(totalYears);
+  const resolvedSpendingOrder = resolveSpendingWithdrawalOrder(userData);
   for (let i = 0; i < totalYears; i++) {
     const year = currentYear + i;
     const sn = getEffectiveStateName(userData, year);
@@ -1620,9 +1845,13 @@ export function runSimulation(
     spouseAgeByYear[i] = userData.spouseAge !== null ? userData.spouseAge + i : null;
     incomeByYear[i] = accumulateIncome(userData, year, inflationRate);
     spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
+    bracketHeadroomForTradByYear[i] = resolvedSpendingOrder === 'bracket_aware'
+      ? computeBracketHeadroomForTrad(userData, incomeByYear[i], year, inflationRate, ageByYear[i], spouseAgeByYear[i])
+      : 0;
   }
   const precomputes: Precomputes = {
     stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
+    bracketHeadroomForTradByYear, spendingOrder: resolvedSpendingOrder,
   };
 
   const accountIndex = buildAccountIndex(userData);
@@ -1745,6 +1974,8 @@ export function runDeterministicProjection(rawUserData: UserData): {
   const spouseAgeByYear: Array<number | null> = new Array(totalYears);
   const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
   const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
+  const bracketHeadroomForTradByYear: number[] = new Array(totalYears);
+  const resolvedSpendingOrder = resolveSpendingWithdrawalOrder(userData);
   for (let i = 0; i < totalYears; i++) {
     const year = currentYear + i;
     const sn = getEffectiveStateName(userData, year);
@@ -1757,9 +1988,13 @@ export function runDeterministicProjection(rawUserData: UserData): {
     spouseAgeByYear[i] = userData.spouseAge !== null ? userData.spouseAge + i : null;
     incomeByYear[i] = accumulateIncome(userData, year, inflationRate);
     spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
+    bracketHeadroomForTradByYear[i] = resolvedSpendingOrder === 'bracket_aware'
+      ? computeBracketHeadroomForTrad(userData, incomeByYear[i], year, inflationRate, ageByYear[i], spouseAgeByYear[i])
+      : 0;
   }
   const precomputes: Precomputes = {
     stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
+    bracketHeadroomForTradByYear, spendingOrder: resolvedSpendingOrder,
   };
   const accountIndex = buildAccountIndex(userData);
   const blackSwanLookup = buildBlackSwanLookup(userData);

@@ -42,6 +42,20 @@ export interface UserData {
   // doesn't yet exist). Single value, applied to both i=0 and i=1.
   priorWorkingMagi?: number;
   contributionLimits?: ContributionLimits;
+  // Spending withdrawal source policy. Controls ONLY where living-expenses cash
+  // comes from — does NOT change the conversion gross, conversion-tax sourcing,
+  // or any other intent.
+  //   'taxable_first' — RMD → Taxable → Trad-above-RMD → Roth (current default
+  //     when no conversions exist). Conservative; preserves Traditional.
+  //   'bracket_aware' — RMD → Trad up to top-of-12%-federal-bracket headroom
+  //     (conv- and SS-inclusive) → Taxable → Trad-above-headroom → Roth. Smart
+  //     default when any roth_conversion event exists: pulls Trad cheaply in
+  //     low-bracket years to preserve Taxable for high-mt conversion years.
+  //     See CLAUDE.md "Cross-year spending source policy" for blind spots
+  //     (IRMAA cliffs, NIIT thresholds, state retirement exclusions, etc.).
+  // When undefined, resolved at sim start: 'bracket_aware' if conversions exist,
+  // else 'taxable_first'.
+  spendingWithdrawalOrder?: 'taxable_first' | 'bracket_aware';
 }
 
 export interface ContributionLimits {

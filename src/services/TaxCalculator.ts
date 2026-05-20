@@ -167,7 +167,12 @@ const additionalSeniorPerByYear: Record<
   },
 };
 
-function getNumQualifyingSeniors(
+/**
+ * Number of filers age 65+ who qualify for the senior-bonus standard
+ * deduction (1 for single/HoH/MFS filers age 65+, plus 1 for an MFJ spouse
+ * age 65+).
+ */
+export function getNumQualifyingSeniors(
   status: FilingStatus,
   age: number,
   spouseAge: number | null
@@ -179,7 +184,14 @@ function getNumQualifyingSeniors(
   return num;
 }
 
-function getUsualSeniorExtra(
+/**
+ * The "usual" senior standard-deduction add-on (the long-standing IRS
+ * age-65 extra; separate from the temporary OBBB extra). Deterministic —
+ * depends only on filing status, age(s), tax year, and inflation. Exported
+ * for callers that need the effective deduction inclusive of the senior
+ * bonus (e.g. the bracket-aware headroom precompute in SimulationService).
+ */
+export function getUsualSeniorExtra(
   status: FilingStatus,
   taxYear: number,
   numQualifying: number,
@@ -492,6 +504,35 @@ export function getFederalBracketIndex(
     if (taxable <= scaledUpper) return i;
   }
   return brackets.length - 1;
+}
+
+/**
+ * Returns the upper bound (taxable income, inflation-scaled) of the federal
+ * bracket at `bracketIndex` (0 = 10%, 1 = 12%, 2 = 22%, ...). Returns Infinity
+ * for the top bracket. Standard deduction is NOT applied — the returned value
+ * is a taxable-income ceiling, not a gross-income ceiling. Callers comparing
+ * against gross income must add the standard deduction.
+ *
+ * Used by the bracket-aware spending waterfall (see CLAUDE.md "Cross-year
+ * spending source policy") to compute Trad-spending headroom that stays
+ * within a target marginal rate.
+ */
+export function getBracketCeilingTaxableIncome(
+  status: FilingStatus,
+  bracketIndex: number,
+  taxYear: number,
+  inflationRate?: number
+): number {
+  const availableYears = Object.keys(bracketsByYear)
+    .map(Number)
+    .sort((a, b) => b - a);
+  const effectiveYear =
+    availableYears.find((year) => year <= taxYear) || availableYears[0];
+  const brackets = bracketsByYear[effectiveYear]?.[status];
+  if (!brackets || bracketIndex < 0 || bracketIndex >= brackets.length) return 0;
+  const upper = brackets[bracketIndex].upper;
+  if (upper === Infinity) return Infinity;
+  return upper * inflationFactor(taxYear, inflationRate);
 }
 
 // SS taxable fraction thresholds (frozen since 1983/1993, not inflation-indexed)

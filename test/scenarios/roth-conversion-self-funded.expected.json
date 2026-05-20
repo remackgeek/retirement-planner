@@ -1,0 +1,15 @@
+{
+  "_rationale": "Hybrid sourcing falls back to withholding when no Taxable + no RMD-excess. Full $50k conversion executes; ~$4-5k federal tax (single 60, no senior bonus) withheld from the conversion itself. Roth net deposit ≈ $45-46k. Verifies that the engine no longer caps the conversion as the prior PR did — it now mirrors real-world IRS Form 1099-R Box 4 withholding behavior.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Full conversion executes" },
+    { "index": 0, "field": "rothConversionRequested", "value": 50000, "tolerance": 1, "_note": "No Trad shortfall" },
+    { "index": 0, "field": "rothConversionTaxWithheld", "min": 3000, "max": 5500, "_note": "Federal tax on $34k taxable income, withheld from the conversion" },
+    { "index": 0, "field": "rothConversionTaxFromTaxable", "value": 0, "tolerance": 0.01, "_note": "No Taxable to source from" },
+    { "index": 0, "field": "rothConversionTaxFromRmdExcess", "value": 0, "tolerance": 0.01, "_note": "No RMD at age 60" },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 50000, "tolerance": 5, "_note": "Full Trad pull = conversion principal; tax withheld from this pull" },
+    { "index": 0, "field": "withdrawalFromTaxable", "value": 0, "tolerance": 0.01, "_note": "No Taxable" },
+    { "index": 0, "field": "ordinaryTax", "min": 3000, "max": 5500, "_note": "Same as withheld amount" }
+  ]
+}
