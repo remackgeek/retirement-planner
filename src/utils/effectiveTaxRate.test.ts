@@ -19,6 +19,7 @@ const makeBd = (overrides: Partial<AnnualCashFlowBreakdown>): AnnualCashFlowBrea
   ordinaryTax: 0,
   federalCapGainsTax: 0,
   stateCapGainsTax: 0,
+  stateLocalitySurcharge: 0,
   irmaaSurcharge: 0,
   niitTax: 0,
   netCashFlow: 0,

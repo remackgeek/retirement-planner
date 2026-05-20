@@ -7,11 +7,13 @@ import {
   getStandardDeduction,
 } from './TaxCalculator';
 import {
-  STATE_TAX_RATES,
   IRS_UNIFORM_LIFETIME_TABLE,
   initialAccountBalances,
   runDeterministicProjection,
+  getEffectiveStateName,
 } from './SimulationService';
+import { getStateTaxProfile } from '../data/stateTaxProfiles';
+import { computeStateTax } from './StateTaxCalculator';
 
 export interface ConversionImpact {
   firstYearTax: number;             // incremental ordinary tax in the first conversion year
@@ -21,21 +23,57 @@ export interface ConversionImpact {
   netPlanValueImpact: number;       // signed delta of plan value at life expectancy (with vs without)
 }
 
-// Resolve the effective state tax rate for `year` from the user's timeline.
-// Duplicated locally to keep the impact helper decoupled from sim internals.
-function getStateTaxRate(userData: UserData, year: number): number {
-  const timeline = userData.stateTimeline;
-  if (!timeline || timeline.length === 0) return 0;
-  let effectiveState = timeline[0].state;
-  for (let i = 1; i < timeline.length; i++) {
-    const startYear = timeline[i].startYear;
-    if (startYear != null && year >= startYear) {
-      effectiveState = timeline[i].state;
-    } else {
-      break;
-    }
-  }
-  return STATE_TAX_RATES[effectiveState] ?? 0;
+// Incremental conversion tax helper. Uses the federal-only `calculateNetFromGross`
+// plus the profile-based `computeStateTax` so the marginal-tax estimate honors
+// retirement-income exclusions, SS rules, and graduated state brackets.
+function incrementalTaxOnConversion(
+  userData: UserData,
+  year: number,
+  baseOrdinary: number,
+  baseSsTaxable: number,
+  baseSsGross: number,
+  withConvOrdinary: number,
+  withConvSsTaxable: number,
+  withConvSsGross: number,
+  convAmount: number,
+  age: number,
+  spouseAgeYear: number | null,
+): number {
+  const stateName = getEffectiveStateName(userData, year);
+  const { profile, resolvedKey } = getStateTaxProfile(stateName, year);
+  const baseGross = baseOrdinary + baseSsTaxable;
+  const withConvGross = withConvOrdinary + withConvSsTaxable;
+  const baseFedNet = baseGross > 0
+    ? calculateNetFromGross(baseGross, userData.filingStatus, age, year, spouseAgeYear, userData.inflationRate)
+    : 0;
+  const withConvFedNet = calculateNetFromGross(
+    withConvGross, userData.filingStatus, age, year, spouseAgeYear, userData.inflationRate
+  );
+  const baseFedTax = baseGross - baseFedNet;
+  const withConvFedTax = withConvGross - withConvFedNet;
+  // The conversion flows as an additional Traditional withdrawal for state-rule
+  // purposes (it's taxed as ordinary income from a Traditional account).
+  const baseStateRes = computeStateTax(profile, {
+    ordinaryGross: baseOrdinary,
+    ssTaxableFederal: baseSsTaxable,
+    ssGross: baseSsGross,
+    traditionalWithdrawal: 0,
+    ltcgFromTaxable: 0,
+    age, spouseAge: spouseAgeYear, filingStatus: userData.filingStatus,
+    year, inflationRate: userData.inflationRate,
+  }, resolvedKey);
+  const withConvStateRes = computeStateTax(profile, {
+    ordinaryGross: baseOrdinary,
+    ssTaxableFederal: withConvSsTaxable,
+    ssGross: withConvSsGross,
+    traditionalWithdrawal: convAmount,
+    ltcgFromTaxable: 0,
+    age, spouseAge: spouseAgeYear, filingStatus: userData.filingStatus,
+    year, inflationRate: userData.inflationRate,
+  }, resolvedKey);
+  const baseStateTax = baseStateRes.stateOrdinaryTax + baseStateRes.stateLocalitySurcharge;
+  const withConvStateTax = withConvStateRes.stateOrdinaryTax + withConvStateRes.stateLocalitySurcharge;
+  return Math.max(0, (withConvFedTax + withConvStateTax) - (baseFedTax + baseStateTax));
 }
 
 // Compute per-year baseline ordinary taxable income from the *non-conversion*
@@ -166,7 +204,6 @@ export function estimateConversionImpact(
       userData.spouseAge !== null
         ? userData.spouseAge + (year - userData.referenceYear)
         : null;
-    const stateTaxRate = getStateTaxRate(userData, year);
     const { ssGross, otherTaxableGross } = baselineOrdinaryGross(userData, year, inflationRate);
 
     // Incremental federal+state tax of adding the conversion to ordinary gross.
@@ -176,23 +213,12 @@ export function estimateConversionImpact(
     const withConvOrdinary = baseOrdinary + convAmount;
     const baseSsTaxable = calculateSSTaxableAmount(ssGross, baseOrdinary, userData.filingStatus);
     const withConvSsTaxable = calculateSSTaxableAmount(ssGross, withConvOrdinary, userData.filingStatus);
-    const baseGross = baseOrdinary + baseSsTaxable;
-    const withConvGross = withConvOrdinary + withConvSsTaxable;
-    const baseNet = baseGross > 0
-      ? calculateNetFromGross(baseGross, stateTaxRate, userData.filingStatus, age, year, spouseAgeYear, userData.inflationRate)
-      : 0;
-    const withConvNet = calculateNetFromGross(
-      withConvGross,
-      stateTaxRate,
-      userData.filingStatus,
-      age,
-      year,
-      spouseAgeYear,
-      userData.inflationRate
+    const incrementalTax = incrementalTaxOnConversion(
+      userData, year,
+      baseOrdinary, baseSsTaxable, ssGross,
+      withConvOrdinary, withConvSsTaxable, ssGross,
+      convAmount, age, spouseAgeYear,
     );
-    const baseTax = baseGross - baseNet;
-    const withConvTax = withConvGross - withConvNet;
-    const incrementalTax = Math.max(0, withConvTax - baseTax);
 
     if (year === startYear) firstYearTax = incrementalTax;
     totalTaxOverConversion += incrementalTax;

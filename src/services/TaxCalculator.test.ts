@@ -140,7 +140,7 @@ describe('calculateNetFromGrossDetailed', () => {
     //    + (50,400 - 12,400) * 0.12 = 4,560
     //    + (83,900 - 50,400) * 0.22 = 7,370
     //    = 13,170
-    const d = calculateNetFromGrossDetailed(100000, 0, 'single', 50, 2026, null, 0);
+    const d = calculateNetFromGrossDetailed(100000, 'single', 50, 2026, null, 0);
     expect(d.standardDeduction).toBe(16100);
     expect(d.totalDeductions).toBe(16100);
     expect(d.taxableIncome).toBe(83900);
@@ -156,14 +156,14 @@ describe('calculateNetFromGrossDetailed', () => {
     expect(d.federalBrackets[3].taxInBracket).toBe(0);
   });
 
-  it('matches calculateNetFromGross for the same inputs', () => {
-    const detailed = calculateNetFromGrossDetailed(75000, 0.05, 'mfj', 65, 2026, 65, 0);
-    const plain = calculateNetFromGross(75000, 0.05, 'mfj', 65, 2026, 65, 0);
-    expect(detailed.net).toBeCloseTo(plain, 2);
+  it('matches calculateNetFromGross for the same inputs (federal-only)', () => {
+    const detailed = calculateNetFromGrossDetailed(75000, 'mfj', 65, 2026, 65, 0);
+    const plain = calculateNetFromGross(75000, 'mfj', 65, 2026, 65, 0);
+    expect(detailed.federalNet).toBeCloseTo(plain, 2);
   });
 
   it('captures senior add-on for age >= 65', () => {
-    const d = calculateNetFromGrossDetailed(50000, 0, 'single', 67, 2026, null, 0);
+    const d = calculateNetFromGrossDetailed(50000, 'single', 67, 2026, null, 0);
     // 2026 single age-65+ extra: $2,050 per qualifying senior; OBBB also applies through 2028.
     expect(d.numQualifyingSeniors).toBe(1);
     expect(d.seniorAddOn).toBe(2050);

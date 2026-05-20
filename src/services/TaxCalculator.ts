@@ -323,26 +323,28 @@ function calculateFederalTaxDetailed(
   };
 }
 
-// Memoization cache for tax calculations
+// Memoization cache for federal-only tax calculations (state is handled
+// separately via the profile-based StateTaxCalculator and is not cached here).
 const taxCalculationCache = new Map<string, number>();
 
 function getNetCacheKey(
   grossIncome: number,
-  stateTaxRate: number,
   filingStatus: FilingStatus,
   age: number,
   taxYear: number,
   spouseAge: number | null,
   inflationRate?: number
 ): string {
-  return `net_${grossIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}_${inflationRate ?? 0}`;
+  return `net_${grossIncome}_${filingStatus}_${age}_${taxYear}_${spouseAge}_${inflationRate ?? 0}`;
 }
 
 /**
- * Detailed federal+state tax breakdown for the Tax Audit view. Returns all
+ * Detailed federal tax breakdown for the Tax Audit view. Returns all
  * intermediates (deduction parts, AGI, taxable income, bracket index, marginal
- * rate, per-bracket allocation, federal vs state split, net). Not memoized —
- * meant for representative-path detail rows, not the inner MC loop.
+ * rate, per-bracket allocation, federal tax, net). State tax is now computed
+ * separately via `computeStateTax` in `StateTaxCalculator.ts` and is not
+ * included in this struct. Not memoized — meant for representative-path detail
+ * rows, not the inner MC loop.
  */
 export interface DetailedNetFromGross {
   grossIncome: number;
@@ -352,9 +354,8 @@ export interface DetailedNetFromGross {
   totalDeductions: number;
   taxableIncome: number;
   federalTax: number;
-  stateTax: number;
-  totalTax: number;
-  net: number;
+  /** Federal-only net (grossIncome - federalTax). State tax must be subtracted at the call site. */
+  federalNet: number;
   federalBracketIndex: number;
   federalMarginalRate: number;
   federalBrackets: FederalBracketDetail[];
@@ -363,7 +364,6 @@ export interface DetailedNetFromGross {
 
 export function calculateNetFromGrossDetailed(
   grossIncome: number,
-  stateTaxRate: number,
   filingStatus: FilingStatus,
   age: number,
   taxYear: number,
@@ -385,8 +385,6 @@ export function calculateNetFromGrossDetailed(
   const totalDeductions = baseStdDed + usualExtra + obbbExtra;
   const taxableIncome = Math.max(0, safeGross - totalDeductions);
   const fed = calculateFederalTaxDetailed(taxableIncome, filingStatus, taxYear, inflationRate);
-  const stateTax = safeGross * stateTaxRate;
-  const totalTax = fed.totalTax + stateTax;
   return {
     grossIncome: safeGross,
     standardDeduction: baseStdDed,
@@ -395,9 +393,7 @@ export function calculateNetFromGrossDetailed(
     totalDeductions,
     taxableIncome,
     federalTax: fed.totalTax,
-    stateTax,
-    totalTax,
-    net: safeGross - totalTax,
+    federalNet: safeGross - fed.totalTax,
     federalBracketIndex: fed.bracketIndex,
     federalMarginalRate: fed.marginalRate,
     federalBrackets: fed.bracketDetails,
@@ -405,9 +401,12 @@ export function calculateNetFromGrossDetailed(
   };
 }
 
+/**
+ * Federal-only net from gross (gross − federal ordinary tax). State tax must
+ * be subtracted separately at the call site via `computeStateTax`.
+ */
 export function calculateNetFromGross(
   grossIncome: number,
-  stateTaxRate: number,
   filingStatus: FilingStatus,
   age: number,
   taxYear: number,
@@ -416,7 +415,6 @@ export function calculateNetFromGross(
 ): number {
   const cacheKey = getNetCacheKey(
     grossIncome,
-    stateTaxRate,
     filingStatus,
     age,
     taxYear,
@@ -427,7 +425,7 @@ export function calculateNetFromGross(
     return taxCalculationCache.get(cacheKey)!;
   }
 
-  if (grossIncome < 0 || stateTaxRate < 0 || stateTaxRate >= 1) {
+  if (grossIncome < 0) {
     throw new Error('Invalid input values');
   }
 
@@ -451,8 +449,7 @@ export function calculateNetFromGross(
   const deduction = baseStdDed + usualExtra + obbbExtra;
   const taxable = Math.max(0, grossIncome - deduction);
   const federalTax = calculateFederalTax(taxable, filingStatus, taxYear, inflationRate);
-  const stateTax = grossIncome * stateTaxRate;
-  const result = grossIncome - federalTax - stateTax;
+  const result = grossIncome - federalTax;
   taxCalculationCache.set(cacheKey, result);
   return result;
 }

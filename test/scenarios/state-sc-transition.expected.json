@@ -1,0 +1,8 @@
+{
+  "_rationale": "Year 1 (2026): SC base profile (6% flat) applies → state tax ≈ $3,960; federal $8,770 → ordinaryTax ≈ $12,730. Year 2 (2027): successor profile 'South Carolina (2027+)' activates → 5.2% × $66k = $3,432; federal $8,770 → ordinaryTax ≈ $12,202. Difference reflects the SC top-rate sunset.",
+  "probability": 100,
+  "breakdownChecks": [
+    { "index": 0, "field": "ordinaryTax", "min": 12600, "max": 12900, "_note": "2026: SC 6%" },
+    { "index": 1, "field": "ordinaryTax", "min": 12050, "max": 12400, "_note": "2027: SC successor 5.2%" }
+  ]
+}

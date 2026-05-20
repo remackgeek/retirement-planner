@@ -303,6 +303,8 @@ function exportCsv(
     // ---- audit columns ----
     'AGI', 'Standard Deduction', 'Senior Add-On', 'OBBB Reduction', 'Total Deductions', 'Taxable Income',
     'Federal Bracket Index', 'Federal Marginal Rate', 'Federal Ordinary Tax', 'State Ordinary Tax', 'Effective State',
+    'State Std Deduction', 'State Retirement Exclusion', 'State SS Included', 'State Marginal Rate', 'State Bracket Index',
+    'State Locality Surcharge', 'State LTCG Taxable', 'State LTCG Threshold',
     'SS Provisional Income', 'SS Zone',
     'IRMAA Lookback MAGI', 'IRMAA Tier', 'IRMAA Per-Enrollee Annual', 'IRMAA Enrollees',
     'NIIT MAGI', 'NIIT Threshold', 'NIIT MAGI Excess', 'NIIT Taxable Base',
@@ -365,6 +367,14 @@ function exportCsv(
       Math.round(toDisplay(bd.audit?.stateOrdinaryTax ?? 0, bdF, displayCurrency)),
       // Quote the state name in case it contains a comma (e.g., "Washington, DC").
       `"${(bd.audit?.effectiveStateName ?? '').replace(/"/g, '""')}"`,
+      Math.round(toDisplay(bd.audit?.stateStdDeduction ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.stateRetirementExclusionApplied ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.stateSsIncludedInState ?? 0, bdF, displayCurrency)),
+      ((bd.audit?.stateMarginalRate ?? 0) * 100).toFixed(2) + '%',
+      bd.audit?.stateBracketIndex ?? 0,
+      Math.round(toDisplay(bd.audit?.stateLocalitySurcharge ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.stateLtcgTaxableAtState ?? 0, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.audit?.stateLtcgThresholdApplied ?? 0, bdF, displayCurrency)),
       Math.round(toDisplay(bd.audit?.ssProvisionalIncome ?? 0, bdF, displayCurrency)),
       bd.audit?.ssZone ?? 'none',
       Math.round(toDisplay(bd.audit?.irmaaLookbackMagi ?? 0, bdF, displayCurrency)),

@@ -5,8 +5,11 @@ import { InputText } from 'primereact/inputtext';
 import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
+import { Checkbox } from 'primereact/checkbox';
+import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import type { Scenario } from '../types/Scenario';
 import { spacing, colors, fontSize, border } from '../styles/theme';
+import { SELECTABLE_STATES, getStateTaxProfile } from '../data/stateTaxProfiles';
 
 const SectionGrid = styled.div`
   display: grid;
@@ -93,18 +96,10 @@ const filingStatusOptions = [
   { label: 'Head of Household', value: 'hoh' },
 ];
 
-const stateOptions = [
-  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado',
-  'Connecticut', 'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho',
-  'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana',
-  'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota',
-  'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
-  'New Hampshire', 'New Jersey', 'New Mexico', 'New York',
-  'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon',
-  'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota',
-  'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
-  'West Virginia', 'Wisconsin', 'Wyoming', 'Washington, DC',
-].map((s) => ({ label: s, value: s }));
+// State list now sourced from the per-state profile registry (includes "New York City"
+// as a pseudo-state with NYC local tax). Successor variants ("South Carolina (2027+)",
+// "West Virginia (2027+)") are filtered out of the dropdown.
+const stateOptions = SELECTABLE_STATES.map((s) => ({ label: s, value: s }));
 
 const makeDefaults = (): Scenario => ({
   id: '',
@@ -294,6 +289,15 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
                 setTempData({ ...tempData, stateTimeline: updated });
               }}
             />
+            {(() => {
+              const sn = tempData.stateTimeline[0]?.state ?? 'California';
+              const p = getStateTaxProfile(sn, tempData.referenceYear).profile;
+              return p.summary ? (
+                <div style={{ fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 1.4 }}>
+                  {p.summary}
+                </div>
+              ) : null;
+            })()}
             <AddRelocationButton
               className='p-button-text p-button-sm'
               icon='pi pi-plus'
@@ -384,6 +388,39 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
             }}
           />
         </TimelineCard>
+      )}
+
+      {/* Scenario-level override: applies across the entire timeline. Shown when
+          ANY profile in the timeline has a non-`none` retirement exclusion. */}
+      {tempData.stateTimeline.some((entry) => {
+        const p = getStateTaxProfile(entry.state, tempData.referenceYear).profile;
+        return p.retirementExclusion.kind !== 'none';
+      }) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm }}>
+          <Checkbox
+            inputId="scenario-state-exclusion-override"
+            checked={tempData.disableStateRetirementExclusion === true}
+            onChange={(e) => setTempData({
+              ...tempData,
+              disableStateRetirementExclusion: e.checked ? true : undefined,
+            })}
+          />
+          <label
+            htmlFor="scenario-state-exclusion-override"
+            className="scn-exclusion-override-tip"
+            style={{ fontSize: fontSize.xs, color: colors.textMuted, cursor: 'pointer' }}
+          >
+            Disable state retirement-income exclusion (advanced)
+          </label>
+          <PrimeTooltip target=".scn-exclusion-override-tip" position="bottom" showDelay={150}>
+            <div style={{ maxWidth: '20rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+              Some state retirement-income exclusions apply only to specific income sources
+              (e.g. public pensions, defined-benefit plans). If your Traditional withdrawals
+              don't qualify under your state's actual rule, check this to expose them fully
+              to state ordinary brackets. Applies to every state in the timeline.
+            </div>
+          </PrimeTooltip>
+        </div>
       )}
     </Dialog>
   );

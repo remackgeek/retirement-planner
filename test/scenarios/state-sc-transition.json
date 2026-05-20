@@ -1,0 +1,55 @@
+{
+  "_description": "South Carolina top-rate sunset: 6% through 2026, 5.2% from 2027 via successor profile. Same pension, same year-1 vs year-2 financial inputs — observable difference in state tax.",
+  "_rationale": "Single, SC, ages 60–61. $80k pension before-tax, no spending goal (surplus goes to reinvestment), zero growth/inflation/stddev. Federal tax on $80k (age 60, no senior add-on yet) = federal tax(80k − 16,100 std ded = 63,900) = 10%·12,400 + 12%·38,000 + 22%·13,500 = 1,240 + 4,560 + 2,970 = $8,770. SC: pension is `before_tax` ordinary, not Traditional withdrawal → SC's $10k retirement exclusion (65+) doesn't apply (age < 65 and not Trad). State base = $80k − $14,000 SC std ded = $66,000. Year 1 (2026): SC 6% × $66k = $3,960. Year 2 (2027): SC successor 5.2% × $66k = $3,432.",
+  "_seed": 12345,
+  "name": "SC 2026→2027 transition",
+  "currentAge": 60,
+  "lifeExpectancy": 62,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "name": "Pension",
+      "amount": 80000,
+      "startAge": 60,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    { "state": "South Carolina" }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Reinvestment",
+      "type": "taxable",
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

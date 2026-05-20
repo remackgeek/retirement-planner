@@ -92,8 +92,43 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
           <Row label="Total deductions" value={`$${fmtMoney(d(audit.totalDeductions))}`} muted />
           <Row label="Taxable income" value={`$${fmtMoney(d(audit.taxableIncome))}`} />
           <Row label="Federal tax" value={`$${fmtMoney(d(audit.federalOrdinaryTax))}`} />
-          <Row label={`State tax (${audit.effectiveStateName})`} value={`$${fmtMoney(d(audit.stateOrdinaryTax))}`} />
           <Row label="Marginal federal rate" value={fmtPctRound(audit.federalMarginalRate)} />
+        </Section>
+
+        <Section title={`State tax — ${audit.effectiveStateName}`}>
+          {audit.stateNotes && (
+            <div style={{ fontSize: fontSize.xs, color: colors.textMuted, marginBottom: spacing.xs, lineHeight: 1.4 }}>
+              {audit.stateNotes}
+            </div>
+          )}
+          {/* Components flow INTO the state ordinary base. Show each piece the
+              user's state actually pulled or excluded, then arrive at the post-
+              rule base, then subtract the state standard deduction, then walk
+              the brackets. */}
+          <Row label="Ordinary income" value={`$${fmtMoney(d(breakdown.otherTaxableGross))}`} muted />
+          {breakdown.withdrawalFromTraditional > 0.5 && (
+            <Row label="+ Traditional withdrawal" value={`$${fmtMoney(d(breakdown.withdrawalFromTraditional))}`} muted />
+          )}
+          {breakdown.ssTaxableAmount > 0.5 && (
+            <Row label="+ SS taxable (federal portion)" value={`$${fmtMoney(d(breakdown.ssTaxableAmount))}`} muted />
+          )}
+          {audit.stateRetirementExclusionApplied > 0.5 && (
+            <Row label="− State retirement-income exclusion" value={`$${fmtMoney(d(audit.stateRetirementExclusionApplied))}`} />
+          )}
+          {breakdown.ssTaxableAmount > 0.5 && audit.stateSsIncludedInState < breakdown.ssTaxableAmount - 0.5 && (
+            <Row label="− SS exempted by state" value={`$${fmtMoney(d(breakdown.ssTaxableAmount - audit.stateSsIncludedInState))}`} />
+          )}
+          <Row label="= State ordinary base" value={`$${fmtMoney(d(audit.stateOrdinaryBaseGross))}`} />
+          {audit.stateStdDeduction > 0.5 && (
+            <Row label="− State standard deduction" value={`$${fmtMoney(d(audit.stateStdDeduction))}`} />
+          )}
+          <Row label="State ordinary tax" value={`$${fmtMoney(d(audit.stateOrdinaryTax))}`} />
+          {audit.stateMarginalRate > 0 && (
+            <Row label="State marginal rate" value={fmtPctRound(audit.stateMarginalRate)} muted />
+          )}
+          {audit.stateLocalitySurcharge > 0.5 && (
+            <Row label="Locality surcharge (NYC)" value={`$${fmtMoney(d(audit.stateLocalitySurcharge))}`} />
+          )}
         </Section>
 
         {audit.federalBrackets.length > 0 && audit.taxableIncome > 0 && (
@@ -207,10 +242,16 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
           <Section title="Capital Gains (taxable account withdrawal)">
             <Row label="Taxable withdrawal" value={`$${fmtMoney(d(breakdown.withdrawalFromTaxable))}`} />
             <Row label="Federal LTCG (flat rate)" value={`$${fmtMoney(d(breakdown.federalCapGainsTax))}`} />
-            <Row label={`State tax (${audit.effectiveStateName})`} value={`$${fmtMoney(d(breakdown.stateCapGainsTax))}`} />
+            {audit.stateLtcgThresholdApplied > 0 && (
+              <Row label="State LTCG threshold (indexed)" value={`$${fmtMoney(d(audit.stateLtcgThresholdApplied))}`} muted />
+            )}
+            <Row label={`State LTCG (${audit.effectiveStateName})`} value={`$${fmtMoney(d(breakdown.stateCapGainsTax))}`} />
+            {audit.stateLtcgTaxableAtState !== breakdown.withdrawalFromTaxable && (
+              <Row label="State-taxable LTCG portion" value={`$${fmtMoney(d(audit.stateLtcgTaxableAtState))}`} muted />
+            )}
             <div style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: spacing.xs, lineHeight: 1.4 }}>
               Cost basis is not tracked — federal LTCG applies the flat <code>longTermCapGainsRate</code> to the full gross withdrawal.
-              0/15/20% bracket stacking is not modeled.
+              0/15/20% bracket stacking is not modeled. State treatment per profile (most: ordinary brackets; MO: exempt; WA: 7% above $270k indexed threshold).
             </div>
           </Section>
         )}
@@ -222,6 +263,11 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', columnGap: spacing.md, rowGap: '2px', fontSize: fontSize.xs }}>
             <span>Federal ordinary</span><span style={{ textAlign: 'right' }}>${fmtMoney(d(audit.federalOrdinaryTax))}</span>
             <span>State ordinary</span><span style={{ textAlign: 'right' }}>${fmtMoney(d(audit.stateOrdinaryTax))}</span>
+            {audit.stateLocalitySurcharge > 0.5 && (
+              <>
+                <span>Locality (NYC)</span><span style={{ textAlign: 'right' }}>${fmtMoney(d(audit.stateLocalitySurcharge))}</span>
+              </>
+            )}
             <span>Federal LTCG</span><span style={{ textAlign: 'right' }}>${fmtMoney(d(breakdown.federalCapGainsTax))}</span>
             <span>State LTCG</span><span style={{ textAlign: 'right' }}>${fmtMoney(d(breakdown.stateCapGainsTax))}</span>
             <span>NIIT</span><span style={{ textAlign: 'right' }}>${fmtMoney(d(breakdown.niitTax))}</span>

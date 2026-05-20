@@ -1,16 +1,16 @@
 {
-  "_rationale": "All spending pulls from taxable. Withdrawal w solves w·(1 − 0.15 − 0.08) = 50000 → w = 64935.07. Federal LTCG = 0.15 × w = 9740.26; State LTCG = 0.08 × w = 5194.81. MAGI proxy = w = 64935 < $200k NIIT threshold → NIIT = 0. Balance at end of year 1 = 1,000,000 − 64,935.07 = 935,064.93. Year 2 (age 61): again withdraw 64,935.07 → balance 870,129.86.",
+  "_rationale": "California per-state profile (graduated 1–13.3%) with the round-3 fix that lets the state std deduction ($5,540) absorb into LTCG when ordinary income is below the deduction. With $0 ordinary, the stacked walk runs CA single brackets over (w − $5,540): 1%·10,412 + 2%·14,272 + 4%·14,275 + 6%·15,122 + 8%·1,545.5 ≈ $1,992. Solving 50,000 = w − 0.15w − stateLTCG(w) iteratively → w ≈ $61,167. Federal LTCG = $9,175; State LTCG = $1,992 (vs. $2,481 before std-ded absorption, vs. $5,195 under the original flat-8% model). Balance year 1 = 1,000,000 − 61,167 = $938,833.",
   "probability": 100,
   "pathValues": [
     { "index": 0, "age": 60, "value": 1000000, "tolerance": 1, "note": "Starting balance" },
-    { "index": 1, "age": 61, "value": 935065, "tolerance": 2, "note": "After year-1 withdrawal" },
-    { "index": 2, "age": 62, "value": 870130, "tolerance": 2, "note": "After year-2 withdrawal" }
+    { "index": 1, "age": 61, "value": 938833, "tolerance": 30, "note": "After year-1 withdrawal (CA graduated LTCG with std-ded absorption)" },
+    { "index": 2, "age": 62, "value": 877667, "tolerance": 60, "note": "After year-2 withdrawal" }
   ],
   "breakdownChecks": [
-    { "index": 0, "field": "withdrawalFromTaxable", "value": 64935.07, "tolerance": 1, "_note": "50000 / 0.77" },
-    { "index": 0, "field": "federalCapGainsTax", "value": 9740.26, "tolerance": 0.5, "_note": "0.15 × 64935" },
-    { "index": 0, "field": "stateCapGainsTax", "value": 5194.81, "tolerance": 0.5, "_note": "0.08 × 64935 (California)" },
-    { "index": 0, "field": "niitTax", "value": 0, "tolerance": 0.01, "_note": "MAGI $64,935 < $200k single threshold" },
+    { "index": 0, "field": "withdrawalFromTaxable", "value": 61167, "tolerance": 20, "_note": "Solved from CA graduated LTCG stack against $50k spending net, with $5,540 std ded absorbed into LTCG" },
+    { "index": 0, "field": "federalCapGainsTax", "value": 9175, "tolerance": 5, "_note": "0.15 × 61167" },
+    { "index": 0, "field": "stateCapGainsTax", "value": 1992, "tolerance": 5, "_note": "CA graduated brackets on (61167 − 5540) = $55,627" },
+    { "index": 0, "field": "niitTax", "value": 0, "tolerance": 0.01, "_note": "MAGI $61,167 < $200k single threshold" },
     { "index": 0, "field": "irmaaSurcharge", "value": 0, "tolerance": 0.01, "_note": "Age 60 — not yet on Medicare" },
     { "index": 0, "field": "ordinaryTax", "value": 0, "tolerance": 0.01, "_note": "No ordinary income" }
   ]

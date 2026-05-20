@@ -11,6 +11,8 @@ import {
   type SsZone,
 } from './TaxCalculator';
 import { calculateIRMAA, calculateIRMAADetailed, calculateNIIT, calculateNIITDetailed } from './IRMAA';
+import { computeStateTax, type StateTaxResult } from './StateTaxCalculator';
+import { getStateTaxProfile, type StateTaxProfile } from '../data/stateTaxProfiles';
 import { getContributionLimits } from '../utils/contributionLimits';
 import {
   createReturnGenerator,
@@ -20,60 +22,15 @@ import {
   type ReturnGenerator,
 } from './ReturnGenerator';
 
-// State tax rates (from user's table, converted to decimal)
-export const STATE_TAX_RATES: Record<string, number> = {
-  Alabama: 0.05,
-  Alaska: 0.0,
-  Arizona: 0.025,
-  Arkansas: 0.039,
-  California: 0.08,
-  Colorado: 0.044,
-  Connecticut: 0.06,
-  Delaware: 0.066,
-  Florida: 0.0,
-  Georgia: 0.0539,
-  Hawaii: 0.079,
-  Idaho: 0.057,
-  Illinois: 0.0495,
-  Indiana: 0.03,
-  Iowa: 0.038,
-  Kansas: 0.0558,
-  Kentucky: 0.04,
-  Louisiana: 0.03,
-  Maine: 0.0675,
-  Maryland: 0.05,
-  Massachusetts: 0.05,
-  Michigan: 0.0425,
-  Minnesota: 0.068,
-  Mississippi: 0.044,
-  Missouri: 0.047,
-  Montana: 0.059,
-  Nebraska: 0.052,
-  Nevada: 0.0,
-  'New Hampshire': 0.0,
-  'New Jersey': 0.053,
-  'New Mexico': 0.047,
-  'New York': 0.055,
-  'North Carolina': 0.0425,
-  'North Dakota': 0.0195,
-  Ohio: 0.0275,
-  Oklahoma: 0.0475,
-  Oregon: 0.0875,
-  Pennsylvania: 0.0307,
-  'Rhode Island': 0.0475,
-  'South Carolina': 0.062,
-  'South Dakota': 0.0,
-  Tennessee: 0.0,
-  Texas: 0.0,
-  Utah: 0.0455,
-  Vermont: 0.066,
-  Virginia: 0.0575,
-  Washington: 0.0,
-  'West Virginia': 0.0482,
-  Wisconsin: 0.053,
-  Wyoming: 0.0,
-  'Washington, DC': 0.085,
-};
+// State tax modeling has moved to a per-state profile registry
+// (`src/data/stateTaxProfiles.ts`) + `computeStateTax` in `StateTaxCalculator.ts`.
+// Profiles encode brackets, deductions, SS taxability, retirement-income
+// exclusions, LTCG rules, and locality surcharges. Resolve a profile for a
+// scenario year via:
+//
+//   const profile = getStateTaxProfile(getEffectiveStateName(userData, year), year);
+//
+// The simulation loop precomputes one profile per year (see `Precomputes`).
 
 // IRS Uniform Lifetime Table (SECURE 2.0 / 2022 tables) — divisors by age.
 // Used to compute Required Minimum Distributions from Traditional accounts at age 73+.
@@ -92,10 +49,6 @@ export function calculateRMD(tradBalance: number, age: number): number {
   if (age < 73) return 0;
   const divisor = IRS_UNIFORM_LIFETIME_TABLE[Math.min(age, 114)] ?? 2.9;
   return tradBalance / divisor;
-}
-
-function getStateTaxRate(userData: UserData, year: number): number {
-  return STATE_TAX_RATES[getEffectiveStateName(userData, year)] || 0;
 }
 
 // Resolve the active state name for a given calendar year by walking the
@@ -427,9 +380,10 @@ export interface AnnualCashFlowBreakdown {
   withdrawalFromTraditional: number;  // total Traditional outflow: spending + RMD + Roth conversion
   withdrawalFromRoth: number;
   totalTax: number;
-  ordinaryTax: number;      // ordinary income tax (federal + state) on Traditional + SS + other taxable
+  ordinaryTax: number;      // ordinary income tax (federal + state + locality surcharge) on Traditional + SS + other taxable
   federalCapGainsTax: number; // federal LTCG tax on taxable account withdrawals (longTermCapGainsRate × fromTaxable)
-  stateCapGainsTax: number;   // state tax on taxable account withdrawals (most states treat LTCG as ordinary)
+  stateCapGainsTax: number;   // state tax on taxable account withdrawals (most states treat LTCG as ordinary; WA flat threshold; MO exempt)
+  stateLocalitySurcharge: number; // NYC ~3.876% municipal income tax (0 elsewhere); already included in `ordinaryTax` total
   irmaaSurcharge: number;     // Medicare IRMAA Part B+D surcharge (per enrollee × enrollee count); 0 if disabled or pre-65
   niitTax: number;            // 3.8% Net Investment Income Tax on the lesser of investment income or MAGI excess
   netCashFlow: number;
@@ -515,6 +469,28 @@ export interface AnnualAuditBreakdown {
   federalBrackets: FederalBracketDetail[];
   numQualifyingSeniors: number;
   effectiveStateName: string;
+
+  // ----- State tax detail (profile-based) -----
+  /** State ordinary base prior to deduction = ordinary + (Trad − exclusion) + (SS if included). */
+  stateOrdinaryBaseGross: number;
+  /** Inflation-indexed state standard deduction applied this year. */
+  stateStdDeduction: number;
+  /** Dollars of Traditional withdrawal excluded by the profile's retirement-income exclusion. */
+  stateRetirementExclusionApplied: number;
+  /** SS taxable portion that ended up in the state ordinary base. */
+  stateSsIncludedInState: number;
+  /** State ordinary marginal rate (top bracket reached). */
+  stateMarginalRate: number;
+  /** Index into the profile's bracket array for the top bracket reached. */
+  stateBracketIndex: number;
+  /** Locality (NYC) surcharge dollars (separate from stateOrdinaryTax). */
+  stateLocalitySurcharge: number;
+  /** Dollars of LTCG taxed at the state level (after WA threshold / MO exemption). */
+  stateLtcgTaxableAtState: number;
+  /** WA-style indexed threshold above which state LTCG applies (0 elsewhere). */
+  stateLtcgThresholdApplied: number;
+  /** Optional short caveat/note from the profile (surfaced in audit UI). */
+  stateNotes?: string;
 
   // ----- Social Security taxability -----
   ssProvisionalIncome: number;
@@ -949,7 +925,12 @@ export function computeMarginalStackAttribution(args: {
   fromTrad: number;
   rothConversionTotal: number;
   filingStatus: FilingStatus;
-  stateTaxRate: number;
+  /** Year's actual state-tax / federal-combinedTaxable ratio. State tax is
+   *  distributed across stack steps proportional to each step's federal taxable
+   *  contribution. Honest approximation: state rules (SS exemption, retirement
+   *  exclusion, locality) don't map 1:1 to the federal marginal stack, so we
+   *  use a single effective state rate for the year. */
+  stateEffectiveRate: number;
   age: number;
   taxYear: number;
   spouseAge: number | null;
@@ -957,7 +938,7 @@ export function computeMarginalStackAttribution(args: {
 }): IncomeEventTaxAttribution[] {
   const {
     eventBreakdowns, ssGross, ssTaxableAmount, fromTrad, rothConversionTotal,
-    filingStatus, stateTaxRate, age, taxYear, spouseAge, inflationRate,
+    filingStatus, stateEffectiveRate, age, taxYear, spouseAge, inflationRate,
   } = args;
 
   // 1. Build the ordered list of stack steps.
@@ -1037,9 +1018,10 @@ export function computeMarginalStackAttribution(args: {
     const combinedTaxable = stepCumulative + (step.kind === 'ss' ? step.signedTaxable : 0);
     let totalTax = 0;
     if (combinedTaxable > 0) {
-      totalTax = combinedTaxable - calculateNetFromGross(
-        combinedTaxable, stateTaxRate, filingStatus, age, taxYear, spouseAge, inflationRate,
+      const fedTax = combinedTaxable - calculateNetFromGross(
+        combinedTaxable, filingStatus, age, taxYear, spouseAge, inflationRate,
       );
+      totalTax = fedTax + combinedTaxable * stateEffectiveRate;
     }
     const marginalTax = totalTax - prevTax;
     if (step.kind === 'ss' && ssRecords.length > 1 && ssRecordsTotal > 0) {
@@ -1106,12 +1088,15 @@ export function calculateAnnualCashFlow(
       : { self: beginningTradBalance, spouse: 0 };
   }
 
+  const stateName = getEffectiveStateName(userData, year);
+  const { profile: stateProfile, resolvedKey: stateResolvedKey } = getStateTaxProfile(stateName, year);
   return calculateAnnualCashFlowCore(
     userData,
     year,
     accumulateIncome(userData, year, inflationRate),
     accumulateSpending(userData, year, inflationRate),
-    getStateTaxRate(userData, year),
+    stateProfile,
+    stateResolvedKey,
     userData.currentAge + i,
     spouseAge,
     balances,
@@ -1129,7 +1114,11 @@ function calculateAnnualCashFlowCore(
   year: number,
   income: AccumulatedIncome,
   spending: { baseSpendingNet: number; otherSpendingGoalsNet: number },
-  stateTaxRate: number,
+  stateProfile: StateTaxProfile,
+  // Resolved profile key (may differ from the timeline's state name when a
+  // year-bounded successor profile applied — e.g. "South Carolina (2027+)").
+  // Used as the audit/UI display name.
+  stateResolvedKey: string,
   age: number,
   spouseAge: number | null,
   balances: Record<string, number>,
@@ -1177,6 +1166,9 @@ function calculateAnnualCashFlowCore(
   let ordinaryTax = 0;
   let federalCapGainsTax = 0;
   let stateCapGainsTax = 0;
+  let stateLocalitySurcharge = 0;
+  let stateOrdinaryTaxOnly = 0;
+  let stateResultFinal: StateTaxResult | null = null;
   let niitTax = 0;
 
   // IRMAA is determined by the 2-year-prior MAGI, so it does not depend on this
@@ -1234,23 +1226,39 @@ function calculateAnnualCashFlowCore(
     const combinedTaxable = ordinaryGross + ssTaxableAmount;
 
     ordinaryTax = 0;
+    let federalOrdinaryTaxIter = 0;
     if (combinedTaxable > 0) {
-      const net = calculateNetFromGross(
+      const fedNet = calculateNetFromGross(
         combinedTaxable,
-        stateTaxRate,
         userData.filingStatus,
         age,
         year,
         spouseAge,
         inflationRate
       );
-      ordinaryTax = combinedTaxable - net;
+      federalOrdinaryTaxIter = combinedTaxable - fedNet;
     }
+    // Profile-based state tax: honors per-state SS rule, retirement-income
+    // exclusion, graduated brackets, state std deduction, LTCG rule, locality.
+    const stateRes = computeStateTax(stateProfile, {
+      ordinaryGross: income.otherTaxableGross,
+      ssTaxableFederal: ssTaxableAmount,
+      ssGross,
+      traditionalWithdrawal: fromTrad,
+      ltcgFromTaxable: fromTaxable,
+      age,
+      spouseAge,
+      filingStatus: userData.filingStatus,
+      year,
+      inflationRate: inflationRate ?? 0,
+      disableStateRetirementExclusion: userData.disableStateRetirementExclusion,
+    }, stateResolvedKey);
+    stateResultFinal = stateRes;
+    stateOrdinaryTaxOnly = stateRes.stateOrdinaryTax;
+    stateLocalitySurcharge = stateRes.stateLocalitySurcharge;
+    stateCapGainsTax = stateRes.stateCapGainsTax;
+    ordinaryTax = federalOrdinaryTaxIter + stateOrdinaryTaxOnly + stateLocalitySurcharge;
     federalCapGainsTax = fromTaxable * ltcgRate;
-    // Most states tax LTCG as ordinary income at the state rate. Apply the same
-    // state rate used for ordinary income above; state-specific LTCG preferences
-    // (e.g. WA capital gains tax) are not modeled.
-    stateCapGainsTax = fromTaxable * stateTaxRate;
     // NIIT: 3.8% × min(investment income, MAGI − threshold). Investment-income
     // proxy is the gross taxable-account withdrawal (same proxy as federal LTCG).
     // MAGI proxy = ordinary gross + SS taxable portion + taxable-account withdrawal.
@@ -1296,7 +1304,7 @@ function calculateAnnualCashFlowCore(
   const combinedTaxableFinal = ordinaryGrossFinal + ssTaxableAmount;
   const detailedTax = combinedTaxableFinal > 0
     ? calculateNetFromGrossDetailed(
-        combinedTaxableFinal, stateTaxRate, userData.filingStatus, age, year, spouseAge, inflationRate,
+        combinedTaxableFinal, userData.filingStatus, age, year, spouseAge, inflationRate,
       )
     : null;
   const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal, userData.filingStatus);
@@ -1307,6 +1315,16 @@ function calculateAnnualCashFlowCore(
   const niitDetail = niitEnabled
     ? calculateNIITDetailed(niitMagiFinal, fromTaxable, userData.filingStatus)
     : null;
+  // Marginal-stack attribution: each event's tax contribution is computed
+  // federally only here (state tax is allocated post-hoc proportional to each
+  // event's federal taxable contribution — see `stateEffectiveRate`). State
+  // rules (SS exemption, retirement exclusion, locality) don't map 1:1 to the
+  // federal marginal stack, so we distribute the year's actual state tax
+  // proportionally; sum reconciliation holds, individual event rows are an
+  // approximation.
+  const stateEffectiveRateOnFederalTaxable = combinedTaxableFinal > 0
+    ? (stateOrdinaryTaxOnly + stateLocalitySurcharge) / combinedTaxableFinal
+    : 0;
   const eventTaxAttr = computeMarginalStackAttribution({
     eventBreakdowns: income.eventBreakdowns,
     ssGross,
@@ -1314,7 +1332,7 @@ function calculateAnnualCashFlowCore(
     fromTrad,
     rothConversionTotal: rothConversion,
     filingStatus: userData.filingStatus,
-    stateTaxRate,
+    stateEffectiveRate: stateEffectiveRateOnFederalTaxable,
     age,
     taxYear: year,
     spouseAge,
@@ -1330,10 +1348,10 @@ function calculateAnnualCashFlowCore(
     federalBracketIndex: detailedTax?.federalBracketIndex ?? 0,
     federalMarginalRate: detailedTax?.federalMarginalRate ?? 0,
     federalOrdinaryTax: detailedTax?.federalTax ?? 0,
-    stateOrdinaryTax: detailedTax?.stateTax ?? 0,
+    stateOrdinaryTax: stateOrdinaryTaxOnly,
     federalBrackets: detailedTax?.federalBrackets ?? [],
     numQualifyingSeniors: detailedTax?.numQualifyingSeniors ?? 0,
-    effectiveStateName: getEffectiveStateName(userData, year),
+    effectiveStateName: stateResolvedKey,
 
     ssProvisionalIncome: ssDetail.provisionalIncome,
     ssProvisionalThreshold1: ssDetail.threshold1,
@@ -1361,6 +1379,17 @@ function calculateAnnualCashFlowCore(
     rmdBoyBalanceSpouse: spouseTradBal,
 
     incomeEventTaxBreakdown: eventTaxAttr,
+
+    stateOrdinaryBaseGross: stateResultFinal?.stateOrdinaryBaseGross ?? 0,
+    stateStdDeduction: stateResultFinal?.stateStdDeduction ?? 0,
+    stateRetirementExclusionApplied: stateResultFinal?.retirementExclusionApplied ?? 0,
+    stateSsIncludedInState: stateResultFinal?.ssIncludedInState ?? 0,
+    stateMarginalRate: stateResultFinal?.stateMarginalRate ?? 0,
+    stateBracketIndex: stateResultFinal?.stateBracketIndex ?? 0,
+    stateLocalitySurcharge,
+    stateLtcgTaxableAtState: stateResultFinal?.ltcgTaxableAtState ?? 0,
+    stateLtcgThresholdApplied: stateResultFinal?.ltcgThresholdApplied ?? 0,
+    stateNotes: stateResultFinal?.notes,
   };
 
   return {
@@ -1380,6 +1409,7 @@ function calculateAnnualCashFlowCore(
     ordinaryTax,
     federalCapGainsTax,
     stateCapGainsTax,
+    stateLocalitySurcharge,
     irmaaSurcharge,
     niitTax,
     netCashFlow,
@@ -1424,7 +1454,11 @@ interface SimRun {
 // Per-year precomputes shared across every run. Pulled out of the hot loop and
 // passed by reference into simulateOneRun.
 interface Precomputes {
-  stateTaxRateByYear: number[];
+  /** Resolved profile key per year — follows successor-profile chains so post-transition
+   *  years carry e.g. "South Carolina (2027+)" rather than the timeline's "South Carolina". */
+  stateResolvedKeyByYear: string[];
+  /** Per-state profile resolved for each year (follows successor profiles for SC, WV). */
+  stateProfileByYear: StateTaxProfile[];
   ageByYear: number[];
   spouseAgeByYear: Array<number | null>;
   incomeByYear: AccumulatedIncome[];
@@ -1464,7 +1498,10 @@ function simulateOneRun(
     const year = currentYear + i;
     const yearIncome = precomputes.incomeByYear[i];
     const yearSpending = precomputes.spendingByYear[i];
-    const yearStateTaxRate = precomputes.stateTaxRateByYear[i];
+    const yearStateProfile = precomputes.stateProfileByYear[i];
+    // Resolved profile key (may differ from the timeline's state name when a
+    // successor profile applied — precompute stored the resolved key, not the raw input).
+    const yearStateResolvedKey = precomputes.stateResolvedKeyByYear[i];
     const yearAge = precomputes.ageByYear[i];
     const yearSpouseAge = precomputes.spouseAgeByYear[i];
 
@@ -1500,7 +1537,7 @@ function simulateOneRun(
     const postGrowth = sumBalances(balances);
     const cap = Math.max(0, postGrowth);
     const effectiveCashFlow = calculateAnnualCashFlowCore(
-      userData, year, yearIncome, yearSpending, yearStateTaxRate, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi
+      userData, year, yearIncome, yearSpending, yearStateProfile, yearStateResolvedKey, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi
     );
     breakdowns.push(effectiveCashFlow);
 
@@ -1565,21 +1602,27 @@ export function runSimulation(
   const inflationRate = userData.inflationRate;
 
   // Precompute balance-independent inputs once. Shared across every run.
-  const stateTaxRateByYear: number[] = new Array(totalYears);
+  const stateResolvedKeyByYear: string[] = new Array(totalYears);
+  const stateProfileByYear: StateTaxProfile[] = new Array(totalYears);
   const ageByYear: number[] = new Array(totalYears);
   const spouseAgeByYear: Array<number | null> = new Array(totalYears);
   const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
   const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
   for (let i = 0; i < totalYears; i++) {
     const year = currentYear + i;
-    stateTaxRateByYear[i] = getStateTaxRate(userData, year);
+    const sn = getEffectiveStateName(userData, year);
+    const resolved = getStateTaxProfile(sn, year);
+    // Store the resolved registry key (may differ from `sn` when a year-bounded
+    // successor profile applies — e.g. "South Carolina" → "South Carolina (2027+)").
+    stateResolvedKeyByYear[i] = resolved.resolvedKey;
+    stateProfileByYear[i] = resolved.profile;
     ageByYear[i] = userData.currentAge + i;
     spouseAgeByYear[i] = userData.spouseAge !== null ? userData.spouseAge + i : null;
     incomeByYear[i] = accumulateIncome(userData, year, inflationRate);
     spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
   }
   const precomputes: Precomputes = {
-    stateTaxRateByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
+    stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
   };
 
   const accountIndex = buildAccountIndex(userData);
@@ -1696,21 +1739,27 @@ export function runDeterministicProjection(rawUserData: UserData): {
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const inflationRate = userData.inflationRate;
 
-  const stateTaxRateByYear: number[] = new Array(totalYears);
+  const stateResolvedKeyByYear: string[] = new Array(totalYears);
+  const stateProfileByYear: StateTaxProfile[] = new Array(totalYears);
   const ageByYear: number[] = new Array(totalYears);
   const spouseAgeByYear: Array<number | null> = new Array(totalYears);
   const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
   const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
   for (let i = 0; i < totalYears; i++) {
     const year = currentYear + i;
-    stateTaxRateByYear[i] = getStateTaxRate(userData, year);
+    const sn = getEffectiveStateName(userData, year);
+    const resolved = getStateTaxProfile(sn, year);
+    // Store the resolved registry key (may differ from `sn` when a year-bounded
+    // successor profile applies — e.g. "South Carolina" → "South Carolina (2027+)").
+    stateResolvedKeyByYear[i] = resolved.resolvedKey;
+    stateProfileByYear[i] = resolved.profile;
     ageByYear[i] = userData.currentAge + i;
     spouseAgeByYear[i] = userData.spouseAge !== null ? userData.spouseAge + i : null;
     incomeByYear[i] = accumulateIncome(userData, year, inflationRate);
     spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
   }
   const precomputes: Precomputes = {
-    stateTaxRateByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
+    stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
   };
   const accountIndex = buildAccountIndex(userData);
   const blackSwanLookup = buildBlackSwanLookup(userData);

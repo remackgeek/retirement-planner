@@ -231,12 +231,34 @@ Because thresholds are frozen in nominal terms, the share of retirees with taxab
 
 ### State Taxes
 
-Configured as flat rates applied to ordinary income (Traditional withdrawals, taxable Social Security, before-tax income events, Roth conversions) **and** to capital gains from taxable-account withdrawals at the same state rate (most states treat LTCG as ordinary income).
+State tax is computed from a **per-state profile** registry (`src/data/stateTaxProfiles.ts`) rather than a single flat rate. Each profile encodes:
 
-Multiple states are supported via a **relocation timeline**: enter a future move year and the simulation switches the state rate in that year.
+- **Tax type & brackets** — `none` (FL, TX, etc.), `flat` (PA, IL, MA, etc.), `graduated` (CA, NY, NJ, OR, MN, HI, MD, DC, …), or `capital-gains-only` (WA). Per-filing-status (single / MFJ) bracket schedules are walked above the state standard deduction. HoH / MFS approximate to single.
+- **State standard deduction** — applied to the state ordinary base before brackets are walked. Inflation-indexed forward from the profile's base year when `bracketsInflationIndexed` is true. NY and NJ brackets are statutorily fixed in nominal dollars — neither indexes.
+- **SS taxability rule** — `exempt` (most states), `taxed` (CT, MN, MT, RI, VT, WV-through-2026), `exempt_if_age` (CO 65+), or `agi_phaseout` (NM, UT, VT, RI, KS) with per-filing-status AGI thresholds.
+- **Retirement-income exclusion** — applied to Traditional withdrawals: `none`, `full` (IL, PA, MS, IA, MI-67+, HI), `amount` (NY $20k/59.5+, GA $65k/65+, DE $12.5k/60+, MD $36.2k/65+, KY $31k, …), or `agi_phaseout` (NJ — pension exclusion to $75k/$100k below $150k AGI, hard cliff above).
+- **LTCG rule** — `ordinary` (most states; LTCG stacked on top of state ordinary brackets), `exempt` (Missouri), or `threshold` (Washington 7% above an inflation-indexed $270k single / $270k MFJ threshold; WA has no ordinary state tax).
+- **Locality surcharge** — currently only New York City (pseudo-state `"New York City"`): ~3.876% applied to the state ordinary base on top of NY state brackets.
+- **Successor profiles** — `effectiveYears.end` + `successorProfileKey` chain a profile to a different one once a year boundary is crossed. South Carolina sunsets its 6% top rate after 2026 (successor 5.2%); West Virginia's SS taxation phases out into a 2027+ successor profile.
 
-One simplification worth knowing:
-- **Social Security** is taxed at the full state rate even though several states (CA, NY, NJ, etc.) exempt SS from state income tax. If you live in such a state, the model slightly overstates state tax during SS years.
+Multiple states across the user's lifespan are supported via the **relocation timeline**: each entry resolves to a profile for that year, switching at the configured move year.
+
+Approximations explicitly accepted:
+
+- **Bracket fidelity** — high-income states (CA, NY, NJ, OR, MN, HI, MD, NM, CT, DE, AR, ND, OH, RI, MO, ME, WI, MT, NE, VT, DC) carry real graduated schedules. States with statutory brackets I haven't encoded yet (some of AL/GA/KS/etc.) are modeled as flat at top rate above the state standard deduction — better than the prior flat-on-gross, but still understates progressivity. Schema is bracket-ready, so this is incremental data work.
+- **Partial exclusions** — "partial" SS / retirement exclusions are modeled per-state with structured rules (AGI thresholds, age gates, dollar caps). The exclusion applies to Traditional withdrawals as a lump sum and does not distinguish public vs private pensions or source-specific sub-rules within a state.
+- **Filing status** — HoH / MFS share the `single` bracket and deduction at the state level. Most state HoH schedules differ only slightly from single; MFS rules vary too widely to model uniformly.
+- **Not modeled** — MA 4% surtax above $1M, OH/PA local municipal income tax, Yonkers surcharge, multistate part-year residency within a single year (timeline switches are whole-year), tax credits (Oregon senior credit, Utah SS credit), alternative minimum tax, capital-gains 0/15/20% bracket stacking (federal LTCG is still a flat rate).
+
+The state tax flows are exposed in `AnnualCashFlowBreakdown.audit` as: `stateOrdinaryTax`, `stateLocalitySurcharge` (top-level), `stateOrdinaryBaseGross`, `stateStdDeduction`, `stateRetirementExclusionApplied`, `stateSsIncludedInState`, `stateMarginalRate`, `stateBracketIndex`, `stateLtcgTaxableAtState`, `stateLtcgThresholdApplied`, and `stateNotes`. The Tax Audit detail tab renders each of these as a labeled row under a per-year "State tax — {name}" section.
+
+**`applyStateRetirementExclusionOverride`** (optional `UserData` field) — set to `false` to disable the profile's retirement-income exclusion (Traditional withdrawals fully exposed to state ordinary brackets). Defaults to `undefined` = use the profile's rule. The Scenario dialog exposes this as an "Disable state retirement-income exclusion (advanced)" checkbox under the state dropdown when the active state has a non-`none` exclusion rule.
+
+**NYC locality base.** NYC (`localitySurcharge: { rate: 0.03876, appliesToOrdinaryOnly: false }`) applies the surcharge to the *combined* ordinary + LTCG base, since NYC taxes capital gains as ordinary income. Other potential localities would set `appliesToOrdinaryOnly: true` to limit the surcharge to ordinary income.
+
+**WA LTCG threshold indexing.** The Washington capital-gains threshold inflates independently of the bracket-indexing flag, since WA has no ordinary brackets and the threshold is statutorily CPI-indexed annually. Anchor: $262k (2024); indexes forward via the scenario's `inflationRate` from 2024.
+
+**Marginal-stack attribution.** The Tax Audit per-event marginal-tax breakdown distributes the year's actual state ordinary tax + locality surcharge proportionally to each event's federal taxable contribution. This conserves the year total (sum of `marginalTax` ≈ federal ordinary tax + state ordinary tax + locality), but individual event rows are an approximation when the state's rules diverge from the federal stack (e.g., SS exempted at the state level, retirement exclusion applied). The federal portion of each event row remains exact via the bracket walk.
 
 ### Medicare IRMAA Surcharges
 
@@ -416,7 +438,7 @@ This is a deliberate choice. Stochastic mortality would inflate success rates ar
 - **Federal bracket inflation uses headline CPI** — the model inflates post-2026 brackets using the scenario's `inflationRate`, but the IRS uses Chained CPI-U which historically runs ~0.2–0.3 pp lower. The difference is small and conservative (slightly over-indexes brackets, slightly under-taxes late years).
 - **No SS provisional thresholds inflation** — these are frozen by Congress, so this matches reality, but the resulting "tax torpedo" gets steeper over time.
 - **No stochastic inflation in cash flows** — only portfolio deflation uses per-run inflation; income/spending use the deterministic mean.
-- **State tax on capital gains** is applied at the same flat state rate as ordinary income — accurate for most states but ignores special LTCG preferences (e.g., NH/TN dividend & interest tax, WA capital gains tax).
+- **State tax on capital gains** uses the per-state profile's `ltcgRule`: most states stack LTCG on top of state ordinary brackets, Missouri exempts LTCG entirely, and Washington applies a 7% rate above an inflation-indexed $270k threshold (with no underlying ordinary state tax). NH/TN dividend & interest tax is not modeled.
 - **No state SS exemption** — applied uniformly even in states that exempt SS (CA, NY, etc.).
 - **Flat federal LTCG rate** — the 0/15/20% federal LTCG brackets and ordinary-income-stacking interaction are not modeled; capital gains tax is `longTermCapGainsRate × fromTaxable`.
 - **No cost-basis tracking** in taxable accounts; the entire withdrawal is treated as long-term capital gain (and as investment income for NIIT).

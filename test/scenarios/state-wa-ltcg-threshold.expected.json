@@ -1,0 +1,12 @@
+{
+  "_rationale": "WA has no ordinary state tax. WA 7% LTCG kicks in only above the indexed threshold ($262k base @ 2024, indexed forward; in this 2026 scenario with 0% inflation it stays at $262k). Federal LTCG 15% applies to full gross. Withdrawal w solves: 0.85w − 0.07(w − 262000) = 400000 → 0.78w = 400000 − 18340 = 381660 → w ≈ $489,308. State LTCG ≈ 0.07·($489,308 − $262k) = $15,912. Federal LTCG = $73,396.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 2000000, "tolerance": 1, "note": "Starting balance" }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "ordinaryTax", "value": 0, "tolerance": 1, "_note": "WA has no ordinary state tax" },
+    { "index": 0, "field": "federalCapGainsTax", "value": 73396, "tolerance": 60, "_note": "0.15 × $489,308" },
+    { "index": 0, "field": "stateCapGainsTax", "value": 15912, "tolerance": 60, "_note": "WA 7% on ($489,308 − $262k indexed threshold)" }
+  ]
+}

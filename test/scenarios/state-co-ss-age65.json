@@ -1,0 +1,65 @@
+{
+  "_description": "Colorado SS state-exemption activates at age 65 (CO ssRule = exempt_if_age 65). Single filer with a $60k pension and $30k SS, age 64 → 65 across two years. Year 1 (age 64): SS taxable portion included in CO state base. Year 2 (age 65): SS state-exempt → lower state tax.",
+  "_rationale": "Single, 2026 → 2027, CO. Pension $60k before-tax + SS $30k = $90k gross. Provisional income = 60000 + 15000 = 75000 → 85% zone → SS taxable = min(0.85·(75000−34000) + 4500, 0.85·30000) = min(39350, 25500) = $25,500. Federal AGI = $60k + $25.5k = $85.5k. Federal taxable = $85.5k − $16.1k std ded = $69.4k → federal tax ≈ $10,408 both years. CO: state base year 1 = $60k pension + $25.5k SS (taxed, age 64) = $85.5k. Year 2 (age 65): SS exempt → state base = $60k. CO std ded $16,100 → state taxable year 1 = $69,400 / year 2 = $43,900. CO 4.4% flat → state tax year 1 ≈ $3,054 / year 2 ≈ $1,932. Δ ordinaryTax (year 2 − year 1) ≈ −$1,122.",
+  "_seed": 12345,
+  "name": "CO SS Age 65",
+  "currentAge": 64,
+  "lifeExpectancy": 66,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "name": "Pension",
+      "amount": 60000,
+      "startAge": 64,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    },
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "name": "SS",
+      "amount": 30000,
+      "startAge": 64,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "ssHaircutEnabled": false
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    { "state": "Colorado" }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Traditional",
+      "type": "traditional",
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

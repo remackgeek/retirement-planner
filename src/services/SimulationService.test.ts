@@ -783,17 +783,17 @@ describe('calculateAnnualCashFlow', () => {
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
-      // CA state tax = 100000 * 0.08 = 8000
-      // Federal tax on 100000 - 16100 = 83900 taxable
-      expect(result.totalTax).toBeGreaterThan(8000); // federal + state
-      // Compare with Florida (0% state tax)
+      // CA profile: stateOrdinaryBase $100k − std ded $5,540 = $94,460 taxable.
+      // Walking CA single brackets: 1%·10,412 + 2%·14,272 + 4%·14,275 + 6%·15,122 + 8%·14,269 + 9.3%·26,110 ≈ $5,438.
+      // Federal tax on $100k − $16,100 = $83,900 taxable → $13,170.
+      expect(result.totalTax).toBeGreaterThan(5000); // federal + state
       const flResult = calculateAnnualCashFlow(makeUserData({
         stateTimeline: [{ state: 'Florida' }],
         incomeEvents: [
           { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       }), 2026, 0);
-      expect(result.totalTax - flResult.totalTax).toBeCloseTo(8000, 0);
+      expect(result.totalTax - flResult.totalTax).toBeCloseTo(5438, 0);
     });
 
     it('relocation changes tax rate at the correct year', () => {
@@ -808,8 +808,8 @@ describe('calculateAnnualCashFlow', () => {
       });
       const before = calculateAnnualCashFlow(userData, 2029, 0);
       const after = calculateAnnualCashFlow(userData, 2030, 0);
-      // Before relocation: CA 8% state tax. After: FL 0%
-      expect(before.totalTax - after.totalTax).toBeCloseTo(8000, 0);
+      // Before: CA tax ≈ $5,438 on $100k pension (graduated brackets above std ded). After: FL 0%.
+      expect(before.totalTax - after.totalTax).toBeCloseTo(5438, 0);
     });
 
     it('multiple relocations: middle segment uses correct rate', () => {
@@ -829,7 +829,10 @@ describe('calculateAnnualCashFlow', () => {
       const fl = calculateAnnualCashFlow(userData, 2030, 0);  // age 64, FL
       // TX and FL both have 0% state tax, same federal brackets/deduction (all age < 65)
       expect(tx.totalTax).toBe(fl.totalTax);
-      expect(ny.totalTax - tx.totalTax).toBeCloseTo(5500, 0); // 100k * 5.5%
+      // NY profile: pension_income is "before_tax" ordinary, NOT a Traditional withdrawal — the $20k
+      // NY pension/IRA exclusion does NOT apply here. State base = $100k − $8,000 NY std ded = $92,000.
+      // NY single brackets: 4%·8,500 + 4.5%·3,200 + 5.25%·2,200 + 5.5%·66,750 + 6%·11,350 ≈ $4,952.
+      expect(ny.totalTax - tx.totalTax).toBeCloseTo(4952, 0);
     });
 
     it('relocation in reference year takes effect immediately', () => {
@@ -1359,7 +1362,7 @@ describe('computeMarginalStackAttribution', () => {
     fromTrad: 0,
     rothConversionTotal: 0,
     filingStatus: 'single' as const,
-    stateTaxRate: 0,
+    stateEffectiveRate: 0,
     age: 65,
     taxYear: 2026,
     spouseAge: null,
@@ -1502,6 +1505,31 @@ describe('computeMarginalStackAttribution', () => {
     //   taxable = $61,874 → fed tax 10%*$12,400 + 12%*$38,000 + 22%*$11,474 = $1,240 + $4,560 + $2,524.28 = $8,324.28
     const sum = out.reduce((s, e) => s + e.marginalTax, 0);
     expect(sum).toBeCloseTo(8324, 0);
+  });
+
+  it('reconciliation with non-zero stateEffectiveRate: sum ≈ federal + state·combinedTaxable', () => {
+    const events: EventIncomeRecord[] = [
+      { eventId: 'w1', eventName: 'Wages', eventType: 'wage_income', gross: 50_000, classification: 'ordinary' },
+      { eventId: 'p1', eventName: 'Pension', eventType: 'pension_income', gross: 50_000, classification: 'ordinary' },
+    ];
+    const stateRate = 0.05;
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      stateEffectiveRate: stateRate,
+    });
+    // combinedTaxable = $100k; for single age 65 in 2026 the federal portion
+    // matches the existing fixtures (see prior tests in this block). With state
+    // distributed proportionally at 5%, the sum should add 0.05 × $100k = $5,000
+    // on top of the federal-only marginal-stack total.
+    const outFederalOnly = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      stateEffectiveRate: 0,
+    });
+    const fedSum = outFederalOnly.reduce((s, e) => s + e.marginalTax, 0);
+    const stateSum = out.reduce((s, e) => s + e.marginalTax, 0);
+    expect(stateSum - fedSum).toBeCloseTo(stateRate * 100_000, 0);
   });
 });
 

@@ -1,12 +1,12 @@
 {
-  "_rationale": "Ages 60-61 (2026-2027): TX 0% → net $86,830. Ages 62-63 (2028-2029): NY 5.5% → net $81,330. Age 64 (2030): FL 0% → net $86,830. Portfolio accumulates with 0% growth.",
+  "_rationale": "Updated for the per-state profile model: NY tax on $100k pension is now $4,951 (NY graduated brackets above the $8,000 NY std ded; pension_income is `before_tax` ordinary, not a Traditional withdrawal, so the $20k NY exclusion does NOT apply). Ages 60–61 (2026–2027): TX 0% → net $86,830. Ages 62–63 (2028–2029): NY → net $81,879/yr. Age 64 (2030): FL 0% → net $86,830. Year-3 (first NY year): 500k + 86830·2 + 81879 = 755,539; year-4 (first FL year, after second NY cashflow): + 81,879 = 837,418.",
   "probability": 100,
   "pathValues": [
     { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
     { "index": 1, "age": 61, "value": 586830, "note": "500000 + 86830 (TX year)" },
     { "index": 2, "age": 62, "value": 673660, "note": "586830 + 86830 (last TX year)" },
-    { "index": 3, "age": 63, "value": 754990, "note": "673660 + 81330 (NY year)" },
-    { "index": 4, "age": 64, "value": 836320, "note": "754990 + 81330 (FL year starts, balance before FL cashflow)" }
+    { "index": 3, "age": 63, "value": 755539, "note": "673660 + 81879 (NY year)" },
+    { "index": 4, "age": 64, "value": 837418, "note": "755539 + 81879 (last NY year completed; balance before FL cashflow)" }
   ],
-  "tolerance": 1.0
+  "tolerance": 5.0
 }

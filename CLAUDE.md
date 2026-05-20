@@ -129,10 +129,32 @@ projections, and good tax awareness without overwhelming the user.
   to match IRS Chained CPI-U indexing (using headline CPI as a proxy). SS provisional
   income thresholds remain frozen by law.
   Capital gains tax = federal flat `longTermCapGainsRate × fromTaxable` + state
-  `stateTaxRate × fromTaxable` (most states treat LTCG as ordinary income).
+  cap-gains computed by the per-state profile (`computeStateTax` in
+  `src/services/StateTaxCalculator.ts`, profiles in `src/data/stateTaxProfiles.ts`).
   Federal 0/15/20% LTCG brackets and ordinary-income stacking interaction are not
   modeled (flat rate only). `AnnualCashFlowBreakdown` exposes `federalCapGainsTax`
   and `stateCapGainsTax` separately.
+  **State tax (per-state profile):** `STATE_TAX_PROFILES` registry keys each state
+  to a profile with brackets (single + MFJ), state standard deduction, SS rule
+  (`exempt` / `taxed` / `exempt_if_age` / `agi_phaseout`), retirement-income
+  exclusion (`none` / `full` / `amount` / `agi_phaseout`), LTCG rule (`ordinary`
+  / `exempt` for MO / `threshold` for WA), optional locality surcharge (NYC), and
+  inflation-indexing flag (NY/NJ brackets are statutorily frozen). Time-bounded
+  profiles chain via `effectiveYears` + `successorProfileKey` (SC top-rate sunset
+  after 2026, WV SS phase-out from 2027). Audit fields under `audit.state*`
+  capture the per-year decomposition (ordinary base, std deduction, retirement
+  exclusion applied, SS included, bracket index, marginal rate, locality, LTCG
+  threshold, LTCG state-taxable portion, profile key, notes).
+  Override: `UserData.disableStateRetirementExclusion = true` disables the
+  profile's retirement-income exclusion for power users whose Traditional
+  withdrawals don't qualify (e.g., NY's $20k applies only to public pensions
+  and IRAs). The Scenario dialog exposes this as an "advanced" checkbox.
+  Special profile-table mechanics worth knowing: `STATE_TAX_PROFILES['New York City']`
+  is a composed pseudo-state (`{ ...STATE_TAX_PROFILES['New York'], localitySurcharge }`)
+  so NY bracket updates automatically propagate to NYC. Successor profiles for
+  dated transitions are chained via `effectiveYears.end` + `successorProfileKey`
+  (SC 6%→5.2% after 2026, WV SS-taxed→exempt after 2026); `getStateTaxProfile`
+  follows the chain and returns the resolved key for audit display.
   **IRMAA:** Medicare Part B + Part D premium surcharges from `IRMAA.ts` based on
   the 2024 tier table (inflation-indexed forward by `inflationRate`). Driven by
   the 2-year-prior MAGI proxy (`otherTaxableGross + withdrawalFromTraditional +
@@ -148,7 +170,10 @@ projections, and good tax awareness without overwhelming the user.
   `UserData.enableNIIT` (default `true`).
 - **State timeline** — ordered list of `{ state, startYear? }` on `UserData`. First entry
   is current state (no startYear); subsequent entries are future relocations. Simulation
-  resolves effective state per year via `getStateTaxRate(userData, year)`
+  resolves effective state per year via `getEffectiveStateName(userData, year)` and the
+  per-state profile via `getStateTaxProfile(stateName, year)`. The selectable state list
+  is sourced from `SELECTABLE_STATES` (includes `"New York City"` as a pseudo-state with
+  NYC local tax). Per-year precomputes hold both `stateNameByYear` and `stateProfileByYear`.
 
 ## In-App Documentation
 
@@ -390,7 +415,7 @@ use the same `spendingShortfall > 0` definition that drives `failed`/`failedYear
 
 **Performance architecture:** `runSimulation()` precomputes balance-independent inputs
 once before the Monte Carlo loop — `lognormalParams` for stock/bond/inflation, and
-per-year arrays (`stateTaxRateByYear`, `ageByYear`, `incomeByYear`, `spendingByYear`).
+per-year arrays (`stateProfileByYear`, `stateNameByYear`, `ageByYear`, `incomeByYear`, `spendingByYear`).
 The inner hot loop calls `calculateAnnualCashFlowCore` (internal fast-path) with these
 arrays instead of recomputing them 5000× per year. The public `calculateAnnualCashFlow`
 signature is unchanged — it is a thin wrapper that recomputes inputs inline; use it in
