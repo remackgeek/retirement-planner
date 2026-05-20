@@ -116,6 +116,18 @@ const AppContent: React.FC = () => {
     }
   }, [ctx?.activeScenario?.id, whatIfSnapshot]);
 
+  // While What If is active, warn before unload: edits are live-persisted to
+  // IndexedDB and the in-memory snapshot is the only path back to the original.
+  useEffect(() => {
+    if (!whatIfSnapshot) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [whatIfSnapshot]);
+
   // Auto-close the sidebar when the viewport crosses into mobile width
   // (e.g. shrinking a desktop window or rotating a tablet to portrait).
   // Nudge Chart.js on both crossing directions: the sidebar enters/exits the
