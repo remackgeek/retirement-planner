@@ -18,7 +18,7 @@ projections, and good tax awareness without overwhelming the user.
 
 - `src/components/` — UI (Sidebar, Chart, AccountsManager, SpendingGoalsManager, IncomeEventsManager)
 - `src/context/RetirementContext.tsx` — global state, IndexedDB, schema migrations
-- `src/services/SimulationService.tsx` — Monte Carlo engine (5000 runs, log-normal)
+- `src/services/SimulationService.ts` — Monte Carlo engine (5000 runs, log-normal)
 - `src/services/TaxCalculator.ts` — federal + state tax, memoized, 2024-2026 brackets
 - `src/dialogs/` — type-specific edit dialogs (e.g., `SocialSecurityDialog`),
   shared `IncomeEventDialog` for other types, type-selection pickers, import/export
@@ -38,7 +38,12 @@ projections, and good tax awareness without overwhelming the user.
 - **Accounts** — 3 tax-profile types: `traditional` (withdrawals taxed as ordinary income),
   `roth` (withdrawals tax-free), `taxable` (withdrawals taxed at flat LTCG rate).
   Replaces the old single `currentSavings` field. All accounts share the scenario's
-  stock/bond allocation. Withdrawals follow a fixed waterfall: Taxable → Traditional → Roth.
+  stock/bond allocation. Withdrawals follow a fixed waterfall: when no RMD applies,
+  Taxable → Traditional → Roth. When an RMD applies (age ≥ 73), the forced RMD is
+  applied to spending+tax need first (RMD-first ordering); only the residual need
+  above the RMD pulls from Taxable, then Traditional-above-RMD, then Roth. This
+  prevents over-pulling from Taxable (and generating phantom federal/state LTCG and
+  NIIT) when the RMD's net-of-tax proceeds already cover the year's need.
   Employment-savings income events target a specific account via `accountId`.
   **RMD:** Traditional accounts trigger Required Minimum Distributions at age 73+ (SECURE 2.0,
   IRS Uniform Lifetime Table). The simulation forces `withdrawalFromTraditional ≥ rmdRequired`
@@ -48,7 +53,7 @@ projections, and good tax awareness without overwhelming the user.
   account also receives general surplus (see Surplus handling below) — never two synthetics.
   Roth accounts are exempt.
   **Surplus handling:** any year with `netCashFlow > 0` deposits the surplus into the
-  first taxable account via `distributeDeposit`. There is no fallback chain to
+  first taxable account (handled inline in `applyCashFlow`). There is no fallback chain to
   Traditional/Roth — `ensureReinvestmentAccount` (called once in `runSimulation`)
   guarantees a taxable account exists whenever none is configured, so surplus is never
   silently discarded. `AnnualCashFlowBreakdown.surplusContribution` records the
@@ -88,17 +93,37 @@ projections, and good tax awareness without overwhelming the user.
   it is taxed as ordinary income, withdrawn pro-rata from Traditional accounts, and deposited
   pro-rata into Roth accounts. RMD is enforced first (IRS rule: RMD is not eligible for
   conversion); conversion is capped at the Traditional balance remaining after the forced
-  RMD/spending withdrawal. Tax is paid implicitly by the withdrawal waterfall — with a
-  Taxable account present, the added tax pulls from Taxable first; without one, tax pulls
-  from Traditional and effectively reduces the convertible amount. `ensureRothConversionAccount`
+  RMD/spending withdrawal. **Conversion ordinary tax sourcing is hybrid**, in priority
+  order (see "Intents and funding sources" below): (1) RMD-excess cash, (2) Taxable
+  balance not consumed by spending, (3) withheld from the conversion itself (IRS Form
+  1099-R Box 4 mechanic). It is **never** pulled from Traditional-above-RMD or Roth —
+  that would defeat the conversion's arbitrage. When Taxable + RMD-excess can't cover
+  the marginal ordinary tax, the conversion still executes at the user's requested gross,
+  but the Roth deposit shrinks by the withheld portion (mathematically suboptimal vs.
+  paying from Taxable, but matches real-world Vanguard/Fidelity withholding behavior
+  and keeps the UX honest). `AnnualCashFlowBreakdown` surfaces this via
+  `rothConversionGross` (Trad pull / IRS conversion amount),
+  `rothConversionTaxFromTaxable`, `rothConversionTaxFromRmdExcess`, and
+  `rothConversionTaxWithheld`. The Roth deposit (in `applyCashFlow`) is
+  `rothConversionGross − rothConversionTaxWithheld`. The dialog warns when withholding
+  activates in any year of the deterministic projection (via
+  `conversionWillBeWithheldYears`/`Dollars` from `estimateConversionImpact`).
+  `ensureRothConversionAccount`
   auto-creates a `"Roth Conversion"` Roth account when conversions exist but no Roth accounts
   do. Per-year conversion amount is captured in `AnnualCashFlowBreakdown.rothConversionGross`.
   The dialog's Impact Preview surfaces `estimateConversionImpact()` results
   (`firstYearTax`, `totalTaxOverConversion`, `rmdReductionAt73`,
-  `projectedRothAtEndOfPlan`, and `netPlanValueImpact` — a deterministic signed
-  delta of plan value at life expectancy with vs. without the conversion,
-  including tax drag from paying conversion tax out of taxable accounts; v1
-  excludes IRMAA, SS taxability, NIIT, ACA, and surviving-spouse bracket shifts).
+  `projectedRothAtEndOfPlan`, and `netPlanValueImpact`). The first four are
+  fast closed-form estimates against the user's baseline ordinary income
+  (including SS taxability across the 50%/85% provisional thresholds).
+  `netPlanValueImpact` is computed differently: it calls
+  `runDeterministicProjection()` twice — once with the conversion event
+  included and once with it stripped — and diffs the end-of-plan portfolio
+  balance. That's the same single-path engine that drives the "Deterministic"
+  chart line, so the figure reflects the RMD-first withdrawal waterfall,
+  conversion-tax sourcing, IRMAA (2-year lookback), NIIT (3.8%), and state
+  tax on LTCG. Still excluded everywhere: ACA premium tax credit cliffs,
+  surviving-spouse bracket shifts, and capital-gains-bracket stacking).
   New conversion events default to `colaType: 'inflation_adjusted'` so the
   entered amount is a real-dollar target across the conversion window. Inline
   warning hints fire when the configured amount is large relative to spending,
@@ -110,10 +135,276 @@ projections, and good tax awareness without overwhelming the user.
   `living_expenses` goals support optional `yearlyDecreasePercent` for spending decay
 - **Tax** — aggregate income taxation; SS 50%/85% taxable fraction (IRS provisional
   income formula); standard deduction, filing status, state rates with optional
-  relocation timeline, senior/OBBB deductions
+  relocation timeline, senior/OBBB deductions. For years > 2026, federal bracket
+  thresholds and the standard deduction are inflated by `(1 + inflationRate)^(year − 2026)`
+  to match IRS Chained CPI-U indexing (using headline CPI as a proxy). SS provisional
+  income thresholds remain frozen by law.
+  Capital gains tax = federal flat `longTermCapGainsRate × fromTaxable` + state
+  cap-gains computed by the per-state profile (`computeStateTax` in
+  `src/services/StateTaxCalculator.ts`, profiles in `src/data/stateTaxProfiles.ts`).
+  Federal 0/15/20% LTCG brackets and ordinary-income stacking interaction are not
+  modeled (flat rate only). `AnnualCashFlowBreakdown` exposes `federalCapGainsTax`
+  and `stateCapGainsTax` separately.
+  **State tax (per-state profile):** `STATE_TAX_PROFILES` registry keys each state
+  to a profile with brackets (single + MFJ), state standard deduction, SS rule
+  (`exempt` / `taxed` / `exempt_if_age` / `agi_phaseout`), retirement-income
+  exclusion (`none` / `full` / `amount` / `agi_phaseout`), LTCG rule (`ordinary`
+  / `exempt` for MO / `threshold` for WA), optional locality surcharge (NYC), and
+  inflation-indexing flag (NY/NJ brackets are statutorily frozen). Time-bounded
+  profiles chain via `effectiveYears` + `successorProfileKey` (SC top-rate sunset
+  after 2026, WV SS phase-out from 2027). Audit fields under `audit.state*`
+  capture the per-year decomposition (ordinary base, std deduction, retirement
+  exclusion applied, SS included, bracket index, marginal rate, locality, LTCG
+  threshold, LTCG state-taxable portion, profile key, notes).
+  Override: `UserData.disableStateRetirementExclusion = true` disables the
+  profile's retirement-income exclusion for power users whose Traditional
+  withdrawals don't qualify (e.g., NY's $20k applies only to public pensions
+  and IRAs). The Scenario dialog exposes this as an "advanced" checkbox.
+  Special profile-table mechanics worth knowing: `STATE_TAX_PROFILES['New York City']`
+  is a composed pseudo-state (`{ ...STATE_TAX_PROFILES['New York'], localitySurcharge }`)
+  so NY bracket updates automatically propagate to NYC. Successor profiles for
+  dated transitions are chained via `effectiveYears.end` + `successorProfileKey`
+  (SC 6%→5.2% after 2026, WV SS-taxed→exempt after 2026); `getStateTaxProfile`
+  follows the chain and returns the resolved key for audit display.
+  **IRMAA:** Medicare Part B + Part D premium surcharges from `IRMAA.ts` based on
+  the 2024 tier table (inflation-indexed forward by `inflationRate`). Driven by
+  the 2-year-prior MAGI proxy (`otherTaxableGross + withdrawalFromTraditional +
+  ssTaxableAmount + withdrawalFromTaxable`), applied per Medicare enrollee
+  (self ≥ 65 and/or spouse ≥ 65). Captured in `AnnualCashFlowBreakdown.irmaaSurcharge`.
+  Gated by `UserData.enableIRMAA` (default `true`). For the first two retirement
+  years (before the in-sim history covers the 2-year lookback),
+  `UserData.priorWorkingMagi` provides the lookback value; defaults to 0.
+  **NIIT:** 3.8% × min(investment income, MAGI − threshold) per `IRMAA.ts`.
+  Statutory thresholds (not inflation-indexed): single/HoH $200k, MFJ $250k,
+  MFS $125k. Investment-income proxy is `withdrawalFromTaxable` (same as federal
+  LTCG). Captured in `AnnualCashFlowBreakdown.niitTax`. Gated by
+  `UserData.enableNIIT` (default `true`).
 - **State timeline** — ordered list of `{ state, startYear? }` on `UserData`. First entry
   is current state (no startYear); subsequent entries are future relocations. Simulation
-  resolves effective state per year via `getStateTaxRate(userData, year)`
+  resolves effective state per year via `getEffectiveStateName(userData, year)` and the
+  per-state profile via `getStateTaxProfile(stateName, year)`. The selectable state list
+  is sourced from `SELECTABLE_STATES` (includes `"New York City"` as a pseudo-state with
+  NYC local tax). Per-year precomputes hold both `stateNameByYear` and `stateProfileByYear`.
+
+## Intents and funding sources
+
+A recurring class of bug in the simulation engine: **phantom tax** — sourcing the tax on
+a tax-generating event from an account whose withdrawal amplifies the same tax bill, so
+the fixed-point loop converges to an over-taxed answer. Two archetypes have hit so far:
+
+1. **RMD double-pull** (fixed): The naive waterfall ignored that RMD already pulls and
+   taxes Trad cash, then over-pulled Taxable to cover spending — generating phantom
+   LTCG/NIIT on cash the RMD already provided. Fix: RMD-first ordering in
+   `computeSpendingWaterfall` (Trad-up-to-RMD → Taxable → Trad-above-RMD → Roth).
+2. **Roth conversion tax leak** (fixed): The waterfall lumped conversion ordinary tax
+   into the spending pull, which when Taxable ran out fell back to Trad-above-RMD or
+   Roth — paying conversion tax from the same Traditional being converted (or from
+   the Roth just funded). Fix: source conversion ordinary tax exclusively from Taxable
+   + RMD-excess; cap the conversion when neither can fund the marginal tax.
+
+**The principle:** when a new feature generates tax, declare its funding source
+explicitly. Do not rely on the spending waterfall to absorb it. The waterfall covers
+spending + spending-related tax only.
+
+**Canonical intent → funding-source table:**
+
+| Intent              | Gross driver                                | Funding source for its tax                          |
+|---------------------|---------------------------------------------|-----------------------------------------------------|
+| RMD                 | IRS Uniform Lifetime Table                  | Self-funding (RMD net is cash)                      |
+| Spending withdrawal | `totalSpendingNet`                          | RMD-first → **Cash** → Taxable → Trad → Roth        |
+| Roth conversion     | User-entered (or future: fill-to-bracket)   | RMD-excess → **Cash** → Taxable → withhold from conversion (IRS 1099-R Box 4) |
+| Surplus deposit     | `netCashFlow > 0`                           | n/a, deposit to first Taxable (or Cash if it exists) |
+
+*Cash* is **not yet a modeled account type** — it's reserved in the table so the
+sourcing rule survives the future Cash addition with no rewording. Today, "Cash" steps
+in the precedence are no-ops; Taxable does the work.
+
+**Implementation:** see `calculateAnnualCashFlowCore` in
+[src/services/SimulationService.ts](src/services/SimulationService.ts):
+- `computeSpendingWaterfall(w)` is spending-only (no conversion). It returns
+  `spendingFromTaxable`, `forcedTrad`, `spendingFromRoth`, `rmdExc`.
+- Inside the fixed-point loop, after the spending pull, conversion principal is sized
+  by `tradAvailForConv = tradBal − forcedTrad` (RMD must be satisfied first — IRS
+  rule).
+- The conversion's marginal ordinary tax `mt` is split across three sources in
+  priority order: `ctRmd = min(mt, rmdExc)`,
+  `ctTaxable = min(mt − ctRmd, taxableBal − spendingFromTaxable)`, then
+  `ctWithheld = mt − ctRmd − ctTaxable`. The first two are paid from external account
+  flows; the third is withheld from the conversion's own Trad pull.
+- `rothConversionGross` is the IRS-conventional conversion amount (Trad pull, added to
+  `withdrawalFromTraditional`). `applyCashFlow` deposits
+  `rothConversionGross − rothConversionTaxWithheld` to Roth.
+- The breakdown surfaces all three sourcing fields plus `rothConversionRequested`
+  (user intent before any Trad-balance cap).
+- The conv-tax-funded Taxable pull does add incremental LTCG/NIIT to `totalTax`; that
+  cascade falls through the normal fixed-point loop and is funded by the spending
+  withdrawal (a small acceptable residual — 15–20% of the saved phantom-tax leak).
+
+**Liquid-cash mental model (future refactor target, not committed):** forced inflows
+(income, SS, RMD net) fill a bucket; discretionary withdrawals fill only the gap. The
+RMD-first branch in `computeSpendingWaterfall` is this idea wedged into one function.
+Future refactors should move toward it generically, which would naturally subsume
+both the RMD-first and conv-tax-sourcing fixes.
+
+## Decision-making layers
+
+Cash-flow decisions in the engine stack in three layers, inside-out. Each layer
+is built on the one below; new features attach at the highest applicable layer.
+
+1. **Intent + funding sources** (section above) — single-year sourcing rules:
+   *"where does the tax for THIS taxable event come from?"* RMD, spending
+   withdrawal, conversion tax all answered here. The phantom-tax principle
+   lives at this layer.
+2. **Cross-year spending source policy** (section below) — *"where should THIS
+   YEAR'S spending come from, given the multi-year plan?"* Answered by
+   `UserData.spendingWithdrawalOrder`.
+3. **Tax-strategy plug-in** (future, not implemented) — *"given the scenario,
+   choose layer-2 policies + conversion sizing + ACA/IRMAA constraints."*
+   See "Layer 3 (future): tax-strategy plug-in framework" below for the
+   roadmap, design sketch, and the structural fix it provides for the
+   smart-default's bundled-comparison property.
+
+## Cross-year spending source policy
+
+> **Disclaimer (load-bearing):** `UserData.spendingWithdrawalOrder` changes
+> **only where living-expenses cash comes from**. It does NOT change the
+> conversion gross, the conversion-tax sourcing rule, or any other intent.
+> Treating it as "smart conversion sizing" would be wrong — see layer 3
+> (tax-strategy plug-in framework) for that future feature.
+
+The spending waterfall (RMD → Taxable → Trad-above-RMD → Roth) is correct on a
+single-year basis but **greedy across years**. In pre-pension/pre-SS years,
+spending-from-Taxable burns the most flexible bucket at low effective rates
+(LTCG drag), leaving none for later high-`mt` conversion years. A
+planner-aware retiree would pull spending from Trad in low-bracket years
+(filling the 12% federal bracket cheaply) and preserve Taxable for the
+high-`mt` years.
+
+**Implementation:** `UserData.spendingWithdrawalOrder`:
+
+- `'taxable_first'` — current waterfall. Default for scenarios without
+  conversions. Conservative; preserves Traditional.
+- `'bracket_aware'` — RMD → Trad up to 12%-federal-bracket headroom
+  (conv- and SS-inclusive) → Taxable → Trad-above-headroom → Roth. Default
+  for scenarios with any `roth_conversion` event.
+
+When the field is undefined, the engine resolves it via
+`resolveSpendingWithdrawalOrder` in
+[src/services/SimulationService.ts](src/services/SimulationService.ts) at
+sim start: presence of a conversion event → `'bracket_aware'`; otherwise
+`'taxable_first'`.
+
+The bracket headroom is **conv- and SS-inclusive**: precomputed per year as
+`max(0, top_of_12% − max(0, (otherTaxableGross + conversionGross + ssTaxable) − stdDed))`
+where `ssTaxable` is computed via `calculateSSTaxableAmount` using ordinary
+income inclusive of conversion. Including conversion AND SS in the baseline
+is load-bearing: without conv, Trad spending pull + conv could combine to
+push past 22%; without SS, the same overshoot can happen for retirees who
+claim SS during the conversion window.
+
+**No coordination is needed between this layer and the conv-tax sourcing
+rule above.** Conversion tax still prefers Taxable (withholding from the
+conv pull is mathematically inferior since it loses Roth growth on the
+withheld dollars). The two systems share a single Taxable bucket but
+compete for distinct dollars (spending overflow vs conv tax); the
+conv-inclusive headroom keeps Trad pulls within bracket so the picture
+stays consistent.
+
+**Deductions modeled in the headroom:** base standard deduction *plus*
+the long-standing IRS age-65 senior bonus (`getUsualSeniorExtra`). The
+temporary OBBB extra deduction (2025-2028, AGI-phased) is deliberately
+omitted — it's AGI-dependent, which would force a fixed point against
+the Trad pull itself. Leaving it out keeps the headroom honestly
+conservative through 2028 and bit-for-bit identical after the sunset.
+
+**Blind spots (heuristic, not optimum):**
+- Doesn't account for IRMAA tier cliffs — pulling Trad lifts 2-year-prior
+  MAGI lookback and could trigger a future tier.
+- Doesn't optimize against NIIT thresholds.
+- Doesn't use state retirement-income exclusions (VA 65+ age deduction,
+  NY $20k pension exclusion, etc.) in the headroom calc — federal 12%
+  dominates the decision in most states.
+- OBBB extra senior deduction (2025-2028) is not in the headroom; bracket-
+  aware is slightly conservative for low-AGI seniors during the OBBB window.
+- SS-torpedo second-order effect: the headroom uses SS-taxable computed
+  against ordinary income *without* the spending Trad pull. A Trad pull that
+  bumps SS into a higher taxable fraction can cause minor overshoot; bounded
+  by the 85% SS-taxable ceiling.
+- Uses the *requested* conversion (not the executed) in headroom — if
+  conversion gets capped by Trad balance late in the window, headroom is
+  conservatively tight; bracket_aware under-pulls Trad slightly. Never unsafe.
+- Doesn't change the conversion size — that's a future layer-3 strategy.
+
+## Layer 3 (future): tax-strategy plug-in framework
+
+The smart-default switch in layer 2 has a known property: when a user adds
+a Roth conversion event, two things change at once — the conversion itself
+*and* the spending waterfall (auto-switches to `'bracket_aware'`). Any
+"with vs without" comparison (`estimateConversionImpact.netPlanValueImpact`,
+the What If overlay in [src/components/Content/Content.tsx](src/components/Content/Content.tsx))
+captures both effects bundled. The dollar attribution to "the conversion"
+is therefore inflated by whatever value the waterfall switch contributed.
+
+Patching the comparison sites to hold the waterfall constant is a band-aid.
+The structural fix is **layer 3: tax-strategy plug-ins**. Each strategy
+is an explicit, named property of the scenario (not a content-driven
+auto-default), making side-by-side comparisons honest by construction.
+
+**Shape (sketch):**
+
+```ts
+type TaxStrategy = {
+  name: string;
+  // Per-year: given the running scenario state, return (a) spending source
+  // policy and (b) any conversion-size adjustment vs the user-entered amount.
+  decide(args: {
+    year: number;
+    runningState: SimulationState;
+    userData: UserData;
+  }): {
+    spendingOrder: ResolvedSpendingOrder;
+    conversionAdjustment?: { eventId: string; adjustedAmount: number };
+  };
+};
+```
+
+**Strategies on the roadmap** (none implemented yet):
+
+- `'conservative'` — Taxable-first, conv as entered. (= today's default for
+  no-conv scenarios.)
+- `'bracket_aware_spending'` — what layer 2 ships. (= today's default for
+  conv scenarios.)
+- `'fill_to_bracket_conversion'` — auto-size conversions to top of a target
+  bracket (12%, 22%, 24%), respecting Taxable funding.
+- `'irmaa_cliff_avoider'` — caps conversions to stay one tier below the
+  next IRMAA threshold in the lookback year.
+- `'aca_premium_credit_preserver'` — pre-65 retirees on ACA subsidies;
+  caps conv + spending Trad pull to stay below the subsidy-phaseout cliff.
+
+**Deliberate non-goal: multi-year optimizer.** A full optimizer (DP / RL /
+Bellman over the lifetime tax-and-withdrawal joint decision) is a research
+project, not production code. Production planners (ProjectionLab,
+NewRetirement, RighteousDuck) all use *heuristics* — each addresses a
+specific real-world planning constraint, named clearly, and users pick the
+one that matches their situation. We follow that pattern.
+
+**Deferred items the framework subsumes when implemented:**
+
+- `'pro_rata'` spending order — would split the spending gap across
+  Trad-above-RMD and Taxable proportionally to their balances. Not in the
+  current enum; was speculatively included in an early draft and dropped
+  when it stayed unimplemented. Tracked here for the layer-3 strategy
+  catalog; re-adding to the enum is a one-line type change.
+- State retirement-income exclusions in the bracket-headroom calc (VA
+  65+ age deduction, NY $20k pension exclusion, etc.).
+- Full SS-torpedo modeling in headroom (currently uses a static
+  approximation — see "Blind spots" above).
+- IRMAA + NIIT cliff awareness in conversion sizing.
+- Dialog UI for selecting a strategy (currently JSON-only).
+- Liquid-cash bucket internal refactor (cleaner accounting that subsumes
+  the RMD-first branch and the bracket-aware branch into one principled
+  per-year cash-flow model). Not a behavior change; an internal cleanup
+  that makes layer 3 easier to implement.
 
 ## In-App Documentation
 
@@ -344,9 +635,18 @@ The deterministic (Nominal) path uses `nominalBreakdowns` returned by `runSimula
 alongside the nominal path array. The yearly data detail rows show the breakdown for
 whichever view is selected.
 
+**Percentile band + MC stats:** `runSimulation()` also returns `percentileBand:
+{ p10: number[]; p90: number[] } | null` (year-by-year envelope, computed
+independently of the representative runs — no breakdowns attached) and
+`mcStats: { medianEndingBalance, p10EndingBalance, medianDepletionAge,
+worstDecileDepletionAge } | null`. Both are `null` when `numRuns < 10` (e.g.
+`historical_single` mode). The band powers the chart's shaded region via
+`chartPercentileBand` plugin; the stats power the header strip. Depletion ages
+use the same `spendingShortfall > 0` definition that drives `failed`/`failedYear`.
+
 **Performance architecture:** `runSimulation()` precomputes balance-independent inputs
 once before the Monte Carlo loop — `lognormalParams` for stock/bond/inflation, and
-per-year arrays (`stateTaxRateByYear`, `ageByYear`, `incomeByYear`, `spendingByYear`).
+per-year arrays (`stateProfileByYear`, `stateNameByYear`, `ageByYear`, `incomeByYear`, `spendingByYear`).
 The inner hot loop calls `calculateAnnualCashFlowCore` (internal fast-path) with these
 arrays instead of recomputing them 5000× per year. The public `calculateAnnualCashFlow`
 signature is unchanged — it is a thin wrapper that recomputes inputs inline; use it in
@@ -354,6 +654,38 @@ tests and any call-site that doesn't have precomputed values. The simulation tri
 `Content.tsx` is debounced 250ms so rapid field edits don't fire redundant Monte Carlo
 runs. Chart.js props (`chartData`, `options`, `htmlAnnotations`) are wrapped in `useMemo`
 with precise deps; `Projections` is wrapped in `React.memo`.
+
+**Web Worker pool (parallel MC):** Production MC runs through `SimulationClient`
+([src/services/SimulationClient.ts](src/services/SimulationClient.ts)) which shards
+the run loop across a pool of workers sized to `clamp(hardwareConcurrency - 1, 2, 8)`.
+The protocol is two-pass: workers execute their slice via `runShard` and return
+lightweight summary arrays (scores, failedFlags/Years, year-major `pathColumns`) as
+zero-copy `Transferable` Float64Arrays; the main thread merges across shards to
+compute the global percentile band + `mcStats` + representative-run picks, then
+requests `replay` from the owning shard(s) for the median/downside runs (which
+get full `AnnualCashFlowBreakdown` audit data via `replayRunWithAudit`). The
+deterministic nominal projection runs on the main thread (~5ms). Cancellation
+is supersession-via-terminate-and-respawn: a new `run()` while one is in flight
+kills the pool and rejects the prior Promise with `SupersededError` (the 250ms
+debounce upstream absorbs most rapid edits before they reach the client).
+Scenarios with `effectiveNumRuns < INLINE_THRESHOLD` (200) — including
+`historical_single` and `historical_rolling` without wrap — skip the pool and
+run inline on the main thread (worker spawn + message overhead dominates for
+tiny sims). `simulationClient.warmUp()` is called from `AppContent` on mount
+so first-MC pays no cold-start cost. The Web Worker entry is
+[src/workers/simulation.worker.ts](src/workers/simulation.worker.ts); engine
+modules (`SimulationService`, `TaxCalculator`, `IRMAA`, `StateTaxCalculator`,
+`ReturnGenerator`) have no DOM dependencies so they import cleanly in worker
+context. **Determinism caveat:** each worker uses an independent `Math.random`
+stream, so cross-machine results differ when `hardwareConcurrency` differs.
+Scenario tests use the inline (`shardCount=1`) path with a seeded RNG and
+remain bit-exact.
+
+Account-level lookups (by id, by type, first taxable, contribution target by event id,
+allocation by id) are precomputed once into an `AccountIndex` and threaded through
+`simulateOneRun` / `applyCashFlow` so the hot loop never re-scans `userData.accounts`.
+New helpers that depend only on static `userData` should be hoisted into a precompute
+(see the comment above the `Precomputes` interface).
 
 Future direction:
 
@@ -373,6 +705,11 @@ Future direction:
   is closest to the 50th/10th percentile. An alternative is year-by-year percentile envelopes
   (smoother chart lines, but synthetic paths with no coherent per-year actuals). The
   representative-run approach was chosen to enable exact stock/bond attribution in detail rows.
+- **Cross-flow priority** (compare/What If supersede primary): all three flows
+  share one `simulationClient` singleton and supersede each other. Acceptable in
+  practice (React effects re-fire and recover) but a future improvement is to
+  plumb a `priority`/`kind` field and queue rather than terminate when the
+  caller is compare/What If.
 
 ### Chart plugins
 
@@ -416,6 +753,7 @@ Current plugins:
 - `chartHtmlAnnotations` — renders income/spending event badges as HTML elements over the chart
 - `chartBlackSwanShading` — draws vertical shaded bands for portfolio stress events
 - `chartCrosshair` — draws a dashed vertical line at the hovered year index
+- `chartPercentileBand` — fills the 10th–90th percentile region beneath the projected line (year-by-year envelope; toggled via the session-only `showBand` flag in `Projections`). Also installs an `afterDataLimits` hook that extends the y-axis to include the band's full lower edge and the upper edge up to `Y_CAP_MULT × max(line)` (constant `2.0`) — keeps the projected line visually prominent when the band has heavy upside tails.
 
 ### Top bar: Settings menu
 
@@ -437,12 +775,27 @@ Both dialogs are disabled when no active scenario.
 
 ### Implemented UX
 
-- **View selection**: radio control (Median / Deterministic / Downside) in the yearly
-  data header; selected path renders bold on the chart; portfolio balance, income/spending/
-  tax detail rows, and portfolio growth all reflect the selected path. Depleted years on
-  downside/median paths show a shortfall indicator in the detail row.
+- **Chart rendering**: chart shows the **Projected** line (or Median when no
+  deterministic baseline exists — `historical_rolling` / `historical_bootstrap`)
+  plus a shaded **Likely range** band (`chartPercentileBand` plugin) — a
+  year-by-year envelope of the 10th–90th percentile across all Monte Carlo
+  runs. Median and Downside no longer render as separate chart lines. The
+  `mcStats` summary (median ending balance, p10 ending balance, median
+  depletion age, worst-decile depletion age) lives inside the tier-badge
+  tooltip beside "Chance of Success", not on the page as a separate strip.
+  A `Hide band` toggle sits next to the `Data` button on the bottom legend
+  row. Internal UI labels use friendly names: `Projected` (not Deterministic),
+  `Likely range` (not "10th–90th percentile"), `Future $` (not Nominal $).
+  The underlying `DisplayCurrency` type and `view` mode strings remain
+  `'nominal'` / `'real'` — UI rename only.
+- **What If mode**: chart locks to the primary (Projected / Median) line — Original (gray solid) vs Draft (amber dashed) — regardless of `view`. Band is hidden in What If. This makes Draft and Original coincide at entry because the deterministic projection is reproducible. `Content.tsx` still calls `runSimulation(whatIfSnapshot)` redundantly when entering What If (the deterministic projection makes the redundant run user-invisible, just wasteful). Intentionally deferred — don't "fix" by reusing `results` without revisiting the locking decision.
+- **Table view selection**: the Median / Projected / Downside radio lives
+  in the yearly data table header (only when the table is expanded). It drives
+  the table's portfolio column, income/spending/tax detail rows, and CSV export
+  — but does NOT change what the chart renders. Depleted years on
+  downside/median paths still show a shortfall indicator in the detail row.
 - **CSV export**: download button in yearly data header exports all three portfolio paths
-  plus full income/spending/tax breakdown per year as a `.csv` file
+  plus the band p10/p90 columns and the full income/spending/tax breakdown per year as a `.csv` file
 - **Scenario comparison**: "Compare with ▾" button in the chart heading (right-aligned via
   `margin-left: auto`) opens a PrimeReact `Menu` popup listing other scenarios. Selecting
   one overlays the compared scenario's currently-selected path as a dashed line on the
@@ -521,11 +874,18 @@ Two assertion types are supported:
   { "index": 0, "field": "withdrawalFromRoth", "value": 50000, "tolerance": 5, "_note": "..." }
   ```
   Use `value` for exact checks (with optional `tolerance`), or `min`/`max` for range
-  checks. Valid fields: all keys of `AnnualCashFlowBreakdown` — `portfolioWithdrawal`,
-  `withdrawalFromTaxable`, `withdrawalFromTraditional`, `withdrawalFromRoth`, `totalTax`,
-  `netCashFlow`, `ssGross`, `otherTaxableGross`, `afterTaxIncome`, `ssTaxableAmount`,
-  `totalGrossIncome`, `baseSpendingNet`, `otherSpendingGoalsNet`, `totalSpendingNet`,
-  `rmdRequired`, `rmdExcess`, `rothConversionGross`, `ordinaryTax`, `capitalGainsTax`.
+  checks. Valid fields: all top-level keys of `AnnualCashFlowBreakdown` —
+  `portfolioWithdrawal`, `withdrawalFromTaxable`, `withdrawalFromTraditional`,
+  `withdrawalFromRoth`, `totalTax`, `netCashFlow`, `ssGross`, `otherTaxableGross`,
+  `afterTaxIncome`, `ssTaxableAmount`, `totalGrossIncome`, `baseSpendingNet`,
+  `otherSpendingGoalsNet`, `totalSpendingNet`, `rmdRequired`, `rmdExcess`,
+  `rothConversionGross`, `ordinaryTax`, `federalCapGainsTax`, `stateCapGainsTax`,
+  `niitTax`, `irmaaSurcharge`. Audit intermediates (`audit.federalBracketIndex`,
+  `audit.ssZone`, `audit.incomeEventTaxBreakdown`, `audit.accountFlows`, etc.) are
+  nested under `audit` and **not** checkable via `breakdownChecks` — the runner
+  does flat key lookup. Assert these in unit tests against `runSimulation()` /
+  `calculateAnnualCashFlow()` directly, or against the detailed variants in
+  `TaxCalculator` / `IRMAA`.
 
 #### Key rules
 

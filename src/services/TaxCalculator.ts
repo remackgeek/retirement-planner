@@ -1,12 +1,3 @@
-// taxCalculator.ts
-// This module provides a service for calculating the gross income needed to achieve a desired net income
-// after federal and state taxes, considering tax year, filing status, age, and optional spouse age for MFJ.
-// It incorporates 2024-2026 tax brackets, standard deductions, senior deductions, and OBBB changes (2025-2028).
-// Drop this file into your src/services/ directory or similar, then import and use in your React components.
-// Example usage in a React component:
-// import { calculateGrossIncomeNeeded } from './services/taxCalculator';
-// const gross = calculateGrossIncomeNeeded(50000, 0.05, 'single', 65, 2025);
-
 type FilingStatus = 'single' | 'mfs' | 'mfj' | 'hoh';
 
 interface Bracket {
@@ -176,7 +167,12 @@ const additionalSeniorPerByYear: Record<
   },
 };
 
-function getNumQualifyingSeniors(
+/**
+ * Number of filers age 65+ who qualify for the senior-bonus standard
+ * deduction (1 for single/HoH/MFS filers age 65+, plus 1 for an MFJ spouse
+ * age 65+).
+ */
+export function getNumQualifyingSeniors(
   status: FilingStatus,
   age: number,
   spouseAge: number | null
@@ -188,10 +184,18 @@ function getNumQualifyingSeniors(
   return num;
 }
 
-function getUsualSeniorExtra(
+/**
+ * The "usual" senior standard-deduction add-on (the long-standing IRS
+ * age-65 extra; separate from the temporary OBBB extra). Deterministic —
+ * depends only on filing status, age(s), tax year, and inflation. Exported
+ * for callers that need the effective deduction inclusive of the senior
+ * bonus (e.g. the bracket-aware headroom precompute in SimulationService).
+ */
+export function getUsualSeniorExtra(
   status: FilingStatus,
   taxYear: number,
-  numQualifying: number
+  numQualifying: number,
+  inflationRate?: number
 ): number {
   if (numQualifying === 0) return 0;
   // Use the most recent available year for future years
@@ -200,7 +204,7 @@ function getUsualSeniorExtra(
     .sort((a, b) => b - a);
   const effectiveYear =
     availableYears.find((year) => year <= taxYear) || availableYears[0];
-  const per = additionalSeniorPerByYear[effectiveYear][status];
+  const per = additionalSeniorPerByYear[effectiveYear][status] * inflationFactor(taxYear, inflationRate);
   return numQualifying * per;
 }
 
@@ -225,10 +229,20 @@ function getOBBBSeniorDeduction(
   return Math.max(0, baseSeniorDed - reduction);
 }
 
+// Brackets and standard deductions are projected forward from 2026 using the
+// scenario's inflationRate, matching how the IRS adjusts via Chained CPI-U.
+const BASE_INFLATION_YEAR = 2026;
+
+function inflationFactor(taxYear: number, inflationRate: number | undefined): number {
+  if (!inflationRate || taxYear <= BASE_INFLATION_YEAR) return 1;
+  return Math.pow(1 + inflationRate, taxYear - BASE_INFLATION_YEAR);
+}
+
 function calculateFederalTax(
   taxable: number,
   status: FilingStatus,
-  taxYear: number
+  taxYear: number,
+  inflationRate?: number
 ): number {
   // Use the most recent available year for future years
   const availableYears = Object.keys(bracketsByYear)
@@ -242,147 +256,193 @@ function calculateFederalTax(
       `No brackets available for tax year ${taxYear} and status ${status}`
     );
   }
+  const factor = inflationFactor(taxYear, inflationRate);
   let tax = 0;
   let prevUpper = 0;
   for (const bracket of brackets) {
-    const amountInBracket = Math.min(taxable, bracket.upper) - prevUpper;
+    const scaledUpper = bracket.upper === Infinity ? Infinity : bracket.upper * factor;
+    const amountInBracket = Math.min(taxable, scaledUpper) - prevUpper;
     if (amountInBracket > 0) {
       tax += amountInBracket * bracket.rate;
     }
-    if (taxable <= bracket.upper) break;
-    prevUpper = bracket.upper;
+    if (taxable <= scaledUpper) break;
+    prevUpper = scaledUpper;
   }
   return tax;
 }
 
-// Memoization cache for tax calculations
-const taxCalculationCache = new Map<string, number>();
-
-function getCacheKey(
-  netIncome: number,
-  stateTaxRate: number,
-  filingStatus: FilingStatus,
-  age: number,
-  taxYear: number,
-  spouseAge: number | null
-): string {
-  return `${netIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}`;
+// Bracket-by-bracket detail for the Tax Audit view. Same logic as
+// calculateFederalTax but emits a per-bracket allocation as a side product.
+export interface FederalBracketDetail {
+  rate: number;
+  upperScaled: number;   // inflation-indexed upper bound (Infinity for top bracket)
+  amountInBracket: number;
+  taxInBracket: number;
 }
+
+function calculateFederalTaxDetailed(
+  taxable: number,
+  status: FilingStatus,
+  taxYear: number,
+  inflationRate: number | undefined
+): { totalTax: number; bracketIndex: number; marginalRate: number; bracketDetails: FederalBracketDetail[] } {
+  const availableYears = Object.keys(bracketsByYear)
+    .map(Number)
+    .sort((a, b) => b - a);
+  const effectiveYear =
+    availableYears.find((year) => year <= taxYear) || availableYears[0];
+  const brackets = bracketsByYear[effectiveYear]?.[status];
+  if (!brackets) {
+    throw new Error(
+      `No brackets available for tax year ${taxYear} and status ${status}`
+    );
+  }
+  const factor = inflationFactor(taxYear, inflationRate);
+  const details: FederalBracketDetail[] = [];
+  let totalTax = 0;
+  let prevUpper = 0;
+  let bracketIndex = 0;
+  for (let i = 0; i < brackets.length; i++) {
+    const bracket = brackets[i];
+    const scaledUpper = bracket.upper === Infinity ? Infinity : bracket.upper * factor;
+    const amountInBracket = Math.max(0, Math.min(taxable, scaledUpper) - prevUpper);
+    const taxInBracket = amountInBracket * bracket.rate;
+    details.push({
+      rate: bracket.rate,
+      upperScaled: scaledUpper,
+      amountInBracket,
+      taxInBracket,
+    });
+    totalTax += taxInBracket;
+    if (taxable > prevUpper && taxable <= scaledUpper) bracketIndex = i;
+    if (taxable <= scaledUpper) {
+      // Fill remaining (unused) brackets in detail array with zeros so callers
+      // always see the full bracket table.
+      for (let j = i + 1; j < brackets.length; j++) {
+        const nextScaledUpper = brackets[j].upper === Infinity ? Infinity : brackets[j].upper * factor;
+        details.push({ rate: brackets[j].rate, upperScaled: nextScaledUpper, amountInBracket: 0, taxInBracket: 0 });
+      }
+      break;
+    }
+    prevUpper = scaledUpper;
+    if (i === brackets.length - 1) bracketIndex = i;
+  }
+  return {
+    totalTax,
+    bracketIndex,
+    marginalRate: brackets[bracketIndex].rate,
+    bracketDetails: details,
+  };
+}
+
+// Memoization cache for federal-only tax calculations (state is handled
+// separately via the profile-based StateTaxCalculator and is not cached here).
+const taxCalculationCache = new Map<string, number>();
 
 function getNetCacheKey(
   grossIncome: number,
-  stateTaxRate: number,
   filingStatus: FilingStatus,
   age: number,
   taxYear: number,
-  spouseAge: number | null
+  spouseAge: number | null,
+  inflationRate?: number
 ): string {
-  return `net_${grossIncome}_${stateTaxRate}_${filingStatus}_${age}_${taxYear}_${spouseAge}`;
+  return `net_${grossIncome}_${filingStatus}_${age}_${taxYear}_${spouseAge}_${inflationRate ?? 0}`;
 }
 
-export function calculateGrossIncomeNeeded(
-  netIncome: number,
-  stateTaxRate: number,
+/**
+ * Detailed federal tax breakdown for the Tax Audit view. Returns all
+ * intermediates (deduction parts, AGI, taxable income, bracket index, marginal
+ * rate, per-bracket allocation, federal tax, net). State tax is now computed
+ * separately via `computeStateTax` in `StateTaxCalculator.ts` and is not
+ * included in this struct. Not memoized — meant for representative-path detail
+ * rows, not the inner MC loop.
+ */
+export interface DetailedNetFromGross {
+  grossIncome: number;
+  standardDeduction: number;
+  seniorAddOn: number;
+  obbbReduction: number;
+  totalDeductions: number;
+  taxableIncome: number;
+  federalTax: number;
+  /** Federal-only net (grossIncome - federalTax). State tax must be subtracted at the call site. */
+  federalNet: number;
+  federalBracketIndex: number;
+  federalMarginalRate: number;
+  federalBrackets: FederalBracketDetail[];
+  numQualifyingSeniors: number;
+}
+
+export function calculateNetFromGrossDetailed(
+  grossIncome: number,
   filingStatus: FilingStatus,
   age: number,
   taxYear: number,
-  spouseAge: number | null = null
-): number {
-  const cacheKey = getCacheKey(
-    netIncome,
-    stateTaxRate,
-    filingStatus,
-    age,
-    taxYear,
-    spouseAge
-  );
-  if (taxCalculationCache.has(cacheKey)) {
-    return taxCalculationCache.get(cacheKey)!;
-  }
-
-  if (netIncome < 0 || stateTaxRate < 0 || stateTaxRate >= 1) {
-    throw new Error('Invalid input values');
-  }
-
-  let low = netIncome;
-  let high = netIncome * 3; // Increased initial guess for high-tax scenarios
-
-  const maxIterations = 1000;
-  let iterations = 0;
-
+  spouseAge: number | null = null,
+  inflationRate?: number
+): DetailedNetFromGross {
+  const safeGross = Math.max(0, grossIncome);
   const numQualifying = getNumQualifyingSeniors(filingStatus, age, spouseAge);
-
-  while (high - low > 0.01 && iterations < maxIterations) {
-    const mid = (low + high) / 2;
-    const usualExtra = getUsualSeniorExtra(
-      filingStatus,
-      taxYear,
-      numQualifying
-    );
-    const obbbExtra = getOBBBSeniorDeduction(
-      mid,
-      filingStatus,
-      taxYear,
-      numQualifying
-    );
-    // Use the most recent available year for standard deductions
-    const deductionYears = Object.keys(standardDeductionsByYear)
-      .map(Number)
-      .sort((a, b) => b - a);
-    const deductionEffectiveYear =
-      deductionYears.find((year) => year <= taxYear) || deductionYears[0];
-    const deduction =
-      standardDeductionsByYear[deductionEffectiveYear]?.[filingStatus] +
-      usualExtra +
-      obbbExtra;
-    const taxable = Math.max(0, mid - deduction);
-    const federalTax = calculateFederalTax(taxable, filingStatus, taxYear);
-    const stateTax = mid * stateTaxRate;
-    const computedNet = mid - federalTax - stateTax;
-
-    if (computedNet < netIncome) {
-      low = mid;
-    } else {
-      high = mid;
-    }
-    iterations++;
-  }
-
-  if (iterations >= maxIterations) {
-    console.warn('Max iterations reached; result may not be precise.');
-  }
-
-  const result = Math.round(low * 100) / 100; // Round to nearest cent
-  taxCalculationCache.set(cacheKey, result);
-  return result;
+  const usualExtra = getUsualSeniorExtra(filingStatus, taxYear, numQualifying, inflationRate);
+  const obbbExtra = getOBBBSeniorDeduction(safeGross, filingStatus, taxYear, numQualifying);
+  const deductionYears = Object.keys(standardDeductionsByYear)
+    .map(Number)
+    .sort((a, b) => b - a);
+  const deductionEffectiveYear =
+    deductionYears.find((year) => year <= taxYear) || deductionYears[0];
+  const baseStdDed =
+    (standardDeductionsByYear[deductionEffectiveYear]?.[filingStatus] ?? 0) *
+    inflationFactor(taxYear, inflationRate);
+  const totalDeductions = baseStdDed + usualExtra + obbbExtra;
+  const taxableIncome = Math.max(0, safeGross - totalDeductions);
+  const fed = calculateFederalTaxDetailed(taxableIncome, filingStatus, taxYear, inflationRate);
+  return {
+    grossIncome: safeGross,
+    standardDeduction: baseStdDed,
+    seniorAddOn: usualExtra,
+    obbbReduction: obbbExtra,
+    totalDeductions,
+    taxableIncome,
+    federalTax: fed.totalTax,
+    federalNet: safeGross - fed.totalTax,
+    federalBracketIndex: fed.bracketIndex,
+    federalMarginalRate: fed.marginalRate,
+    federalBrackets: fed.bracketDetails,
+    numQualifyingSeniors: numQualifying,
+  };
 }
 
+/**
+ * Federal-only net from gross (gross − federal ordinary tax). State tax must
+ * be subtracted separately at the call site via `computeStateTax`.
+ */
 export function calculateNetFromGross(
   grossIncome: number,
-  stateTaxRate: number,
   filingStatus: FilingStatus,
   age: number,
   taxYear: number,
-  spouseAge: number | null = null
+  spouseAge: number | null = null,
+  inflationRate?: number
 ): number {
   const cacheKey = getNetCacheKey(
     grossIncome,
-    stateTaxRate,
     filingStatus,
     age,
     taxYear,
-    spouseAge
+    spouseAge,
+    inflationRate
   );
   if (taxCalculationCache.has(cacheKey)) {
     return taxCalculationCache.get(cacheKey)!;
   }
 
-  if (grossIncome < 0 || stateTaxRate < 0 || stateTaxRate >= 1) {
+  if (grossIncome < 0) {
     throw new Error('Invalid input values');
   }
 
   const numQualifying = getNumQualifyingSeniors(filingStatus, age, spouseAge);
-  const usualExtra = getUsualSeniorExtra(filingStatus, taxYear, numQualifying);
+  const usualExtra = getUsualSeniorExtra(filingStatus, taxYear, numQualifying, inflationRate);
   const obbbExtra = getOBBBSeniorDeduction(
     grossIncome,
     filingStatus,
@@ -395,14 +455,13 @@ export function calculateNetFromGross(
     .sort((a, b) => b - a);
   const deductionEffectiveYear =
     deductionYears.find((year) => year <= taxYear) || deductionYears[0];
-  const deduction =
-    standardDeductionsByYear[deductionEffectiveYear]?.[filingStatus] +
-    usualExtra +
-    obbbExtra;
+  const baseStdDed =
+    (standardDeductionsByYear[deductionEffectiveYear]?.[filingStatus] ?? 0) *
+    inflationFactor(taxYear, inflationRate);
+  const deduction = baseStdDed + usualExtra + obbbExtra;
   const taxable = Math.max(0, grossIncome - deduction);
-  const federalTax = calculateFederalTax(taxable, filingStatus, taxYear);
-  const stateTax = grossIncome * stateTaxRate;
-  const result = grossIncome - federalTax - stateTax;
+  const federalTax = calculateFederalTax(taxable, filingStatus, taxYear, inflationRate);
+  const result = grossIncome - federalTax;
   taxCalculationCache.set(cacheKey, result);
   return result;
 }
@@ -414,10 +473,11 @@ export type { FilingStatus };
  * (using the most recent available year for future years). Does not include
  * senior or OBBB additions — use `calculateNetFromGross` for full accuracy.
  */
-export function getStandardDeduction(status: FilingStatus, taxYear: number): number {
+export function getStandardDeduction(status: FilingStatus, taxYear: number, inflationRate?: number): number {
   const years = Object.keys(standardDeductionsByYear).map(Number).sort((a, b) => b - a);
   const effectiveYear = years.find((y) => y <= taxYear) ?? years[0];
-  return standardDeductionsByYear[effectiveYear]?.[status] ?? 0;
+  const base = standardDeductionsByYear[effectiveYear]?.[status] ?? 0;
+  return base * inflationFactor(taxYear, inflationRate);
 }
 
 /**
@@ -429,6 +489,7 @@ export function getFederalBracketIndex(
   taxable: number,
   status: FilingStatus,
   taxYear: number,
+  inflationRate?: number
 ): number {
   const availableYears = Object.keys(bracketsByYear)
     .map(Number)
@@ -437,10 +498,41 @@ export function getFederalBracketIndex(
     availableYears.find((year) => year <= taxYear) || availableYears[0];
   const brackets = bracketsByYear[effectiveYear]?.[status];
   if (!brackets) return 0;
+  const factor = inflationFactor(taxYear, inflationRate);
   for (let i = 0; i < brackets.length; i++) {
-    if (taxable <= brackets[i].upper) return i;
+    const scaledUpper = brackets[i].upper === Infinity ? Infinity : brackets[i].upper * factor;
+    if (taxable <= scaledUpper) return i;
   }
   return brackets.length - 1;
+}
+
+/**
+ * Returns the upper bound (taxable income, inflation-scaled) of the federal
+ * bracket at `bracketIndex` (0 = 10%, 1 = 12%, 2 = 22%, ...). Returns Infinity
+ * for the top bracket. Standard deduction is NOT applied — the returned value
+ * is a taxable-income ceiling, not a gross-income ceiling. Callers comparing
+ * against gross income must add the standard deduction.
+ *
+ * Used by the bracket-aware spending waterfall (see CLAUDE.md "Cross-year
+ * spending source policy") to compute Trad-spending headroom that stays
+ * within a target marginal rate.
+ */
+export function getBracketCeilingTaxableIncome(
+  status: FilingStatus,
+  bracketIndex: number,
+  taxYear: number,
+  inflationRate?: number
+): number {
+  const availableYears = Object.keys(bracketsByYear)
+    .map(Number)
+    .sort((a, b) => b - a);
+  const effectiveYear =
+    availableYears.find((year) => year <= taxYear) || availableYears[0];
+  const brackets = bracketsByYear[effectiveYear]?.[status];
+  if (!brackets || bracketIndex < 0 || bracketIndex >= brackets.length) return 0;
+  const upper = brackets[bracketIndex].upper;
+  if (upper === Infinity) return Infinity;
+  return upper * inflationFactor(taxYear, inflationRate);
 }
 
 // SS taxable fraction thresholds (frozen since 1983/1993, not inflation-indexed)
@@ -482,14 +574,64 @@ export function calculateSSTaxableAmount(
   return Math.min(taxableAmount, 0.85 * ssGross);
 }
 
+/**
+ * Detailed SS taxability breakdown for the Tax Audit view. Exposes the
+ * provisional income, both IRS thresholds, and which zone the taxpayer
+ * landed in (none / 50% / 85%).
+ */
+export type SsZone = 'none' | '50%' | '85%' | 'mfs-flat';
+
+export interface DetailedSsTaxable {
+  taxable: number;
+  provisionalIncome: number;
+  threshold1: number;
+  threshold2: number;
+  zone: SsZone;
+}
+
+export function calculateSSTaxableAmountDetailed(
+  ssGross: number,
+  otherGross: number,
+  filingStatus: FilingStatus
+): DetailedSsTaxable {
+  if (ssGross <= 0) {
+    return { taxable: 0, provisionalIncome: 0, threshold1: 0, threshold2: 0, zone: 'none' };
+  }
+  if (filingStatus === 'mfs') {
+    return {
+      taxable: 0.85 * ssGross,
+      provisionalIncome: otherGross + 0.5 * ssGross,
+      threshold1: 0,
+      threshold2: 0,
+      zone: 'mfs-flat',
+    };
+  }
+  const { t1, t2, base } = ssThresholds[filingStatus];
+  const provisionalIncome = otherGross + 0.5 * ssGross;
+  if (provisionalIncome <= t1) {
+    return { taxable: 0, provisionalIncome, threshold1: t1, threshold2: t2, zone: 'none' };
+  }
+  if (provisionalIncome <= t2) {
+    return {
+      taxable: Math.min(0.5 * (provisionalIncome - t1), 0.5 * ssGross),
+      provisionalIncome,
+      threshold1: t1,
+      threshold2: t2,
+      zone: '50%',
+    };
+  }
+  const adjustedBase = Math.min(base, 0.5 * ssGross);
+  const taxableAmount = 0.85 * (provisionalIncome - t2) + adjustedBase;
+  return {
+    taxable: Math.min(taxableAmount, 0.85 * ssGross),
+    provisionalIncome,
+    threshold1: t1,
+    threshold2: t2,
+    zone: '85%',
+  };
+}
+
 // Function to clear cache when user data changes
 export function clearTaxCalculationCache(): void {
   taxCalculationCache.clear();
 }
-
-// Optional: Export a hook for React usage if you want to memoize or handle async (though sync here)
-import { useCallback } from 'react';
-
-export const useTaxCalculator = () => {
-  return useCallback(calculateGrossIncomeNeeded, []);
-};

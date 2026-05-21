@@ -1,0 +1,56 @@
+{
+  "_description": "Inflation-indexed federal tax brackets — Traditional-only drawdown with 3% inflation. Verifies that bracket/deduction thresholds inflate in years > 2026, reducing bracket creep.",
+  "_rationale": "2M Traditional, 80k/yr fixed spending (not inflation-adjusted), 0% return, 3% inflation, single, Florida. Year 2026 (index 0): factor=1.0, deduction=$16,100, no senior deduction (age 60). Analytical: tax ≈ $11,244. Year 2036 (index 10): factor=1.03^10≈1.3439, deduction inflates to ~$21,637 (standard) + $2,755 (senior, age 70) = $24,392. Inflated 12% bracket top = $67,733. Tax ≈ $7,204 — about $3,460 less than frozen-bracket tax (~$10,665). This delta proves inflation indexing is active.",
+  "_seed": 12345,
+  "name": "Bracket Inflation Test",
+  "currentAge": 60,
+  "lifeExpectancy": 71,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 80000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0.03,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional IRA",
+      "type": "traditional",
+      "balance": 2000000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

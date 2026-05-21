@@ -1,0 +1,86 @@
+{
+  "_description": "Bracket-aware spending waterfall (smart default for conversion-planning scenarios). Single 60, $60k spending, $50k conversion 60-62, Trad $500k, Taxable $100k, FL. In low-bracket years 60-62, spending should pull from Trad up to the 12%-bracket headroom (conv-inclusive) BEFORE Taxable, preserving Taxable. Verifies the cross-year spending source policy.",
+  "_rationale": "Single 60, 2026 std ded ~$15.75k, top of 12% bracket ~$50,400 (taxable income). Year 1: conv $50k → baseline taxable = $50k − $15.75k = $34.25k. Bracket headroom = $50,400 − $34.25k = $16,150 of additional Trad room. Spending = $60k. Under bracket_aware: pull ~$16k Trad for spending (at 12% federal, 0 FL) → remaining $44k spending pull from Taxable + LTCG cascade (~$52k Taxable pull). withdrawalFromTraditional = forcedTrad ($16k+) + convCandidate ($50k) ≈ $66k. Under taxable_first the same year would pull ~$70k+ from Taxable (incl. LTCG cascade on the full $60k) and ZERO Trad for spending → Trad only carries the $50k conv.",
+  "_seed": 12345,
+  "name": "Bracket-aware spending — pre-pension conv years",
+  "currentAge": 60,
+  "lifeExpectancy": 64,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "type": "living_expenses",
+      "name": "Living Expenses",
+      "amountPeriod": "annual",
+      "startAge": 60,
+      "isOneTime": false,
+      "inflationAdjusted": false,
+      "amount": 60000,
+      "id": "living-1"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "conv-1",
+      "type": "roth_conversion",
+      "name": "Annual Conversion",
+      "amount": 50000,
+      "startAge": 60,
+      "endAge": 62,
+      "isOneTime": false,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": 0,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "roth-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 0,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "tax-1",
+      "name": "Taxable 1",
+      "type": "taxable",
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

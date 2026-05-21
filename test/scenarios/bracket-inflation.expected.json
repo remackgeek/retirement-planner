@@ -1,0 +1,37 @@
+{
+  "_rationale": "Verifies inflation indexing of federal brackets and standard deduction. Single filer, Traditional-only, Florida (0% state), 80k/yr spending (fixed), 0% return, 3% inflation. Index 0 (2026, age 60): factor=1.0, no senior deduction, deduction=$16,100. Tax ≈ $11,244 (22% bracket). Index 10 (2036, age 70): factor=1.03^10≈1.3439; inflated std deduction=$21,637, inflated senior deduction=$2,755, total=$24,392; inflated 12%-bracket top=$67,733. Tax ≈ $7,204 (all in 12% bracket). Without inflation indexing the same year would produce ~$10,665 tax — the 33% reduction confirms indexing is active.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "value": 2000000, "tolerance": 1, "_note": "Starting Traditional balance before any withdrawal" }
+  ],
+  "breakdownChecks": [
+    {
+      "index": 0,
+      "field": "totalTax",
+      "value": 11244,
+      "tolerance": 20,
+      "_note": "Year 2026, factor=1.0: 22% bracket, deduction=$16,100, no senior. Analytical solve: G≈91,244, tax≈11,244."
+    },
+    {
+      "index": 0,
+      "field": "portfolioWithdrawal",
+      "value": 91244,
+      "tolerance": 20,
+      "_note": "Gross withdrawal = spending + tax = 80,000 + 11,244"
+    },
+    {
+      "index": 10,
+      "field": "totalTax",
+      "value": 7204,
+      "tolerance": 50,
+      "_note": "Year 2036, factor=1.03^10=1.3439: inflated deduction=$24,392, all income in 12% bracket. Tax≈7,204 vs frozen-bracket ~10,665 — confirms inflation indexing is active."
+    },
+    {
+      "index": 10,
+      "field": "portfolioWithdrawal",
+      "value": 87204,
+      "tolerance": 50,
+      "_note": "Gross withdrawal = spending + tax = 80,000 + 7,204"
+    }
+  ]
+}

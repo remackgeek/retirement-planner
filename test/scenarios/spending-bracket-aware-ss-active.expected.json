@@ -1,0 +1,11 @@
+{
+  "_rationale": "H1 fix verified: SS-taxable portion is in the headroom baseline, so headroom ≈ 0 and bracket_aware does NOT pull Trad above the conversion. withdrawalFromTraditional in year 1 should equal exactly the conversion ($50k), with spending overflow + conv tax flowing through Taxable. Without the fix, withdrawalFromTraditional would be inflated by an extra ~$16k bracket headroom claim.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Full conv year 1" },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 50000, "tolerance": 100, "_note": "Conv only — no extra Trad spending pull because SS already filled the bracket" },
+    { "index": 2, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Year 3 (age 64) still in conv window" },
+    { "index": 2, "field": "withdrawalFromTraditional", "value": 50000, "tolerance": 100, "_note": "Same invariant year 3" }
+  ]
+}

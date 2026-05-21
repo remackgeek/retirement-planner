@@ -1,0 +1,13 @@
+{
+  "_rationale": "Missouri LTCG exemption: stateCapGainsTax = $0 on any cap-gains withdrawal. Federal LTCG = 0.15 × $58,824 = $8,824. No ordinary income → state ordinary tax also $0. Net = $50,000.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 500000, "tolerance": 1, "note": "Starting balance" }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "withdrawalFromTaxable", "value": 58824, "tolerance": 5, "_note": "50000 / 0.85" },
+    { "index": 0, "field": "federalCapGainsTax", "value": 8824, "tolerance": 5, "_note": "0.15 × $58,824" },
+    { "index": 0, "field": "stateCapGainsTax", "value": 0, "tolerance": 0.01, "_note": "MO statutory LTCG exemption" },
+    { "index": 0, "field": "ordinaryTax", "value": 0, "tolerance": 0.01, "_note": "No ordinary income → no MO ordinary tax" }
+  ]
+}

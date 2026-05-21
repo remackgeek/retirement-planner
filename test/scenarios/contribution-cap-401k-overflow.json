@@ -44,8 +44,14 @@
   "inflationStdDev": 0,
   "filingStatus": "single",
   "spouseAge": null,
-  "stateTimeline": [{ "state": "Florida" }],
-  "simulationSettings": { "numSimulations": 100 },
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
   "accounts": [
     {
       "id": "trad-1",
@@ -65,5 +71,7 @@
     "catchUp401k": 7500,
     "catchUpIra": 1000,
     "inflationAdjusted": false
-  }
+  },
+  "enableIRMAA": false,
+  "enableNIIT": false
 }

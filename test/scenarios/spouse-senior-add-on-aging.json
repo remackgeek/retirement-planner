@@ -1,0 +1,55 @@
+{
+  "_description": "MFJ filer with spouse aging past 65 mid-simulation. Locks in the fix for the spouse-age propagation bug: the senior add-on (and OBBB bonus) must qualify the spouse based on their year-adjusted age, not the reference-year value.",
+  "_rationale": "Self age 67 (already 65+, qualifies every year), spouse age 63 (under 65 at start). $50k/yr pension. 2026 MFJ std deduction $32,200, MFJ per-senior add-on $1,650, OBBB $6,000/qualifying-senior (no phaseout since gross < $150k MFJ threshold). Years 0–1: only self qualifies (1 senior) → ded $32,200 + $1,650 + $6,000 = $39,850 → taxable $10,150 → fed tax 10% × $10,150 = $1,015. Years 2+ (spouse age 65+): both qualify (2 seniors) → ded $32,200 + $3,300 + $12,000 = $47,500 → taxable $2,500 → fed tax 10% × $2,500 = $250. Pre-fix bug would freeze spouse at 63 forever → years 2-4 would also show $1,015. FL state (0% rate). No state tax, no LTCG, no NIIT, no IRMAA. No growth, no inflation → tax assertions are exact.",
+  "_seed": 12345,
+  "name": "Spouse Senior Add-On Aging",
+  "currentAge": 67,
+  "lifeExpectancy": 71,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "name": "Joint Pension",
+      "amount": 50000,
+      "startAge": 67,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "mfj",
+  "spouseAge": 63,
+  "stateTimeline": [
+    { "state": "Florida" }
+  ],
+  "simulationSettings": {
+    "numSimulations": 5000
+  },
+  "accounts": [
+    {
+      "id": "roth-1",
+      "name": "Joint Roth",
+      "type": "roth",
+      "balance": 1000000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

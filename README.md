@@ -2,7 +2,7 @@
 
 A browser-based retirement planning tool positioned between simple calculators (HonestMath, Empower) and full-featured tools (ProjectionLab). Clean UX, honest Monte Carlo projections, and solid tax awareness without overwhelming complexity.
 
-**[Live demo](https://remackgeek.github.io/retirement-planner/)**
+**App: [yarp.bluewiz.net](https://yarp.bluewiz.net)**
 
 ## Features
 

@@ -1,5 +1,5 @@
 {
-  "_rationale": "80/20 allocation (blended 8.6%) vs the equivalent 60/40 balanced-realistic scenario (blended ~6.5%). Higher expected return should push probability above the balanced-realistic range of 20-45%. However higher stock volatility (15% stddev) widens outcomes. Probability expected in the 35-75% range — better than balanced-realistic but with more spread. Growth-first simulation order boosts probability slightly. medianFinalBalance should be higher than balanced-realistic's range due to higher blended return.",
-  "probability": { "min": 35, "max": 75 },
+  "_rationale": "80/20 allocation (blended 8.6%) vs the equivalent 60/40 balanced-realistic scenario (blended ~6.5%). Higher expected return should push probability above the balanced-realistic range. However higher stock volatility (15% stddev) widens outcomes. Probability expected in the 35-80% range — better than balanced-realistic but with more spread. Bracket inflation indexing (post-2026 brackets inflate with scenario rate) slightly reduces tax drag in late years, shifting the probability up slightly versus the frozen-bracket model.",
+  "probability": { "min": 35, "max": 80 },
   "medianFinalBalance": { "min": 0, "max": 5000000 }
 }

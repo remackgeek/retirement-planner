@@ -2,11 +2,16 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateAnnualCashFlow,
   calculateRMD,
+  computeBracketHeadroomForTrad,
+  computeMarginalStackAttribution,
+  getEffectiveStateName,
   IRS_UNIFORM_LIFETIME_TABLE,
+  resolveSpendingWithdrawalOrder,
   runSimulation,
-  studentTRandom,
-  standardizedTRandom,
+  SYNTHETIC_TRAD_WITHDRAWAL_ID,
+  type EventIncomeRecord,
 } from './SimulationService';
+import { studentTRandom, standardizedTRandom } from './ReturnGenerator';
 import type { UserData } from '../types/UserData';
 import { createSeededRandom } from '../../test/utils/seededRandom';
 
@@ -780,17 +785,17 @@ describe('calculateAnnualCashFlow', () => {
         ],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
-      // CA state tax = 100000 * 0.08 = 8000
-      // Federal tax on 100000 - 16100 = 83900 taxable
-      expect(result.totalTax).toBeGreaterThan(8000); // federal + state
-      // Compare with Florida (0% state tax)
+      // CA profile: stateOrdinaryBase $100k − std ded $5,540 = $94,460 taxable.
+      // Walking CA single brackets: 1%·10,412 + 2%·14,272 + 4%·14,275 + 6%·15,122 + 8%·14,269 + 9.3%·26,110 ≈ $5,438.
+      // Federal tax on $100k − $16,100 = $83,900 taxable → $13,170.
+      expect(result.totalTax).toBeGreaterThan(5000); // federal + state
       const flResult = calculateAnnualCashFlow(makeUserData({
         stateTimeline: [{ state: 'Florida' }],
         incomeEvents: [
           { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       }), 2026, 0);
-      expect(result.totalTax - flResult.totalTax).toBeCloseTo(8000, 0);
+      expect(result.totalTax - flResult.totalTax).toBeCloseTo(5438, 0);
     });
 
     it('relocation changes tax rate at the correct year', () => {
@@ -805,8 +810,8 @@ describe('calculateAnnualCashFlow', () => {
       });
       const before = calculateAnnualCashFlow(userData, 2029, 0);
       const after = calculateAnnualCashFlow(userData, 2030, 0);
-      // Before relocation: CA 8% state tax. After: FL 0%
-      expect(before.totalTax - after.totalTax).toBeCloseTo(8000, 0);
+      // Before: CA tax ≈ $5,438 on $100k pension (graduated brackets above std ded). After: FL 0%.
+      expect(before.totalTax - after.totalTax).toBeCloseTo(5438, 0);
     });
 
     it('multiple relocations: middle segment uses correct rate', () => {
@@ -826,7 +831,10 @@ describe('calculateAnnualCashFlow', () => {
       const fl = calculateAnnualCashFlow(userData, 2030, 0);  // age 64, FL
       // TX and FL both have 0% state tax, same federal brackets/deduction (all age < 65)
       expect(tx.totalTax).toBe(fl.totalTax);
-      expect(ny.totalTax - tx.totalTax).toBeCloseTo(5500, 0); // 100k * 5.5%
+      // NY profile: pension_income is "before_tax" ordinary, NOT a Traditional withdrawal — the $20k
+      // NY pension/IRA exclusion does NOT apply here. State base = $100k − $8,000 NY std ded = $92,000.
+      // NY single brackets: 4%·8,500 + 4.5%·3,200 + 5.25%·2,200 + 5.5%·66,750 + 6%·11,350 ≈ $4,952.
+      expect(ny.totalTax - tx.totalTax).toBeCloseTo(4952, 0);
     });
 
     it('relocation in reference year takes effect immediately', () => {
@@ -1167,5 +1175,602 @@ describe('runSimulation — Student\'s t return distribution', () => {
     expect(tResult.probability).toBeLessThanOrEqual(100);
     // And they must not be identical (the t path is doing something)
     expect(tResult.median).not.toEqual(logResult.median);
+  });
+});
+
+describe('runSimulation — percentile band and MC stats', () => {
+  const stochasticUserData = makeUserData({
+    currentAge: 60,
+    lifeExpectancy: 75,
+    accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+    portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.04, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+    inflationRate: 0,
+    simulationSettings: { numSimulations: 200 },
+  });
+
+  it('returns a percentileBand with one p10/p90 entry per year', () => {
+    const result = runSimulation(stochasticUserData, createSeededRandom(7));
+    const totalYears = stochasticUserData.lifeExpectancy - stochasticUserData.currentAge + 1;
+    expect(result.percentileBand).not.toBeNull();
+    expect(result.percentileBand!.p10).toHaveLength(totalYears);
+    expect(result.percentileBand!.p90).toHaveLength(totalYears);
+  });
+
+  it('p10 <= p90 every year, and p10 == p90 == initial balance at year 0', () => {
+    const result = runSimulation(stochasticUserData, createSeededRandom(11));
+    const { p10, p90 } = result.percentileBand!;
+    const initial = stochasticUserData.accounts.reduce((s, a) => s + a.balance, 0);
+    expect(p10[0]).toBeCloseTo(initial, 0);
+    expect(p90[0]).toBeCloseTo(initial, 0);
+    for (let i = 0; i < p10.length; i++) {
+      expect(p10[i]).toBeLessThanOrEqual(p90[i]);
+    }
+  });
+
+  it('mcStats ending balances bracket the median path final balance', () => {
+    const result = runSimulation(stochasticUserData, createSeededRandom(13));
+    const lastIdx = result.median.length - 1;
+    // p10 ending <= p50 ending; median path's final balance should sit between p10 and p90
+    expect(result.mcStats!.p10EndingBalance).toBeLessThanOrEqual(result.mcStats!.medianEndingBalance);
+    expect(result.median[lastIdx]).toBeGreaterThanOrEqual(result.mcStats!.p10EndingBalance * 0.5);
+  });
+
+  it('mcStats depletion ages are null when nearly all runs survive', () => {
+    // No spending, big balance → 0 failures → both depletion ages null.
+    const result = runSimulation(stochasticUserData, createSeededRandom(17));
+    expect(result.probability).toBe(100);
+    expect(result.mcStats!.medianDepletionAge).toBeNull();
+    expect(result.mcStats!.worstDecileDepletionAge).toBeNull();
+  });
+
+  it('mcStats depletion ages are finite when most runs deplete', () => {
+    // Tiny portfolio, huge spending → every run depletes early.
+    const depleted = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 75,
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 50_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      portfolioAssumptions: { stockReturn: 0.03, stockStdDev: 0.05, bondReturn: 0.03, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      inflationRate: 0,
+      simulationSettings: { numSimulations: 200 },
+      spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 30_000, startAge: 60, inflationAdjusted: false }],
+      incomeEvents: [{ id: 'i1', name: 'Other Income 1', type: 'other_income', amount: 1_000, startAge: 60, taxStatus: 'after_tax', colaType: 'fixed' }],
+    });
+    const result = runSimulation(depleted, createSeededRandom(23));
+    expect(result.mcStats!.medianDepletionAge).not.toBeNull();
+    expect(result.mcStats!.worstDecileDepletionAge).not.toBeNull();
+    // Worst decile depletes no later than median.
+    expect(result.mcStats!.worstDecileDepletionAge!).toBeLessThanOrEqual(result.mcStats!.medianDepletionAge!);
+    // Depletion ages are within the plan horizon.
+    expect(result.mcStats!.medianDepletionAge!).toBeGreaterThanOrEqual(60);
+    expect(result.mcStats!.medianDepletionAge!).toBeLessThanOrEqual(75);
+  });
+
+  it('historical_single mode (numRuns === 1) returns null band and null stats', () => {
+    const single = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 75,
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      portfolioAssumptions: {
+        stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.04, bondStdDev: 0.05,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        returnModel: 'historical_single', historicalStartYear: 1970,
+      },
+    });
+    const result = runSimulation(single, createSeededRandom(29));
+    expect(result.percentileBand).toBeNull();
+    expect(result.mcStats).toBeNull();
+  });
+
+  it('parametric with numSimulations < 10 returns null band and null stats', () => {
+    // Guard threshold is `numRuns < 10` regardless of return model.
+    const small = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 65,
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.04, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 5 },
+    });
+    const result = runSimulation(small, createSeededRandom(31));
+    expect(result.percentileBand).toBeNull();
+    expect(result.mcStats).toBeNull();
+  });
+});
+
+describe('runSimulation — deterministic projection reproducibility', () => {
+  // The What If chart relies on the nominal/deterministic projection being
+  // reproducible across calls — that's what makes Draft and Original lines
+  // coincide when no edits have been made. If anyone introduces a stochastic
+  // factor into the nominal generator, this test will catch it.
+  it('two independent runs on the same UserData produce identical nominal paths', () => {
+    const userData = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 70,
+      accounts: [{ id: 'acct-1', name: 'Traditional 1', type: 'traditional' as const, balance: 750_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.04, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      inflationRate: 0.025,
+      simulationSettings: { numSimulations: 50 },
+      spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 30_000, startAge: 60, inflationAdjusted: true }],
+    });
+    // Different random seeds — only the Monte Carlo paths should change.
+    // The deterministic (`nominal`) projection should be identical.
+    const r1 = runSimulation(userData, createSeededRandom(1));
+    const r2 = runSimulation(userData, createSeededRandom(99999));
+    expect(r2.nominal).toEqual(r1.nominal);
+    expect(r2.nominalInflation).toEqual(r1.nominalInflation);
+  });
+});
+
+describe('getEffectiveStateName', () => {
+  it('returns the first entry for a single-state timeline', () => {
+    const ud = makeUserData({ stateTimeline: [{ state: 'Florida' }] });
+    expect(getEffectiveStateName(ud, 2026)).toBe('Florida');
+    expect(getEffectiveStateName(ud, 2080)).toBe('Florida');
+  });
+
+  it('switches to the next entry once startYear is reached', () => {
+    const ud = makeUserData({
+      stateTimeline: [
+        { state: 'California' },
+        { state: 'Texas', startYear: 2030 },
+      ],
+    });
+    expect(getEffectiveStateName(ud, 2026)).toBe('California');
+    expect(getEffectiveStateName(ud, 2029)).toBe('California');
+    expect(getEffectiveStateName(ud, 2030)).toBe('Texas');
+    expect(getEffectiveStateName(ud, 2050)).toBe('Texas');
+  });
+
+  it('walks multiple future transitions in order', () => {
+    const ud = makeUserData({
+      stateTimeline: [
+        { state: 'California' },
+        { state: 'Nevada', startYear: 2030 },
+        { state: 'Florida', startYear: 2040 },
+      ],
+    });
+    expect(getEffectiveStateName(ud, 2028)).toBe('California');
+    expect(getEffectiveStateName(ud, 2035)).toBe('Nevada');
+    expect(getEffectiveStateName(ud, 2045)).toBe('Florida');
+  });
+
+  it('stops at the first non-yet-active entry (later entries cannot leapfrog)', () => {
+    const ud = makeUserData({
+      stateTimeline: [
+        { state: 'California' },
+        { state: 'Nevada', startYear: 2050 },
+        { state: 'Florida', startYear: 2040 },
+      ],
+    });
+    // 2045: Nevada (2050) not yet active, so the walk stops there.
+    // Florida's startYear is earlier but appears later in the list — not picked.
+    expect(getEffectiveStateName(ud, 2045)).toBe('California');
+  });
+});
+
+describe('computeMarginalStackAttribution', () => {
+  // Helper to build event records (matches accumulateIncome output shape).
+  const r = (
+    id: string,
+    name: string,
+    type: string,
+    gross: number,
+    classification: EventIncomeRecord['classification'],
+  ): EventIncomeRecord => ({ eventId: id, eventName: name, eventType: type, gross, classification });
+
+  const baseArgs = {
+    ssGross: 0,
+    ssTaxableAmount: 0,
+    fromTrad: 0,
+    rothConversionTotal: 0,
+    filingStatus: 'single' as const,
+    stateEffectiveRate: 0,
+    age: 65,
+    taxYear: 2026,
+    spouseAge: null,
+    inflationRate: 0,
+  };
+
+  it('returns empty array when there are no income sources', () => {
+    const out = computeMarginalStackAttribution({ ...baseArgs, eventBreakdowns: [] });
+    expect(out).toEqual([]);
+  });
+
+  it('attributes the full ordinary tax to a single ordinary event', () => {
+    // $50k pension, 2026 single, age 65 → std ded $16,100 + senior $2,050 + OBBB $6,000 = $24,150
+    // Taxable $25,850 → fed tax $1,240 + $1,614 = $2,854.
+    const events = [r('p1', 'Pension', 'pension_income', 50_000, 'ordinary')];
+    const out = computeMarginalStackAttribution({ ...baseArgs, eventBreakdowns: events });
+    expect(out).toHaveLength(1);
+    expect(out[0].eventId).toBe('p1');
+    expect(out[0].marginalTax).toBeCloseTo(2854, 0);
+  });
+
+  it('wages absorbed by deductions get 0 marginal tax; pension picks up the rest', () => {
+    const events = [
+      r('w1', 'Wages', 'wage_income', 20_000, 'ordinary'),
+      r('p1', 'Pension', 'pension_income', 30_000, 'ordinary'),
+    ];
+    const out = computeMarginalStackAttribution({ ...baseArgs, eventBreakdowns: events });
+    expect(out).toHaveLength(2);
+    expect(out[0].eventId).toBe('w1');
+    expect(out[0].marginalTax).toBe(0); // $20k fully absorbed by $24,150 deductions
+    expect(out[1].eventId).toBe('p1');
+    expect(out[1].marginalTax).toBeCloseTo(2854, 0); // pension brings total tax up
+    // Reconciliation: sum should match
+    const sum = out.reduce((s, e) => s + e.marginalTax, 0);
+    expect(sum).toBeCloseTo(2854, 0);
+  });
+
+  it('pre-tax contribution reduces the cumulative ordinary stack', () => {
+    // $50k wages + $10k pre-tax 401k → ordinary stack = $40k, tax on $40k - $24,150 = $15,850.
+    const events = [
+      r('w1', 'Wages', 'wage_income', 50_000, 'ordinary'),
+      r('c1', '401k', 'retirement_contribution', 10_000, 'pre_tax_contribution'),
+    ];
+    const out = computeMarginalStackAttribution({ ...baseArgs, eventBreakdowns: events });
+    expect(out).toHaveLength(2);
+    expect(out[1].taxableContribution).toBe(-10_000);
+    expect(out[1].marginalTax).toBeLessThan(0); // tax reduced
+    // After pre-tax: tax on $40k (taxable $15,850 → fed tax 10%*$12,400 + 12%*$3,450 = $1,654)
+    // After wages alone: tax on $50k (taxable $25,850 → $2,854)
+    // Pre-tax marginal = $1,654 - $2,854 = -$1,200
+    expect(out[0].marginalTax + out[1].marginalTax).toBeCloseTo(1654, 0);
+  });
+
+  it('pre-tax greater than wages floors cumulative at zero', () => {
+    const events = [
+      r('w1', 'Wages', 'wage_income', 10_000, 'ordinary'),
+      r('c1', '401k', 'retirement_contribution', 15_000, 'pre_tax_contribution'),
+    ];
+    const out = computeMarginalStackAttribution({ ...baseArgs, eventBreakdowns: events });
+    // Wage step: $10k cumulative, fully absorbed by deductions → tax 0.
+    // Pre-tax step: cumulative max(0, $10k - $15k) = 0 → tax still 0. Marginal = 0 - 0 = 0.
+    expect(out[0].marginalTax).toBe(0);
+    expect(out[1].marginalTax).toBe(0);
+  });
+
+  it('synthetic Traditional withdrawal appears as a stack step', () => {
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: [r('p1', 'Pension', 'pension_income', 20_000, 'ordinary')],
+      fromTrad: 30_000,
+    });
+    expect(out).toHaveLength(2);
+    expect(out[1].eventId).toBe(SYNTHETIC_TRAD_WITHDRAWAL_ID);
+    expect(out[1].gross).toBe(30_000);
+    // Total ordinary $50k, same tax as wages+pension test
+    const sum = out.reduce((s, e) => s + e.marginalTax, 0);
+    expect(sum).toBeCloseTo(2854, 0);
+  });
+
+  it('roth conversion event appears as a stack step with proportional scaling', () => {
+    // User requested $30k conversion but actual was capped at $20k.
+    const events = [
+      r('p1', 'Pension', 'pension_income', 20_000, 'ordinary'),
+      r('rc1', 'Roth Conv', 'roth_conversion', 30_000, 'roth_conversion'),
+    ];
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      fromTrad: 20_000,           // = conversion only (no spending pull)
+      rothConversionTotal: 20_000, // capped at $20k
+    });
+    const convOut = out.find((e) => e.eventId === 'rc1');
+    expect(convOut).toBeDefined();
+    expect(convOut!.gross).toBeCloseTo(20_000, 4); // scaled down to actual
+  });
+
+  it('two SS events split the SS step proportionally by gross', () => {
+    // Self SS $20k + spouse SS $10k, no other income.
+    // Total SS $30k; provisional = $15k (50% × $30k) → below $25k single threshold → 0 taxable.
+    // So ssTaxableAmount = 0, marginal tax for the SS step = 0. Use a higher provisional
+    // bump to actually trigger taxability.
+    const events = [
+      r('p1', 'Pension', 'pension_income', 50_000, 'ordinary'),
+      r('ss1', 'My SS', 'social_security', 20_000, 'social_security'),
+      r('ss2', 'Spouse SS', 'social_security', 10_000, 'social_security'),
+    ];
+    // For single age 65: provisional = $50k + $15k = $65k > $34k → 85% zone.
+    // ssTaxable = min(0.85*(65000-34000) + min(4500, 0.5*30000), 0.85*30000) = min(30850, 25500) = 25500.
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      ssGross: 30_000,
+      ssTaxableAmount: 25_500,
+    });
+    const ssRows = out.filter((e) => e.eventType === 'social_security');
+    expect(ssRows).toHaveLength(2);
+    // Proportional split: 20/30 vs 10/30
+    expect(ssRows[0].marginalTax / ssRows[1].marginalTax).toBeCloseTo(2.0, 2);
+  });
+
+  it('reconciliation: sum of marginal taxes equals total ordinary tax', () => {
+    const events = [
+      r('w1', 'Wages', 'wage_income', 40_000, 'ordinary'),
+      r('p1', 'Pension', 'pension_income', 25_000, 'ordinary'),
+      r('ss1', 'SS', 'social_security', 24_000, 'social_security'),
+    ];
+    // Ordinary gross $65k. Provisional = $65k + $12k = $77k > $34k → 85% zone.
+    // ssTaxable = min(0.85*(77000-34000) + 4500, 0.85*24000) = min(41050, 20400) = 20400.
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      ssGross: 24_000,
+      ssTaxableAmount: 20_400,
+    });
+    // Computed total ordinary tax via the same path:
+    //   combinedTaxable = $65k + $20.4k = $85.4k
+    //   deductions = $24,150 (single age 65, 2026, OBBB phaseout: gross > $75k → reduction)
+    //   OBBB: $6000 - 6%*($85,400 - $75,000) = $6000 - $624 = $5,376
+    //   total dedns = $16,100 + $2,050 + $5,376 = $23,526
+    //   taxable = $61,874 → fed tax 10%*$12,400 + 12%*$38,000 + 22%*$11,474 = $1,240 + $4,560 + $2,524.28 = $8,324.28
+    const sum = out.reduce((s, e) => s + e.marginalTax, 0);
+    expect(sum).toBeCloseTo(8324, 0);
+  });
+
+  it('reconciliation with non-zero stateEffectiveRate: sum ≈ federal + state·combinedTaxable', () => {
+    const events: EventIncomeRecord[] = [
+      { eventId: 'w1', eventName: 'Wages', eventType: 'wage_income', gross: 50_000, classification: 'ordinary' },
+      { eventId: 'p1', eventName: 'Pension', eventType: 'pension_income', gross: 50_000, classification: 'ordinary' },
+    ];
+    const stateRate = 0.05;
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      stateEffectiveRate: stateRate,
+    });
+    // combinedTaxable = $100k; for single age 65 in 2026 the federal portion
+    // matches the existing fixtures (see prior tests in this block). With state
+    // distributed proportionally at 5%, the sum should add 0.05 × $100k = $5,000
+    // on top of the federal-only marginal-stack total.
+    const outFederalOnly = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      stateEffectiveRate: 0,
+    });
+    const fedSum = outFederalOnly.reduce((s, e) => s + e.marginalTax, 0);
+    const stateSum = out.reduce((s, e) => s + e.marginalTax, 0);
+    expect(stateSum - fedSum).toBeCloseTo(stateRate * 100_000, 0);
+  });
+});
+
+describe('audit.accountFlows (via runSimulation)', () => {
+  it('captures pro-rata withdrawals across two Traditional accounts', () => {
+    const ud = makeUserData({
+      currentAge: 73,
+      lifeExpectancy: 75,
+      spendingGoals: [baseSpending(2000)], // $24k/yr forces a withdrawal
+      accounts: [
+        { id: 'trad-a', name: 'Trad A', type: 'traditional', balance: 200_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'trad-b', name: 'Trad B', type: 'traditional', balance: 100_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 100 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    expect(bd.audit).toBeDefined();
+    expect(bd.audit!.accountFlows).toBeDefined();
+    const tradRows = bd.audit!.accountFlows!.filter((r) => r.accountType === 'traditional');
+    // Both Traditional accounts should appear (RMD forces pull from both, pro-rata).
+    const ids = tradRows.map((r) => r.accountId).sort();
+    expect(ids).toEqual(['trad-a', 'trad-b']);
+    // Pro-rata: 2:1 ratio (200k : 100k)
+    const aRow = tradRows.find((r) => r.accountId === 'trad-a')!;
+    const bRow = tradRows.find((r) => r.accountId === 'trad-b')!;
+    expect(aRow.withdrawal / bRow.withdrawal).toBeCloseTo(2.0, 1);
+  });
+
+  it('captures surplus deposit into the synthetic Reinvestment account', () => {
+    // High income, no spending, no taxable account → surplus auto-creates Reinvestment.
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 61,
+      incomeEvents: [
+        {
+          id: 'pension',
+          type: 'pension_income',
+          name: 'Pension',
+          amount: 50_000,
+          startAge: 60,
+          taxStatus: 'after_tax',
+          colaType: 'fixed',
+        } as any,
+      ],
+      accounts: [
+        { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 100_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      simulationSettings: { numSimulations: 50 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    const reinvest = bd.audit!.accountFlows!.find((r) => r.accountId === 'reinvestment-auto');
+    expect(reinvest).toBeDefined();
+    expect(reinvest!.deposit).toBeGreaterThan(0);
+  });
+});
+
+describe('resolveSpendingWithdrawalOrder', () => {
+  it('returns the explicit field value when set', () => {
+    expect(
+      resolveSpendingWithdrawalOrder(makeUserData({ spendingWithdrawalOrder: 'taxable_first' })),
+    ).toBe('taxable_first');
+    expect(
+      resolveSpendingWithdrawalOrder(makeUserData({ spendingWithdrawalOrder: 'bracket_aware' })),
+    ).toBe('bracket_aware');
+  });
+
+  it("defaults to 'taxable_first' when no roth_conversion event exists", () => {
+    expect(resolveSpendingWithdrawalOrder(makeUserData())).toBe('taxable_first');
+  });
+
+  it("defaults to 'bracket_aware' when any roth_conversion event exists", () => {
+    const ud = makeUserData({
+      incomeEvents: [{
+        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 25_000,
+        startAge: 65, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed',
+      }],
+    });
+    expect(resolveSpendingWithdrawalOrder(ud)).toBe('bracket_aware');
+  });
+
+  it('honors an explicit override even when a conversion exists', () => {
+    const ud = makeUserData({
+      spendingWithdrawalOrder: 'taxable_first',
+      incomeEvents: [{
+        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 25_000,
+        startAge: 65, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed',
+      }],
+    });
+    expect(resolveSpendingWithdrawalOrder(ud)).toBe('taxable_first');
+  });
+
+  it('falls back to the content-aware default when the field holds an unknown value', () => {
+    // Legacy 'pro_rata' (dropped from the enum) and outright typos must not
+    // silently behave like taxable_first with no signal — they fall through
+    // to the content-aware default. This is the S3 fix.
+    const noConv = makeUserData({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      spendingWithdrawalOrder: 'pro_rata' as any,
+    });
+    expect(resolveSpendingWithdrawalOrder(noConv)).toBe('taxable_first');
+    const withConv = makeUserData({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      spendingWithdrawalOrder: 'foobar' as any,
+      incomeEvents: [{
+        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 25_000,
+        startAge: 65, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed',
+      }],
+    });
+    expect(resolveSpendingWithdrawalOrder(withConv)).toBe('bracket_aware');
+  });
+});
+
+describe('computeBracketHeadroomForTrad', () => {
+  // Minimal AccumulatedIncome stub — only the fields the helper reads.
+  const incomeOf = (overrides: { ssGross?: number; otherTaxableGross?: number; conversionGross?: number } = {}) => ({
+    ssGross: overrides.ssGross ?? 0,
+    otherTaxableGross: overrides.otherTaxableGross ?? 0,
+    afterTaxIncome: 0,
+    conversionGross: overrides.conversionGross ?? 0,
+    wageIncomeGross: 0,
+    preTaxContributions: 0,
+    rothContributions: 0,
+    afterTaxContributions: 0,
+    employerMatch: 0,
+    contributions: [],
+    contributionsCappedAmount: 0,
+    eventBreakdowns: [],
+  });
+
+  // Default test ages: 60-year-old single filer, no spouse, no senior bonus.
+  const AGE_NO_SENIOR = 60;
+  const NO_SPOUSE = null;
+
+  it('returns top-of-12% + standard-deduction headroom when baseline is zero', () => {
+    // 2026 single: 12% ceiling 50400, std ded 16100 (no senior bonus at age 60).
+    // Headroom = top_of_12% − max(0, 0 − stdDed) = top_of_12% − 0 = 50400.
+    const headroom = computeBracketHeadroomForTrad(makeUserData(), incomeOf(), 2026, 0, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroom).toBe(50400);
+  });
+
+  it('shrinks headroom when a conversion partially fills the bracket', () => {
+    // 2026 single age 60: std ded 16100, conv $50k → baseline taxable income 33900.
+    // Headroom = 50400 − 33900 = 16500.
+    const headroom = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ conversionGross: 50_000 }), 2026, 0, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroom).toBeGreaterThan(15_000);
+    expect(headroom).toBeLessThan(17_000);
+  });
+
+  it('clamps headroom to zero when baseline ordinary already exceeds the 12% bracket', () => {
+    const headroom = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ otherTaxableGross: 100_000 }), 2026, 0, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroom).toBe(0);
+  });
+
+  it('includes SS-taxable in the baseline (regression for the H1 bug)', () => {
+    // Single, SS $25k, no other income, no conversion.
+    // Provisional income = 0 + 0.5*25k = 12500 < 25k threshold → ssTaxable = 0.
+    const headroomLowSS = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ ssGross: 25_000 }), 2026, 0, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroomLowSS).toBe(50400);
+
+    // Single, SS $30k, conv $50k. Conv lifts provisional income past the 85% threshold.
+    // baselineTaxable ≈ $50k + 85%×$30k − $16.1k ≈ $59,400 > top_of_12% ($50,400) → headroom = 0.
+    const headroomHighSS = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ ssGross: 30_000, conversionGross: 50_000 }), 2026, 0, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroomHighSS).toBe(0);
+  });
+
+  it('inflation-indexes the top-of-12% ceiling and standard deduction', () => {
+    const headroom2030 = computeBracketHeadroomForTrad(makeUserData(), incomeOf(), 2030, 0.03, AGE_NO_SENIOR, NO_SPOUSE);
+    expect(headroom2030).toBeCloseTo(50400 * Math.pow(1.03, 4), 0);
+  });
+
+  it('includes the senior bonus in the deduction for age 65+ filers (T1 regression)', () => {
+    // 2026 single age 60, conv $30k: baselineTaxable = 30000 − 16100 = 13900.
+    // Headroom = 50400 − 13900 = 36500.
+    const headroomYoung = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ conversionGross: 30_000 }), 2026, 0, 60, NO_SPOUSE);
+    expect(headroomYoung).toBe(36500);
+
+    // Same scenario but age 65: senior bonus $2050 → total deduction 18150 →
+    // baselineTaxable = 30000 − 18150 = 11850. Headroom = 50400 − 11850 = 38550.
+    // Without the T1 fix the senior bonus is ignored and headroom = 36500.
+    const headroomSenior = computeBracketHeadroomForTrad(makeUserData(), incomeOf({ conversionGross: 30_000 }), 2026, 0, 65, NO_SPOUSE);
+    expect(headroomSenior).toBe(38550);
+    expect(headroomSenior - headroomYoung).toBe(2050);
+  });
+
+  it('counts both seniors for MFJ when both filers are age 65+', () => {
+    const ud = makeUserData({ filingStatus: 'mfj', spouseAge: 65 });
+    // 2026 MFJ both 65+: base 32200, senior extra 1650 × 2 = 3300, total 35500.
+    // No conv: baselineTaxable = 0. Headroom = top_of_12% MFJ 2026 = 100800.
+    const headroomBothSeniors = computeBracketHeadroomForTrad(ud, incomeOf(), 2026, 0, 65, 65);
+    expect(headroomBothSeniors).toBe(100800);
+
+    // Add $80k conv → baselineTaxable = 80000 − 35500 = 44500. Headroom = 100800 − 44500 = 56300.
+    const headroomWithConv = computeBracketHeadroomForTrad(ud, incomeOf({ conversionGross: 80_000 }), 2026, 0, 65, 65);
+    expect(headroomWithConv).toBe(56300);
+  });
+});
+
+describe('bracket_aware spending waterfall — coordination invariant', () => {
+  // The plan promised: in years where the bracket-aware Trad spending pull is
+  // active AND Taxable can absorb the spending overflow (no spill to
+  // Trad-above-headroom), federal bracket index stays ≤ 1 (the 12% bracket).
+  // When Taxable runs out the spillover falls to Trad-above-headroom and
+  // bracket may exceed 12% — that's the existing taxable_first fallback,
+  // not a bracket_aware violation. The scenario below sizes Taxable large
+  // enough that the invariant holds across the full conv window.
+  it('keeps federalBracketIndex ≤ 1 across the conv window when Taxable absorbs the overflow', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 64,
+      spendingGoals: [{
+        id: 'living-1', name: 'Living', type: 'living_expenses' as const,
+        amount: 60_000, amountPeriod: 'annual' as const, startAge: 60,
+        isOneTime: false, inflationAdjusted: false,
+      }],
+      incomeEvents: [{
+        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 50_000,
+        startAge: 60, endAge: 62, isOneTime: false, taxStatus: 'before_tax', colaType: 'fixed',
+      }],
+      accounts: [
+        { id: 't-1', name: 'Trad 1', type: 'traditional', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'r-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        // Taxable large enough to absorb 3 years of spending overflow + conv tax + LTCG cascade.
+        { id: 'b-1', name: 'Taxable 1', type: 'taxable', balance: 400_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      simulationSettings: { numSimulations: 10 },
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+    });
+    const result = runSimulation(ud, createSeededRandom(42));
+    // First 3 years are conv-active.
+    for (let i = 0; i < 3; i++) {
+      const bd = result.nominalBreakdowns[i];
+      expect(bd.rothConversionGross).toBeGreaterThan(0);  // conv firing
+      // bracketIndex 0 = 10%, 1 = 12%. The smart-default headroom guarantees
+      // the conv + Trad spending pull stay within the 12% bracket so long as
+      // Taxable absorbs the spending overflow.
+      expect(bd.audit!.federalBracketIndex).toBeLessThanOrEqual(1);
+    }
   });
 });

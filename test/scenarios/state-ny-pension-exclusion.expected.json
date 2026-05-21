@@ -1,0 +1,13 @@
+{
+  "_rationale": "NY $20k retirement exclusion + federal std ded + senior bonuses absorb the $20k Traditional withdrawal entirely. State tax = $0, federal tax = $0, total tax = $0. Withdrawal = $20k; balance year 1 = 500k − 20k = $480k.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 65, "value": 500000, "tolerance": 1, "note": "Starting Traditional balance" },
+    { "index": 1, "age": 66, "value": 480000, "tolerance": 1, "note": "After $20k withdrawal (zero tax)" }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 20000, "tolerance": 1, "_note": "Pure $20k pull, NY exclusion + federal deductions absorb taxes" },
+    { "index": 0, "field": "ordinaryTax", "value": 0, "tolerance": 1, "_note": "Federal taxable income falls to $0 after deductions; NY taxable also $0 after exclusion + std ded" },
+    { "index": 0, "field": "stateCapGainsTax", "value": 0, "tolerance": 0.01, "_note": "No LTCG" }
+  ]
+}

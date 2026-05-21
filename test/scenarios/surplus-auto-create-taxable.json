@@ -43,7 +43,9 @@
   "filingStatus": "single",
   "spouseAge": null,
   "stateTimeline": [
-    { "state": "Florida" }
+    {
+      "state": "Florida"
+    }
   ],
   "simulationSettings": {
     "numSimulations": 100
@@ -58,5 +60,7 @@
       "portfolioBalance": "60_40"
     }
   ],
-  "longTermCapGainsRate": 0
+  "longTermCapGainsRate": 0,
+  "enableIRMAA": false,
+  "enableNIIT": false
 }

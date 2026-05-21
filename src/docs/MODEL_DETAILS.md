@@ -8,15 +8,30 @@
 
 YARP runs **5,000 independent simulations** by default (configurable: 1,000 / 5,000 / 10,000). Each simulation draws a random sequence of annual stock and bond returns and projects every account from today through your life expectancy, applying income, spending, taxes, and withdrawals each year.
 
+In the browser, MC runs in parallel across a Web Worker pool sized to your machine's available cores (capped at 8) so the UI stays responsive during a sim. Each worker uses an independent `Math.random` stream — results are statistically equivalent but not bit-identical across machines with different core counts. The deterministic projection ("Projected" chart line, and the Roth-conversion *Net impact on plan value* preview row) does not consume the RNG and is fully reproducible regardless.
+
 ### Success Probability
 
 A run is **successful** if portfolio balance never reaches $0 before life expectancy. The reported success probability is the fraction of successful runs.
 
 ### Representative Paths
 
-Rather than year-by-year percentile envelopes (which are smooth but synthetic — no actual run produces them), YARP selects the **single simulation run** whose final balance is closest to the 50th percentile (Median) or 10th percentile (Downside) of all final balances.
+YARP selects the **single simulation run** whose final balance is closest to the 50th percentile (Median) or 10th percentile (Downside) of all final balances. These representative runs power the **yearly data table** breakdowns — the same year's stock and bond return factors drive every line of that run's detail, so income, spending, taxes, withdrawals, and balance evolve consistently from a real return sequence.
 
-This means median/downside paths are coherent: the same year's stock and bond return factors drive every line of that run's yearly detail. Tradeoff: the chart lines are slightly less smooth than envelope-based projections, but every number you see is internally consistent and can be attributed to a real return sequence.
+### Percentile Band (chart shading)
+
+Separately, the chart's shaded **10th–90th percentile band** is computed as a **year-by-year percentile envelope**: at each year independently, all run balances are sorted and the 10th and 90th percentile values are taken. The band is therefore synthetic — no single simulated future traces its edges — but it gives the most honest visual summary of uncertainty over time, which the representative-run lines cannot. The band uses the deterministic inflation series as its display-currency deflator. It is skipped when fewer than 10 runs are available (e.g. `historical_single` mode).
+
+### Monte Carlo Stats
+
+The tier-badge tooltip beside *Chance of Success* surfaces four MC summary numbers, all computed once from the full run pool:
+
+- **Median ending balance** — p50 of final-year balances
+- **10th-percentile ending balance** — p10 of final-year balances
+- **Median depletion age** — p50 of (per-run) first year the portfolio's spending shortfall is positive, converted to age; `null` when more than half of runs survive
+- **Worst-decile depletion age** — p10 of the same per-run depletion years; `null` when more than 90% of runs survive
+
+Depletion is detected via `AnnualCashFlowBreakdown.spendingShortfall > 0`, the same definition the success probability uses.
 
 ---
 
@@ -152,11 +167,30 @@ This is a UI summary only — the simulation always uses each account's individu
 
 ## Withdrawal Waterfall
 
-Each year, after RMD is enforced, withdrawals follow a fixed sequence:
+Each year, withdrawals follow a fixed sequence. Two strategies are available, selected per scenario via `UserData.spendingWithdrawalOrder`.
 
-1. **Taxable** — drawn first (lowest tax cost)
-2. **Traditional** — ordinary income tax applies
-3. **Roth** — drawn last to preserve tax-advantaged growth
+### `'taxable_first'` (default when no Roth conversions are scheduled)
+
+1. **Traditional, up to the RMD** — the year's RMD is forced from Traditional regardless of spending need, so its gross is applied to spending+tax first. (When age < 73, RMD is $0 and this step is skipped.)
+2. **Taxable** — fills any remaining spending+tax need above the RMD (lowest tax cost on the residual)
+3. **Traditional, above the RMD** — fills any need still unmet
+4. **Roth** — drawn last to preserve tax-advantaged growth
+
+RMD-first ordering avoids over-pulling from Taxable in high-RMD years: when the RMD's net-of-tax proceeds already cover the year's spending, `withdrawalFromTaxable` stays at 0 and no federal/state LTCG or NIIT is generated. Excess RMD (the portion not consumed by spending+tax) reinvests into the first Taxable account.
+
+### `'bracket_aware'` (default when any Roth conversion event is scheduled)
+
+Inserts a **Traditional-up-to-12%-bracket-headroom** step before Taxable, so spending pulls from Traditional cheaply in low-bracket years instead of burning Taxable at LTCG rates. Order becomes:
+
+1. **Traditional, up to the RMD** (as above)
+2. **Traditional, up to bracket headroom** — the additional Traditional spending pull is capped so that conversion + this Trad pull + SS-taxable portion together stay within the top of the 12% federal bracket. Headroom is precomputed per year as `max(0, top_of_12% − max(0, (otherTaxableGross + conversionGross + ssTaxable) − stdDed))`, and the full mandatory RMD is subtracted from it at the per-year level. Conv- and SS-inclusive means a Trad pull within headroom is guaranteed to keep the year inside the 12% bracket.
+3. **Taxable** — spending overflow
+4. **Traditional, above headroom**
+5. **Roth** — last resort
+
+**This setting only changes the spending source — it does NOT change conversion size or conversion-tax sourcing.** Conversion tax still follows the hybrid sourcing rule (RMD-excess → Taxable → withhold). The point of `bracket_aware` is to **preserve Taxable for the high-`mt` conversion years** by paying for low-bracket-year spending from Traditional cheaply. See CLAUDE.md "Cross-year spending source policy" for the rationale, blind spots, and tradeoffs.
+
+Set `spendingWithdrawalOrder: 'taxable_first'` explicitly on a conversion-bearing scenario to opt out of the smart default and use the conservative waterfall.
 
 ### Spending Shortfall
 
@@ -172,7 +206,7 @@ Inflation-adjusted income events (Social Security, pensions with COLA, etc.) com
 
 ### Federal Income Tax
 
-YARP uses **statically defined 2024, 2025, and 2026 tax brackets**. There is no automatic bracket inflation — for any year beyond 2026, the simulation reuses the **2026 brackets unchanged**. This is conservative; real brackets will inflate, but the magnitude depends on legislation.
+YARP uses **statically defined 2024, 2025, and 2026 tax brackets**. For any year beyond 2026, the 2026 bracket thresholds, standard deduction, and senior additional deduction are **inflation-indexed forward** using the scenario's configured inflation rate: each dollar-denominated threshold is multiplied by `(1 + inflationRate)^(year − 2026)`. Tax *rates* are never scaled — only the dollar limits. This matches how the IRS adjusts brackets annually via Chained CPI-U (the model uses headline CPI as an approximation; the real adjustment runs about 0.2–0.3 pp lower).
 
 Four filing statuses are supported: **single**, **married filing jointly (MFJ)**, **married filing separately (MFS)**, and **head of household (HOH)**. Bracket cutoffs and the standard deduction differ for each.
 
@@ -215,13 +249,44 @@ Because thresholds are frozen in nominal terms, the share of retirees with taxab
 
 ### State Taxes
 
-Configured as flat rates applied to **ordinary income only** (Traditional withdrawals, taxable Social Security, before-tax income events, Roth conversions). Capital gains from taxable accounts are **not** subject to state tax in the model — federal LTCG only.
+State tax is computed from a **per-state profile** registry (`src/data/stateTaxProfiles.ts`) rather than a single flat rate. Each profile encodes:
 
-Multiple states are supported via a **relocation timeline**: enter a future move year and the simulation switches the state rate in that year.
+- **Tax type & brackets** — `none` (FL, TX, etc.), `flat` (PA, IL, MA, etc.), `graduated` (CA, NY, NJ, OR, MN, HI, MD, DC, …), or `capital-gains-only` (WA). Per-filing-status (single / MFJ) bracket schedules are walked above the state standard deduction. HoH / MFS approximate to single.
+- **State standard deduction** — applied to the state ordinary base before brackets are walked. Inflation-indexed forward from the profile's base year when `bracketsInflationIndexed` is true. NY and NJ brackets are statutorily fixed in nominal dollars — neither indexes.
+- **SS taxability rule** — `exempt` (most states), `taxed` (CT, MN, MT, RI, VT, WV-through-2026), `exempt_if_age` (CO 65+), or `agi_phaseout` (NM, UT, VT, RI, KS) with per-filing-status AGI thresholds.
+- **Retirement-income exclusion** — applied to Traditional withdrawals: `none`, `full` (IL, PA, MS, IA, MI-67+, HI), `amount` (NY $20k/59.5+, GA $65k/65+, DE $12.5k/60+, MD $36.2k/65+, KY $31k, …), or `agi_phaseout` (NJ — pension exclusion to $75k/$100k below $150k AGI, hard cliff above).
+- **LTCG rule** — `ordinary` (most states; LTCG stacked on top of state ordinary brackets), `exempt` (Missouri), or `threshold` (Washington 7% above an inflation-indexed $270k single / $270k MFJ threshold; WA has no ordinary state tax).
+- **Locality surcharge** — currently only New York City (pseudo-state `"New York City"`): ~3.876% applied to the state ordinary base on top of NY state brackets.
+- **Successor profiles** — `effectiveYears.end` + `successorProfileKey` chain a profile to a different one once a year boundary is crossed. South Carolina sunsets its 6% top rate after 2026 (successor 5.2%); West Virginia's SS taxation phases out into a 2027+ successor profile.
 
-Two simplifications worth knowing:
-- **Social Security** is taxed at the full state rate even though several states (CA, NY, NJ, etc.) exempt SS from state income tax. If you live in such a state, the model slightly overstates state tax during SS years.
-- State **capital gains** are not modeled. If you live in a state that taxes capital gains as ordinary income (CA, etc.), the model slightly understates state tax during years with large taxable-account withdrawals.
+Multiple states across the user's lifespan are supported via the **relocation timeline**: each entry resolves to a profile for that year, switching at the configured move year.
+
+Approximations explicitly accepted:
+
+- **Bracket fidelity** — high-income states (CA, NY, NJ, OR, MN, HI, MD, NM, CT, DE, AR, ND, OH, RI, MO, ME, WI, MT, NE, VT, DC) carry real graduated schedules. States with statutory brackets I haven't encoded yet (some of AL/GA/KS/etc.) are modeled as flat at top rate above the state standard deduction — better than the prior flat-on-gross, but still understates progressivity. Schema is bracket-ready, so this is incremental data work.
+- **Partial exclusions** — "partial" SS / retirement exclusions are modeled per-state with structured rules (AGI thresholds, age gates, dollar caps). The exclusion applies to Traditional withdrawals as a lump sum and does not distinguish public vs private pensions or source-specific sub-rules within a state.
+- **Filing status** — HoH / MFS share the `single` bracket and deduction at the state level. Most state HoH schedules differ only slightly from single; MFS rules vary too widely to model uniformly.
+- **Not modeled** — MA 4% surtax above $1M, OH/PA local municipal income tax, Yonkers surcharge, multistate part-year residency within a single year (timeline switches are whole-year), tax credits (Oregon senior credit, Utah SS credit), alternative minimum tax, capital-gains 0/15/20% bracket stacking (federal LTCG is still a flat rate).
+
+The state tax flows are exposed in `AnnualCashFlowBreakdown.audit` as: `stateOrdinaryTax`, `stateLocalitySurcharge` (top-level), `stateOrdinaryBaseGross`, `stateStdDeduction`, `stateRetirementExclusionApplied`, `stateSsIncludedInState`, `stateMarginalRate`, `stateBracketIndex`, `stateLtcgTaxableAtState`, `stateLtcgThresholdApplied`, and `stateNotes`. The Tax Audit detail tab renders each of these as a labeled row under a per-year "State tax — {name}" section.
+
+**`applyStateRetirementExclusionOverride`** (optional `UserData` field) — set to `false` to disable the profile's retirement-income exclusion (Traditional withdrawals fully exposed to state ordinary brackets). Defaults to `undefined` = use the profile's rule. The Scenario dialog exposes this as an "Disable state retirement-income exclusion (advanced)" checkbox under the state dropdown when the active state has a non-`none` exclusion rule.
+
+**NYC locality base.** NYC (`localitySurcharge: { rate: 0.03876, appliesToOrdinaryOnly: false }`) applies the surcharge to the *combined* ordinary + LTCG base, since NYC taxes capital gains as ordinary income. Other potential localities would set `appliesToOrdinaryOnly: true` to limit the surcharge to ordinary income.
+
+**WA LTCG threshold indexing.** The Washington capital-gains threshold inflates independently of the bracket-indexing flag, since WA has no ordinary brackets and the threshold is statutorily CPI-indexed annually. Anchor: $262k (2024); indexes forward via the scenario's `inflationRate` from 2024.
+
+**Marginal-stack attribution.** The Tax Audit per-event marginal-tax breakdown distributes the year's actual state ordinary tax + locality surcharge proportionally to each event's federal taxable contribution. This conserves the year total (sum of `marginalTax` ≈ federal ordinary tax + state ordinary tax + locality), but individual event rows are an approximation when the state's rules diverge from the federal stack (e.g., SS exempted at the state level, retirement exclusion applied). The federal portion of each event row remains exact via the bracket walk.
+
+### Medicare IRMAA Surcharges
+
+Starting at age 65, Medicare Part B and Part D premiums include an **IRMAA** (Income-Related Monthly Adjustment Amount) surcharge for beneficiaries whose modified AGI exceeds tiered thresholds. The model uses the 2024 official tier table, inflation-indexed forward by `inflationRate`, and applies the IRS **2-year lookback** (year N's surcharge depends on year N-2's MAGI). Surcharge is per Medicare-enrolled person — so a married couple where both spouses are 65+ pays the surcharge twice.
+
+MFS tiers are approximated with the single tier table (the actual MFS table is compressed). Set `enableIRMAA: false` to disable.
+
+### Net Investment Income Tax (NIIT)
+
+A flat **3.8%** tax applied to the lesser of (a) net investment income or (b) MAGI above the threshold. Thresholds are statutory (NOT indexed for inflation): $200k for single/HoH, $250k for MFJ, $125k for MFS. Investment income is proxied by the taxable-account withdrawal (same proxy as federal LTCG). Set `enableNIIT: false` to disable.
 
 ### Deductions
 
@@ -230,6 +295,47 @@ Two simplifications worth knowing:
   - $6,000 base per qualifying senior (age 65+)
   - 6% phase-out above $75,000 AGI (single) / $150,000 AGI (joint)
   - Active **2025–2028 only** — does not apply in later retirement years
+
+### Tax Audit Fields
+
+Every `AnnualCashFlowBreakdown` carries an `audit` sub-object capturing the intermediate values that the tax model computes and would otherwise discard. These power the **Tax Audit** and **Income Detail** tabs in the yearly data view, and ship as extra columns in the CSV export. Each representative path (median, projected, downside) has its own audit data driven by that path's actual flows.
+
+- **Ordinary income tax** — `agi` (= otherTaxableGross + Traditional withdrawal + SS taxable portion), `standardDeduction`, `seniorAddOn`, `obbbReduction`, `totalDeductions`, `taxableIncome`, `federalBracketIndex` (0=10% rate through 6=37% rate), `federalMarginalRate`, `federalOrdinaryTax`, `stateOrdinaryTax`, and `federalBrackets[]` (per-bracket dollars-in-bracket and tax-in-bracket for the year's inflation-indexed thresholds).
+- **Social Security taxability** — `ssProvisionalIncome` (= otherTaxableGross + ½ × ssGross), the frozen IRS `ssProvisionalThreshold1`/`Threshold2`, and the `ssZone` hit (`none` / `50%` / `85%` / `mfs-flat`).
+- **IRMAA** — `irmaaLookbackMagi` (2-year-prior MAGI used for this year's surcharge), `irmaaTierIndex` (0..5 in the inflation-indexed tier table), `irmaaTierUpperScaled` (inflation-indexed upper bound of the hit tier), `irmaaMonthlySurcharge` and `irmaaPerEnrolleeAnnual` (Part B + Part D), `irmaaEnrolleeCount` (count of Medicare-enrolled spouses age 65+).
+- **NIIT** — `niitMagi`, `niitThreshold` (frozen, not inflation-indexed), `niitMagiExcess`, `niitInvestmentIncome` (= gross taxable-account withdrawal), `niitTaxableBase` (= min of the two, × 3.8% = niitTax).
+- **RMD per owner** — `rmdSelf` / `rmdSpouse` totals, `rmdDivisorSelf` / `rmdDivisorSpouse` (IRS Uniform Lifetime Table divisor for the owner's age, 0 when no RMD), `rmdBoyBalanceSelf` / `rmdBoyBalanceSpouse` (beginning-of-year Traditional balance per owner, from before this year's growth).
+- **State** — `effectiveStateName`: which `stateTimeline` entry's flat rate applied this year.
+
+#### Per-event ordinary tax attribution (marginal stack)
+
+`audit.incomeEventTaxBreakdown` is an array of per-event marginal-tax records. Events are walked in IRS stacking order:
+
+1. Wages (each `wage_income` event)
+2. Other ordinary before-tax events (pension, rental, annuity, sale, work-during-retirement, other-income)
+3. Pre-tax retirement contributions (negative, with cumulative ordinary gross floored at zero)
+4. Traditional withdrawal for spending need (synthetic source `traditional_withdrawal`, gross = `withdrawalFromTraditional − rothConversionGross`)
+5. Roth conversion event(s)
+6. Social Security (aggregated; if multiple SS events, the marginal tax is split proportionally by gross)
+
+Each entry's `marginalTax` is the incremental federal+state ordinary-tax delta when its `taxableContribution` is added on top of the prior cumulative gross. Marginal rates sum to `ordinaryTax` modulo floor-at-zero rounding (any drift is surfaced as a reconciliation row in the UI). Capital-gains tax, NIIT, and IRMAA are not attributed to specific events — they sit in the Tax Audit tab as separate sections.
+
+#### Per-account flows
+
+`audit.accountFlows` is one row per account that had any movement this year:
+
+- `withdrawal` — dollars taken out of this account (pro-rata across each tax-type group: Taxable → Traditional → Roth waterfall).
+- `deposit` — dollars added (Roth conversion arrival, RMD excess reinvestment, retirement contribution, surplus contribution).
+
+A single account can have both in the same year (e.g., a Taxable account that paid for spending then received the surplus reinvestment). Growth (return-driven balance change) is not represented here — it's part of the path itself, shown on the Summary tab.
+
+#### Performance & invariants
+
+Audit data is computed for **every** breakdown — all 5000 Monte Carlo runs × ~30 years, plus the deterministic projection — not just the representative paths. The per-breakdown cost is roughly one `calculateNetFromGrossDetailed` call plus ~5–10 extra `calculateNetFromGross` calls for the marginal stack; in profiling this added under 2s to a typical 5000-run simulation. Don't move audit computation into a representative-runs-only post-pass without also making the deterministic projection populate it — both the chart's Yearly Data table and the CSV export depend on `audit` being present on every breakdown they touch.
+
+`audit.accountFlows` is the one exception: it's populated by `applyCashFlow` (not by the core cash-flow calc) because it depends on the actual pro-rata distribution over current account balances, which is only known after the withdrawal sinks run. Callers of `calculateAnnualCashFlow` (the public wrapper) that don't subsequently invoke `applyCashFlow` will see `accountFlows` as `undefined`; tests that need it should drive `runSimulation()` instead.
+
+Synthetic stack-step IDs `SYNTHETIC_TRAD_WITHDRAWAL_ID` and `SYNTHETIC_SS_AGGREGATE_ID` are exported from `SimulationService.ts` so UI / tests can match against them without duplicating the literal `__trad_withdrawal__` / `__ss_aggregate__` strings.
 
 ---
 
@@ -261,7 +367,7 @@ If the event's `accountId` doesn't match the contribution type (or is omitted), 
 
 ### Contribution Limits
 
-Per-scenario IRS limits are configured under Modeling → Contribution Limits:
+Per-scenario IRS limits are configured under Tax & IRS → Contribution Limits:
 
 - `elective401k` — 401(k)/403(b)/TSP elective deferral cap (default $23,000)
 - `iraLimit` — IRA cap (default $7,000)
@@ -299,8 +405,11 @@ A `roth_conversion` income event moves money from Traditional to Roth accounts. 
 1. RMD is enforced first; the conversion amount is **capped at the Traditional balance remaining after RMD and spending withdrawals**.
 2. Converted amount is taxed as **ordinary income** in the year of conversion.
 3. Withdrawal is pro-rata across Traditional accounts; deposit is pro-rata across Roth accounts.
-4. Tax owed on the conversion is paid implicitly by the regular waterfall — Taxable first if available, otherwise Traditional (which reduces the convertible amount further).
+4. **Conversion tax sourcing is hybrid**, in priority order: (1) RMD-excess cash (already pulled from Trad as part of the forced RMD; using it costs nothing extra), (2) Taxable balance not consumed by spending, (3) withheld from the conversion itself (IRS Form 1099-R Box 4). Tax is **never** pulled from Traditional-above-RMD or Roth — paying conversion tax from Trad would shrink the conversion's tax arbitrage; paying from Roth would deplete the dollars just deposited. When Taxable + RMD-excess can't cover the marginal ordinary tax, the conversion still executes at the requested gross — but the Roth deposit shrinks by the withheld amount. This matches real-world Vanguard/Fidelity withholding mechanics. Withholding is mathematically suboptimal vs. paying tax from Taxable (you give up some of the arbitrage), so the Roth Conversion dialog warns when it activates and advises adding Taxable funds or reducing the conversion. The breakdown surfaces `rothConversionGross` (Trad pull), `rothConversionRequested` (user intent), `rothConversionTaxFromTaxable`, `rothConversionTaxFromRmdExcess`, and `rothConversionTaxWithheld`.
+6. **Smart spending waterfall**: when any Roth conversion event is in the scenario, the engine defaults `UserData.spendingWithdrawalOrder` to `'bracket_aware'` so spending pulls from Traditional in low-bracket years instead of burning Taxable. This preserves Taxable for the high-`mt` conversion years and improves the conversion's net wealth impact — but it only reorders spending sources, it does NOT change the conversion size or conversion-tax sourcing. See **Withdrawal Waterfall** above for the mechanics.
 5. If no Roth accounts exist, a `"Roth Conversion"` Roth account is auto-created.
+
+The Roth Conversion dialog's **Net impact on plan value** row is computed by running the deterministic projection (same single-path engine as the Projected chart line) twice — once with the conversion event included, once without — and diffing the end-of-plan portfolio balance. The other preview rows (first-year tax, total tax, RMD reduction, projected Roth at life expectancy) are fast closed-form estimates against your baseline income and do not include IRMAA or NIIT.
 
 ---
 
@@ -345,13 +454,22 @@ This is a deliberate choice. Stochastic mortality would inflate success rates ar
 
 ## Known Limitations
 
-- **No federal bracket inflation** — post-2026 brackets are static; real outcomes for late retirees may be slightly more favorable than projected.
+- **Federal bracket inflation uses headline CPI** — the model inflates post-2026 brackets using the scenario's `inflationRate`, but the IRS uses Chained CPI-U which historically runs ~0.2–0.3 pp lower. The difference is small and conservative (slightly over-indexes brackets, slightly under-taxes late years).
 - **No SS provisional thresholds inflation** — these are frozen by Congress, so this matches reality, but the resulting "tax torpedo" gets steeper over time.
 - **No stochastic inflation in cash flows** — only portfolio deflation uses per-run inflation; income/spending use the deterministic mean.
-- **No state tax on capital gains** — federal LTCG only.
+- **State tax on capital gains** uses the per-state profile's `ltcgRule`: most states stack LTCG on top of state ordinary brackets, Missouri exempts LTCG entirely, and Washington applies a 7% rate above an inflation-indexed $270k threshold (with no underlying ordinary state tax). NH/TN dividend & interest tax is not modeled.
 - **No state SS exemption** — applied uniformly even in states that exempt SS (CA, NY, etc.).
-- **No cost-basis tracking** in taxable accounts; the entire withdrawal is treated as long-term capital gain.
+- **Flat federal LTCG rate** — the 0/15/20% federal LTCG brackets and ordinary-income-stacking interaction are not modeled; capital gains tax is `longTermCapGainsRate × fromTaxable`.
+- **No cost-basis tracking** in taxable accounts; the entire withdrawal is treated as long-term capital gain (and as investment income for NIIT).
+- **IRMAA tier table is 2024** inflation-indexed forward, not refreshed annually; thresholds and surcharge amounts will drift from real IRS figures as Medicare updates the table.
+- **IRMAA threshold indexing uses scenario `inflationRate`** as a proxy. CMS's actual formula tracks Part B premium growth and SS COLAs, which can drift from CPI over a 30-year horizon.
+- **MFS IRMAA tiers** are approximated with the single-filer table. The actual 2024 MFS table has a compressed 3-tier structure.
+- **NIIT investment-income proxy** is the gross taxable-account withdrawal (no cost-basis tracking), so NIIT is overstated when a significant portion of the withdrawal would actually be return-of-basis.
+- **First-2-years IRMAA lookback** comes from a single `priorWorkingMagi` value on `UserData` (used for both year 0 and year 1). Leave at 0 to assume no IRMAA in the first two retirement years.
+- **Existing scenarios upgrade behavior** — scenarios saved before the IRMAA/NIIT/state-LTCG additions load with IRMAA and NIIT enabled by default, so tax bills and success probability will differ from prior runs. Disable under Settings → Tax & IRS to recover prior behavior.
+- **No ACA premium tax credit modeling** — pre-65 retirees on ACA-subsidized plans may face large effective marginal rates from subsidy phase-outs that the model does not capture.
+- **No surviving-spouse bracket shift** — filing status remains MFJ for the full horizon even after one spouse reaches life expectancy.
 - **No tax-loss harvesting**.
 - **No mortality modeling** — life expectancy is a hard endpoint (see *Horizon and Mortality* above).
 - **No Social Security claiming optimization** — you specify the start age directly.
-- **Fixed withdrawal order** (Taxable → Traditional → Roth); no fill-to-bracket Roth conversion or tax-aware withdrawal ordering yet.
+- **Fixed withdrawal order** (RMD-first, then Taxable → Traditional-above-RMD → Roth); no fill-to-bracket Roth conversion or tax-aware withdrawal ordering yet.

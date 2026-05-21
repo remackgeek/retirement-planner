@@ -6,6 +6,7 @@ import type { MenuItem } from 'primereact/menuitem';
 import { spacing, colors, fontSize, mediaQuery } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
 import ModelingDialog from '../../dialogs/ModelingDialog';
+import TaxAndIrsDialog from '../../dialogs/TaxAndIrsDialog';
 import ExamplePickerDialog from '../../dialogs/ExamplePickerDialog';
 import AboutDialog from '../../dialogs/AboutDialog';
 import MarkdownViewerSidebar from '../../dialogs/MarkdownViewerSidebar';
@@ -94,6 +95,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   const reportsMenuRef = useRef<Menu>(null);
   const helpMenuRef = useRef<Menu>(null);
   const [modelingVisible, setModelingVisible] = useState(false);
+  const [taxIrsVisible, setTaxIrsVisible] = useState(false);
   const [examplePickerVisible, setExamplePickerVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
   const [userGuideVisible, setUserGuideVisible] = useState(false);
@@ -110,6 +112,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
       label: 'Modeling',
       icon: 'pi pi-chart-line',
       command: () => setModelingVisible(true),
+      disabled: !activeScenario,
+    },
+    {
+      label: 'Tax & IRS',
+      icon: 'pi pi-percentage',
+      command: () => setTaxIrsVisible(true),
       disabled: !activeScenario,
     },
   ];
@@ -188,6 +196,14 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
         <ModelingDialog
           visible={modelingVisible}
           onHide={() => setModelingVisible(false)}
+          scenario={activeScenario}
+          onSave={handleSave}
+        />
+      )}
+      {activeScenario && (
+        <TaxAndIrsDialog
+          visible={taxIrsVisible}
+          onHide={() => setTaxIrsVisible(false)}
           scenario={activeScenario}
           onSave={handleSave}
         />

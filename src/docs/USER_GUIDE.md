@@ -3,6 +3,8 @@
 > *"Essentially, all models are wrong, but some are useful."*
 > — George E. P. Box & Norman R. Draper, *Empirical Model-Building and Response Surfaces* (1987)
 
+**App URL:** [yarp.bluewiz.net](https://yarp.bluewiz.net)
+
 ---
 
 ## What YARP Is For
@@ -17,7 +19,7 @@ YARP is a **planning tool, not financial advice** — not a substitute for a fin
 
 Use it to **explore the shape of your retirement** — what decisions matter most, where your plan is fragile, how sensitive things are to assumptions. Projections are estimates; real outcomes will differ, sometimes substantially.
 
-It's **not** the right tool for: estate planning, healthcare-specific projections (Medicare premiums, IRMAA, long-term care), insurance products, real estate transactions, or tax-loss harvesting strategies. For those, see a professional.
+It's **not** the right tool for: estate planning, long-term care projections, insurance products, real estate transactions, or tax-loss harvesting strategies. For those, see a professional.
 
 ---
 
@@ -133,7 +135,7 @@ Contributions are *deposit instructions* — they do not show up as spendable ca
 
 #### Contribution Limits
 
-YARP enforces IRS contribution caps per owner per account kind. Configure the limits under **Settings → Modeling → Contribution Limits**:
+YARP enforces IRS contribution caps per owner per account kind. Configure the limits under **Settings → Tax & IRS → Contribution Limits**:
 
 - 401(k)/403(b)/TSP elective deferral (default $23,000)
 - IRA limit (default $7,000)
@@ -150,9 +152,9 @@ A Roth conversion moves money from your Traditional accounts into your Roth acco
 - **You owe tax on the converted amount** in the year you do it (it counts as ordinary income).
 - **You have to take your RMD first** if you're 73 or older — the IRS doesn't let RMDs be converted.
 
-The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation.
+The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation. **When your scenario includes a Roth conversion, YARP automatically switches the spending waterfall to "bracket-aware" mode**: in low-bracket years it pulls living-expenses cash from Traditional first (up to the 12% federal bracket) and saves your Taxable account for the years when the conversion tax bill is largest. This setting only reorders where spending comes from — it does not change the conversion amount or how the conversion tax is paid. Power users who want the old behavior can set `spendingWithdrawalOrder` to `"taxable_first"` in the scenario JSON.
 
-The Roth Conversion dialog shows an **Impact Preview** with a deterministic estimate of first-year tax, total tax over the conversion window, RMD reduction at 73, projected tax-free Roth at life expectancy, and a **Net impact on plan value** row that signs the trade-off in dollar terms (green when the conversion pays off, red when it costs more than it saves). Multi-year conversions default to **inflation-adjusted**, so the amount you enter is a real-dollar target — turn that off if you mean a fixed nominal schedule. If you configure a conversion that is unusually large relative to your spending, crosses two or more federal brackets in a single year, or would convert most of your Traditional balance, the dialog shows an inline hint — these are advisory only and never block saving.
+The Roth Conversion dialog shows an **Impact Preview** with a deterministic estimate of first-year tax, total tax over the conversion window, RMD reduction at 73, and projected tax-free Roth at life expectancy. The **Net impact on plan value** row signs the trade-off in dollar terms (green when the conversion pays off, red when it costs more than it saves). That row runs the full deterministic simulation twice — once with the conversion, once without — and diffs the end-of-plan balance, so it reflects everything the Projected chart line does: the RMD withdrawal waterfall, IRMAA surcharges, NIIT, state tax on LTCG, and how conversion tax is sourced from your accounts. Multi-year conversions default to **inflation-adjusted**, so the amount you enter is a real-dollar target — turn that off if you mean a fixed nominal schedule. If you configure a conversion that is unusually large relative to your spending, crosses two or more federal brackets in a single year, or would convert most of your Traditional balance, the dialog shows an inline hint — these are advisory only and never block saving.
 
 ---
 
@@ -182,11 +184,19 @@ YARP figures federal and state income tax automatically each year. You configure
 
 - **Filing status** — Single, Married Filing Jointly, Married Filing Separately, or Head of Household
 - **Spouse age** — needed if you're married
-- **State** — pick from any of the 50 states + DC
-- **Long-term capital gains rate** — defaults to 15%, which is the federal middle bracket. Most retirees can leave this alone.
-- **State relocation timeline** — if you plan to move to a different state in retirement, add the move year here. YARP will switch state rates at the right time.
+- **State** — pick from any of the 50 states + DC, plus **New York City** as a pseudo-state that adds the ~3.876% NYC local income tax on top of NY state brackets. In single-state mode a short profile summary appears beneath the dropdown (e.g., "Graduated 1–13.3% · SS exempt · No retirement exclusion") so you can see at a glance how your state is modeled. When the active state's profile has a retirement-income exclusion, an "Disable state retirement-income exclusion (advanced)" checkbox lets you turn it off if your Traditional withdrawals don't qualify under the actual state rule (e.g., NY's $20k exclusion is for public pensions and IRAs only). In timeline mode (multiple relocations), the per-row chip is omitted to keep the table compact — the active profile still applies in simulation per year.
+- **Long-term capital gains rate** — defaults to 15%, which is the federal middle bracket. Most retirees can leave this alone. State LTCG treatment varies by profile: most states tax LTCG at their ordinary brackets, **Missouri** fully exempts LTCG, and **Washington** applies a 7% rate only above an inflation-indexed $270k threshold (and has no ordinary state tax).
+- **State retirement-income rules** — states with pension/IRA exclusions (NY $20k at 59.5+, PA all retirement income, IL all, MI age 67+, GA $65k at 65+, NJ phased to $150k AGI, …) are honored automatically based on the active state's profile. SS taxability varies too: states like CO exempt SS at age 65+, NM and UT phase out SS by AGI, and CT/MN/RI/VT/MT still tax SS.
+- **State relocation timeline** — if you plan to move to a different state in retirement, add the move year here. YARP will switch profiles at the right time. South Carolina and West Virginia both have **scheduled tax changes** that activate automatically: SC's top 6% rate sunsets after 2026 (drops to ~5.2%) and WV's SS tax phases out by 2027.
 
 The standard deduction (including the larger amount you get at 65+) is applied automatically. Social Security taxation follows IRS rules — depending on your other income, between 0% and 85% of your benefit will be taxable.
+
+Two additional taxes show up as separate line items in the yearly detail:
+
+- **Medicare IRMAA** — once you're 65, your Medicare Part B and Part D premiums include a surcharge if your modified AGI was high two years ago. The surcharge is per Medicare enrollee, so a married couple where both are 65+ pays it twice. If you retired with a high-income final working year, set **Last working year MAGI** under Settings → Tax & IRS so the first two retirement years correctly reflect the IRS lookback; otherwise YARP assumes $0 there and you won't see IRMAA until age 67. Toggle off under **Settings → Tax & IRS** if you'd rather model premiums separately.
+- **NIIT** — a flat 3.8% on investment income above $200k MAGI (single) or $250k (MFJ). Mostly relevant for high-balance taxable accounts. Toggle off under **Settings → Tax & IRS**.
+
+Both matter most in years with large Roth conversions, sizable RMDs, or big taxable-account withdrawals.
 
 ---
 
@@ -194,15 +204,21 @@ The standard deduction (including the larger amount you get at 65+) is applied a
 
 The chart shows your portfolio balance over time, displayed in **today's dollars** (so the numbers are comparable to what you spend now).
 
-You'll see three lines:
+You'll see:
 
-| Line | What it represents |
+| Element | What it represents |
 |---|---|
-| **Median** | A typical outcome — the middle of all simulated futures |
-| **Deterministic** | What happens with no market randomness, using your average return assumptions (hidden when a Historical return model is active) |
-| **Downside** | A bad outcome — the 10th-percentile result |
+| **Projected line** | What happens with no market randomness, using your average return assumptions. The primary line on the chart. (In Historical: Rolling / Bootstrap modes there is no projected baseline, so the **Median** line takes its place.) |
+| **Likely range** (shaded band) | The 10th–90th percentile range from the Monte Carlo runs — 80% of simulated futures land inside this band each year. Wider band = more uncertainty. Toggle with the **Hide band** button on the legend row. |
 
-Use the **Median / Deterministic / Downside** selector to switch which line drives the year-by-year detail below the chart. Pay attention to the Downside path — if your plan looks fine on Median but craters on Downside, you have sequence-of-returns risk to think about.
+Hover the **Chance of Success** percentage to see Monte Carlo summary stats that the chart can't easily show:
+
+- **Median ending balance** — middle outcome for your final portfolio balance
+- **10th-pctile ending** — bad-but-not-worst final balance (90% of runs do better)
+- **Median depletion** — the age at which your portfolio runs out in the median run (`never` when more than half of runs survive)
+- **Worst-decile depletion** — the age at which the bottom 10% of runs deplete (`never` when more than 90% survive)
+
+The **Yearly Data** panel below the chart has its own Median / Projected / Downside view selector — use it to inspect what a representative bad run (Downside) or a typical run (Median) looks like year by year. The chart itself stays focused on the Projected line plus the Likely range.
 
 If you've added Black Swan stress events (specific years where YARP forces a market crash), they'll show up as shaded vertical bands on the chart.
 
@@ -214,18 +230,24 @@ Below the chart, expand **Yearly Data** for a complete breakdown of each year: b
 
 This is where you go when something on the chart looks surprising — expand the year in question and you can see exactly what's happening.
 
-You can **export the whole table to CSV** using the button in the header — useful for sharing with an advisor or sanity-checking against another tool.
+When you expand a year, the detail panel has three tabs:
+
+- **Summary** — the high-level income / spending / tax / cash-flow numbers, plus portfolio withdrawal breakdown and RMD/Roth-conversion notes. Use this for an at-a-glance read.
+- **Tax Audit** — IRS-level intermediates so you can verify the model's arithmetic. Shows AGI, the full federal bracket table with the dollars and tax landing in each rate, your standard deduction broken into the base + senior add-on + temporary OBBB bonus, the Social Security provisional-income calc with which 50%/85% zone you hit, the IRMAA lookback MAGI with the exact tier and per-enrollee surcharge, the NIIT MAGI excess and 3.8% base, and per-owner RMD with the IRS Uniform Lifetime Table divisor and beginning-of-year Traditional balance.
+- **Income Detail** — per-income-event ordinary tax attribution using marginal stacking (events are layered in IRS order so each event's tax is its incremental delta on top of the prior stack — pre-tax contributions appear as negative reductions). Also shows per-account flows: which account each dollar of withdrawal came from and which account received each deposit (Roth conversion, RMD excess, retirement contribution, surplus reinvestment).
+
+You can **export the whole table to CSV** using the button in the header — useful for sharing with an advisor or sanity-checking against another tool. The CSV includes scalar audit columns (AGI, deductions, bracket index, marginal rate, federal vs state split, SS zone, IRMAA tier, NIIT components, per-owner RMD). Per-event and per-account tables are in-app only — they don't fit a flat CSV cleanly.
 
 ---
 
-## Real vs Nominal
+## Today's $ vs Future $
 
 There's a toggle to switch between:
 
-- **Real (today's dollars)** — adjusted for inflation. Use this. The numbers are comparable to your current life and budget.
-- **Nominal (future dollars)** — actual dollar amounts that would print on statements decades from now. They look bigger because of inflation, but they don't represent more spending power.
+- **Today's $** — adjusted for inflation. Use this. The numbers are comparable to your current life and budget.
+- **Future $** — actual dollar amounts that would print on statements decades from now. They look bigger because of inflation, but they don't represent more spending power.
 
-Most retirement planning is done in real terms.
+Most retirement planning is done in today's dollars.
 
 ---
 
@@ -239,7 +261,9 @@ This is the most useful feature for actually making decisions: rather than askin
 
 ## What If? Mode
 
-Click **What If?** above the chart to enter an experimental mode. A snapshot of your scenario is held in memory; the chart shows the original as a solid line and your live edits as a dashed amber **Draft** line. Edit accounts, income events, or spending goals normally — only the dashed line moves.
+Click **What If?** above the chart to enter an experimental mode. A snapshot of your scenario is held in memory; the chart shows the original as a solid gray line and your live edits as a dashed amber **Draft** line. Edit accounts, income events, or spending goals normally — only the dashed line moves.
+
+In What If mode both lines always render the **Projected** baseline so the two paths start identical when no edits have been made. The data table's Median / Projected / Downside view selector still lets you inspect representative runs in the year-by-year detail — but it no longer changes what the chart plots.
 
 Three exit actions:
 - **Discard** — restore the scenario to its original state.
@@ -250,7 +274,14 @@ While in What If mode, **Compare with** is disabled (and vice versa) — they sh
 
 ---
 
-## Modeling Settings
+## Settings
+
+The **Settings** menu in the header has two dialogs:
+
+- **Modeling** — return generation (parametric vs. historical), distribution, asset correlation, inflation, Black Swan events, simulation run count.
+- **Tax & IRS** — long-term capital gains rate, IRMAA, NIIT, and IRS contribution limits.
+
+### Modeling
 
 Open **Settings → Modeling** to adjust the underlying assumptions. The defaults are reasonable for most people, but a few things are worth knowing:
 
@@ -299,4 +330,4 @@ To restore or move to a new device, click **Import** and select the file. You ca
 - **Help → Model Details** — full technical reference for the simulation engine, tax math, and known limitations
 - **Help → About** — version and license info
 
-Found a bug or want to suggest an improvement? Open a ticket on the [GitHub Issues page](https://github.com/remackgeek/retirement-planner/issues), or open **Help → About YARP** for project and build details.
+Found a bug or want to suggest an improvement? Open a ticket on the [GitHub Issues page](https://github.com/remackgeek/retirement-planner/issues). The app lives at [yarp.bluewiz.net](https://yarp.bluewiz.net) — open **Help → About YARP** for project and build details.

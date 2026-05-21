@@ -1,0 +1,280 @@
+import { describe, it, expect } from 'vitest';
+import { computeStateTax, type StateTaxInput } from './StateTaxCalculator';
+import { getStateTaxProfile, STATE_TAX_PROFILES } from '../data/stateTaxProfiles';
+
+const baseInput = (overrides: Partial<StateTaxInput> = {}): StateTaxInput => ({
+  ordinaryGross: 0,
+  ssTaxableFederal: 0,
+  ssGross: 0,
+  traditionalWithdrawal: 0,
+  ltcgFromTaxable: 0,
+  age: 60,
+  spouseAge: null,
+  filingStatus: 'single',
+  year: 2026,
+  inflationRate: 0,
+  ...overrides,
+});
+
+describe('StateTaxCalculator', () => {
+  describe('No-income-tax states', () => {
+    it('Florida produces zero tax on all income types', () => {
+      const p = getStateTaxProfile('Florida', 2026);
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 100000,
+        traditionalWithdrawal: 50000,
+        ssTaxableFederal: 20000,
+        ltcgFromTaxable: 100000,
+      }), 'Florida');
+      expect(r.stateOrdinaryTax).toBe(0);
+      expect(r.stateCapGainsTax).toBe(0);
+      expect(r.stateLocalitySurcharge).toBe(0);
+    });
+
+    it('Texas, Wyoming, Tennessee, South Dakota, Nevada, Alaska, New Hampshire all return zero', () => {
+      for (const state of ['Texas', 'Wyoming', 'Tennessee', 'South Dakota', 'Nevada', 'Alaska', 'New Hampshire']) {
+        const p = getStateTaxProfile(state, 2026);
+        const r = computeStateTax(p, baseInput({ ordinaryGross: 200000, ltcgFromTaxable: 500000 }), state);
+        expect(r.stateOrdinaryTax, state).toBe(0);
+        expect(r.stateCapGainsTax, state).toBe(0);
+      }
+    });
+  });
+
+  describe('California — graduated brackets', () => {
+    it('walks the bracket schedule on $100k pension', () => {
+      const p = getStateTaxProfile('California', 2026);
+      const r = computeStateTax(p, baseInput({ ordinaryGross: 100000 }), 'California');
+      // Base 100000 - $5,540 std ded = $94,460. Walk CA single brackets:
+      // 1%·10,412 + 2%·14,272 + 4%·14,275 + 6%·15,122 + 8%·14,269 + 9.3%·26,110 ≈ $5,438
+      expect(r.stateOrdinaryTax).toBeCloseTo(5438, 0);
+      expect(r.stateMarginalRate).toBe(0.093);
+    });
+
+    it('top bracket is 13.3% on $2M', () => {
+      const p = getStateTaxProfile('California', 2026);
+      const r = computeStateTax(p, baseInput({ ordinaryGross: 2_000_000 }), 'California');
+      expect(r.stateMarginalRate).toBe(0.133);
+    });
+
+    it('CA does NOT exempt SS at the state level', () => {
+      const p = getStateTaxProfile('California', 2026);
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 0,
+        ssGross: 30000,
+        ssTaxableFederal: 0, // federal-taxable portion is 0 (provisional income too low)
+      }), 'California');
+      // CA ssRule = exempt: SS is never added to state base
+      expect(r.ssIncludedInState).toBe(0);
+    });
+  });
+
+  describe('New York — pension exclusion', () => {
+    it('applies $20k pension/IRA exclusion at age 59.5+ to Traditional withdrawals', () => {
+      const p = getStateTaxProfile('New York', 2026);
+      const r = computeStateTax(p, baseInput({
+        traditionalWithdrawal: 50000,
+        age: 65,
+      }), 'New York');
+      expect(r.retirementExclusionApplied).toBe(20000);
+      // Base = 50000 - 20000 - $8000 std ded = $22,000 taxable
+      // Walk NY single: 4%·8500 + 4.5%·3200 + 5.25%·2200 + 5.5%·8100 = 340 + 144 + 115.5 + 445.5 = 1045
+      expect(r.stateOrdinaryTax).toBeCloseTo(1045, 0);
+    });
+
+    it('does NOT apply exclusion below age 59.5', () => {
+      const p = getStateTaxProfile('New York', 2026);
+      const r = computeStateTax(p, baseInput({
+        traditionalWithdrawal: 50000,
+        age: 55,
+      }), 'New York');
+      expect(r.retirementExclusionApplied).toBe(0);
+    });
+
+    it('caps exclusion at the withdrawal amount when smaller than $20k', () => {
+      const p = getStateTaxProfile('New York', 2026);
+      const r = computeStateTax(p, baseInput({
+        traditionalWithdrawal: 15000,
+        age: 65,
+      }), 'New York');
+      expect(r.retirementExclusionApplied).toBe(15000);
+    });
+  });
+
+  describe('New York City — locality surcharge', () => {
+    it('adds NYC ~3.876% on top of NY state tax', () => {
+      const p = getStateTaxProfile('New York City', 2026);
+      const r = computeStateTax(p, baseInput({ ordinaryGross: 100000 }), 'New York City');
+      // NY state ordinary tax computed as before, plus NYC locality
+      expect(r.stateLocalitySurcharge).toBeGreaterThan(3000);
+      expect(r.stateLocalitySurcharge).toBeLessThan(4500);
+    });
+  });
+
+  describe('Washington — capital-gains-only', () => {
+    it('charges 7% on LTCG above $270k threshold; 0 on ordinary', () => {
+      const p = getStateTaxProfile('Washington', 2026);
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 200000,
+        ltcgFromTaxable: 400000,
+      }), 'Washington');
+      expect(r.stateOrdinaryTax).toBe(0);
+      expect(r.ltcgThresholdApplied).toBe(270000);
+      expect(r.stateCapGainsTax).toBeCloseTo(0.07 * (400000 - 270000), 1);
+    });
+
+    it('charges $0 when LTCG below the threshold', () => {
+      const p = getStateTaxProfile('Washington', 2026);
+      const r = computeStateTax(p, baseInput({ ltcgFromTaxable: 200000 }), 'Washington');
+      expect(r.stateCapGainsTax).toBe(0);
+    });
+  });
+
+  describe('Missouri — LTCG exemption', () => {
+    it('zero state LTCG tax on $500k capital gains', () => {
+      const p = getStateTaxProfile('Missouri', 2026);
+      const r = computeStateTax(p, baseInput({ ltcgFromTaxable: 500000 }), 'Missouri');
+      expect(r.stateCapGainsTax).toBe(0);
+    });
+
+    it('still taxes ordinary income normally', () => {
+      const p = getStateTaxProfile('Missouri', 2026);
+      const r = computeStateTax(p, baseInput({ ordinaryGross: 100000 }), 'Missouri');
+      expect(r.stateOrdinaryTax).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Colorado — SS exempt at age 65+', () => {
+    it('includes SS for ages below 65', () => {
+      const p = getStateTaxProfile('Colorado', 2026);
+      const r = computeStateTax(p, baseInput({
+        ssGross: 30000,
+        ssTaxableFederal: 25500, // 85% of $30k
+        age: 64,
+      }), 'Colorado');
+      expect(r.ssIncludedInState).toBe(25500);
+    });
+
+    it('exempts SS at age 65+', () => {
+      const p = getStateTaxProfile('Colorado', 2026);
+      const r = computeStateTax(p, baseInput({
+        ssGross: 30000,
+        ssTaxableFederal: 25500,
+        age: 65,
+      }), 'Colorado');
+      expect(r.ssIncludedInState).toBe(0);
+    });
+  });
+
+  describe('Pennsylvania — full retirement exclusion', () => {
+    it('zero state tax on Traditional withdrawal + SS', () => {
+      const p = getStateTaxProfile('Pennsylvania', 2026);
+      const r = computeStateTax(p, baseInput({
+        traditionalWithdrawal: 80000,
+        ssGross: 30000,
+        ssTaxableFederal: 25500,
+        age: 65,
+      }), 'Pennsylvania');
+      expect(r.stateOrdinaryTax).toBe(0);
+      expect(r.retirementExclusionApplied).toBe(80000);
+    });
+  });
+
+  describe('Illinois — full retirement exclusion', () => {
+    it('zero state tax on Traditional withdrawal regardless of age', () => {
+      const p = getStateTaxProfile('Illinois', 2026);
+      const r = computeStateTax(p, baseInput({
+        traditionalWithdrawal: 100000,
+        age: 60,
+      }), 'Illinois');
+      expect(r.retirementExclusionApplied).toBe(100000);
+      expect(r.stateOrdinaryTax).toBe(0);
+    });
+  });
+
+  describe('New Jersey — AGI phase-out', () => {
+    it('applies pension exclusion below $150k AGI', () => {
+      const p = getStateTaxProfile('New Jersey', 2026);
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 0,
+        traditionalWithdrawal: 50000,
+        age: 65,
+      }), 'New Jersey');
+      // AGI proxy = 0 + 50000 + 0 + 0 = 50000 < 150000 → exclusion applies
+      expect(r.retirementExclusionApplied).toBe(50000);
+    });
+
+    it('zeroes exclusion above $150k AGI hard cliff', () => {
+      const p = getStateTaxProfile('New Jersey', 2026);
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 110000,
+        traditionalWithdrawal: 80000,
+        age: 65,
+      }), 'New Jersey');
+      // AGI = 110000 + 80000 = 190000 > 150000 → no exclusion
+      expect(r.retirementExclusionApplied).toBe(0);
+    });
+  });
+
+  describe('South Carolina — successor profile after 2026', () => {
+    it('uses 6% rate in 2026', () => {
+      const p = getStateTaxProfile('South Carolina', 2026);
+      expect(p.brackets.single[0].rate).toBeCloseTo(0.06, 4);
+    });
+
+    it('falls through to 2027+ successor profile in 2027', () => {
+      const p = getStateTaxProfile('South Carolina', 2027);
+      expect(p.brackets.single[0].rate).toBeCloseTo(0.052, 4);
+    });
+  });
+
+  describe('West Virginia — SS phase-out via successor', () => {
+    it('taxes SS through 2026', () => {
+      const p = getStateTaxProfile('West Virginia', 2026);
+      expect(p.ssRule.kind).toBe('taxed');
+    });
+
+    it('exempts SS in 2027 via successor profile', () => {
+      const p = getStateTaxProfile('West Virginia', 2027);
+      expect(p.ssRule.kind).toBe('exempt');
+    });
+  });
+
+  describe('Inflation indexing', () => {
+    it('CA brackets inflate forward from 2024 baseline', () => {
+      const p = getStateTaxProfile('California', 2026);
+      const r2026 = computeStateTax(p, baseInput({ ordinaryGross: 100000, inflationRate: 0.03 }), 'California');
+      const r2040 = computeStateTax(p, baseInput({ ordinaryGross: 100000, year: 2040, inflationRate: 0.03 }), 'California');
+      // CA inflation-indexed; same nominal income should hit lower brackets in the future
+      expect(r2040.stateOrdinaryTax).toBeLessThan(r2026.stateOrdinaryTax);
+    });
+
+    it('NY brackets do NOT inflate (statutorily fixed)', () => {
+      const p = getStateTaxProfile('New York', 2026);
+      const r2026 = computeStateTax(p, baseInput({ ordinaryGross: 100000, inflationRate: 0.03 }), 'New York');
+      const r2040 = computeStateTax(p, baseInput({ ordinaryGross: 100000, year: 2040, inflationRate: 0.03 }), 'New York');
+      expect(r2040.stateOrdinaryTax).toBeCloseTo(r2026.stateOrdinaryTax, 0);
+    });
+  });
+
+  describe('Override: applyStateRetirementExclusionOverride', () => {
+    it('disables NY exclusion when explicitly false', () => {
+      const p = getStateTaxProfile('New York', 2026);
+      const r = computeStateTax(p, baseInput({
+        traditionalWithdrawal: 50000,
+        age: 65,
+        applyRetirementExclusionOverride: false,
+      }), 'New York');
+      expect(r.retirementExclusionApplied).toBe(0);
+    });
+  });
+
+  describe('Profile coverage smoke test', () => {
+    it('every selectable state resolves to a profile and computes without throwing', () => {
+      for (const name of Object.keys(STATE_TAX_PROFILES)) {
+        const p = getStateTaxProfile(name, 2026);
+        expect(() => computeStateTax(p, baseInput({ ordinaryGross: 80000, ltcgFromTaxable: 20000, age: 65 }), name)).not.toThrow();
+      }
+    });
+  });
+});

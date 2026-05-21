@@ -215,13 +215,16 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
       taxStatus: 'before_tax',
       colaType: formData.colaType,
     };
-    return estimateConversionImpact(userData, { id: 'preview', ...draft });
-  }, [userData, formData]);
+    return estimateConversionImpact(userData, {
+      id: editEvent?.id ?? 'preview',
+      ...draft,
+    });
+  }, [userData, formData, editEvent?.id]);
 
   const warnings = useMemo(() => {
     if (!formData.amount || formData.amount <= 0) return [] as string[];
     const draft: IncomeEvent = {
-      id: 'preview',
+      id: editEvent?.id ?? 'preview',
       type: 'roth_conversion',
       name: formData.name || 'Draft',
       owner: formData.owner,
@@ -249,7 +252,33 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
       );
     }
     return list;
-  }, [userData, formData]);
+  }, [userData, formData, editEvent?.id]);
+
+  const sourcingWarnings = useMemo(() => {
+    if (!impact) return [] as string[];
+    const list: string[] = [];
+    if (impact.conversionWithheldYears > 0) {
+      const years = impact.conversionWithheldYears;
+      const dollars = impact.conversionWithheldDollars;
+      list.push(
+        `Withholding kicks in in ${years} year${years === 1 ? '' : 's'} ` +
+          `(${currency(dollars)} total withheld) because your Taxable balance (and any ` +
+          `RMD-excess cash) can't cover the conversion's marginal ordinary tax. The conversion ` +
+          `still executes — but the Roth deposit shrinks by the withheld amount. This is IRS-allowed ` +
+          `(Form 1099-R Box 4 withholding) but reduces the conversion's long-term benefit vs. ` +
+          `paying tax from Taxable. Add Taxable funds or reduce the conversion to avoid withholding.`
+      );
+    }
+    if (impact.conversionShortfallYears > 0) {
+      const years = impact.conversionShortfallYears;
+      const dollars = impact.conversionShortfallDollars;
+      list.push(
+        `In ${years} year${years === 1 ? '' : 's'}, your Traditional balance is too small to ` +
+          `support the full requested conversion. Total shortfall: ${currency(dollars)}.`
+      );
+    }
+    return list;
+  }, [impact]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -349,11 +378,18 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
             Gross amount moved from Traditional to Roth each year, in today's dollars.
             With <em>Inflation-adjusted amount</em> on (default), the nominal amount
             grows each year so the real-dollar conversion stays constant; turn it off
-            for a fixed-nominal schedule. Taxed as ordinary income; tax is paid from
-            taxable accounts first via the usual withdrawal waterfall.
+            for a fixed-nominal schedule. Taxed as ordinary income. Tax sourcing:
+            RMD-excess → Taxable → withheld from the conversion itself
+            (IRS Form 1099-R Box 4) if neither covers the marginal tax. Never pulled
+            from Traditional-above-RMD or Roth — that would defeat the conversion.
+            Withholding always lets the conversion execute, but reduces the Roth
+            deposit and gives up some of the tax arbitrage vs. paying from Taxable.
           </HelpText>
-          {warnings.length > 0 && (
+          {(warnings.length > 0 || sourcingWarnings.length > 0) && (
             <WarningList>
+              {sourcingWarnings.map((w, i) => (
+                <WarningHint key={`src-${i}`}>{w}</WarningHint>
+              ))}
               {warnings.map((w, i) => (
                 <WarningHint key={i}>{w}</WarningHint>
               ))}
@@ -442,21 +478,28 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
             </ImpactGrid>
             <Disclaimer>
               <div>
-                <DisclaimerLabel>What this estimate includes:</DisclaimerLabel>{' '}
-                federal and state ordinary income tax on the converted amount, RMD
-                reduction at age 73, projected tax-free Roth growth, and a net
-                plan-value comparison that accounts for forgone Traditional growth
-                (taxed at your current baseline effective rate) and the opportunity
-                cost of conversion tax paid from taxable accounts.
+                <DisclaimerLabel>Tax rows above (first-year, total):</DisclaimerLabel>{' '}
+                quick incremental-tax estimates against your baseline ordinary
+                income, including the SS provisional-income bump. They don't
+                include IRMAA or NIIT — those effects are folded into the Net
+                impact row and the live success probability.
               </div>
               <div>
-                <DisclaimerLabel>What it doesn't include:</DisclaimerLabel>{' '}
-                Medicare IRMAA surcharges (cliff-based, two-year lookback — can add
-                thousands per year), Social Security taxability interactions, the
-                3.8% Net Investment Income Tax, ACA premium tax credit effects before
-                65, and the surviving-spouse shift from joint to single brackets.
-                Each of these can materially change whether a conversion is
-                worthwhile.
+                <DisclaimerLabel>What it still doesn't include:</DisclaimerLabel>{' '}
+                ACA premium tax credit effects before 65, the surviving-spouse
+                shift from joint to single brackets, and federal 0/15/20% LTCG
+                bracket stacking. Each can materially change whether a conversion
+                is worthwhile.
+              </div>
+              <div>
+                <DisclaimerLabel>Net impact reflects the engine's full behavior:</DisclaimerLabel>{' '}
+                when you add a conversion, the engine also auto-switches the
+                spending waterfall to <em>bracket-aware</em> mode (pulling
+                Traditional cheaply in low-bracket years to preserve Taxable).
+                That switch contributes to the Net impact alongside the
+                conversion itself. To isolate the conversion alone, set
+                <code style={{ fontSize: 'inherit' }}> spendingWithdrawalOrder</code> explicitly on the scenario
+                JSON so both before/after use the same waterfall.
               </div>
               <div>
                 Treat this as a starting point, not a recommendation. Talk to a tax

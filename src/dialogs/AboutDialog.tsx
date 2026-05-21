@@ -74,6 +74,7 @@ function buildClipboardText(): string {
   const dirtyPart = isDev ? ' (dev build)' : __GIT_DIRTY__ ? ' (dirty)' : '';
   return [
     `YARP v${__APP_VERSION__}`,
+    `Website: https://yarp.bluewiz.net`,
     `Branch: ${__GIT_BRANCH__}`,
     `Commit: ${__GIT_COMMIT__}${dirtyPart}`,
     `Built: ${__BUILD_TIME__}`,
@@ -148,6 +149,13 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ visible, onHide }) => {
 
           <MetaLabel>License</MetaLabel>
           <MetaValue>MIT</MetaValue>
+
+          <MetaLabel>Website</MetaLabel>
+          <MetaValue>
+            <MetaLink href="https://yarp.bluewiz.net" target="_blank" rel="noopener noreferrer">
+              yarp.bluewiz.net<i className="pi pi-external-link" />
+            </MetaLink>
+          </MetaValue>
 
           <MetaLabel>Repository</MetaLabel>
           <MetaValue>

@@ -1,0 +1,10 @@
+{
+  "_rationale": "Age 73 MFJ both 65+, FL. RMD = $1M / 26.5 ≈ $37,736. Spending $50k > RMD, so RMD covers part of spending and bracket_aware pulls the remaining $12k+ from Trad (within bracket headroom) BEFORE touching Taxable. headroom precompute (conv-inclusive baseline = $30k conv, MFJ 65+ deduction ~$33k → baselineTaxable=0, top of 12% MFJ 2026 ~$103,500 → headroom ≈ $103,500). RMD consumes $37,736 of that headroom (fixed: subtract rmdRequired, not rmdSpendingPull). headroomAfterRmd ≈ $65,764, easily covers the $12k additional spending pull. withdrawalFromTraditional = forcedTrad ($50k, since spending $50k > RMD $37,736) + conv $30k = $80k. Bracket check: ordinaryGross = $30k conv + $50k Trad = $80k. After MFJ 65+ deduction ~$33k → ~$47k taxable income → still in 12% bracket. Coordination invariant holds: even though bracket_aware pulled some Trad-above-RMD, conv+spending combined stay within 12%.",
+  "probability": 100,
+  "tolerance": 1.0,
+  "breakdownChecks": [
+    { "index": 0, "field": "rmdRequired", "value": 37735.85, "tolerance": 5, "_note": "1M/26.5" },
+    { "index": 0, "field": "rothConversionGross", "value": 30000, "tolerance": 1, "_note": "Full conv executes" },
+    { "index": 0, "field": "withdrawalFromTraditional", "min": 78000, "max": 82000, "_note": "forcedTrad (~$50k = max(spending, RMD)) + conv ($30k)" }
+  ]
+}

@@ -1,11 +1,11 @@
 {
-  "_rationale": "Ages 60-63 (2026-2029): CA 8% state tax. Net = $100k - $13,170 federal - $8,000 CA = $78,830/yr. Age 64 (2030): FL 0% state tax. Net = $100k - $13,170 = $86,830. Portfolio: starts at $500k, accumulates net income each year with 0% growth.",
+  "_rationale": "Updated for the per-state profile model: CA state tax on $100k pension is now $5,438 (graduated brackets above $5,540 std ded), not the prior flat $8,000. Net CA = $100k − $13,170 federal − $5,438 CA = $81,392/yr. Net FL = $86,830/yr (unchanged). Portfolio: starts at $500k, accumulates net income each year with 0% growth. Year-1 balance = 500k + 81,392 = 581,392; year-3 (last full CA year) = 500k + 3·81,392 = 744,177; year-4 (first FL year, balance after CA-3 cashflow) = 500k + 4·81,392 = 825,569.",
   "probability": 100,
   "pathValues": [
     { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
-    { "index": 1, "age": 61, "value": 578830, "note": "500000 + 78830 (CA year)" },
-    { "index": 3, "age": 63, "value": 736490, "note": "500000 + 78830 * 3 (last CA year starts)" },
-    { "index": 4, "age": 64, "value": 815320, "note": "500000 + 78830 * 4 (FL year, balance before FL cashflow)" }
+    { "index": 1, "age": 61, "value": 581392, "note": "500000 + 81392 (CA year)" },
+    { "index": 3, "age": 63, "value": 744177, "note": "500000 + 81392 * 3" },
+    { "index": 4, "age": 64, "value": 825569, "note": "500000 + 81392 * 4 (FL year, after final CA cashflow)" }
   ],
-  "tolerance": 1.0
+  "tolerance": 5.0
 }

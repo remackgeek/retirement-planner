@@ -1,0 +1,8 @@
+{
+  "_rationale": "Year 1 (age 64): CO ssRule = exempt_if_age 65 → age 64 SS taxable portion ($25,500) included in CO state base. Federal tax on $69,400 taxable ≈ $9,980 + CO 4.4% × $69,400 = $3,054 → ordinaryTax ≈ $13,034. Year 2 (age 65): SS state-exempt + federal senior add-on ($2,050) + OBBB phaseout-adjusted bonus ($5,370) kick in. Federal tax on $61,980 taxable ≈ $8,348 + CO 4.4% × $43,900 = $1,932 → ordinaryTax ≈ $10,280. The age-65 transition demonstrates BOTH the federal senior deductions AND the CO SS state-exemption activating together.",
+  "probability": 100,
+  "breakdownChecks": [
+    { "index": 0, "field": "ordinaryTax", "min": 12900, "max": 13200, "_note": "Year 1 (age 64): ~$9,980 federal + ~$3,054 CO (SS in state base)" },
+    { "index": 1, "field": "ordinaryTax", "min": 10100, "max": 10400, "_note": "Year 2 (age 65): ~$8,348 federal (senior+OBBB) + ~$1,932 CO (SS exempt)" }
+  ]
+}

@@ -1,11 +1,15 @@
 {
-  "_rationale": "Traditional balance $30k < requested $100k conversion → capped at available Trad less forced withdrawal. With NO Taxable account, the tax on the conversion pulls from Traditional via the waterfall. The convergence loop reserves tax-driven withdrawal first, then caps conversion at remaining Trad. Single filer age 60: std deduction ~$15k, so ~$15k taxable in 10% bracket. Tax ~$1,400-$1,500. Final: withdrawalFromTraditional drains Trad (~$30k = conversion + tax), rothConversionGross ≈ $28,500.",
+  "_rationale": "Trad balance $30k < requested $100k conversion → conversion executes the full $30k Trad balance (limited by tradAvailForConv). Tax cannot be paid from Taxable (no Taxable) or RMD-excess (age 60, no RMD), so the federal tax on ~$30k single 60 (std ded ~$15.75k → ~$14k taxable → 10% = ~$1,400) is withheld from the conversion itself (IRS Form 1099-R Box 4). withdrawalFromTraditional ≈ $30k (the full balance), rothConversionGross = $30k (conversion principal), rothConversionTaxWithheld ≈ $1,400, Roth deposit (computed: gross − withheld) ≈ $28,600. rothConversionRequested records the user's $100k intent → conversionShortfallDollars ≈ $70k.",
   "probability": 100,
   "tolerance": 1.0,
   "breakdownChecks": [
-    { "index": 0, "field": "rothConversionGross", "min": 28000, "max": 30000, "_note": "Capped; tax draws from Trad too since no Taxable account" },
+    { "index": 0, "field": "rothConversionGross", "value": 30000, "tolerance": 50, "_note": "Hits Trad-balance cap; full Trad balance pulled" },
+    { "index": 0, "field": "rothConversionRequested", "value": 100000, "tolerance": 1, "_note": "User intent preserved" },
+    { "index": 0, "field": "rothConversionTaxWithheld", "min": 1000, "max": 2000, "_note": "Federal tax on $30k single 60 withheld from conversion (no Taxable to source from)" },
     { "index": 0, "field": "rmdRequired", "value": 0, "tolerance": 0.01, "_note": "Age 60, below RMD age" },
-    { "index": 0, "field": "withdrawalFromTraditional", "value": 30000, "tolerance": 1, "_note": "Entire Traditional drained by conversion + tax" },
-    { "index": 1, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "Traditional depleted, nothing to convert" }
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 30000, "tolerance": 50, "_note": "Full Trad balance pulled; entire conversion principal goes out" },
+    { "index": 0, "field": "ordinaryTax", "min": 1000, "max": 2000, "_note": "Federal tax on the converted amount" },
+    { "index": 0, "field": "withdrawalFromTaxable", "value": 0, "tolerance": 0.01, "_note": "No Taxable account" },
+    { "index": 1, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "One-time event" }
   ]
 }

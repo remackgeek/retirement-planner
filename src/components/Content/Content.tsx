@@ -2,8 +2,8 @@ import { useContext, useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { RetirementContext } from '../../context/RetirementContext';
-import { runSimulation } from '../../services/SimulationService';
-import { clearTaxCalculationCache } from '../../services/TaxCalculator';
+import { runFastPreview } from '../../services/SimulationService';
+import { simulationClient, SupersededError } from '../../services/SimulationClient';
 import Projections from '../Chart/Chart';
 import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
@@ -98,10 +98,25 @@ const Content: React.FC<{
       : null;
   const isCompareCalculating = !!compareScenario && !currentCompareResults;
   const pendingRun = useRef<number | null>(null);
+  // Track mount state so async sim results don't trigger setState on unmounted component.
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  // Track current activeScenario for async writeback guard. The setTimeout closure
+  // captures activeScenario at scheduling time, which is stale by the time the
+  // worker returns — read through this ref to see the current value.
+  const activeScenarioRef = useRef(activeScenario);
+  useEffect(() => { activeScenarioRef.current = activeScenario; });
+  // Warm up the worker pool on first mount so the first MC pays no cold-start cost.
+  useEffect(() => { simulationClient.warmUp(); }, []);
   // When we write the freshly-computed probability back to the active scenario
   // (sidebar display cache), the resulting activeScenario reference change would
   // re-fire this effect and run MC again. Skip exactly one run after a write-back.
   const skipNextSim = useRef(false);
+  // Fingerprint of the last simulation-affecting scenario state. Lets us skip
+  // re-running when a parent re-render produces a new activeScenario reference
+  // without changing any sim input (e.g. renames, sidebar selection churn).
+  // name and lastSuccessProbability are display-only — exclude them.
+  const lastSimFingerprint = useRef<string | null>(null);
 
   // Debounce simulation so rapid edits (each keystroke updates activeScenario)
   // don't fire a full Monte Carlo every time. Keep the previous results visible
@@ -110,32 +125,68 @@ const Content: React.FC<{
     if (!activeScenario) {
       setResults(null);
       setIsCalculating(false);
+      lastSimFingerprint.current = null;
       return;
     }
     if (skipNextSim.current) {
       skipNextSim.current = false;
       return;
     }
+    const { name: _n, lastSuccessProbability: _p, ...simInputs } = activeScenario;
+    const fingerprint = `${activeScenario.id}|${JSON.stringify(simInputs)}`;
+    if (fingerprint === lastSimFingerprint.current) return;
+    lastSimFingerprint.current = fingerprint;
+    // Phase 1: fast deterministic preview — paints the Projected line + events
+    // immediately so the chart never goes blank when switching scenarios.
+    // Historical modes (rolling / bootstrap) have no canonical deterministic
+    // baseline and would just show 0s, so skip the preview there.
+    const returnModel = activeScenario.portfolioAssumptions?.returnModel ?? 'parametric';
+    const supportsFastPreview = returnModel !== 'historical_rolling' && returnModel !== 'historical_bootstrap';
+    if (supportsFastPreview) {
+      setResults(runFastPreview(activeScenario, activeScenario.lastSuccessProbability));
+    }
     setIsCalculating(true);
+    // Phase 2: debounced full Monte Carlo, dispatched to the worker pool via SimulationClient.
     if (pendingRun.current != null) window.clearTimeout(pendingRun.current);
+    const capturedScenarioId = activeScenario.id;
+    const capturedScenario = activeScenario;
     pendingRun.current = window.setTimeout(() => {
-      clearTaxCalculationCache();
-      const result = runSimulation(activeScenario);
-      setResults(result);
-      setIsCalculating(false);
-      pendingRun.current = null;
-      if (result.probability !== activeScenario.lastSuccessProbability) {
-        skipNextSim.current = true;
-        updateScenario({ ...activeScenario, lastSuccessProbability: result.probability });
-      }
-    }, 250);
-    return () => {
-      if (pendingRun.current != null) {
-        window.clearTimeout(pendingRun.current);
+      simulationClient.run(capturedScenario).then((result) => {
+        if (!mountedRef.current) return;
+        setResults(result);
+        setIsCalculating(false);
         pendingRun.current = null;
-      }
-    };
+        // Guard writeback: only update if the active scenario still matches
+        // (read through ref since the closure's activeScenario is stale).
+        const currentActive = activeScenarioRef.current;
+        if (
+          result.probability !== capturedScenario.lastSuccessProbability &&
+          currentActive && currentActive.id === capturedScenarioId
+        ) {
+          skipNextSim.current = true;
+          updateScenario({ ...capturedScenario, lastSuccessProbability: result.probability });
+        }
+      }).catch((err) => {
+        if (err instanceof SupersededError) return;
+        if (!mountedRef.current) return;
+        console.error('Simulation failed:', err);
+        setIsCalculating(false);
+      });
+    }, 250);
+    // No cleanup here. A cleanup that always cancels the timeout would race
+    // with the fingerprint early-return above: a no-op re-render (same
+    // sim-input content, new activeScenario reference) would clear the
+    // pending sim and then early-return without rescheduling, leaving
+    // isCalculating stuck at true. Unmount cleanup is below.
   }, [activeScenario]);
+
+  // Unmount-only: clear any in-flight timeout so it doesn't fire post-unmount.
+  useEffect(() => () => {
+    if (pendingRun.current != null) {
+      window.clearTimeout(pendingRun.current);
+      pendingRun.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     onSetCompare(null);
@@ -146,10 +197,23 @@ const Content: React.FC<{
       setCompareResults(null);
       return;
     }
-    const id = setTimeout(() => {
+    // Fast preview first so the compared line appears immediately.
+    const returnModel = compareScenario.portfolioAssumptions?.returnModel ?? 'parametric';
+    if (returnModel !== 'historical_rolling' && returnModel !== 'historical_bootstrap') {
       setCompareResults({
         scenarioId: compareScenario.id,
-        results: runSimulation(compareScenario),
+        results: runFastPreview(compareScenario, compareScenario.lastSuccessProbability),
+      });
+    }
+    const capturedCompare = compareScenario;
+    const id = setTimeout(() => {
+      simulationClient.run(capturedCompare).then((result) => {
+        if (!mountedRef.current) return;
+        setCompareResults({ scenarioId: capturedCompare.id, results: result });
+      }).catch((err) => {
+        if (err instanceof SupersededError) return;
+        if (!mountedRef.current) return;
+        console.error('Compare simulation failed:', err);
       });
     }, 0);
     return () => clearTimeout(id);
@@ -161,10 +225,23 @@ const Content: React.FC<{
   const [whatIfSnapshotResults, setWhatIfSnapshotResults] = useState<any>(null);
   useEffect(() => {
     if (!whatIfSnapshot) { setWhatIfSnapshotResults(null); return; }
-    setWhatIfSnapshotResults(null);
+    // Fast preview first so the Original line appears instantly when entering What If.
+    const returnModel = whatIfSnapshot.portfolioAssumptions?.returnModel ?? 'parametric';
+    if (returnModel !== 'historical_rolling' && returnModel !== 'historical_bootstrap') {
+      setWhatIfSnapshotResults(runFastPreview(whatIfSnapshot, whatIfSnapshot.lastSuccessProbability));
+    } else {
+      setWhatIfSnapshotResults(null);
+    }
+    const capturedSnapshot = whatIfSnapshot;
     const id = window.setTimeout(() => {
-      clearTaxCalculationCache();
-      setWhatIfSnapshotResults(runSimulation(whatIfSnapshot));
+      simulationClient.run(capturedSnapshot).then((result) => {
+        if (!mountedRef.current) return;
+        setWhatIfSnapshotResults(result);
+      }).catch((err) => {
+        if (err instanceof SupersededError) return;
+        if (!mountedRef.current) return;
+        console.error('What If snapshot simulation failed:', err);
+      });
     }, 0);
     return () => window.clearTimeout(id);
   }, [whatIfSnapshot]);
@@ -265,6 +342,11 @@ const Content: React.FC<{
             No scenario selected. Create or import a scenario to get started.
           </div>
         )}
+        {/* Full-screen spinner removed: fast preview paints the chart
+            immediately on scenario switch, so we no longer need a blank
+            state. Historical rolling/bootstrap modes (which skip the
+            preview) momentarily show no chart, but their full MC is the
+            same speed regardless. */}
         {!results && activeScenario && isCalculating && (
           <SpinnerContainer>
             <ProgressSpinner style={{ width: '48px', height: '48px' }} />

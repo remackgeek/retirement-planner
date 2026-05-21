@@ -1,95 +1,97 @@
 {
-    "_description":  "Full lifecycle: retirement contributions accumulate into Traditional (30k/yr pre-tax) and Roth (20k/yr) for 10 years, then retirement spending draws from Traditional first (waterfall order, no taxable account).",
-    "_rationale":  "Ages 55-64: two retirement_contribution events route 30k/yr to trad-1 (pre_tax) and 20k/yr to roth-1 via accountId. With no wage income, pre_tax has no taxable income to reduce â€” taxable income floors at 0, no tax effect. 0% return, 0% inflation. After 10 years: trad=300k, roth=200k, total=500k. Ages 65-70: 15k/yr spending drawn from Traditional (below the 16,100+2,050=18,150 deduction for age 65+), so tax=0 and W=15k exactly. Roth stays untouched. After 6 retirement years: trad=300k-6*15k=210k, roth=200k, total=410k. Never depletes: probability=100%.",
-    "_seed":  12345,
-    "name":  "Savings Then Drawdown",
-    "currentAge":  55,
-    "lifeExpectancy":  70,
-    "referenceYear":  2026,
-    "spendingGoals":  [
-                          {
-                              "id":  "spending-1",
-                              "name":  "Living Expenses 1",
-                              "type":  "living_expenses",
-                              "amount":  15000,
-                              "startAge":  65,
-                              "inflationAdjusted":  false
-                          }
-                      ],
-    "incomeEvents":  [
-                         {
-                             "id":  "savings-trad",
-                             "type":  "retirement_contribution",
-                             "contributionType":  "pre_tax",
-                             "name":  "401k Contribution",
-                             "amount":  30000,
-                             "startAge":  55,
-                             "endAge":  64,
-                             "taxStatus":  "before_tax",
-                             "colaType":  "fixed",
-                             "accountId":  "trad-1"
-                         },
-                         {
-                             "id":  "savings-roth",
-                             "type":  "retirement_contribution",
-                             "contributionType":  "roth",
-                             "name":  "Roth IRA Contribution",
-                             "amount":  20000,
-                             "startAge":  55,
-                             "endAge":  64,
-                             "taxStatus":  "before_tax",
-                             "colaType":  "fixed",
-                             "accountId":  "roth-1"
-                         }
-                     ],
-    "portfolioAssumptions":  {
-                                 "stockReturn":  0,
-                                 "stockStdDev":  0,
-                                 "bondReturn":  0,
-                                 "bondStdDev":  0,
-                                 "stockBondCorrelationEnabled":  false,
-                                 "stockBondCorrelation":  -0.2,
-                                 "returnDistribution":  "lognormal",
-                                 "degreesOfFreedom":  4,
-                                 "returnModel":  "parametric"
-                             },
-    "inflationRate":  0,
-    "inflationStdDev":  0,
-    "filingStatus":  "single",
-    "spouseAge":  null,
-    "stateTimeline":  [
-                          {
-                              "state":  "Florida"
-                          }
-                      ],
-    "simulationSettings":  {
-                               "numSimulations":  100
-                           },
-    "accounts":  [
-                     {
-                         "id":  "trad-1",
-                         "name":  "Traditional 1",
-                         "type":  "traditional",
-                         "balance":  0,
-                         "stockAllocation":  0.6,
-                         "portfolioBalance":  "60_40"
-                     },
-                     {
-                         "id":  "roth-1",
-                         "name":  "Roth 1",
-                         "type":  "roth",
-                         "balance":  0,
-                         "stockAllocation":  0.6,
-                         "portfolioBalance":  "60_40"
-                     }
-                 ],
-    "longTermCapGainsRate":  0,
-    "contributionLimits":  {
-                               "elective401k":  1000000,
-                               "iraLimit":  1000000,
-                               "catchUpAge":  50,
-                               "catchUp401k":  0,
-                               "catchUpIra":  0,
-                               "inflationAdjusted":  false
-                           }
+  "_description": "Full lifecycle: retirement contributions accumulate into Traditional (30k/yr pre-tax) and Roth (20k/yr) for 10 years, then retirement spending draws from Traditional first (waterfall order, no taxable account).",
+  "_rationale": "Ages 55-64: two retirement_contribution events route 30k/yr to trad-1 (pre_tax) and 20k/yr to roth-1 via accountId. With no wage income, pre_tax has no taxable income to reduce â€” taxable income floors at 0, no tax effect. 0% return, 0% inflation. After 10 years: trad=300k, roth=200k, total=500k. Ages 65-70: 15k/yr spending drawn from Traditional (below the 16,100+2,050=18,150 deduction for age 65+), so tax=0 and W=15k exactly. Roth stays untouched. After 6 retirement years: trad=300k-6*15k=210k, roth=200k, total=410k. Never depletes: probability=100%.",
+  "_seed": 12345,
+  "name": "Savings Then Drawdown",
+  "currentAge": 55,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "spending-1",
+      "name": "Living Expenses 1",
+      "type": "living_expenses",
+      "amount": 15000,
+      "startAge": 65,
+      "inflationAdjusted": false
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "savings-trad",
+      "type": "retirement_contribution",
+      "contributionType": "pre_tax",
+      "name": "401k Contribution",
+      "amount": 30000,
+      "startAge": 55,
+      "endAge": 64,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "accountId": "trad-1"
+    },
+    {
+      "id": "savings-roth",
+      "type": "retirement_contribution",
+      "contributionType": "roth",
+      "name": "Roth IRA Contribution",
+      "amount": 20000,
+      "startAge": 55,
+      "endAge": 64,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "accountId": "roth-1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 0,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "roth-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 0,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0,
+  "contributionLimits": {
+    "elective401k": 1000000,
+    "iraLimit": 1000000,
+    "catchUpAge": 50,
+    "catchUp401k": 0,
+    "catchUpIra": 0,
+    "inflationAdjusted": false
+  },
+  "enableIRMAA": false,
+  "enableNIIT": false
 }

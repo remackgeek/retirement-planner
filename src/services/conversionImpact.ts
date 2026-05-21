@@ -7,10 +7,13 @@ import {
   getStandardDeduction,
 } from './TaxCalculator';
 import {
-  STATE_TAX_RATES,
   IRS_UNIFORM_LIFETIME_TABLE,
   initialAccountBalances,
+  runDeterministicProjection,
+  getEffectiveStateName,
 } from './SimulationService';
+import { getStateTaxProfile } from '../data/stateTaxProfiles';
+import { computeStateTax } from './StateTaxCalculator';
 
 export interface ConversionImpact {
   firstYearTax: number;             // incremental ordinary tax in the first conversion year
@@ -18,23 +21,69 @@ export interface ConversionImpact {
   rmdReductionAt73: number;         // $ reduction in the first-year RMD attributable to conversion
   projectedRothAtEndOfPlan: number; // nominal Roth value from conversions at life expectancy
   netPlanValueImpact: number;       // signed delta of plan value at life expectancy (with vs without)
+  // True-cap detection: years where Trad balance (after RMD/spending) limited the conversion
+  // below the user's requested amount. Rare — only fires when the Trad bucket itself is too small.
+  conversionShortfallYears: number;
+  conversionShortfallDollars: number;
+  // Withholding detection: years where Taxable + RMD-excess couldn't cover the marginal
+  // ordinary tax, so a portion of the conversion was withheld for tax (IRS Form 1099-R Box 4).
+  // The conversion still executes at the requested Trad pull, but the Roth deposit shrinks
+  // by the withheld amount. Mathematically suboptimal vs. paying from Taxable.
+  conversionWithheldYears: number;
+  conversionWithheldDollars: number;
 }
 
-// Resolve the effective state tax rate for `year` from the user's timeline.
-// Duplicated locally to keep the impact helper decoupled from sim internals.
-function getStateTaxRate(userData: UserData, year: number): number {
-  const timeline = userData.stateTimeline;
-  if (!timeline || timeline.length === 0) return 0;
-  let effectiveState = timeline[0].state;
-  for (let i = 1; i < timeline.length; i++) {
-    const startYear = timeline[i].startYear;
-    if (startYear != null && year >= startYear) {
-      effectiveState = timeline[i].state;
-    } else {
-      break;
-    }
-  }
-  return STATE_TAX_RATES[effectiveState] ?? 0;
+// Incremental conversion tax helper. Uses the federal-only `calculateNetFromGross`
+// plus the profile-based `computeStateTax` so the marginal-tax estimate honors
+// retirement-income exclusions, SS rules, and graduated state brackets.
+function incrementalTaxOnConversion(
+  userData: UserData,
+  year: number,
+  baseOrdinary: number,
+  baseSsTaxable: number,
+  baseSsGross: number,
+  withConvOrdinary: number,
+  withConvSsTaxable: number,
+  withConvSsGross: number,
+  convAmount: number,
+  age: number,
+  spouseAgeYear: number | null,
+): number {
+  const stateName = getEffectiveStateName(userData, year);
+  const { profile, resolvedKey } = getStateTaxProfile(stateName, year);
+  const baseGross = baseOrdinary + baseSsTaxable;
+  const withConvGross = withConvOrdinary + withConvSsTaxable;
+  const baseFedNet = baseGross > 0
+    ? calculateNetFromGross(baseGross, userData.filingStatus, age, year, spouseAgeYear, userData.inflationRate)
+    : 0;
+  const withConvFedNet = calculateNetFromGross(
+    withConvGross, userData.filingStatus, age, year, spouseAgeYear, userData.inflationRate
+  );
+  const baseFedTax = baseGross - baseFedNet;
+  const withConvFedTax = withConvGross - withConvFedNet;
+  // The conversion flows as an additional Traditional withdrawal for state-rule
+  // purposes (it's taxed as ordinary income from a Traditional account).
+  const baseStateRes = computeStateTax(profile, {
+    ordinaryGross: baseOrdinary,
+    ssTaxableFederal: baseSsTaxable,
+    ssGross: baseSsGross,
+    traditionalWithdrawal: 0,
+    ltcgFromTaxable: 0,
+    age, spouseAge: spouseAgeYear, filingStatus: userData.filingStatus,
+    year, inflationRate: userData.inflationRate,
+  }, resolvedKey);
+  const withConvStateRes = computeStateTax(profile, {
+    ordinaryGross: baseOrdinary,
+    ssTaxableFederal: withConvSsTaxable,
+    ssGross: withConvSsGross,
+    traditionalWithdrawal: convAmount,
+    ltcgFromTaxable: 0,
+    age, spouseAge: spouseAgeYear, filingStatus: userData.filingStatus,
+    year, inflationRate: userData.inflationRate,
+  }, resolvedKey);
+  const baseStateTax = baseStateRes.stateOrdinaryTax + baseStateRes.stateLocalitySurcharge;
+  const withConvStateTax = withConvStateRes.stateOrdinaryTax + withConvStateRes.stateLocalitySurcharge;
+  return Math.max(0, (withConvFedTax + withConvStateTax) - (baseFedTax + baseStateTax));
 }
 
 // Compute per-year baseline ordinary taxable income from the *non-conversion*
@@ -124,6 +173,10 @@ export function estimateConversionImpact(
       rmdReductionAt73: 0,
       projectedRothAtEndOfPlan: 0,
       netPlanValueImpact: 0,
+      conversionShortfallYears: 0,
+      conversionShortfallDollars: 0,
+      conversionWithheldYears: 0,
+      conversionWithheldDollars: 0,
     };
   }
 
@@ -151,41 +204,38 @@ export function estimateConversionImpact(
   let firstYearTax = 0;
   let totalTaxOverConversion = 0;
   let projectedRothAtEndOfPlan = 0;
-  let taxDragAtEndOfPlan = 0;
 
   for (let year = startYear; year <= Math.min(endYear, lastPlanYear); year++) {
     const convAmount = conversionAmountInYear(userData, conversion, year, inflationRate);
     if (convAmount <= 0) continue;
 
     const age = userData.currentAge + (year - userData.referenceYear);
-    const stateTaxRate = getStateTaxRate(userData, year);
-    const { otherTaxableGross } = baselineOrdinaryGross(userData, year, inflationRate);
+    // Year-adjusted spouse age so the senior add-on (and any other age-keyed
+    // tax adjustment) qualifies correctly as the spouse ages through the
+    // conversion window. Passing today's `userData.spouseAge` would freeze
+    // the spouse's eligibility at the reference year.
+    const spouseAgeYear =
+      userData.spouseAge !== null
+        ? userData.spouseAge + (year - userData.referenceYear)
+        : null;
+    const { ssGross, otherTaxableGross } = baselineOrdinaryGross(userData, year, inflationRate);
 
     // Incremental federal+state tax of adding the conversion to ordinary gross.
-    // SS taxability interactions are ignored here — the Impact Preview is a
-    // quick estimate, not a full tax sim.
-    const baseGross = Math.max(0, otherTaxableGross);
-    const withConvGross = baseGross + convAmount;
-    const baseNet = baseGross > 0
-      ? calculateNetFromGross(baseGross, stateTaxRate, userData.filingStatus, age, year, userData.spouseAge)
-      : 0;
-    const withConvNet = calculateNetFromGross(
-      withConvGross,
-      stateTaxRate,
-      userData.filingStatus,
-      age,
-      year,
-      userData.spouseAge,
+    // Compute SS taxability for both branches — the conversion increases provisional
+    // income, which can push more of SS across the 50%/85% thresholds.
+    const baseOrdinary = Math.max(0, otherTaxableGross);
+    const withConvOrdinary = baseOrdinary + convAmount;
+    const baseSsTaxable = calculateSSTaxableAmount(ssGross, baseOrdinary, userData.filingStatus);
+    const withConvSsTaxable = calculateSSTaxableAmount(ssGross, withConvOrdinary, userData.filingStatus);
+    const incrementalTax = incrementalTaxOnConversion(
+      userData, year,
+      baseOrdinary, baseSsTaxable, ssGross,
+      withConvOrdinary, withConvSsTaxable, ssGross,
+      convAmount, age, spouseAgeYear,
     );
-    const baseTax = baseGross - baseNet;
-    const withConvTax = withConvGross - withConvNet;
-    const incrementalTax = Math.max(0, withConvTax - baseTax);
 
     if (year === startYear) firstYearTax = incrementalTax;
     totalTaxOverConversion += incrementalTax;
-    // Conversion tax pulls from the taxable account first (per the withdrawal
-    // waterfall); track its forgone growth out to end of plan.
-    taxDragAtEndOfPlan += incrementalTax * Math.pow(1 + blendedReturn, Math.max(0, lastPlanYear - year));
 
     // Project Roth growth of this year's converted amount out to life expectancy.
     const yearsToLastPlan = Math.max(0, lastPlanYear - year);
@@ -219,72 +269,44 @@ export function estimateConversionImpact(
     rmdReductionAt73 = Math.max(0, tradNoConv / divisor - tradWithConv / divisor);
   }
 
-  // Net plan-value impact: project Traditional + Roth balances all the way to
-  // life expectancy under both branches (with conversions vs without), honoring
-  // RMDs after age 73 in each branch. Apply an estimated effective tax rate to
-  // remaining Traditional balances at end-of-plan so pre-tax dollars are
-  // compared apples-to-apples with tax-free Roth dollars. The opportunity cost
-  // of conversion tax paid from taxable accounts is captured via
-  // `taxDragAtEndOfPlan` and subtracted below.
-  let tradWithConvFull = initialTradBalance;
-  let tradNoConvFull = initialTradBalance;
-  let rothFromConv = 0;
-  const yearsToEnd = Math.max(0, lastPlanYear - userData.referenceYear);
-  const rmdMaxAge = 120;
-  // Iterate inclusive of `lastPlanYear` so the final-year conversion is reflected
-  // in rothFromConv / tradWithConvFull, matching the tax-loop bounds above.
-  for (let i = 0; i <= yearsToEnd; i++) {
-    const year = userData.referenceYear + i;
-    const ageThisYear = userData.currentAge + i;
-    tradWithConvFull *= 1 + blendedReturn;
-    tradNoConvFull *= 1 + blendedReturn;
-    rothFromConv *= 1 + blendedReturn;
-    const convAmount = conversionAmountInYear(userData, conversion, year, inflationRate);
-    if (convAmount > 0) {
-      tradWithConvFull = Math.max(0, tradWithConvFull - convAmount);
-      rothFromConv += convAmount;
-    }
-    if (ageThisYear >= 73) {
-      const lookupAge = Math.min(ageThisYear, rmdMaxAge);
-      const divisor = IRS_UNIFORM_LIFETIME_TABLE[lookupAge] ?? 26.5;
-      const rmdWith = tradWithConvFull / divisor;
-      const rmdNo = tradNoConvFull / divisor;
-      tradWithConvFull = Math.max(0, tradWithConvFull - rmdWith);
-      tradNoConvFull = Math.max(0, tradNoConvFull - rmdNo);
+  // Net plan-value impact: run the full deterministic simulation engine twice
+  // — once with this conversion event included, once with it stripped — and
+  // diff the end-of-plan portfolio balance. This is the same single-path
+  // engine that drives the "Deterministic" chart line, so the figure honors
+  // the withdrawal waterfall, RMD ordering, SS taxability, IRMAA, NIIT,
+  // state LTCG, and conversion-tax sourcing exactly as the live sim does.
+  // Skip if the conversion has no amount — both runs would be identical.
+  // Two detections from the same `withRun` breakdowns:
+  //   - Shortfall: rothConversionRequested > rothConversionGross → Trad balance
+  //     itself was insufficient (true cap; very rare).
+  //   - Withholding: rothConversionTaxWithheld > 0 → Taxable + RMD-excess couldn't
+  //     fund the marginal ordinary tax, so part of the conversion was withheld for
+  //     tax. Conversion still executes but Roth deposit shrinks.
+  let netPlanValueImpact = 0;
+  let conversionShortfallYears = 0;
+  let conversionShortfallDollars = 0;
+  let conversionWithheldYears = 0;
+  let conversionWithheldDollars = 0;
+  if (conversion.amount > 0) {
+    const withoutEvents = userData.incomeEvents.filter((e) => e.id !== conversion.id);
+    const withEvents = [...withoutEvents, conversion];
+    const userDataWith: UserData = { ...userData, incomeEvents: withEvents };
+    const userDataWithout: UserData = { ...userData, incomeEvents: withoutEvents };
+    const withRun = runDeterministicProjection(userDataWith);
+    const withoutRun = runDeterministicProjection(userDataWithout);
+    const lastIdx = withRun.path.length - 1;
+    netPlanValueImpact = withRun.path[lastIdx] - withoutRun.path[lastIdx];
+    for (const b of withRun.breakdowns) {
+      if (b.rothConversionRequested > b.rothConversionGross + 0.5) {
+        conversionShortfallYears += 1;
+        conversionShortfallDollars += b.rothConversionRequested - b.rothConversionGross;
+      }
+      if (b.rothConversionTaxWithheld > 0.5) {
+        conversionWithheldYears += 1;
+        conversionWithheldDollars += b.rothConversionTaxWithheld;
+      }
     }
   }
-  // Effective tax rate proxy for end-of-plan Traditional balance: the average
-  // rate the user's *baseline* (non-conversion) ordinary income would pay at
-  // conversion start, including the IRS provisional-income taxable fraction of
-  // Social Security. This represents the rate the trad-no-conversion side
-  // would face on future withdrawals; using the conversion's own marginal rate
-  // would make conversion neutral by construction.
-  const baseAtStart = baselineOrdinaryGross(userData, startYear, inflationRate);
-  const ssTaxableAtStart = calculateSSTaxableAmount(
-    baseAtStart.ssGross,
-    baseAtStart.otherTaxableGross,
-    userData.filingStatus,
-  );
-  const baseGrossAtStart = baseAtStart.otherTaxableGross + ssTaxableAtStart;
-  const startAge_ = userData.currentAge + (startYear - userData.referenceYear);
-  const baseNetAtStart = baseGrossAtStart > 0
-    ? calculateNetFromGross(
-        baseGrossAtStart,
-        getStateTaxRate(userData, startYear),
-        userData.filingStatus,
-        startAge_,
-        startYear,
-        userData.spouseAge,
-      )
-    : 0;
-  const effRate = baseGrossAtStart > 0
-    ? Math.min(0.4, Math.max(0, (baseGrossAtStart - baseNetAtStart) / baseGrossAtStart))
-    : 0.22;
-  const netPlanValueImpact =
-    rothFromConv +
-    tradWithConvFull * (1 - effRate) -
-    tradNoConvFull * (1 - effRate) -
-    taxDragAtEndOfPlan;
 
   return {
     firstYearTax,
@@ -292,6 +314,10 @@ export function estimateConversionImpact(
     rmdReductionAt73,
     projectedRothAtEndOfPlan,
     netPlanValueImpact,
+    conversionShortfallYears,
+    conversionShortfallDollars,
+    conversionWithheldYears,
+    conversionWithheldDollars,
   };
 }
 
@@ -350,11 +376,11 @@ export function crossesMultipleBracketsHeuristic(
       : userData.currentAge;
   const startYear = userData.referenceYear + (conversion.startAge - ownerAge);
   const { otherTaxableGross } = baselineOrdinaryGross(userData, startYear, userData.inflationRate);
-  const stdDed = getStandardDeduction(userData.filingStatus, startYear);
+  const stdDed = getStandardDeduction(userData.filingStatus, startYear, userData.inflationRate);
   const baseTaxable = Math.max(0, otherTaxableGross - stdDed);
   const withConvTaxable = Math.max(0, otherTaxableGross + conversion.amount - stdDed);
-  const baseIdx = getFederalBracketIndex(baseTaxable, userData.filingStatus, startYear);
-  const withConvIdx = getFederalBracketIndex(withConvTaxable, userData.filingStatus, startYear);
+  const baseIdx = getFederalBracketIndex(baseTaxable, userData.filingStatus, startYear, userData.inflationRate);
+  const withConvIdx = getFederalBracketIndex(withConvTaxable, userData.filingStatus, startYear, userData.inflationRate);
   return withConvIdx - baseIdx >= 2;
 }
 

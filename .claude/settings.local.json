@@ -19,7 +19,8 @@
       "PowerShell(npx tsc --noEmit 2>&1)",
       "PowerShell(npm run build 2>&1)",
       "PowerShell(npm run test 2>&1)",
-      "PowerShell(npm run test --silent -- --run 2>&1)"
+      "PowerShell(npm run test --silent -- --run 2>&1)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Dev4\\\\retirement-planner\\\\test\\\\scenarios\" -Filter \"*roth*\" -o name)"
     ]
   }
 }
