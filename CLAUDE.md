@@ -679,6 +679,13 @@ Future direction:
   is closest to the 50th/10th percentile. An alternative is year-by-year percentile envelopes
   (smoother chart lines, but synthetic paths with no coherent per-year actuals). The
   representative-run approach was chosen to enable exact stock/bond attribution in detail rows.
+- **Off-main-thread MC (Web Worker)**: `runSimulation` currently runs synchronously on the
+  main thread (~100–400ms for 1k–10k runs), blocking scroll/hover during the window. Moving
+  the engine into a Web Worker would keep the UI fully responsive while MC computes; the
+  fast deterministic preview (`runFastPreview`) already paints the chart immediately, so the
+  Worker just needs to post the enriched `SimulationResult` back when ready. Vite has
+  first-class Worker support; main effort is the postMessage plumbing and ensuring the
+  engine has no DOM dependencies (it doesn't today).
 
 ### Chart plugins
 

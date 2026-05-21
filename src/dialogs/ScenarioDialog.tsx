@@ -123,7 +123,7 @@ const makeDefaults = (): Scenario => ({
   referenceYear: new Date().getFullYear(),
   inflationRate: 0.03,
   inflationStdDev: 0.012,
-  simulationSettings: { numSimulations: 5000 },
+  simulationSettings: { numSimulations: 1000 },
   filingStatus: 'single' as const,
   spouseAge: null,
   stateTimeline: [{ state: 'California' }],

@@ -30,9 +30,9 @@ import {
 } from './SettingsDialogPrimitives';
 
 const simRunOptions = [
-  { label: '1,000 (fast)', value: 1000 },
-  { label: '5,000 (standard)', value: 5000 },
-  { label: '10,000 (accurate)', value: 10000 },
+  { label: '1,000 (good)', value: 1000 },
+  { label: '5,000 (more precision)', value: 5000 },
+  { label: '10,000 (best)', value: 10000 },
 ];
 
 const distributionOptions: { label: string; value: ReturnDistribution }[] = [
@@ -435,6 +435,12 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
             {form.returnModel === 'historical_rolling' && (
               <HelpText>
                 Historical: Rolling Start uses {rollingRunCount} runs (one per valid start year).
+              </HelpText>
+            )}
+            {form.returnModel !== 'historical_single' && form.returnModel !== 'historical_rolling' && (
+              <HelpText>
+                More runs = smoother probability % and tighter percentile bands, but proportionally slower.
+                1,000 is fine for exploring; bump up before trusting a final number.
               </HelpText>
             )}
           </InputGroup>

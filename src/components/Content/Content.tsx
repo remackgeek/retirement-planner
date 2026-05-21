@@ -2,7 +2,7 @@ import { useContext, useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { RetirementContext } from '../../context/RetirementContext';
-import { runSimulation } from '../../services/SimulationService';
+import { runSimulation, runFastPreview } from '../../services/SimulationService';
 import Projections from '../Chart/Chart';
 import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
@@ -101,6 +101,11 @@ const Content: React.FC<{
   // (sidebar display cache), the resulting activeScenario reference change would
   // re-fire this effect and run MC again. Skip exactly one run after a write-back.
   const skipNextSim = useRef(false);
+  // Fingerprint of the last simulation-affecting scenario state. Lets us skip
+  // re-running when a parent re-render produces a new activeScenario reference
+  // without changing any sim input (e.g. renames, sidebar selection churn).
+  // name and lastSuccessProbability are display-only — exclude them.
+  const lastSimFingerprint = useRef<string | null>(null);
 
   // Debounce simulation so rapid edits (each keystroke updates activeScenario)
   // don't fire a full Monte Carlo every time. Keep the previous results visible
@@ -109,13 +114,28 @@ const Content: React.FC<{
     if (!activeScenario) {
       setResults(null);
       setIsCalculating(false);
+      lastSimFingerprint.current = null;
       return;
     }
     if (skipNextSim.current) {
       skipNextSim.current = false;
       return;
     }
+    const { name: _n, lastSuccessProbability: _p, ...simInputs } = activeScenario;
+    const fingerprint = `${activeScenario.id}|${JSON.stringify(simInputs)}`;
+    if (fingerprint === lastSimFingerprint.current) return;
+    lastSimFingerprint.current = fingerprint;
+    // Phase 1: fast deterministic preview — paints the Projected line + events
+    // immediately so the chart never goes blank when switching scenarios.
+    // Historical modes (rolling / bootstrap) have no canonical deterministic
+    // baseline and would just show 0s, so skip the preview there.
+    const returnModel = activeScenario.portfolioAssumptions?.returnModel ?? 'parametric';
+    const supportsFastPreview = returnModel !== 'historical_rolling' && returnModel !== 'historical_bootstrap';
+    if (supportsFastPreview) {
+      setResults(runFastPreview(activeScenario, activeScenario.lastSuccessProbability));
+    }
     setIsCalculating(true);
+    // Phase 2: debounced full Monte Carlo.
     if (pendingRun.current != null) window.clearTimeout(pendingRun.current);
     pendingRun.current = window.setTimeout(() => {
       const result = runSimulation(activeScenario);
@@ -127,13 +147,20 @@ const Content: React.FC<{
         updateScenario({ ...activeScenario, lastSuccessProbability: result.probability });
       }
     }, 250);
-    return () => {
-      if (pendingRun.current != null) {
-        window.clearTimeout(pendingRun.current);
-        pendingRun.current = null;
-      }
-    };
+    // No cleanup here. A cleanup that always cancels the timeout would race
+    // with the fingerprint early-return above: a no-op re-render (same
+    // sim-input content, new activeScenario reference) would clear the
+    // pending sim and then early-return without rescheduling, leaving
+    // isCalculating stuck at true. Unmount cleanup is below.
   }, [activeScenario]);
+
+  // Unmount-only: clear any in-flight timeout so it doesn't fire post-unmount.
+  useEffect(() => () => {
+    if (pendingRun.current != null) {
+      window.clearTimeout(pendingRun.current);
+      pendingRun.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     onSetCompare(null);
@@ -143,6 +170,14 @@ const Content: React.FC<{
     if (!compareScenario) {
       setCompareResults(null);
       return;
+    }
+    // Fast preview first so the compared line appears immediately.
+    const returnModel = compareScenario.portfolioAssumptions?.returnModel ?? 'parametric';
+    if (returnModel !== 'historical_rolling' && returnModel !== 'historical_bootstrap') {
+      setCompareResults({
+        scenarioId: compareScenario.id,
+        results: runFastPreview(compareScenario, compareScenario.lastSuccessProbability),
+      });
     }
     const id = setTimeout(() => {
       setCompareResults({
@@ -159,7 +194,13 @@ const Content: React.FC<{
   const [whatIfSnapshotResults, setWhatIfSnapshotResults] = useState<any>(null);
   useEffect(() => {
     if (!whatIfSnapshot) { setWhatIfSnapshotResults(null); return; }
-    setWhatIfSnapshotResults(null);
+    // Fast preview first so the Original line appears instantly when entering What If.
+    const returnModel = whatIfSnapshot.portfolioAssumptions?.returnModel ?? 'parametric';
+    if (returnModel !== 'historical_rolling' && returnModel !== 'historical_bootstrap') {
+      setWhatIfSnapshotResults(runFastPreview(whatIfSnapshot, whatIfSnapshot.lastSuccessProbability));
+    } else {
+      setWhatIfSnapshotResults(null);
+    }
     const id = window.setTimeout(() => {
       setWhatIfSnapshotResults(runSimulation(whatIfSnapshot));
     }, 0);
@@ -262,6 +303,11 @@ const Content: React.FC<{
             No scenario selected. Create or import a scenario to get started.
           </div>
         )}
+        {/* Full-screen spinner removed: fast preview paints the chart
+            immediately on scenario switch, so we no longer need a blank
+            state. Historical rolling/bootstrap modes (which skip the
+            preview) momentarily show no chart, but their full MC is the
+            same speed regardless. */}
         {!results && activeScenario && isCalculating && (
           <SpinnerContainer>
             <ProgressSpinner style={{ width: '48px', height: '48px' }} />

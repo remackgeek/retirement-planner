@@ -265,7 +265,12 @@ function applyCashFlow(
   accountIndex: AccountIndex,
   breakdown: AnnualCashFlowBreakdown,
   contributions: ContributionDeposit[],
-  balances: Record<string, number>
+  balances: Record<string, number>,
+  // When false, skip building the per-account flow rows used by the Tax Audit
+  // UI. The Map sinks are still allocated (cheap, needed by the rebalancing
+  // helpers' optional-sink contract) — only the rows-array construction and
+  // the breakdown.audit.accountFlows assignment are skipped.
+  includeAudit: boolean = true
 ): void {
   const withdrawalSink = new Map<string, number>();
   const depositSink = new Map<string, number>();
@@ -304,6 +309,7 @@ function applyCashFlow(
   // surplus deposit). Lookup is via accountIndex.byId so we resolve the
   // up-to-date account name and type even for synthetic Reinvestment / Roth
   // Conversion accounts injected by ensure*Account.
+  if (!includeAudit) return;
   const seen = new Set<string>();
   const rows: AccountFlowRow[] = [];
   withdrawalSink.forEach((amount, id) => {
@@ -1212,6 +1218,11 @@ function calculateAnnualCashFlowCore(
   // Max additional Trad-spending dollars that stay within the 12% federal
   // bracket, **conv-inclusive**. Only consulted when spendingOrder === 'bracket_aware'.
   bracketHeadroomForTrad: number = 0,
+  // When false, skip building the AnnualAuditBreakdown — the dominant per-iter
+  // cost in the MC loop, used only by the 3 representative paths surfaced in
+  // the Tax Audit UI. The 4997 stat-only runs pass false. Public wrapper
+  // (calculateAnnualCashFlow) defaults to true to preserve external behavior.
+  includeAudit: boolean = true,
 ): AnnualCashFlowBreakdown {
   const { ssGross, otherTaxableGross, afterTaxIncome, conversionGross } = income;
   const totalSpendingNet = spending.baseSpendingNet + spending.otherSpendingGoalsNet;
@@ -1485,99 +1496,105 @@ function calculateAnnualCashFlowCore(
   const uncappedNeed = Math.max(0, totalSpendingNet + totalTax - availableCash - mtFinal);
   const spendingShortfall = capWasBinding ? Math.max(0, uncappedNeed - withdrawal) : 0;
 
-  // ---- Tax Audit intermediates (always computed; cheap recomputation of values
-  // that the fixed-point loop already produced internally) ----
-  const ordinaryGrossFinal = otherTaxableGross + fromTrad;
-  const combinedTaxableFinal = ordinaryGrossFinal + ssTaxableAmount;
-  const detailedTax = combinedTaxableFinal > 0
-    ? calculateNetFromGrossDetailed(
-        combinedTaxableFinal, userData.filingStatus, age, year, spouseAge, inflationRate,
-      )
-    : null;
-  const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal, userData.filingStatus);
-  const irmaaDetail = irmaaEnabled
-    ? calculateIRMAADetailed(priorMagi ?? 0, userData.filingStatus, year, inflationRate ?? 0, age, spouseAge)
-    : null;
-  const niitMagiFinal = ordinaryGrossFinal + ssTaxableAmount + fromTaxable;
-  const niitDetail = niitEnabled
-    ? calculateNIITDetailed(niitMagiFinal, fromTaxable, userData.filingStatus)
-    : null;
-  // Marginal-stack attribution: each event's tax contribution is computed
-  // federally only here (state tax is allocated post-hoc proportional to each
-  // event's federal taxable contribution — see `stateEffectiveRate`). State
-  // rules (SS exemption, retirement exclusion, locality) don't map 1:1 to the
-  // federal marginal stack, so we distribute the year's actual state tax
-  // proportionally; sum reconciliation holds, individual event rows are an
-  // approximation.
-  const stateEffectiveRateOnFederalTaxable = combinedTaxableFinal > 0
-    ? (stateOrdinaryTaxOnly + stateLocalitySurcharge) / combinedTaxableFinal
-    : 0;
-  const eventTaxAttr = computeMarginalStackAttribution({
-    eventBreakdowns: income.eventBreakdowns,
-    ssGross,
-    ssTaxableAmount,
-    fromTrad,
-    rothConversionTotal: rothConversion,
-    filingStatus: userData.filingStatus,
-    stateEffectiveRate: stateEffectiveRateOnFederalTaxable,
-    age,
-    taxYear: year,
-    spouseAge,
-    inflationRate,
-  });
-  const audit: AnnualAuditBreakdown = {
-    agi: combinedTaxableFinal,
-    standardDeduction: detailedTax?.standardDeduction ?? 0,
-    seniorAddOn: detailedTax?.seniorAddOn ?? 0,
-    obbbReduction: detailedTax?.obbbReduction ?? 0,
-    totalDeductions: detailedTax?.totalDeductions ?? 0,
-    taxableIncome: detailedTax?.taxableIncome ?? 0,
-    federalBracketIndex: detailedTax?.federalBracketIndex ?? 0,
-    federalMarginalRate: detailedTax?.federalMarginalRate ?? 0,
-    federalOrdinaryTax: detailedTax?.federalTax ?? 0,
-    stateOrdinaryTax: stateOrdinaryTaxOnly,
-    federalBrackets: detailedTax?.federalBrackets ?? [],
-    numQualifyingSeniors: detailedTax?.numQualifyingSeniors ?? 0,
-    effectiveStateName: stateResolvedKey,
+  // ---- Tax Audit intermediates ----
+  // Gated by includeAudit. These five detailed* calls + the audit object literal
+  // are the dominant per-iteration allocation/work in the MC hot loop. Stat-only
+  // runs (4997 of 5000) skip this; representative paths are replayed with
+  // includeAudit=true so the Tax Audit UI still sees full detail.
+  let audit: AnnualAuditBreakdown | undefined;
+  if (includeAudit) {
+    const ordinaryGrossFinal = otherTaxableGross + fromTrad;
+    const combinedTaxableFinal = ordinaryGrossFinal + ssTaxableAmount;
+    const detailedTax = combinedTaxableFinal > 0
+      ? calculateNetFromGrossDetailed(
+          combinedTaxableFinal, userData.filingStatus, age, year, spouseAge, inflationRate,
+        )
+      : null;
+    const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal, userData.filingStatus);
+    const irmaaDetail = irmaaEnabled
+      ? calculateIRMAADetailed(priorMagi ?? 0, userData.filingStatus, year, inflationRate ?? 0, age, spouseAge)
+      : null;
+    const niitMagiFinal = ordinaryGrossFinal + ssTaxableAmount + fromTaxable;
+    const niitDetail = niitEnabled
+      ? calculateNIITDetailed(niitMagiFinal, fromTaxable, userData.filingStatus)
+      : null;
+    // Marginal-stack attribution: each event's tax contribution is computed
+    // federally only here (state tax is allocated post-hoc proportional to each
+    // event's federal taxable contribution — see `stateEffectiveRate`). State
+    // rules (SS exemption, retirement exclusion, locality) don't map 1:1 to the
+    // federal marginal stack, so we distribute the year's actual state tax
+    // proportionally; sum reconciliation holds, individual event rows are an
+    // approximation.
+    const stateEffectiveRateOnFederalTaxable = combinedTaxableFinal > 0
+      ? (stateOrdinaryTaxOnly + stateLocalitySurcharge) / combinedTaxableFinal
+      : 0;
+    const eventTaxAttr = computeMarginalStackAttribution({
+      eventBreakdowns: income.eventBreakdowns,
+      ssGross,
+      ssTaxableAmount,
+      fromTrad,
+      rothConversionTotal: rothConversion,
+      filingStatus: userData.filingStatus,
+      stateEffectiveRate: stateEffectiveRateOnFederalTaxable,
+      age,
+      taxYear: year,
+      spouseAge,
+      inflationRate,
+    });
+    audit = {
+      agi: combinedTaxableFinal,
+      standardDeduction: detailedTax?.standardDeduction ?? 0,
+      seniorAddOn: detailedTax?.seniorAddOn ?? 0,
+      obbbReduction: detailedTax?.obbbReduction ?? 0,
+      totalDeductions: detailedTax?.totalDeductions ?? 0,
+      taxableIncome: detailedTax?.taxableIncome ?? 0,
+      federalBracketIndex: detailedTax?.federalBracketIndex ?? 0,
+      federalMarginalRate: detailedTax?.federalMarginalRate ?? 0,
+      federalOrdinaryTax: detailedTax?.federalTax ?? 0,
+      stateOrdinaryTax: stateOrdinaryTaxOnly,
+      federalBrackets: detailedTax?.federalBrackets ?? [],
+      numQualifyingSeniors: detailedTax?.numQualifyingSeniors ?? 0,
+      effectiveStateName: stateResolvedKey,
 
-    ssProvisionalIncome: ssDetail.provisionalIncome,
-    ssProvisionalThreshold1: ssDetail.threshold1,
-    ssProvisionalThreshold2: ssDetail.threshold2,
-    ssZone: ssDetail.zone,
+      ssProvisionalIncome: ssDetail.provisionalIncome,
+      ssProvisionalThreshold1: ssDetail.threshold1,
+      ssProvisionalThreshold2: ssDetail.threshold2,
+      ssZone: ssDetail.zone,
 
-    irmaaLookbackMagi: irmaaDetail?.lookbackMagi ?? 0,
-    irmaaTierIndex: irmaaDetail?.tierIndex ?? 0,
-    irmaaTierUpperScaled: irmaaDetail?.tierUpperScaled ?? 0,
-    irmaaPerEnrolleeAnnual: irmaaDetail?.perEnrolleeAnnual ?? 0,
-    irmaaEnrolleeCount: irmaaDetail?.enrolleeCount ?? 0,
-    irmaaMonthlySurcharge: irmaaDetail?.monthlySurcharge ?? 0,
+      irmaaLookbackMagi: irmaaDetail?.lookbackMagi ?? 0,
+      irmaaTierIndex: irmaaDetail?.tierIndex ?? 0,
+      irmaaTierUpperScaled: irmaaDetail?.tierUpperScaled ?? 0,
+      irmaaPerEnrolleeAnnual: irmaaDetail?.perEnrolleeAnnual ?? 0,
+      irmaaEnrolleeCount: irmaaDetail?.enrolleeCount ?? 0,
+      irmaaMonthlySurcharge: irmaaDetail?.monthlySurcharge ?? 0,
 
-    niitMagi: niitDetail?.magi ?? 0,
-    niitThreshold: niitDetail?.threshold ?? 0,
-    niitMagiExcess: niitDetail?.magiExcess ?? 0,
-    niitInvestmentIncome: niitDetail?.investmentIncome ?? 0,
-    niitTaxableBase: niitDetail?.taxableBase ?? 0,
+      niitMagi: niitDetail?.magi ?? 0,
+      niitThreshold: niitDetail?.threshold ?? 0,
+      niitMagiExcess: niitDetail?.magiExcess ?? 0,
+      niitInvestmentIncome: niitDetail?.investmentIncome ?? 0,
+      niitTaxableBase: niitDetail?.taxableBase ?? 0,
 
-    rmdSelf: selfRmd,
-    rmdSpouse: spouseRmd,
-    rmdDivisorSelf: selfRmdDivisor,
-    rmdDivisorSpouse: spouseRmdDivisor,
-    rmdBoyBalanceSelf: selfTradBal,
-    rmdBoyBalanceSpouse: spouseTradBal,
+      rmdSelf: selfRmd,
+      rmdSpouse: spouseRmd,
+      rmdDivisorSelf: selfRmdDivisor,
+      rmdDivisorSpouse: spouseRmdDivisor,
+      rmdBoyBalanceSelf: selfTradBal,
+      rmdBoyBalanceSpouse: spouseTradBal,
 
-    incomeEventTaxBreakdown: eventTaxAttr,
+      incomeEventTaxBreakdown: eventTaxAttr,
 
-    stateOrdinaryBaseGross: stateResultFinal?.stateOrdinaryBaseGross ?? 0,
-    stateStdDeduction: stateResultFinal?.stateStdDeduction ?? 0,
-    stateRetirementExclusionApplied: stateResultFinal?.retirementExclusionApplied ?? 0,
-    stateSsIncludedInState: stateResultFinal?.ssIncludedInState ?? 0,
-    stateMarginalRate: stateResultFinal?.stateMarginalRate ?? 0,
-    stateBracketIndex: stateResultFinal?.stateBracketIndex ?? 0,
-    stateLocalitySurcharge,
-    stateLtcgTaxableAtState: stateResultFinal?.ltcgTaxableAtState ?? 0,
-    stateLtcgThresholdApplied: stateResultFinal?.ltcgThresholdApplied ?? 0,
-    stateNotes: stateResultFinal?.notes,
-  };
+      stateOrdinaryBaseGross: stateResultFinal?.stateOrdinaryBaseGross ?? 0,
+      stateStdDeduction: stateResultFinal?.stateStdDeduction ?? 0,
+      stateRetirementExclusionApplied: stateResultFinal?.retirementExclusionApplied ?? 0,
+      stateSsIncludedInState: stateResultFinal?.ssIncludedInState ?? 0,
+      stateMarginalRate: stateResultFinal?.stateMarginalRate ?? 0,
+      stateBracketIndex: stateResultFinal?.stateBracketIndex ?? 0,
+      stateLocalitySurcharge,
+      stateLtcgTaxableAtState: stateResultFinal?.ltcgTaxableAtState ?? 0,
+      stateLtcgThresholdApplied: stateResultFinal?.ltcgThresholdApplied ?? 0,
+      stateNotes: stateResultFinal?.notes,
+    };
+  }
 
   return {
     ssGross,
@@ -1698,7 +1715,10 @@ function simulateOneRun(
   generator: ReturnGenerator,
   runIndex: number,
   random: () => number,
-  blackSwanLookup: Map<number, { stockMultiplier: number; bondMultiplier: number }>
+  blackSwanLookup: Map<number, { stockMultiplier: number; bondMultiplier: number }>,
+  // false for the 4997 stat-only MC runs; true for representative paths
+  // (median/downside/nominal) so the Tax Audit UI gets full per-year detail.
+  includeAudit: boolean = true
 ): SimRun {
   const currentYear = userData.referenceYear;
   const totalYears = precomputes.ageByYear.length;
@@ -1717,6 +1737,12 @@ function simulateOneRun(
   let cumulativeInflation = 1;
 
   for (let i = 0; i < totalYears; i++) {
+    // The federal tax cache key includes taxYear, so cross-year hits are
+    // impossible by construction. The cache only helps within a single year's
+    // fixed-point loop (3–5 iterations on the same year/age key). Clearing
+    // per-year keeps the cache bounded (~50 entries) instead of growing to
+    // millions of dead entries across 5000 runs × 30 years.
+    clearTaxCalculationCache();
     const year = currentYear + i;
     const yearIncome = precomputes.incomeByYear[i];
     const yearSpending = precomputes.spendingByYear[i];
@@ -1760,7 +1786,7 @@ function simulateOneRun(
     const cap = Math.max(0, postGrowth);
     const effectiveCashFlow = calculateAnnualCashFlowCore(
       userData, year, yearIncome, yearSpending, yearStateProfile, yearStateResolvedKey, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi,
-      spendingOrder, precomputes.bracketHeadroomForTradByYear[i],
+      spendingOrder, precomputes.bracketHeadroomForTradByYear[i], includeAudit,
     );
     breakdowns.push(effectiveCashFlow);
 
@@ -1769,7 +1795,7 @@ function simulateOneRun(
       failed = true;
     }
 
-    applyCashFlow(accountIndex, effectiveCashFlow, yearIncome.contributions, balances);
+    applyCashFlow(accountIndex, effectiveCashFlow, yearIncome.contributions, balances, includeAudit);
     // Clamp against float drift.
     for (const id in balances) if (balances[id] < 0) balances[id] = 0;
 
@@ -1792,10 +1818,53 @@ export interface McStats {
   worstDecileDepletionAge: number | null;
 }
 
-export function runSimulation(
-  rawUserData: UserData,
-  random: () => number = Math.random
-): {
+// Re-execute a representative SimRun with audit data populated. The original
+// stat-only run captured per-year stockFactors/bondFactors and cumulative
+// inflation; we feed those back through simulateOneRun via a deterministic
+// replay generator so the resulting path is bit-identical to the original
+// but now includes AnnualAuditBreakdown per year. Cost: ~3 extra runs total
+// (median, downside, nominal) — overhead vs the 4997 audit-stripped runs is
+// negligible, while the savings from skipping audit on those 4997 is the
+// dominant performance win.
+function replayRunWithAudit(
+  saved: SimRun,
+  userData: UserData,
+  precomputes: Precomputes,
+  accountIndex: AccountIndex,
+  _blackSwanLookup: Map<number, { stockMultiplier: number; bondMultiplier: number }>,
+): SimRun {
+  const totalYears = saved.path.length;
+  // Derive per-year inflation rates from the captured cumulative-inflation
+  // series. The original loop draws inflation at year-end (after pushing the
+  // year's breakdown) so the last draw is consumed but never stored; the
+  // replay returns 0 for that slot — irrelevant because cumulativeInflation
+  // updates after the final year's breakdown are never read.
+  const yearInfRates = new Array<number>(totalYears);
+  for (let i = 0; i < totalYears - 1; i++) {
+    yearInfRates[i] = saved.inflation[i + 1] / saved.inflation[i] - 1;
+  }
+  yearInfRates[totalYears - 1] = 0;
+  const replayGenerator: ReturnGenerator = {
+    getNumRuns: () => 1,
+    drawFactors: (_r, y) => ({
+      stockFactor: saved.stockFactors[y],
+      bondFactor: saved.bondFactors[y],
+    }),
+    drawInflation: (_r, y) => yearInfRates[y],
+  };
+  // Random fn is unused by replayGenerator; pass a noop. applyBlackSwan is
+  // already baked into the saved factors, but simulateOneRun reapplies it —
+  // pass an empty lookup so we don't double-apply. (Saved factors are the
+  // post-overlay result of base × multiplier.)
+  return simulateOneRun(
+    userData, precomputes, accountIndex, replayGenerator, 0,
+    () => 0,
+    new Map(),
+    true,
+  );
+}
+
+export interface SimulationResult {
   probability: number;
   median: number[];
   medianStockFactors: number[];
@@ -1813,7 +1882,16 @@ export function runSimulation(
   years: number[];
   percentileBand: PercentileBand | null;
   mcStats: McStats | null;
-} {
+  // True for results from runFastPreview (deterministic-only synth) so the UI
+  // can show a "computing…" indicator while the full MC is in flight. Absent
+  // / false on real runSimulation output.
+  isPreview?: boolean;
+}
+
+export function runSimulation(
+  rawUserData: UserData,
+  random: () => number = Math.random
+): SimulationResult {
   // Tax cache key is per-(taxable, status, age, year, ...) — across a 5000-run MC
   // the cache fills with millions of pathologically-unique entries that mostly never
   // hit. Clear at the top of each simulation so cache hits come only from the
@@ -1862,7 +1940,10 @@ export function runSimulation(
   let successCount = 0;
   const allRuns: SimRun[] = new Array(numRuns);
   for (let r = 0; r < numRuns; r++) {
-    const run = simulateOneRun(userData, precomputes, accountIndex, generator, r, random, blackSwanLookup);
+    // Stat-only runs: skip audit/accountFlows construction. The 3 representative
+    // paths (median / downside / nominal) are replayed below with includeAudit=true
+    // via a generator that returns the captured per-year factors.
+    const run = simulateOneRun(userData, precomputes, accountIndex, generator, r, random, blackSwanLookup, false);
     allRuns[r] = run;
     if (!run.failed) successCount++;
   }
@@ -1874,8 +1955,12 @@ export function runSimulation(
     const scoreB = b.failed ? b.failedYear : totalYears + b.path[totalYears - 1];
     return scoreA - scoreB;
   });
-  const medianRun = sorted[Math.floor(numRuns * 0.5)];
-  const downsideRun = sorted[Math.floor(numRuns * 0.1)];
+  const medianRun = replayRunWithAudit(
+    sorted[Math.floor(numRuns * 0.5)], userData, precomputes, accountIndex, blackSwanLookup
+  );
+  const downsideRun = replayRunWithAudit(
+    sorted[Math.floor(numRuns * 0.1)], userData, precomputes, accountIndex, blackSwanLookup
+  );
 
   // Year-by-year percentile envelope and ending-balance / depletion stats.
   // Skipped when there aren't enough runs to compute meaningful percentiles
@@ -2004,4 +2089,36 @@ export function runDeterministicProjection(rawUserData: UserData): {
   );
   const years = Array.from({ length: totalYears }, (_, i) => currentYear + i);
   return { path: run.path, breakdowns: run.breakdowns, inflation: run.inflation, years };
+}
+
+// Fast deterministic preview shaped like a full SimulationResult. Used by the
+// UI to paint the chart's primary (Projected) line immediately while the full
+// Monte Carlo runs in the background. percentileBand and mcStats are null —
+// chart already null-guards both. `cachedProbability` is plumbed in from the
+// caller (Scenario.lastSuccessProbability) so the engine itself stays
+// independent of that sidebar-only display value.
+// Median/downside fields mirror the deterministic line; the View selector
+// stays functional but flips to the real MC paths once runSimulation finishes.
+export function runFastPreview(rawUserData: UserData, cachedProbability?: number): SimulationResult {
+  const det = runDeterministicProjection(rawUserData);
+  return {
+    probability: cachedProbability ?? 0,
+    nominal: det.path,
+    nominalBreakdowns: det.breakdowns,
+    nominalInflation: det.inflation,
+    median: det.path,
+    medianBreakdowns: det.breakdowns,
+    medianInflation: det.inflation,
+    medianStockFactors: [],
+    medianBondFactors: [],
+    downside: det.path,
+    downsideBreakdowns: det.breakdowns,
+    downsideInflation: det.inflation,
+    downsideStockFactors: [],
+    downsideBondFactors: [],
+    years: det.years,
+    percentileBand: null,
+    mcStats: null,
+    isPreview: true,
+  };
 }

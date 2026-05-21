@@ -16,6 +16,7 @@ import htmlAnnotationsPlugin, {
 import chartBlackSwanShadingPlugin from '../../plugins/chartBlackSwanShading';
 import chartCrosshairPlugin from '../../plugins/chartCrosshair';
 import chartPercentileBandPlugin from '../../plugins/chartPercentileBand';
+import chartMinYSpreadPlugin from '../../plugins/chartMinYSpread';
 import {
   type AnnualCashFlowBreakdown,
 } from '../../services/SimulationService';
@@ -47,7 +48,8 @@ ChartJS.register(
   htmlAnnotationsPlugin,
   chartBlackSwanShadingPlugin,
   chartCrosshairPlugin,
-  chartPercentileBandPlugin
+  chartPercentileBandPlugin,
+  chartMinYSpreadPlugin
 );
 
 type ViewMode = 'median' | 'nominal' | 'downside';
@@ -446,8 +448,12 @@ const Projections = ({
     medianStockFactors, medianBondFactors, medianBreakdowns,
     downsideStockFactors, downsideBondFactors, downsideBreakdowns,
     medianInflation, downsideInflation, nominalInflation,
-    percentileBand, mcStats,
+    percentileBand, mcStats, isPreview,
   } = results;
+  // During fast preview we have a stable (cached) probability to show while the
+  // real MC runs. Treat preview as "not calculating" for tier badge / % display
+  // — the "Updating projection…" badge still signals that MC is pending.
+  const probReady = !isCalculating || !!isPreview;
 
   const { displayCurrency, setDisplayCurrency } = useUIState();
   const context = useContext(RetirementContext);
@@ -668,6 +674,10 @@ const Projections = ({
 
   const options = useMemo(() => ({
     responsive: true,
+    // Chart.js's default 1000ms tween makes every prop change feel sluggish in
+    // a data-tool context — disable entirely. Dataset/options updates apply
+    // instantly when React re-renders.
+    animation: false as const,
     plugins: {
       tooltip: { enabled: false },
       legend: { display: false },
@@ -700,6 +710,10 @@ const Projections = ({
         enabled: bandActive,
         color: colors.chartBand,
       },
+      // Floor the y-axis spread at $1M (in displayed dataset units) so flat
+      // portfolio curves don't auto-scale to a deceptively tight range and
+      // adding/removing the percentile band causes minimal visual jump.
+      minYSpread: { minSpread: 1_000_000 },
     },
     scales: {
       x: {
@@ -757,8 +771,8 @@ const Projections = ({
             })()}
             <span style={{ color: colors.textMuted, fontWeight: 400, fontSize: fontSize.sm }}>|</span>
             <span style={{ color: colors.draftOverlay }}>Draft:</span>
-            <span style={{ color: colors.draftOverlay }}>{isCalculating ? '—' : `${probability}%`}</span>
-            {!isCalculating && (() => {
+            <span style={{ color: colors.draftOverlay }}>{probReady ? `${probability}%` : '—'}</span>
+            {probReady && (() => {
               const tierInfo = getProbabilityTier(probability);
               return (
                 <>
@@ -796,8 +810,8 @@ const Projections = ({
         ) : compareScenario ? (
           <>
             <span>{userData.name}:</span>
-            <span>{isCalculating ? '—' : `${probability}%`}</span>
-            {!isCalculating && (() => {
+            <span>{probReady ? `${probability}%` : '—'}</span>
+            {probReady && (() => {
               const tierInfo = getProbabilityTier(probability);
               return (
                 <>
@@ -845,8 +859,8 @@ const Projections = ({
           </>
         ) : (
           <>
-            <span className="chance-tier-badge" style={{ cursor: 'help' }}>Chance of Success: {isCalculating ? '—' : `${probability}%`}</span>
-            {!isCalculating && (() => {
+            <span className="chance-tier-badge" style={{ cursor: 'help' }}>Chance of Success: {probReady ? `${probability}%` : '—'}</span>
+            {probReady && (() => {
               const tierInfo = getProbabilityTier(probability);
               const lastIdx = years.length - 1;
               const defl = nominalInflation[lastIdx] ?? 1;

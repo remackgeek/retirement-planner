@@ -13,7 +13,7 @@ export const retiredEarly: Omit<Scenario, 'id'> = {
   spouseAge: null,
   stateTimeline: [{ state: 'Texas' }],
   longTermCapGainsRate: 0.15,
-  simulationSettings: { numSimulations: 5000 },
+  simulationSettings: { numSimulations: 1000 },
   portfolioAssumptions: {
     stockReturn: 0.085,
     stockStdDev: 0.16,
