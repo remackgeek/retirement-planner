@@ -25,6 +25,7 @@ import {
   applyBlackSwan,
   type ReturnGenerator,
 } from './ReturnGenerator';
+import { HISTORICAL_YEARS } from '../data/historicalReturns';
 
 // State tax modeling has moved to a per-state profile registry
 // (`src/data/stateTaxProfiles.ts`) + `computeStateTax` in `StateTaxCalculator.ts`.
@@ -91,7 +92,7 @@ interface AccountIndex {
   allocationById: Map<string, number>;
 }
 
-function buildAccountIndex(userData: UserData): AccountIndex {
+export function buildAccountIndex(userData: UserData): AccountIndex {
   const byId = new Map<string, Account>();
   const byType: Record<AccountType, Account[]> = { taxable: [], traditional: [], roth: [] };
   const allocationById = new Map<string, number>();
@@ -1826,7 +1827,7 @@ export interface McStats {
 // (median, downside, nominal) — overhead vs the 4997 audit-stripped runs is
 // negligible, while the savings from skipping audit on those 4997 is the
 // dominant performance win.
-function replayRunWithAudit(
+export function replayRunWithAudit(
   saved: SimRun,
   userData: UserData,
   precomputes: Precomputes,
@@ -1888,21 +1889,40 @@ export interface SimulationResult {
   isPreview?: boolean;
 }
 
-export function runSimulation(
-  rawUserData: UserData,
-  random: () => number = Math.random
-): SimulationResult {
-  // Tax cache key is per-(taxable, status, age, year, ...) — across a 5000-run MC
-  // the cache fills with millions of pathologically-unique entries that mostly never
-  // hit. Clear at the top of each simulation so cache hits come only from the
-  // fixed-point loop iterating the same combinedTaxable ± delta within one year.
-  clearTaxCalculationCache();
-  const userData = ensureRothConversionAccount(ensureReinvestmentAccount(rawUserData));
+// Wraps `rawUserData` with the synthetic Reinvestment / Roth Conversion accounts
+// that the engine requires. Exported so the SimulationClient can apply this once
+// on the main thread before fanning out to workers — otherwise each worker would
+// inject independently and synthetic account ids could diverge.
+export function prepareUserData(rawUserData: UserData): UserData {
+  return ensureRothConversionAccount(ensureReinvestmentAccount(rawUserData));
+}
+
+// Derives the effective number of MC runs without instantiating a ReturnGenerator
+// (the bootstrap generator consumes the RNG at construction). Mirrors the
+// per-model logic in `createReturnGenerator` + each generator's `getNumRuns()`.
+// Exported so the SimulationClient can decide inline-vs-pool dispatch.
+export function getEffectiveNumRuns(userData: UserData): number {
+  const pa = userData.portfolioAssumptions;
+  const model = pa.returnModel ?? 'parametric';
+  if (model === 'historical_single') return 1;
+  if (model === 'historical_rolling') {
+    const wrap = pa.historicalWrapEnabled ?? false;
+    const horizon = userData.lifeExpectancy - userData.currentAge + 1;
+    return wrap ? HISTORICAL_YEARS : Math.max(1, HISTORICAL_YEARS - horizon + 1);
+  }
+  // parametric, historical_bootstrap
+  return userData.simulationSettings.numSimulations;
+}
+
+// Builds the per-year precompute table consumed by `simulateOneRun`. Pure and
+// independent of RNG. Exported so the SimulationClient / Web Worker can build
+// precomputes inside the worker context (where it's used to thread the same
+// shared inputs into the MC loop without re-deriving per run).
+export function buildPrecomputes(userData: UserData): Precomputes {
   const currentYear = userData.referenceYear;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const inflationRate = userData.inflationRate;
 
-  // Precompute balance-independent inputs once. Shared across every run.
   const stateResolvedKeyByYear: string[] = new Array(totalYears);
   const stateProfileByYear: StateTaxProfile[] = new Array(totalYears);
   const ageByYear: number[] = new Array(totalYears);
@@ -1915,8 +1935,6 @@ export function runSimulation(
     const year = currentYear + i;
     const sn = getEffectiveStateName(userData, year);
     const resolved = getStateTaxProfile(sn, year);
-    // Store the resolved registry key (may differ from `sn` when a year-bounded
-    // successor profile applies — e.g. "South Carolina" → "South Carolina (2027+)").
     stateResolvedKeyByYear[i] = resolved.resolvedKey;
     stateProfileByYear[i] = resolved.profile;
     ageByYear[i] = userData.currentAge + i;
@@ -1927,82 +1945,149 @@ export function runSimulation(
       ? computeBracketHeadroomForTrad(userData, incomeByYear[i], year, inflationRate, ageByYear[i], spouseAgeByYear[i])
       : 0;
   }
-  const precomputes: Precomputes = {
+  return {
     stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
     bracketHeadroomForTradByYear, spendingOrder: resolvedSpendingOrder,
   };
+}
 
+/**
+ * EXECUTED IN BOTH THE MAIN THREAD AND IN A WEB WORKER.
+ * - No DOM access. No module-level mutation outside the per-year
+ *   taxCalculationCache (which is already worker-local and cleared per year
+ *   inside simulateOneRun).
+ * - All inputs come through the parameters; userData/precomputes are
+ *   treated as read-only.
+ * - Future changes here must preserve this dual-context purity.
+ *
+ * Builds its own AccountIndex / ReturnGenerator / BlackSwanLookup from
+ * userData. For inline (shardCount=1) callers, the resulting RNG-consumption
+ * order matches today's `runSimulation` body bit-for-bit (the bootstrap
+ * generator's index-map construction happens at the same logical point).
+ *
+ * Returns a `SimRun[]` of length `endRunIndex - startRunIndex`, one entry per
+ * run in the slice. Runs carry no audit by default (representative runs are
+ * replayed with `replayRunWithAudit` afterward).
+ */
+export function runShard(
+  userData: UserData,
+  precomputes: Precomputes,
+  opts: {
+    startRunIndex: number;
+    endRunIndex: number;
+    random?: () => number;
+  }
+): SimRun[] {
+  const random = opts.random ?? Math.random;
   const accountIndex = buildAccountIndex(userData);
   const generator = createReturnGenerator(userData, random);
   const blackSwanLookup = buildBlackSwanLookup(userData);
-  const numRuns = generator.getNumRuns();
-
-  let successCount = 0;
-  const allRuns: SimRun[] = new Array(numRuns);
-  for (let r = 0; r < numRuns; r++) {
-    // Stat-only runs: skip audit/accountFlows construction. The 3 representative
-    // paths (median / downside / nominal) are replayed below with includeAudit=true
-    // via a generator that returns the captured per-year factors.
-    const run = simulateOneRun(userData, precomputes, accountIndex, generator, r, random, blackSwanLookup, false);
-    allRuns[r] = run;
-    if (!run.failed) successCount++;
+  const out: SimRun[] = new Array(opts.endRunIndex - opts.startRunIndex);
+  for (let r = opts.startRunIndex; r < opts.endRunIndex; r++) {
+    out[r - opts.startRunIndex] = simulateOneRun(
+      userData, precomputes, accountIndex, generator, r, random, blackSwanLookup, false
+    );
   }
+  return out;
+}
 
-  const probability = Math.round((successCount / numRuns) * 100);
-
+// Pick the median (50th percentile) and downside (10th percentile) representative
+// runs by score: failed runs sort by earliest `failedYear`; survivors by final balance.
+// The score formula (`failed ? failedYear : totalYears + finalBalance`) ensures failed
+// runs always sort before any survivor.
+export function pickRepresentatives(allRuns: SimRun[]): { medianRun: SimRun; downsideRun: SimRun } {
+  const totalYears = allRuns[0].path.length;
   const sorted = [...allRuns].sort((a, b) => {
     const scoreA = a.failed ? a.failedYear : totalYears + a.path[totalYears - 1];
     const scoreB = b.failed ? b.failedYear : totalYears + b.path[totalYears - 1];
     return scoreA - scoreB;
   });
-  const medianRun = replayRunWithAudit(
-    sorted[Math.floor(numRuns * 0.5)], userData, precomputes, accountIndex, blackSwanLookup
-  );
-  const downsideRun = replayRunWithAudit(
-    sorted[Math.floor(numRuns * 0.1)], userData, precomputes, accountIndex, blackSwanLookup
-  );
+  const numRuns = allRuns.length;
+  return {
+    medianRun: sorted[Math.floor(numRuns * 0.5)],
+    downsideRun: sorted[Math.floor(numRuns * 0.1)],
+  };
+}
 
-  // Year-by-year percentile envelope and ending-balance / depletion stats.
-  // Skipped when there aren't enough runs to compute meaningful percentiles
-  // (e.g. historical_single mode has numRuns === 1).
-  let percentileBand: PercentileBand | null = null;
-  let mcStats: McStats | null = null;
-  if (numRuns >= 10) {
-    const p10Idx = Math.floor(numRuns * 0.1);
-    const p90Idx = Math.floor(numRuns * 0.9);
-    const p50Idx = Math.floor(numRuns * 0.5);
-    const p10 = new Array<number>(totalYears);
-    const p90 = new Array<number>(totalYears);
-    const colBuf = new Array<number>(numRuns);
-    for (let y = 0; y < totalYears; y++) {
-      for (let r = 0; r < numRuns; r++) colBuf[r] = allRuns[r].path[y];
-      colBuf.sort((a, b) => a - b);
-      p10[y] = colBuf[p10Idx];
-      p90[y] = colBuf[p90Idx];
-    }
-    percentileBand = { p10, p90 };
-
-    const finals = new Array<number>(numRuns);
-    for (let r = 0; r < numRuns; r++) finals[r] = allRuns[r].path[totalYears - 1];
-    finals.sort((a, b) => a - b);
-
-    // Depletion year: failedYear when failed, Infinity for survivors. Sort ascending
-    // so the p10 index lands on the earliest-depleting decile, p50 on the median.
-    const depletionYears = new Array<number>(numRuns);
-    for (let r = 0; r < numRuns; r++) {
-      depletionYears[r] = allRuns[r].failed ? allRuns[r].failedYear : Infinity;
-    }
-    depletionYears.sort((a, b) => a - b);
-    const medianDepYear = depletionYears[p50Idx];
-    const worstDecileDepYear = depletionYears[p10Idx];
-
-    mcStats = {
-      medianEndingBalance: finals[p50Idx],
-      p10EndingBalance: finals[p10Idx],
-      medianDepletionAge: Number.isFinite(medianDepYear) ? userData.currentAge + medianDepYear : null,
-      worstDecileDepletionAge: Number.isFinite(worstDecileDepYear) ? userData.currentAge + worstDecileDepYear : null,
-    };
+// Year-by-year percentile envelope (10th/90th) + ending-balance / depletion stats.
+// Returns nulls when fewer than 10 runs (e.g. historical_single's single deterministic walk).
+export function computePercentileBandAndStats(
+  allRuns: SimRun[],
+  totalYears: number,
+  currentAge: number,
+): { percentileBand: PercentileBand | null; mcStats: McStats | null } {
+  const numRuns = allRuns.length;
+  if (numRuns < 10) return { percentileBand: null, mcStats: null };
+  const p10Idx = Math.floor(numRuns * 0.1);
+  const p90Idx = Math.floor(numRuns * 0.9);
+  const p50Idx = Math.floor(numRuns * 0.5);
+  const p10 = new Array<number>(totalYears);
+  const p90 = new Array<number>(totalYears);
+  const colBuf = new Array<number>(numRuns);
+  for (let y = 0; y < totalYears; y++) {
+    for (let r = 0; r < numRuns; r++) colBuf[r] = allRuns[r].path[y];
+    colBuf.sort((a, b) => a - b);
+    p10[y] = colBuf[p10Idx];
+    p90[y] = colBuf[p90Idx];
   }
+  const percentileBand: PercentileBand = { p10, p90 };
+
+  const finals = new Array<number>(numRuns);
+  for (let r = 0; r < numRuns; r++) finals[r] = allRuns[r].path[totalYears - 1];
+  finals.sort((a, b) => a - b);
+
+  const depletionYears = new Array<number>(numRuns);
+  for (let r = 0; r < numRuns; r++) {
+    depletionYears[r] = allRuns[r].failed ? allRuns[r].failedYear : Infinity;
+  }
+  depletionYears.sort((a, b) => a - b);
+  const medianDepYear = depletionYears[p50Idx];
+  const worstDecileDepYear = depletionYears[p10Idx];
+
+  const mcStats: McStats = {
+    medianEndingBalance: finals[p50Idx],
+    p10EndingBalance: finals[p10Idx],
+    medianDepletionAge: Number.isFinite(medianDepYear) ? currentAge + medianDepYear : null,
+    worstDecileDepletionAge: Number.isFinite(worstDecileDepYear) ? currentAge + worstDecileDepYear : null,
+  };
+  return { percentileBand, mcStats };
+}
+
+export function runSimulation(
+  rawUserData: UserData,
+  random: () => number = Math.random
+): SimulationResult {
+  // Tax cache key is per-(taxable, status, age, year, ...) — across a 5000-run MC
+  // the cache fills with millions of pathologically-unique entries that mostly never
+  // hit. Clear at the top of each simulation so cache hits come only from the
+  // fixed-point loop iterating the same combinedTaxable ± delta within one year.
+  clearTaxCalculationCache();
+  const userData = prepareUserData(rawUserData);
+  const currentYear = userData.referenceYear;
+  const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
+
+  const precomputes = buildPrecomputes(userData);
+  const numRuns = getEffectiveNumRuns(userData);
+
+  // Inline single-shard MC. Bit-exact preservation: runShard's internal generator
+  // construction (which may consume RNG for the bootstrap indexMap) happens at the
+  // same logical point as today's pre-loop setup, and the per-run RNG consumption
+  // order is identical.
+  const allRuns = runShard(userData, precomputes, { startRunIndex: 0, endRunIndex: numRuns, random });
+
+  let successCount = 0;
+  for (let r = 0; r < numRuns; r++) if (!allRuns[r].failed) successCount++;
+  const probability = Math.round((successCount / numRuns) * 100);
+
+  // Replay representative runs with audit. Replay is data-replay (uses recorded
+  // factors on the SimRun), not RNG-replay — so it does not advance `random`.
+  const accountIndex = buildAccountIndex(userData);
+  const blackSwanLookup = buildBlackSwanLookup(userData);
+  const { medianRun: medianSeed, downsideRun: downsideSeed } = pickRepresentatives(allRuns);
+  const medianRun = replayRunWithAudit(medianSeed, userData, precomputes, accountIndex, blackSwanLookup);
+  const downsideRun = replayRunWithAudit(downsideSeed, userData, precomputes, accountIndex, blackSwanLookup);
+
+  const { percentileBand, mcStats } = computePercentileBandAndStats(allRuns, totalYears, userData.currentAge);
 
   const years = Array.from({ length: totalYears }, (_, i) => currentYear + i);
 
@@ -2048,46 +2133,16 @@ export function runDeterministicProjection(rawUserData: UserData): {
   years: number[];
 } {
   clearTaxCalculationCache();
-  const userData = ensureRothConversionAccount(ensureReinvestmentAccount(rawUserData));
-  const currentYear = userData.referenceYear;
+  const userData = prepareUserData(rawUserData);
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
-  const inflationRate = userData.inflationRate;
-
-  const stateResolvedKeyByYear: string[] = new Array(totalYears);
-  const stateProfileByYear: StateTaxProfile[] = new Array(totalYears);
-  const ageByYear: number[] = new Array(totalYears);
-  const spouseAgeByYear: Array<number | null> = new Array(totalYears);
-  const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
-  const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
-  const bracketHeadroomForTradByYear: number[] = new Array(totalYears);
-  const resolvedSpendingOrder = resolveSpendingWithdrawalOrder(userData);
-  for (let i = 0; i < totalYears; i++) {
-    const year = currentYear + i;
-    const sn = getEffectiveStateName(userData, year);
-    const resolved = getStateTaxProfile(sn, year);
-    // Store the resolved registry key (may differ from `sn` when a year-bounded
-    // successor profile applies — e.g. "South Carolina" → "South Carolina (2027+)").
-    stateResolvedKeyByYear[i] = resolved.resolvedKey;
-    stateProfileByYear[i] = resolved.profile;
-    ageByYear[i] = userData.currentAge + i;
-    spouseAgeByYear[i] = userData.spouseAge !== null ? userData.spouseAge + i : null;
-    incomeByYear[i] = accumulateIncome(userData, year, inflationRate);
-    spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
-    bracketHeadroomForTradByYear[i] = resolvedSpendingOrder === 'bracket_aware'
-      ? computeBracketHeadroomForTrad(userData, incomeByYear[i], year, inflationRate, ageByYear[i], spouseAgeByYear[i])
-      : 0;
-  }
-  const precomputes: Precomputes = {
-    stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
-    bracketHeadroomForTradByYear, spendingOrder: resolvedSpendingOrder,
-  };
+  const precomputes = buildPrecomputes(userData);
   const accountIndex = buildAccountIndex(userData);
   const blackSwanLookup = buildBlackSwanLookup(userData);
   const nominalGenerator = createNominalGenerator(userData);
   const run = simulateOneRun(
     userData, precomputes, accountIndex, nominalGenerator, 0, Math.random, blackSwanLookup
   );
-  const years = Array.from({ length: totalYears }, (_, i) => currentYear + i);
+  const years = Array.from({ length: totalYears }, (_, i) => userData.referenceYear + i);
   return { path: run.path, breakdowns: run.breakdowns, inflation: run.inflation, years };
 }
 

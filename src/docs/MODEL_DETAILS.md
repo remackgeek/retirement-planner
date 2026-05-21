@@ -8,6 +8,8 @@
 
 YARP runs **5,000 independent simulations** by default (configurable: 1,000 / 5,000 / 10,000). Each simulation draws a random sequence of annual stock and bond returns and projects every account from today through your life expectancy, applying income, spending, taxes, and withdrawals each year.
 
+In the browser, MC runs in parallel across a Web Worker pool sized to your machine's available cores (capped at 8) so the UI stays responsive during a sim. Each worker uses an independent `Math.random` stream — results are statistically equivalent but not bit-identical across machines with different core counts. The deterministic projection ("Projected" chart line, and the Roth-conversion *Net impact on plan value* preview row) does not consume the RNG and is fully reproducible regardless.
+
 ### Success Probability
 
 A run is **successful** if portfolio balance never reaches $0 before life expectancy. The reported success probability is the fraction of successful runs.

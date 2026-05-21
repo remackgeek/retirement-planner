@@ -2,7 +2,8 @@ import { useContext, useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { RetirementContext } from '../../context/RetirementContext';
-import { runSimulation, runFastPreview } from '../../services/SimulationService';
+import { runFastPreview } from '../../services/SimulationService';
+import { simulationClient, SupersededError } from '../../services/SimulationClient';
 import Projections from '../Chart/Chart';
 import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
@@ -97,6 +98,16 @@ const Content: React.FC<{
       : null;
   const isCompareCalculating = !!compareScenario && !currentCompareResults;
   const pendingRun = useRef<number | null>(null);
+  // Track mount state so async sim results don't trigger setState on unmounted component.
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  // Track current activeScenario for async writeback guard. The setTimeout closure
+  // captures activeScenario at scheduling time, which is stale by the time the
+  // worker returns — read through this ref to see the current value.
+  const activeScenarioRef = useRef(activeScenario);
+  useEffect(() => { activeScenarioRef.current = activeScenario; });
+  // Warm up the worker pool on first mount so the first MC pays no cold-start cost.
+  useEffect(() => { simulationClient.warmUp(); }, []);
   // When we write the freshly-computed probability back to the active scenario
   // (sidebar display cache), the resulting activeScenario reference change would
   // re-fire this effect and run MC again. Skip exactly one run after a write-back.
@@ -135,17 +146,32 @@ const Content: React.FC<{
       setResults(runFastPreview(activeScenario, activeScenario.lastSuccessProbability));
     }
     setIsCalculating(true);
-    // Phase 2: debounced full Monte Carlo.
+    // Phase 2: debounced full Monte Carlo, dispatched to the worker pool via SimulationClient.
     if (pendingRun.current != null) window.clearTimeout(pendingRun.current);
+    const capturedScenarioId = activeScenario.id;
+    const capturedScenario = activeScenario;
     pendingRun.current = window.setTimeout(() => {
-      const result = runSimulation(activeScenario);
-      setResults(result);
-      setIsCalculating(false);
-      pendingRun.current = null;
-      if (result.probability !== activeScenario.lastSuccessProbability) {
-        skipNextSim.current = true;
-        updateScenario({ ...activeScenario, lastSuccessProbability: result.probability });
-      }
+      simulationClient.run(capturedScenario).then((result) => {
+        if (!mountedRef.current) return;
+        setResults(result);
+        setIsCalculating(false);
+        pendingRun.current = null;
+        // Guard writeback: only update if the active scenario still matches
+        // (read through ref since the closure's activeScenario is stale).
+        const currentActive = activeScenarioRef.current;
+        if (
+          result.probability !== capturedScenario.lastSuccessProbability &&
+          currentActive && currentActive.id === capturedScenarioId
+        ) {
+          skipNextSim.current = true;
+          updateScenario({ ...capturedScenario, lastSuccessProbability: result.probability });
+        }
+      }).catch((err) => {
+        if (err instanceof SupersededError) return;
+        if (!mountedRef.current) return;
+        console.error('Simulation failed:', err);
+        setIsCalculating(false);
+      });
     }, 250);
     // No cleanup here. A cleanup that always cancels the timeout would race
     // with the fingerprint early-return above: a no-op re-render (same
@@ -179,10 +205,15 @@ const Content: React.FC<{
         results: runFastPreview(compareScenario, compareScenario.lastSuccessProbability),
       });
     }
+    const capturedCompare = compareScenario;
     const id = setTimeout(() => {
-      setCompareResults({
-        scenarioId: compareScenario.id,
-        results: runSimulation(compareScenario),
+      simulationClient.run(capturedCompare).then((result) => {
+        if (!mountedRef.current) return;
+        setCompareResults({ scenarioId: capturedCompare.id, results: result });
+      }).catch((err) => {
+        if (err instanceof SupersededError) return;
+        if (!mountedRef.current) return;
+        console.error('Compare simulation failed:', err);
       });
     }, 0);
     return () => clearTimeout(id);
@@ -201,8 +232,16 @@ const Content: React.FC<{
     } else {
       setWhatIfSnapshotResults(null);
     }
+    const capturedSnapshot = whatIfSnapshot;
     const id = window.setTimeout(() => {
-      setWhatIfSnapshotResults(runSimulation(whatIfSnapshot));
+      simulationClient.run(capturedSnapshot).then((result) => {
+        if (!mountedRef.current) return;
+        setWhatIfSnapshotResults(result);
+      }).catch((err) => {
+        if (err instanceof SupersededError) return;
+        if (!mountedRef.current) return;
+        console.error('What If snapshot simulation failed:', err);
+      });
     }, 0);
     return () => window.clearTimeout(id);
   }, [whatIfSnapshot]);

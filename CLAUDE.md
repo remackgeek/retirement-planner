@@ -655,6 +655,32 @@ tests and any call-site that doesn't have precomputed values. The simulation tri
 runs. Chart.js props (`chartData`, `options`, `htmlAnnotations`) are wrapped in `useMemo`
 with precise deps; `Projections` is wrapped in `React.memo`.
 
+**Web Worker pool (parallel MC):** Production MC runs through `SimulationClient`
+([src/services/SimulationClient.ts](src/services/SimulationClient.ts)) which shards
+the run loop across a pool of workers sized to `clamp(hardwareConcurrency - 1, 2, 8)`.
+The protocol is two-pass: workers execute their slice via `runShard` and return
+lightweight summary arrays (scores, failedFlags/Years, year-major `pathColumns`) as
+zero-copy `Transferable` Float64Arrays; the main thread merges across shards to
+compute the global percentile band + `mcStats` + representative-run picks, then
+requests `replay` from the owning shard(s) for the median/downside runs (which
+get full `AnnualCashFlowBreakdown` audit data via `replayRunWithAudit`). The
+deterministic nominal projection runs on the main thread (~5ms). Cancellation
+is supersession-via-terminate-and-respawn: a new `run()` while one is in flight
+kills the pool and rejects the prior Promise with `SupersededError` (the 250ms
+debounce upstream absorbs most rapid edits before they reach the client).
+Scenarios with `effectiveNumRuns < INLINE_THRESHOLD` (200) — including
+`historical_single` and `historical_rolling` without wrap — skip the pool and
+run inline on the main thread (worker spawn + message overhead dominates for
+tiny sims). `simulationClient.warmUp()` is called from `AppContent` on mount
+so first-MC pays no cold-start cost. The Web Worker entry is
+[src/workers/simulation.worker.ts](src/workers/simulation.worker.ts); engine
+modules (`SimulationService`, `TaxCalculator`, `IRMAA`, `StateTaxCalculator`,
+`ReturnGenerator`) have no DOM dependencies so they import cleanly in worker
+context. **Determinism caveat:** each worker uses an independent `Math.random`
+stream, so cross-machine results differ when `hardwareConcurrency` differs.
+Scenario tests use the inline (`shardCount=1`) path with a seeded RNG and
+remain bit-exact.
+
 Account-level lookups (by id, by type, first taxable, contribution target by event id,
 allocation by id) are precomputed once into an `AccountIndex` and threaded through
 `simulateOneRun` / `applyCashFlow` so the hot loop never re-scans `userData.accounts`.
@@ -679,13 +705,11 @@ Future direction:
   is closest to the 50th/10th percentile. An alternative is year-by-year percentile envelopes
   (smoother chart lines, but synthetic paths with no coherent per-year actuals). The
   representative-run approach was chosen to enable exact stock/bond attribution in detail rows.
-- **Off-main-thread MC (Web Worker)**: `runSimulation` currently runs synchronously on the
-  main thread (~100–400ms for 1k–10k runs), blocking scroll/hover during the window. Moving
-  the engine into a Web Worker would keep the UI fully responsive while MC computes; the
-  fast deterministic preview (`runFastPreview`) already paints the chart immediately, so the
-  Worker just needs to post the enriched `SimulationResult` back when ready. Vite has
-  first-class Worker support; main effort is the postMessage plumbing and ensuring the
-  engine has no DOM dependencies (it doesn't today).
+- **Cross-flow priority** (compare/What If supersede primary): all three flows
+  share one `simulationClient` singleton and supersede each other. Acceptable in
+  practice (React effects re-fire and recover) but a future improvement is to
+  plumb a `priority`/`kind` field and queue rather than terminate when the
+  caller is compare/What If.
 
 ### Chart plugins
 
