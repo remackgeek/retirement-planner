@@ -18,7 +18,7 @@ projections, and good tax awareness without overwhelming the user.
 
 - `src/components/` — UI (Sidebar, Chart, AccountsManager, SpendingGoalsManager, IncomeEventsManager)
 - `src/context/RetirementContext.tsx` — global state, IndexedDB, schema migrations
-- `src/services/SimulationService.ts` — Monte Carlo engine (5000 runs, log-normal)
+- `src/services/SimulationService.ts` — Monte Carlo engine (1000 runs default, log-normal)
 - `src/services/TaxCalculator.ts` — federal + state tax, memoized, 2024-2026 brackets
 - `src/dialogs/` — type-specific edit dialogs (e.g., `SocialSecurityDialog`),
   shared `IncomeEventDialog` for other types, type-selection pickers, import/export
@@ -30,7 +30,7 @@ projections, and good tax awareness without overwhelming the user.
 - **Scenario** — top-level unit holding all user config, persisted to IndexedDB.
   Carries an optional `lastSuccessProbability?: number` field that is the **last
   computed Monte Carlo success probability**, used **only** to display a stable `%`
-  on inactive scenario rows in the sidebar without re-running 5000-sim MC for each.
+  on inactive scenario rows in the sidebar without re-running 1000-sim MC for each.
   This is a sidebar display cache — never read it from simulation, chart, CSV
   export, scenario JSON export logic, or tests. Authoritative probability always
   comes from the live `runSimulation()` result for the active scenario.
@@ -625,7 +625,7 @@ The app should be **modular and extensible**. Avoid hardcoded assumptions.
 
 ### Simulation engine
 
-`SimulationService` uses log-normal Monte Carlo (5000 runs default). All simulation
+`SimulationService` uses log-normal Monte Carlo (1000 runs default). All simulation
 parameters are per-scenario in `UserData`:
 
 - `account.portfolioBalance` — `'80_20' | '60_40' | '50_50'`; UI preset tracker per account
@@ -718,7 +718,7 @@ use the same `spendingShortfall > 0` definition that drives `failed`/`failedYear
 once before the Monte Carlo loop — `lognormalParams` for stock/bond/inflation, and
 per-year arrays (`stateProfileByYear`, `stateNameByYear`, `ageByYear`, `incomeByYear`, `spendingByYear`).
 The inner hot loop calls `calculateAnnualCashFlowCore` (internal fast-path) with these
-arrays instead of recomputing them 5000× per year. The public `calculateAnnualCashFlow`
+arrays instead of recomputing them 1000× per year. The public `calculateAnnualCashFlow`
 signature is unchanged — it is a thin wrapper that recomputes inputs inline; use it in
 tests and any call-site that doesn't have precomputed values. The simulation trigger in
 `Content.tsx` is debounced 250ms so rapid field edits don't fire redundant Monte Carlo
@@ -827,8 +827,9 @@ Current plugins:
 
 ### Top bar: Settings menu
 
-`AppHeader` renders a single **Settings** dropdown (PrimeReact `Menu` popup) with one item:
+`AppHeader` renders a **Settings** dropdown (PrimeReact `Menu` popup) with these items:
 
+- **Load example…** — appends a built-in example scenario (Near retirement / Retired early / Mid-career) and makes it active. Always enabled.
 - **Modeling** → `ModelingDialog` — Return Model selector at the top
   (Parametric / Historical: Single Sequence / Historical: Rolling Start / Historical:
   Block Bootstrap) with mode-specific fields (start year, wrap-around, block size);
@@ -836,12 +837,15 @@ Current plugins:
   student-t), asset correlation, inflation rate % and std dev %, simulation run count;
   read-only blended return (portfolio-weighted average across accounts). Parametric-only
   inputs (returns, distribution, correlation, inflation rate/stddev) are disabled when a
-  historical mode is active
+  historical mode is active.
+- **Cash Bucket** → `CashBucketDialog` — min/target/max months and refill trigger for `UserData.cashBucketPolicy`. Menu item only rendered when the active scenario has ≥1 cash account (or already has a configured policy).
+- **Tax & IRS** → `TaxAndIrsDialog` — long-term capital gains rate, IRMAA / NIIT toggles, `priorWorkingMagi` (last working year MAGI for first-2-years IRMAA lookback), and IRS contribution limits.
+- **Export CSV** — downloads the active scenario's yearly data table.
 
 Stock/bond allocation per account is configured in `AccountDialog` (80/20, 60/40, or 50/50
 preset buttons). The allocation badge is displayed on each account row in `AccountsManager`.
 
-Both dialogs are disabled when no active scenario.
+Modeling, Cash Bucket, Tax & IRS, and Export CSV are disabled when there is no active scenario; Load example… is always enabled.
 
 ### Implemented UX
 

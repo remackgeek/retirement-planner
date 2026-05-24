@@ -38,8 +38,8 @@ The first thing to do is create a baseline scenario that reflects your current p
 
 If you'd rather kick the tires before entering your own data, the empty sidebar offers three pre-populated example scenarios under **or try an example** (Near retirement, Retired early, Mid-career). The same options live under **Settings → Load example…** once you have scenarios of your own. Loading an example appends a new scenario and makes it active — you can edit, rename, or delete it freely.
 
-1. Click **+ New Scenario** in the sidebar and give it a name like "Baseline".
-2. Enter your **current age**, **planned retirement age**, and a **life expectancy** to plan to. Using a high number — 95 or 100 — gives you a margin against living longer than you expect.
+1. Click **New Scenario** in the sidebar and give it a name like "Baseline".
+2. Enter your **current age** and a **life expectancy** to plan to. Using a high number — 95 or 100 — gives you a margin against living longer than you expect. (There's no "retirement age" field — your retirement timing comes from the start ages of the income events and spending goals you add below: when your salary ends, when Social Security starts, when living expenses begin.)
 3. Add your **accounts** with their current balances. Group similar accounts if you want; YARP doesn't need every individual line.
 4. Add your **income events** — Social Security, any pension, current paycheck contributions if you're still working.
 5. Add your **spending goals** — at minimum, your annual living expenses. Add big one-time items (a new roof, a wedding gift) separately.
@@ -176,7 +176,7 @@ A Roth conversion moves money from your Traditional accounts into your Roth acco
 - **You owe tax on the converted amount** in the year you do it (it counts as ordinary income).
 - **You have to take your RMD first** if you're 73 or older — the IRS doesn't let RMDs be converted.
 
-The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation. **When your scenario includes a Roth conversion, YARP automatically switches the spending waterfall to "bracket-aware" mode**: in low-bracket years it pulls living-expenses cash from Traditional first (up to the 12% federal bracket) and saves your Taxable account for the years when the conversion tax bill is largest. This setting only reorders where spending comes from — it does not change the conversion amount or how the conversion tax is paid. Power users who want the old behavior can set `spendingWithdrawalOrder` to `"taxable_first"` in the scenario JSON.
+The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation. **When your scenario includes a Roth conversion, YARP automatically switches the spending waterfall to "bracket-aware" mode**: in low-bracket years it pulls living-expenses cash from Traditional first (up to the 12% federal bracket) and saves your Taxable account for the years when the conversion tax bill is largest. This setting only reorders where spending comes from — it does not change the conversion amount or how the conversion tax is paid. You can override this in the Scenario dialog under **Withdrawal Source** (Auto / Taxable first / Bracket-aware) if you want to lock in one behavior regardless of whether a conversion event exists.
 
 The Roth Conversion dialog shows an **Impact Preview** with a deterministic estimate of first-year tax, total tax over the conversion window, RMD reduction at 73, and projected tax-free Roth at life expectancy. The **Net impact on plan value** row signs the trade-off in dollar terms (green when the conversion pays off, red when it costs more than it saves). That row runs the full deterministic simulation twice — once with the conversion, once without — and diffs the end-of-plan balance, so it reflects everything the Projected chart line does: the RMD withdrawal waterfall, IRMAA surcharges, NIIT, state tax on LTCG, and how conversion tax is sourced from your accounts. Multi-year conversions default to **inflation-adjusted**, so the amount you enter is a real-dollar target — turn that off if you mean a fixed nominal schedule. If you configure a conversion that is unusually large relative to your spending, crosses two or more federal brackets in a single year, or would convert most of your Traditional balance, the dialog shows an inline hint — these are advisory only and never block saving.
 
@@ -318,10 +318,13 @@ While in What If mode, **Compare with** is disabled (and vice versa) — they sh
 
 ## Settings
 
-The **Settings** menu in the header has two dialogs:
+The **Settings** menu in the header has:
 
+- **Load example…** — append one of the built-in example scenarios.
 - **Modeling** — return generation (parametric vs. historical), distribution, asset correlation, inflation, Black Swan events, simulation run count.
-- **Tax & IRS** — long-term capital gains rate, IRMAA, NIIT, and IRS contribution limits.
+- **Cash Bucket** — min/target/max months and refill trigger (only appears when the active scenario has at least one cash account; see *Cash Bucket policy* under Accounts).
+- **Tax & IRS** — long-term capital gains rate, IRMAA, NIIT, last working year MAGI, and IRS contribution limits.
+- **Export CSV** — download the yearly data table for the active scenario.
 
 ### Modeling
 
@@ -369,7 +372,8 @@ To restore or move to a new device, click **Import** and select the file. You ca
 
 ## Where to Go From Here
 
+- **Help → User Guide** — this document
 - **Help → Model Details** — full technical reference for the simulation engine, tax math, and known limitations
-- **Help → About** — version and license info
+- **Help → About YARP** — version and license info
 
 Found a bug or want to suggest an improvement? Open a ticket on the [GitHub Issues page](https://github.com/remackgeek/retirement-planner/issues). The app lives at [yarp.bluewiz.net](https://yarp.bluewiz.net) — open **Help → About YARP** for project and build details.

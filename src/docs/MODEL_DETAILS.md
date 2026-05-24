@@ -6,7 +6,7 @@
 
 ## Monte Carlo Simulation
 
-YARP runs **5,000 independent simulations** by default (configurable: 1,000 / 5,000 / 10,000). Each simulation draws a random sequence of annual stock and bond returns and projects every account from today through your life expectancy, applying income, spending, taxes, and withdrawals each year.
+YARP runs **1,000 independent simulations** by default (configurable: 1,000 / 5,000 / 10,000). Each simulation draws a random sequence of annual stock and bond returns and projects every account from today through your life expectancy, applying income, spending, taxes, and withdrawals each year.
 
 In the browser, MC runs in parallel across a Web Worker pool sized to your machine's available cores (capped at 8) so the UI stays responsive during a sim. Each worker uses an independent `Math.random` stream — results are statistically equivalent but not bit-identical across machines with different core counts. The deterministic projection ("Projected" chart line, and the Roth-conversion *Net impact on plan value* preview row) does not consume the RNG and is fully reproducible regardless.
 
@@ -231,7 +231,7 @@ Inserts a **Traditional-up-to-12%-bracket-headroom** step before Taxable, so spe
 
 **This setting only changes the spending source — it does NOT change conversion size or conversion-tax sourcing.** Conversion tax still follows the hybrid sourcing rule (RMD-excess → Taxable → withhold). The point of `bracket_aware` is to **preserve Taxable for the high-`mt` conversion years** by paying for low-bracket-year spending from Traditional cheaply. See CLAUDE.md "Cross-year spending source policy" for the rationale, blind spots, and tradeoffs.
 
-Set `spendingWithdrawalOrder: 'taxable_first'` explicitly on a conversion-bearing scenario to opt out of the smart default and use the conservative waterfall.
+Override the auto-resolved default via the **Withdrawal Source** radio in the Scenario dialog (Auto / Taxable first / Bracket-aware) — e.g. select Taxable first on a conversion-bearing scenario to opt out of the smart default.
 
 ### Spending Shortfall
 
@@ -311,7 +311,7 @@ Approximations explicitly accepted:
 
 The state tax flows are exposed in `AnnualCashFlowBreakdown.audit` as: `stateOrdinaryTax`, `stateLocalitySurcharge` (top-level), `stateOrdinaryBaseGross`, `stateStdDeduction`, `stateRetirementExclusionApplied`, `stateSsIncludedInState`, `stateMarginalRate`, `stateBracketIndex`, `stateLtcgTaxableAtState`, `stateLtcgThresholdApplied`, and `stateNotes`. The Tax Audit detail tab renders each of these as a labeled row under a per-year "State tax — {name}" section.
 
-**`applyStateRetirementExclusionOverride`** (optional `UserData` field) — set to `false` to disable the profile's retirement-income exclusion (Traditional withdrawals fully exposed to state ordinary brackets). Defaults to `undefined` = use the profile's rule. The Scenario dialog exposes this as an "Disable state retirement-income exclusion (advanced)" checkbox under the state dropdown when the active state has a non-`none` exclusion rule.
+**`disableStateRetirementExclusion`** (optional `UserData` field) — set to `true` to disable the profile's retirement-income exclusion (Traditional withdrawals fully exposed to state ordinary brackets). Defaults to `undefined` = use the profile's rule. The Scenario dialog exposes this as an "Disable state retirement-income exclusion (advanced)" checkbox under the state dropdown when the active state has a non-`none` exclusion rule.
 
 **NYC locality base.** NYC (`localitySurcharge: { rate: 0.03876, appliesToOrdinaryOnly: false }`) applies the surcharge to the *combined* ordinary + LTCG base, since NYC taxes capital gains as ordinary income. Other potential localities would set `appliesToOrdinaryOnly: true` to limit the surcharge to ordinary income.
 
@@ -446,9 +446,9 @@ A `roth_conversion` income event moves money from Traditional to Roth accounts. 
 1. RMD is enforced first; the conversion amount is **capped at the Traditional balance remaining after RMD and spending withdrawals**.
 2. Converted amount is taxed as **ordinary income** in the year of conversion.
 3. Withdrawal is pro-rata across Traditional accounts; deposit is pro-rata across Roth accounts.
-4. **Conversion tax sourcing is hybrid**, in priority order: (1) RMD-excess cash (already pulled from Trad as part of the forced RMD; using it costs nothing extra), (2) Taxable balance not consumed by spending, (3) withheld from the conversion itself (IRS Form 1099-R Box 4). Tax is **never** pulled from Traditional-above-RMD or Roth — paying conversion tax from Trad would shrink the conversion's tax arbitrage; paying from Roth would deplete the dollars just deposited. When Taxable + RMD-excess can't cover the marginal ordinary tax, the conversion still executes at the requested gross — but the Roth deposit shrinks by the withheld amount. This matches real-world Vanguard/Fidelity withholding mechanics. Withholding is mathematically suboptimal vs. paying tax from Taxable (you give up some of the arbitrage), so the Roth Conversion dialog warns when it activates and advises adding Taxable funds or reducing the conversion. The breakdown surfaces `rothConversionGross` (Trad pull), `rothConversionRequested` (user intent), `rothConversionTaxFromTaxable`, `rothConversionTaxFromRmdExcess`, and `rothConversionTaxWithheld`.
-6. **Smart spending waterfall**: when any Roth conversion event is in the scenario, the engine defaults `UserData.spendingWithdrawalOrder` to `'bracket_aware'` so spending pulls from Traditional in low-bracket years instead of burning Taxable. This preserves Taxable for the high-`mt` conversion years and improves the conversion's net wealth impact — but it only reorders spending sources, it does NOT change the conversion size or conversion-tax sourcing. See **Withdrawal Waterfall** above for the mechanics.
-5. If no Roth accounts exist, a `"Roth Conversion"` Roth account is auto-created.
+4. **Conversion tax sourcing is hybrid**, in priority order: (1) **Cash** balance not consumed by spending (above the cash-bucket floor when a policy is configured) — preferred because cash principal is tax-free and avoids the LTCG/NIIT amplification phantom on Taxable pulls, (2) RMD-excess cash (already pulled from Trad as part of the forced RMD; using it costs nothing extra), (3) Taxable balance not consumed by spending, (4) withheld from the conversion itself (IRS Form 1099-R Box 4). Tax is **never** pulled from Traditional-above-RMD or Roth — paying conversion tax from Trad would shrink the conversion's tax arbitrage; paying from Roth would deplete the dollars just deposited. When Cash + RMD-excess + Taxable can't cover the marginal ordinary tax, the conversion still executes at the requested gross — but the Roth deposit shrinks by the withheld amount. This matches real-world Vanguard/Fidelity withholding mechanics. Withholding is mathematically suboptimal vs. paying tax from external accounts (you give up some of the arbitrage), so the Roth Conversion dialog warns when it activates and advises adding Cash/Taxable funds or reducing the conversion. The breakdown surfaces `rothConversionGross` (Trad pull), `rothConversionRequested` (user intent), `rothConversionTaxFromCash`, `rothConversionTaxFromRmdExcess`, `rothConversionTaxFromTaxable`, and `rothConversionTaxWithheld`.
+5. **Smart spending waterfall**: when any Roth conversion event is in the scenario, the engine defaults `UserData.spendingWithdrawalOrder` to `'bracket_aware'` so spending pulls from Traditional in low-bracket years instead of burning Taxable. This preserves Taxable for the high-`mt` conversion years and improves the conversion's net wealth impact — but it only reorders spending sources, it does NOT change the conversion size or conversion-tax sourcing. See **Withdrawal Waterfall** above for the mechanics.
+6. If no Roth accounts exist, a `"Roth Conversion"` Roth account is auto-created.
 
 The Roth Conversion dialog's **Net impact on plan value** row is computed by running the deterministic projection (same single-path engine as the Projected chart line) twice — once with the conversion event included, once without — and diffing the end-of-plan portfolio balance. The other preview rows (first-year tax, total tax, RMD reduction, projected Roth at life expectancy) are fast closed-form estimates against your baseline income and do not include IRMAA or NIIT.
 
@@ -534,7 +534,7 @@ This is a deliberate choice. Stochastic mortality would inflate success rates ar
 
 | Parameter | Default |
 |---|---|
-| Number of simulations | 5,000 |
+| Number of simulations | 1,000 |
 | Stock return / std dev | 8.5% / 16% |
 | Bond return / std dev | 4.8% / 6% |
 | Stock/bond correlation | −0.20 (enabled) |
@@ -569,4 +569,3 @@ This is a deliberate choice. Stochastic mortality would inflate success rates ar
 - **No tax-loss harvesting**.
 - **No mortality modeling** — life expectancy is a hard endpoint (see *Horizon and Mortality* above).
 - **No Social Security claiming optimization** — you specify the start age directly.
-- **Fixed withdrawal order** (RMD-first, then Taxable → Traditional-above-RMD → Roth); no fill-to-bracket Roth conversion or tax-aware withdrawal ordering yet.
