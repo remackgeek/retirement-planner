@@ -8,7 +8,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 import { generateDefaultIncomeEventName, eventTypeIcons } from '../utils/defaultName';
 import { resolveOwnerAge } from '../utils/ownerAge';
@@ -235,7 +235,7 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
         </div>
       }
       visible={visible}
-      style={{ width: '32rem' }}
+      style={dialogWidth('32rem')}
       onHide={onHide}
       closable={false}
       closeOnEscape={true}

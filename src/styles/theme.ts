@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 /**
  * Centralized design tokens for consistent, compact styling.
  * See CLAUDE.md "Styling Guidelines" for rationale.
@@ -199,6 +201,23 @@ export const mediaQuery = {
   /** Targets screens 768px wide and above (tablet / desktop) */
   desktop: '@media (min-width: 768px)',
 } as const;
+
+/**
+ * Mobile-safe Dialog width style. PrimeReact's `<Dialog>` honors a fixed
+ * `width` (in rems) but doesn't shrink for narrow viewports — at 360 px,
+ * a 34rem (~544 px) dialog overflows by 50%. This helper returns the
+ * desktop width capped at 95vw on phones, plus a hard `maxWidth` so the
+ * dialog never breaks out of the viewport.
+ *
+ * Usage:
+ *   <Dialog style={dialogWidth('34rem')}>
+ *
+ * Prefer this over hand-writing `{ width: '34rem' }` style props.
+ */
+export const dialogWidth = (rem: string): CSSProperties => ({
+  width: `min(${rem}, 95vw)`,
+  maxWidth: '95vw',
+});
 
 // --- Layout constants ---
 export const layout = {

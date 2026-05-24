@@ -1,0 +1,13 @@
+{
+  "_rationale": "Cash skips both the stochastic shock AND the black-swan overlay. Year 0: cash starts at $100k. Growth applies yield-only (0 here). Spending $20k → cash drains to $80k. The black-swan in 2026 (stock×0.5, bond×0.5) MUST NOT touch the cash account. If the bypass were missing, cash would be cut in half to $50k post-growth, then withdraw $20k → end at $30k. The expected $80k proves the bypass holds.",
+  "probability": 0,
+  "pathValues": [
+    { "index": 0, "value": 100000, "tolerance": 1, "note": "Start-of-year balance" },
+    { "index": 1, "value": 80000, "tolerance": 1, "note": "After year-0 yield (0) and withdrawal (20k). If black-swan touched cash, this would be 30k." }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "cashEndingBalance", "value": 80000, "tolerance": 1, "_note": "End of year 0 = 100k - 20k = 80k (no shock applied)" },
+    { "index": 0, "field": "withdrawalFromCash", "value": 20000, "tolerance": 1 },
+    { "index": 0, "field": "cashInterest", "value": 0, "tolerance": 0.01 }
+  ]
+}

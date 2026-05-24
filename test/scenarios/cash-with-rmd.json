@@ -1,0 +1,59 @@
+{
+  "_description": "Cash + Traditional at RMD age — RMD pulls Trad normally; Cash funds discretionary spending. Verifies RMD-first ordering survives cash priority 0.",
+  "_rationale": "$300k Traditional + $100k Cash. User is 75 (past RMD age 73). Trad RMD divisor at 75 = 24.6 → required RMD ≈ $300k / 24.6 ≈ $12,195. Spending $30k. Year 0 plan: Cash priority 0 pulls $30k (covers all spending). RMD still forces a $12.2k Trad pull (which becomes rmdExcess because it's beyond spending need that cash already covered). RMD excess gets deposited to first taxable account (auto-created via ensureReinvestmentAccount). Federal tax on $12.2k Trad ordinary income — small (~$0 because under std deduction for single). Verifies cash satisfies spending first; RMD still fires independently.",
+  "_seed": 12345,
+  "name": "Cash With RMD",
+  "currentAge": 75,
+  "lifeExpectancy": 80,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 30000,
+      "startAge": 75,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "cashYieldRate": 0
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 300000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "cash-1",
+      "name": "Cash 1",
+      "type": "cash",
+      "balance": 100000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

@@ -1,0 +1,18 @@
+{
+  "_rationale": "Cash principal pulls are tax-free. 100k / 50k = 2 years of runway. With 0% yield, the balance decreases linearly by 50k each year. No tax. Probability is 0% because portfolio depletes at age 62 vs. life expectancy 75.",
+  "probability": 0,
+  "pathValues": [
+    { "index": 0, "value": 100000, "tolerance": 1 },
+    { "index": 1, "value": 50000, "tolerance": 1 },
+    { "index": 2, "value": 0, "tolerance": 1 }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "withdrawalFromCash", "value": 50000, "tolerance": 1, "_note": "Cash drains 50k/yr" },
+    { "index": 0, "field": "withdrawalFromTaxable", "value": 0, "tolerance": 1 },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 0, "tolerance": 1 },
+    { "index": 0, "field": "withdrawalFromRoth", "value": 0, "tolerance": 1 },
+    { "index": 0, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "Cash principal is tax-free" },
+    { "index": 0, "field": "cashInterest", "value": 0, "tolerance": 0.01, "_note": "0% yield → no interest" },
+    { "index": 1, "field": "cashEndingBalance", "value": 0, "tolerance": 1, "_note": "Year 1 ends with cash depleted (50k - 50k = 0)" }
+  ]
+}

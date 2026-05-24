@@ -1,0 +1,71 @@
+{
+  "_description": "refillTrigger='always' refills bucket from any year's surplus, even in down markets — verifies the trigger fires regardless of stockFactor.",
+  "_rationale": "Small starting cash $5k + Pension $100k income + Spending $20k. Net surplus ≈ $80k − tax. Policy min=12, target=24, max=36 (months of $20k = monthly ≈ $1667). With deterministic stockReturn=0% and a black-swan event year 0 (stock×0.5), 'always' MUST refill anyway (gains_only would NOT, demonstrating the contrast). monthly = $20k/12 ≈ $1,667. target = 24 × $1,667 ≈ $40k. Cash $5k below min 12×$1,667 = $20k → refill triggers. Surplus is large (~$80k) — refill takes min(target-cashBal, surplus) = $40k - $5k = $35k. cashEndingBalance ≈ $40k.",
+  "_seed": 12345,
+  "name": "Bucket Always Refill",
+  "currentAge": 60,
+  "lifeExpectancy": 62,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 20000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "name": "Pension",
+      "amount": 100000,
+      "startAge": 60,
+      "endAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "cashYieldRate": 0,
+    "blackSwanEvents": [
+      { "id": "swan-1", "year": 2026, "stockMultiplier": 0.5, "bondMultiplier": 0.5 }
+    ]
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "cash-1",
+      "name": "Cash",
+      "type": "cash",
+      "balance": 5000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "cashBucketPolicy": {
+    "minMonths": 12,
+    "targetMonths": 24,
+    "maxMonths": 36,
+    "refillTrigger": "always"
+  },
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

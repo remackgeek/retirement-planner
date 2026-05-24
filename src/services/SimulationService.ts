@@ -1,4 +1,8 @@
-import type { UserData } from '../types/UserData';
+import type { UserData, CashBucketPolicy } from '../types/UserData';
+// Spending-source order is now resolved inline here (see
+// `resolveSpendingWithdrawalOrder`). The legacy `taxStrategy` field on
+// UserData is no longer consulted by the engine — it is stripped on scenario
+// load by `migrateLegacyTaxStrategy` in RetirementContext.
 import type { Account, AccountType, AccountKind } from '../types/Account';
 import {
   calculateNetFromGross,
@@ -56,6 +60,26 @@ export function calculateRMD(tradBalance: number, age: number): number {
   return tradBalance / divisor;
 }
 
+/**
+ * Translate a CashBucketPolicy's month-denominated thresholds into dollar
+ * amounts for the year, given the year's total spending net. Single source of
+ * truth used by BOTH the in-loop spending waterfall (clamps Cash pulls at
+ * `minCash`) and the post-convergence step (sweep above `maxCash`, refill
+ * toward `targetCash`). Keeping the formula here prevents the two sites from
+ * drifting if the definition of "monthly" ever changes.
+ */
+export function cashBucketBounds(
+  policy: { minMonths: number; targetMonths: number; maxMonths: number },
+  totalSpendingNet: number,
+): { minCash: number; targetCash: number; maxCash: number } {
+  const monthly = totalSpendingNet / 12;
+  return {
+    minCash: policy.minMonths * monthly,
+    targetCash: policy.targetMonths * monthly,
+    maxCash: policy.maxMonths * monthly,
+  };
+}
+
 // Resolve the active state name for a given calendar year by walking the
 // scenario's stateTimeline. Used by the tax-audit detail rendering to label
 // which state's rate applied this year (the federal/state ordinary-tax split
@@ -63,6 +87,16 @@ export function calculateRMD(tradBalance: number, age: number): number {
 // gross").
 export function getEffectiveStateName(userData: UserData, year: number): string {
   const timeline = userData.stateTimeline;
+  // Defense-in-depth: the import validator enforces non-empty stateTimeline,
+  // but the engine shouldn't trust UI invariants for programmatically-built
+  // scenarios. Fall back to Florida (zero state tax) and warn so any leakage
+  // surfaces in dev rather than throwing on `timeline[0].state`.
+  if (!timeline || timeline.length === 0) {
+    if (typeof console !== 'undefined') {
+      console.warn('[getEffectiveStateName] stateTimeline is empty; falling back to Florida.');
+    }
+    return 'Florida';
+  }
   let effectiveState = timeline[0].state;
   for (let i = 1; i < timeline.length; i++) {
     const startYear = timeline[i].startYear;
@@ -85,21 +119,29 @@ interface AccountIndex {
   byId: Map<string, Account>;
   byType: Record<AccountType, Account[]>;
   firstTaxable: Account | null;
+  firstCash: Account | null;
   // event.id → resolved deposit-target account.id, for retirement_contribution events.
   // Built once so depositContributions doesn't re-resolve per year per run.
   contributionTargetByEventId: Map<string, string>;
   // account.id → stockAllocation, for the inner growth loop.
   allocationById: Map<string, number>;
+  // account.id → true iff the account is type 'cash'. Used in the growth loop's
+  // hot path to bypass the stock/bond shock multiplier + black-swan overlay and
+  // apply a deterministic yield instead. Cash is non-volatile by construction
+  // in this model (see CLAUDE.md).
+  isCashById: Map<string, boolean>;
 }
 
 export function buildAccountIndex(userData: UserData): AccountIndex {
   const byId = new Map<string, Account>();
-  const byType: Record<AccountType, Account[]> = { taxable: [], traditional: [], roth: [] };
+  const byType: Record<AccountType, Account[]> = { taxable: [], traditional: [], roth: [], cash: [] };
   const allocationById = new Map<string, number>();
+  const isCashById = new Map<string, boolean>();
   for (const a of userData.accounts) {
     byId.set(a.id, a);
     byType[a.type].push(a);
     allocationById.set(a.id, a.stockAllocation);
+    isCashById.set(a.id, a.type === 'cash');
   }
   const contributionTargetByEventId = new Map<string, string>();
   for (const e of userData.incomeEvents) {
@@ -111,8 +153,10 @@ export function buildAccountIndex(userData: UserData): AccountIndex {
     byId,
     byType,
     firstTaxable: byType.taxable[0] ?? null,
+    firstCash: byType.cash[0] ?? null,
     contributionTargetByEventId,
     allocationById,
+    isCashById,
   };
 }
 
@@ -275,6 +319,10 @@ function applyCashFlow(
 ): void {
   const withdrawalSink = new Map<string, number>();
   const depositSink = new Map<string, number>();
+  // Cash withdrawals are tax-free principal pulls — sourced first by the
+  // waterfall, but the order of subtractFromAccounts calls here doesn't matter
+  // since each one operates on its own account-type subset of balances.
+  subtractFromAccounts(accountIndex.byType.cash, balances, breakdown.withdrawalFromCash, withdrawalSink);
   subtractFromAccounts(accountIndex.byType.taxable, balances, breakdown.withdrawalFromTaxable, withdrawalSink);
   subtractFromAccounts(accountIndex.byType.traditional, balances, breakdown.withdrawalFromTraditional, withdrawalSink);
   subtractFromAccounts(accountIndex.byType.roth, balances, breakdown.withdrawalFromRoth, withdrawalSink);
@@ -345,15 +393,132 @@ function applyCashFlow(
   if (breakdown.audit) breakdown.audit.accountFlows = rows;
 }
 
+/**
+ * Phase 2 post-convergence bucket-policy step. Runs AFTER `applyCashFlow` has
+ * settled all account flows for the year (withdrawals, conversion deposit,
+ * RMD-excess reinvestment, surplus deposit to Taxable, contribution deposits).
+ *
+ * STRUCTURAL INVARIANT (load-bearing — type-enforced by this signature):
+ * This function receives only the *settled* balances and a minimal subset of
+ * the breakdown needed to compute floor/target/ceiling against monthly spending,
+ * plus the policy and trigger inputs. It does NOT receive the full breakdown,
+ * does NOT import tax modules, and its return type contains only cash-routing
+ * fields. As a result, it cannot accidentally mutate `totalTax`,
+ * `ordinaryTax`, `federalCapGainsTax`, NIIT, IRMAA, or any income field.
+ * This makes "post-convergence step never re-enters the tax calc" a type-level
+ * guarantee rather than a discipline.
+ *
+ * Operations:
+ *  - SWEEP: when cashBal > maxMonths × monthly, move excess to first Taxable.
+ *    Tax-free balance transfer (no withdrawal path, no LTCG realized).
+ *  - REFILL: when cashBal < minMonths × monthly AND refillTrigger fires AND
+ *    surplus dollars are available (capped by `netCashFlow > 0` from this
+ *    year, already deposited into Taxable by applyCashFlow), move that surplus
+ *    from Taxable to first Cash up to targetMonths × monthly. Surplus-only
+ *    sourcing prevents phantom-tax archetype #3.
+ *
+ * Returns the dollar amounts moved so the breakdown / CSV / audit can show
+ * exactly where cash came from / went.
+ */
+function applyPostConvergenceBucketPolicy(
+  settled: { baseSpendingNet: number; otherSpendingGoalsNet: number; netCashFlow: number; spendingShortfall: number },
+  balances: Record<string, number>,
+  policy: CashBucketPolicy,
+  accountIndex: AccountIndex,
+  triggerInputs: { stockFactor: number; portfolioPostGrowth: number; deterministicBaseline: number | null },
+): { cashRefillFromSurplus: number; cashSweepToTaxable: number } {
+  // No-op when policy is manual mode. Caller could also gate the call, but
+  // making this no-op internally keeps the call-site simpler.
+  if (policy.refillTrigger === 'none') {
+    return { cashRefillFromSurplus: 0, cashSweepToTaxable: 0 };
+  }
+  // No-op when neither a Cash nor a Taxable bucket exists — nothing to route between.
+  const cashAcct = accountIndex.firstCash;
+  const taxableAcct = accountIndex.firstTaxable;
+  if (!cashAcct || !taxableAcct) {
+    return { cashRefillFromSurplus: 0, cashSweepToTaxable: 0 };
+  }
+
+  // Use TOTAL spending net as the monthly basis (mirrors the floor used in
+  // computeSpendingWaterfall). The cashBucketBounds helper is the single
+  // source of truth so the spending floor and the refill/sweep thresholds
+  // can't drift independently.
+  const totalSpendingNet = settled.baseSpendingNet + settled.otherSpendingGoalsNet;
+  const { minCash, targetCash, maxCash } = cashBucketBounds(policy, totalSpendingNet);
+
+  // Sum cash across all cash accounts (multiple are unusual but supported);
+  // sweeps and refills route to/from the first cash account in the index.
+  let cashBal = 0;
+  for (const a of accountIndex.byType.cash) cashBal += balances[a.id] ?? 0;
+
+  // SWEEP first. If cash is well above max, move the excess to Taxable.
+  // Pure balance transfer.
+  let cashSweepToTaxable = 0;
+  if (cashBal > maxCash) {
+    cashSweepToTaxable = cashBal - maxCash;
+    balances[cashAcct.id] = (balances[cashAcct.id] ?? 0) - cashSweepToTaxable;
+    balances[taxableAcct.id] = (balances[taxableAcct.id] ?? 0) + cashSweepToTaxable;
+    cashBal -= cashSweepToTaxable;
+  }
+
+  // REFILL: when cash is below min and the trigger fires.
+  // Surplus is the dollars that just deposited into Taxable via applyCashFlow's
+  // surplus-routing branch. We "reroute" that same money into Cash up to target.
+  let cashRefillFromSurplus = 0;
+  // Suppress refill in shortfall years (depletion-edge). When the portfolio is
+  // already failing, surplus by definition can't exist, but the early-exit also
+  // documents intent.
+  if (cashBal < minCash && settled.spendingShortfall === 0) {
+    let triggerFired = false;
+    switch (policy.refillTrigger) {
+      case 'always':
+        triggerFired = true;
+        break;
+      case 'gains_only':
+        triggerFired = triggerInputs.stockFactor > 1;
+        break;
+      case 'above_baseline':
+        triggerFired = triggerInputs.deterministicBaseline !== null
+          && triggerInputs.deterministicBaseline > 0
+          && triggerInputs.portfolioPostGrowth / triggerInputs.deterministicBaseline > 1;
+        break;
+      // 'none' is filtered out by the early-return at the top of the function;
+      // TypeScript narrows it out of the switch's discriminated union.
+    }
+    if (triggerFired) {
+      const surplus = Math.max(0, settled.netCashFlow);
+      const desired = targetCash - cashBal;
+      cashRefillFromSurplus = Math.min(desired, surplus);
+      if (cashRefillFromSurplus > 0) {
+        // Surplus already lives in the first taxable (via applyCashFlow);
+        // move that amount over to cash.
+        balances[taxableAcct.id] = (balances[taxableAcct.id] ?? 0) - cashRefillFromSurplus;
+        balances[cashAcct.id] = (balances[cashAcct.id] ?? 0) + cashRefillFromSurplus;
+      }
+    }
+  }
+
+  return { cashRefillFromSurplus, cashSweepToTaxable };
+}
+
 // Ensure a taxable account exists to receive (a) excess RMD reinvestment from
 // Traditional balances after age 73 and (b) general surplus (positive netCashFlow)
 // from any year. The synthetic "Reinvestment" account starts at $0 and only matters
 // if it actually receives deposits; injecting it whenever no taxable account exists
 // is trivially safe. Returns a shallow copy with the account added when needed.
+/** Account IDs reserved for engine-injected synthetic accounts. The
+ *  `ensure*Account` helpers below gate on account *type* (not id), so a
+ *  user-defined account of the matching type prevents the synthetic from
+ *  being added regardless of its id. These constants are kept as named
+ *  exports for clarity and as audit anchors in scenario JSON exports. */
+export const SYNTHETIC_REINVESTMENT_ID = 'reinvestment-auto';
+export const SYNTHETIC_CASH_BUCKET_ID = 'cash-bucket-auto';
+export const SYNTHETIC_ROTH_CONVERSION_ID = 'roth-conversion-auto';
+
 function ensureReinvestmentAccount(userData: UserData): UserData {
   if (userData.accounts.some((a) => a.type === 'taxable')) return userData;
   const reinvestAccount: Account = {
-    id: 'reinvestment-auto',
+    id: SYNTHETIC_REINVESTMENT_ID,
     name: 'Reinvestment',
     type: 'taxable',
     balance: 0,
@@ -363,6 +528,28 @@ function ensureReinvestmentAccount(userData: UserData): UserData {
   return { ...userData, accounts: [...userData.accounts, reinvestAccount] };
 }
 
+// When a `cashBucketPolicy` is configured but the user hasn't created a cash
+// account, inject a synthetic zero-balance "Cash Bucket" cash account so that
+// surplus routing + bucket refill have a destination. Activates only when the
+// policy is present — without policy, no cash account = no cash management,
+// no synthetic. Mirrors the `ensureReinvestmentAccount` / `ensureRothConversionAccount`
+// pattern. Must run BEFORE `ensureReinvestmentAccount` so the synthetic-account
+// selection rule (Cash if policy, else Reinvestment-Taxable) holds when neither
+// taxable nor cash exists.
+function ensureCashAccount(userData: UserData): UserData {
+  if (!userData.cashBucketPolicy) return userData;
+  if (userData.accounts.some((a) => a.type === 'cash')) return userData;
+  const cashAccount: Account = {
+    id: SYNTHETIC_CASH_BUCKET_ID,
+    name: 'Cash Bucket',
+    type: 'cash',
+    balance: 0,
+    stockAllocation: 0,
+    portfolioBalance: '60_40',
+  };
+  return { ...userData, accounts: [...userData.accounts, cashAccount] };
+}
+
 // If any Roth conversion events exist but there is no Roth account to receive
 // the converted funds, inject a zero-balance "Roth Conversion" Roth account.
 function ensureRothConversionAccount(userData: UserData): UserData {
@@ -370,7 +557,7 @@ function ensureRothConversionAccount(userData: UserData): UserData {
   if (!hasConversion) return userData;
   if (userData.accounts.some((a) => a.type === 'roth')) return userData;
   const rothAccount: Account = {
-    id: 'roth-conversion-auto',
+    id: SYNTHETIC_ROTH_CONVERSION_ID,
     name: 'Roth Conversion',
     type: 'roth',
     balance: 0,
@@ -395,6 +582,11 @@ export interface AnnualCashFlowBreakdown {
   withdrawalFromTaxable: number;
   withdrawalFromTraditional: number;  // total Traditional outflow: spending + RMD + Roth conversion
   withdrawalFromRoth: number;
+  withdrawalFromCash: number;        // spending pull from cash accounts (tax-free principal); 0 when no cash account
+  cashInterest: number;              // deterministic yield credited on beginning-of-year cash balance; taxed as ordinary income (folded into otherTaxableGross)
+  cashEndingBalance: number;         // sum of cash account balances at end of year (post-growth, post-withdrawal, POST refill/sweep). 0 when no cash account exists
+  cashRefillFromSurplus: number;     // (Phase 2) dollars moved Taxable→Cash by the post-convergence bucket policy refill step this year. Surplus-funded only; never realizes LTCG.
+  cashSweepToTaxable: number;        // (Phase 2) dollars moved Cash→Taxable by the post-convergence sweep when cash > maxMonths × monthly. Tax-free balance transfer.
   totalTax: number;
   ordinaryTax: number;      // ordinary income tax (federal + state + locality surcharge) on Traditional + SS + other taxable
   federalCapGainsTax: number; // federal LTCG tax on taxable account withdrawals (longTermCapGainsRate × fromTaxable)
@@ -410,6 +602,7 @@ export interface AnnualCashFlowBreakdown {
   // May be < requested only when capped by available Trad balance (a rare true cap).
   rothConversionGross: number;
   rothConversionRequested: number;  // user-configured conversion amount before any cap
+  rothConversionTaxFromCash: number;     // portion of conversion ordinary tax pulled from cash accounts (tax-free)
   rothConversionTaxFromTaxable: number;  // portion of conversion ordinary tax pulled from Taxable
   rothConversionTaxFromRmdExcess: number;  // portion of conversion ordinary tax absorbed by RMD-excess cash
   // Portion of conversion ordinary tax withheld from the conversion itself
@@ -922,7 +1115,13 @@ function accumulateSpending(
       }
       if (goal.yearlyDecreasePercent != null) {
         const yearsSinceStart = year - startYear;
-        amount *= Math.pow(1 - goal.yearlyDecreasePercent / 100, yearsSinceStart);
+        // Clamp the base above 0 to keep Math.pow real-valued. A
+        // yearlyDecreasePercent of 100 would make the base zero (and any
+        // subsequent fractional exponent NaN); >100 would make it negative
+        // (Math.pow(negative, fractional) = NaN). User input shouldn't hit
+        // these, but cheap defense costs nothing in the hot loop.
+        const base = Math.max(0.0001, 1 - goal.yearlyDecreasePercent / 100);
+        amount *= Math.pow(base, yearsSinceStart);
       }
       if (goal.type === 'living_expenses') {
         baseSpendingNet += amount;
@@ -1224,18 +1423,47 @@ function calculateAnnualCashFlowCore(
   // the Tax Audit UI. The 4997 stat-only runs pass false. Public wrapper
   // (calculateAnnualCashFlow) defaults to true to preserve external behavior.
   includeAudit: boolean = true,
+  // Cash interest credited this year on cash account balances (yield × beginning
+  // balance, applied deterministically in the growth loop). Folded into the
+  // tax base as ordinary income (accrual basis) AND into the NIIT investment-
+  // income proxy (taxable-MMF/HYSA interest is investment income per IRC §1411).
+  // Caller passes 0 when no cash accounts exist (the only case for back-compat).
+  cashInterest: number = 0,
 ): AnnualCashFlowBreakdown {
-  const { ssGross, otherTaxableGross, afterTaxIncome, conversionGross } = income;
+  const { ssGross, afterTaxIncome, conversionGross } = income;
+  // Cash interest is ordinary income (accrual basis, taxed in the year credited).
+  // Fold into otherTaxableGross so the entire tax pipeline (federal/state ordinary,
+  // SS taxability via provisional income, IRMAA MAGI, NIIT MAGI) treats it
+  // uniformly. The breakdown surfaces both the inflated otherTaxableGross AND
+  // the original cashInterest separately so callers can audit the source.
+  const otherTaxableGross = income.otherTaxableGross + cashInterest;
   const totalSpendingNet = spending.baseSpendingNet + spending.otherSpendingGoalsNet;
   const totalGrossIncome = ssGross + otherTaxableGross + afterTaxIncome;
   const availableCash = afterTaxIncome + ssGross + otherTaxableGross;
 
   const ltcgRate = userData.longTermCapGainsRate ?? 0;
+  const cashBal = sumBalancesOfType(userData.accounts, balances, 'cash');
   const taxableBal = sumBalancesOfType(userData.accounts, balances, 'taxable');
   const tradBal = sumBalancesOfType(userData.accounts, balances, 'traditional');
   const rothBal = sumBalancesOfType(userData.accounts, balances, 'roth');
-  const totalBal = taxableBal + tradBal + rothBal;
+  const totalBal = cashBal + taxableBal + tradBal + rothBal;
   const cap = Math.min(maxWithdrawal ?? Infinity, totalBal);
+
+  // Cash bucket policy soft floor. Spending and conversion tax sourcing pull
+  // Cash only down to `minMonths × monthly`; below that, both fall through to
+  // the next priority (Taxable / withhold). Rationale: in reality every user
+  // has unmodeled liquid cash; the floor reflects how much they're willing to
+  // hold in this bucket. When no policy is configured or refillTrigger is
+  // 'none', minCashFloor = 0 (full drain allowed). The cashBucketBounds helper
+  // is the single source of truth shared with applyPostConvergenceBucketPolicy
+  // so the spending floor here cannot drift from the refill/sweep thresholds.
+  // (Plan describes monthly as baseSpendingNet/12; using totalSpendingNet here
+  // makes the floor robust against scenarios that put most spending into
+  // discretionary goals — same intent, marginally more conservative.)
+  const policy = userData.cashBucketPolicy;
+  const minCashFloor = policy && policy.refillTrigger !== 'none'
+    ? cashBucketBounds(policy, totalSpendingNet).minCash
+    : 0;
 
   const selfTradBal = beginningTradBalances?.self
     ?? sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self');
@@ -1254,6 +1482,7 @@ function calculateAnnualCashFlowCore(
   let withdrawal = Math.min(Math.max(0, totalSpendingNet - availableCash), cap);
   let totalTax = 0;
   let ssTaxableAmount = 0;
+  let fromCash = 0;
   let fromTaxable = 0;
   let fromTrad = 0;
   let fromRoth = 0;
@@ -1268,13 +1497,15 @@ function calculateAnnualCashFlowCore(
   let stateOrdinaryTaxOnly = 0;
   let stateResultFinal: StateTaxResult | null = null;
   let niitTax = 0;
-  // Conversion tax sourcing — populated inside the loop. `convTaxFromTaxable` is
-  // the Taxable pull added specifically to cover the conversion's ordinary tax
-  // delta; `convTaxFromRmdExc` is the part absorbed by RMD-excess cash before
-  // any reinvestment. Their sum is the conversion's marginal ordinary tax.
+  // Conversion tax sourcing — populated inside the loop. Cash is preferred over
+  // Taxable because pulling Taxable realizes LTCG/NIIT that itself amplifies the
+  // marginal tax (the phantom-tax archetype). RMD-excess + Cash + Taxable are
+  // the three external funding sources; if all run dry the residual is withheld
+  // from the conversion's own Trad pull (IRS Form 1099-R Box 4 mechanic).
+  let convTaxFromCash = 0;
   let convTaxFromTaxable = 0;
   let convTaxFromRmdExc = 0;
-  // Conversion tax withheld from the conversion's own Trad pull when Taxable +
+  // Conversion tax withheld from the conversion's own Trad pull when Cash + Taxable +
   // RMD-excess can't cover the marginal ordinary tax. The Roth deposit shrinks
   // by this amount; the Trad pull stays at the requested conversion gross.
   let convTaxWithheld = 0;
@@ -1300,8 +1531,17 @@ function calculateAnnualCashFlowCore(
   // 12% federal bracket. This is the "Cross-year spending source policy" layer
   // documented in CLAUDE.md — it preserves Taxable for high-mt conversion years.
   function computeSpendingWaterfall(w: number) {
-    const rmdSpendingPull = Math.min(w, rmdRequired, tradBal);
-    let remaining = w - rmdSpendingPull;
+    // Priority 0: Cash. Drains before any tax-generating source — cash withdrawals
+    // are tax-free principal, so consuming them first avoids unnecessary LTCG/
+    // NIIT churn and conversion-tax amplification.
+    // Phase 2: bucket policy clamps the cash pull to (cashBal - minCashFloor).
+    // When cash is already at/below the floor, spending falls through to Taxable.
+    const cashAvailableForSpending = Math.max(0, cashBal - minCashFloor);
+    const spendingFromCash = Math.min(w, cashAvailableForSpending);
+    let remaining = w - spendingFromCash;
+
+    const rmdSpendingPull = Math.min(remaining, rmdRequired, tradBal);
+    remaining -= rmdSpendingPull;
 
     let tradLowBracketPull = 0;
     if (spendingOrder === 'bracket_aware' && bracketHeadroomForTrad > 0) {
@@ -1326,6 +1566,7 @@ function calculateAnnualCashFlowCore(
     const forcedTrad = Math.min(Math.max(sft, rmdRequired), tradBal);
     const rmdExc = Math.max(0, forcedTrad - sft);
     return {
+      spendingFromCash,
       spendingFromTaxable: ft,
       forcedTrad,
       spendingFromRoth: fr,
@@ -1392,10 +1633,12 @@ function calculateAnnualCashFlowCore(
     };
 
     // Conversion ordinary tax is funded in priority order:
-    //   1. RMD-excess cash (already pulled from Trad as part of forcedTrad; using
+    //   1. Cash balance not consumed by spending (preferred — tax-free principal,
+    //      avoids LTCG/NIIT amplification on Taxable pulls)
+    //   2. RMD-excess cash (already pulled from Trad as part of forcedTrad; using
     //      it for conv tax costs nothing extra)
-    //   2. Taxable balance not consumed by spending
-    //   3. Withheld from the conversion itself (IRS Form 1099-R Box 4 mechanic) —
+    //   3. Taxable balance not consumed by spending (realizes LTCG/NIIT)
+    //   4. Withheld from the conversion itself (IRS Form 1099-R Box 4 mechanic) —
     //      Trad pull still equals convCandidate, but the Roth deposit shrinks by
     //      the withheld amount. This is mathematically suboptimal vs. paying from
     //      Taxable (gives up some of the conversion's arbitrage) but always lets
@@ -1404,18 +1647,26 @@ function calculateAnnualCashFlowCore(
     // Conversion tax is NEVER pulled from Trad-above-RMD or Roth — that's the
     // phantom-tax leak the prior PR fixed.
     const mt = marginalOrdTax(convCandidate);
-    const ctRmd = Math.min(mt, sw.rmdExc);
+    // Conv-tax sourcing also respects the cash bucket floor — Cash above the
+    // floor is the only portion available for conversion tax. When cash is at/
+    // below the floor (e.g., after a hefty spendingFromCash that drained it),
+    // ctCash = 0 and the chain falls through to RMD-excess → Taxable → withheld.
+    const cashRemainingForConvTax = Math.max(0, cashBal - sw.spendingFromCash - minCashFloor);
+    const ctCash = Math.min(mt, cashRemainingForConvTax);
+    const ctRmd = Math.min(mt - ctCash, sw.rmdExc);
     const taxableRemainingForConvTax = Math.max(0, taxableBal - sw.spendingFromTaxable);
-    const ctTaxable = Math.min(mt - ctRmd, taxableRemainingForConvTax);
-    const ctWithheld = Math.max(0, mt - ctRmd - ctTaxable);
+    const ctTaxable = Math.min(mt - ctCash - ctRmd, taxableRemainingForConvTax);
+    const ctWithheld = Math.max(0, mt - ctCash - ctRmd - ctTaxable);
 
     // Final per-account flows for this iteration. Trad pull is the full
     // convCandidate; the Roth deposit (applied in applyCashFlow) subtracts
     // ctWithheld from rothConversionGross.
+    fromCash = sw.spendingFromCash + ctCash;
     fromTaxable = sw.spendingFromTaxable + ctTaxable;
     fromTrad = sw.forcedTrad + convCandidate;
     fromRoth = sw.spendingFromRoth;
     rothConversion = convCandidate;
+    convTaxFromCash = ctCash;
     convTaxFromTaxable = ctTaxable;
     convTaxFromRmdExc = ctRmd;
     convTaxWithheld = ctWithheld;
@@ -1460,14 +1711,20 @@ function calculateAnnualCashFlowCore(
     federalCapGainsTax = fromTaxable * ltcgRate;
     if (niitEnabled) {
       const magi = ordinaryGross + ssTaxableAmount + fromTaxable;
-      niitTax = calculateNIIT(magi, fromTaxable, userData.filingStatus);
+      // NIIT investment-income proxy includes both taxable-account gross withdrawals
+      // (federal LTCG proxy) AND cash interest (MMF/HYSA interest is investment
+      // income per IRC §1411). Without `+ cashInterest`, cash-heavy retirees over
+      // the NIIT threshold are under-taxed. The interest is also in `ordinaryGross`
+      // (it's ordinary income for federal tax purposes), but its inclusion in the
+      // NIIT *base* is separate from the ordinary-income inclusion.
+      niitTax = calculateNIIT(magi, fromTaxable + cashInterest, userData.filingStatus);
     } else {
       niitTax = 0;
     }
     totalTax = ordinaryTax + federalCapGainsTax + stateCapGainsTax + niitTax + irmaaSurcharge;
 
     // Spending withdrawal sized to cover spending + tax − availableCash − (conv
-    // tax funded separately). `mt` (conv ordinary tax) is paid from Taxable +
+    // tax funded separately). `mt` (conv ordinary tax) is paid from Cash + Taxable +
     // rmdExc, so the spending pull doesn't need to cover it.
     const uncappedNewWithdrawal = Math.max(0, totalSpendingNet + totalTax - availableCash - mt);
     const newWithdrawal = Math.min(uncappedNewWithdrawal, cap);
@@ -1477,13 +1734,26 @@ function calculateAnnualCashFlowCore(
       withdrawal = newWithdrawal;
       break;
     }
+    // E2: telemetry. Normal scenarios converge in 3–5 iterations. If we hit
+    // the cap with a non-trivial delta, surface it so future regressions
+    // (e.g. an oscillating fixed-point introduced by a new tax interaction)
+    // don't pass silently.
+    if (iter === MAX_ITERATIONS - 1) {
+      const delta = Math.abs(newWithdrawal - withdrawal);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[SimulationService] tax fixed-point did not converge in ${MAX_ITERATIONS} ` +
+        `iterations (year ${year}, age ${age}, residual delta=$${delta.toFixed(2)}). ` +
+        `Using last value.`,
+      );
+    }
     withdrawal = newWithdrawal;
   }
 
-  // Conversion ordinary tax (mt) is funded from Taxable + RMD-excess, not from
-  // the spending withdrawal. So neither the surplus calc nor the spendingShortfall
+  // Conversion ordinary tax (mt) is funded from Cash + Taxable + RMD-excess, not
+  // from the spending withdrawal. So neither the surplus calc nor the spendingShortfall
   // should attribute mt to the spending-side cash gap.
-  const mtFinal = convTaxFromTaxable + convTaxFromRmdExc;
+  const mtFinal = convTaxFromCash + convTaxFromTaxable + convTaxFromRmdExc;
   const netCashFlow = capWasBinding
     ? -withdrawal || 0
     : availableCash + mtFinal - totalTax - totalSpendingNet;
@@ -1517,7 +1787,7 @@ function calculateAnnualCashFlowCore(
       : null;
     const niitMagiFinal = ordinaryGrossFinal + ssTaxableAmount + fromTaxable;
     const niitDetail = niitEnabled
-      ? calculateNIITDetailed(niitMagiFinal, fromTaxable, userData.filingStatus)
+      ? calculateNIITDetailed(niitMagiFinal, fromTaxable + cashInterest, userData.filingStatus)
       : null;
     // Marginal-stack attribution: each event's tax contribution is computed
     // federally only here (state tax is allocated post-hoc proportional to each
@@ -1597,6 +1867,15 @@ function calculateAnnualCashFlowCore(
     };
   }
 
+  // Initial capture of cash ending balance — after this year's spending pull
+  // but BEFORE any bucket-policy refill/sweep. Phase 2's
+  // applyPostConvergenceBucketPolicy step overwrites this value via a fresh
+  // re-walk of cash account balances when a policy is active (see the post-
+  // convergence block in simulateOneRun). Consumers that read this field
+  // directly therefore see the post-routing balance when a policy ran, and
+  // this initial value otherwise.
+  const cashEndingBalance = Math.max(0, cashBal - fromCash);
+
   return {
     ssGross,
     otherTaxableGross,
@@ -1606,10 +1885,25 @@ function calculateAnnualCashFlowCore(
     baseSpendingNet: spending.baseSpendingNet,
     otherSpendingGoalsNet: spending.otherSpendingGoalsNet,
     totalSpendingNet,
+    // portfolioWithdrawal is the *taxable*-impact withdrawal (LTCG/ordinary/Roth
+    // sources); cash principal is tax-free, so we keep it out of this total to
+    // preserve the field's "tax-relevant withdrawal" semantics. Use cashEndingBalance
+    // / withdrawalFromCash to surface cash movement separately.
     portfolioWithdrawal: fromTaxable + fromTrad + fromRoth,
     withdrawalFromTaxable: fromTaxable,
     withdrawalFromTraditional: fromTrad,
     withdrawalFromRoth: fromRoth,
+    withdrawalFromCash: fromCash,
+    cashInterest,
+    cashEndingBalance,
+    // Phase 2 post-convergence fields. Initialized to 0 here; populated by
+    // applyPostConvergenceBucketPolicy AFTER applyCashFlow runs. The structural
+    // isolation of that step (no access to tax functions) is what makes the
+    // "post-convergence step never mutates tax fields" invariant a type-level
+    // guarantee — see plan §"Structural enforcement of the post-convergence
+    // invariant".
+    cashRefillFromSurplus: 0,
+    cashSweepToTaxable: 0,
     totalTax,
     ordinaryTax,
     federalCapGainsTax,
@@ -1622,6 +1916,7 @@ function calculateAnnualCashFlowCore(
     rmdExcess,
     rothConversionGross: rothConversion,
     rothConversionRequested,
+    rothConversionTaxFromCash: convTaxFromCash,
     rothConversionTaxFromTaxable: convTaxFromTaxable,
     rothConversionTaxFromRmdExcess: convTaxFromRmdExc,
     rothConversionTaxWithheld: convTaxWithheld,
@@ -1685,6 +1980,12 @@ interface Precomputes {
    *  `resolveSpendingWithdrawalOrder` so each MC run doesn't re-scan
    *  `incomeEvents`. */
   spendingOrder: ResolvedSpendingOrder;
+  /** Per-year portfolio balance from the deterministic projection (nominal $).
+   *  Populated only when `cashBucketPolicy.refillTrigger === 'above_baseline'` —
+   *  used by the post-convergence step's trigger check. Undefined otherwise to
+   *  avoid the cost of a deterministic projection for scenarios that don't
+   *  need it. */
+  deterministicBaselineByYear?: number[];
 }
 
 // Resolve the spending-source strategy for the scenario. Content-aware default:
@@ -1698,9 +1999,28 @@ interface Precomputes {
 // with no signal. The TypeScript type prevents this for code-authored
 // scenarios; the runtime check covers JSON-imported scenarios.
 export type ResolvedSpendingOrder = 'taxable_first' | 'bracket_aware';
+/**
+ * Resolve the scenario's spending-source order. Honors an explicit user value
+ * on `UserData.spendingWithdrawalOrder` when it is a recognized literal;
+ * otherwise applies the content-aware default: `'bracket_aware'` when any
+ * `roth_conversion` event exists (preserves Taxable for high-mt conversion
+ * years), else `'taxable_first'`.
+ *
+ * Unknown values (legacy 'pro_rata' from a prior enum draft, typos in
+ * hand-edited JSON) fall through to the content-aware default rather than
+ * silently behaving like `taxable_first` with no signal.
+ */
 export function resolveSpendingWithdrawalOrder(userData: UserData): ResolvedSpendingOrder {
   const v = userData.spendingWithdrawalOrder;
   if (v === 'taxable_first' || v === 'bracket_aware') return v;
+  if (v !== undefined && v !== null) {
+    // Hand-edited JSON or legacy enum value (e.g., 'pro_rata' from an early
+    // draft). Surface the coercion so it doesn't fail silently.
+    console.warn(
+      `[SimulationService] Unknown spendingWithdrawalOrder ${JSON.stringify(v)} — ` +
+      `falling back to content-aware default.`
+    );
+  }
   const hasConversion = userData.incomeEvents.some((e) => e.type === 'roth_conversion');
   return hasConversion ? 'bracket_aware' : 'taxable_first';
 }
@@ -1765,13 +2085,28 @@ function simulateOneRun(
     };
 
     // 1. Growth: draw base factors, apply black-swan overlay, blend by allocation.
+    //    Cash accounts BYPASS the stochastic shock + black-swan overlay entirely
+    //    and instead accrue a deterministic yield. Cash is non-volatile by
+    //    construction in this model — see CLAUDE.md "Cash accounts" and the
+    //    growth-bypass test scenarios. We capture `cashInterest` (the dollar
+    //    amount credited this year, on the beginning-of-year cash balance) and
+    //    thread it into calculateAnnualCashFlowCore as ordinary income.
     const base = generator.drawFactors(runIndex, i, random);
     const { stockFactor: sf, bondFactor: bf } = applyBlackSwan(base, year, blackSwanLookup);
     stockFactors.push(sf);
     bondFactors.push(bf);
+    const cashYieldRate = userData.portfolioAssumptions.cashYieldRate ?? 0.04;
+    let cashInterest = 0;
     for (const id in balances) {
-      const sa = accountIndex.allocationById.get(id) ?? 0.6; // fallback for synthetic accounts
-      balances[id] *= sa * sf + (1 - sa) * bf;
+      if (accountIndex.isCashById.get(id) === true) {
+        // Cash: deterministic yield, no market factor, no black-swan.
+        const interest = balances[id] * cashYieldRate;
+        cashInterest += interest;
+        balances[id] = balances[id] + interest;
+      } else {
+        const sa = accountIndex.allocationById.get(id) ?? 0.6; // fallback for synthetic accounts
+        balances[id] *= sa * sf + (1 - sa) * bf;
+      }
     }
 
     // 2. Cash flow. IRMAA uses MAGI from 2 years prior; pull from completed
@@ -1787,7 +2122,7 @@ function simulateOneRun(
     const cap = Math.max(0, postGrowth);
     const effectiveCashFlow = calculateAnnualCashFlowCore(
       userData, year, yearIncome, yearSpending, yearStateProfile, yearStateResolvedKey, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi,
-      spendingOrder, precomputes.bracketHeadroomForTradByYear[i], includeAudit,
+      spendingOrder, precomputes.bracketHeadroomForTradByYear[i], includeAudit, cashInterest,
     );
     breakdowns.push(effectiveCashFlow);
 
@@ -1797,6 +2132,44 @@ function simulateOneRun(
     }
 
     applyCashFlow(accountIndex, effectiveCashFlow, yearIncome.contributions, balances, includeAudit);
+    // Clamp against float drift BEFORE the post-convergence step so its sweep
+    // and refill arithmetic operate on clean non-negative balances. Without
+    // this clamp here, a sub-cent negative Taxable balance from
+    // subtractFromAccounts's proportional split could feed into the bucket
+    // policy and produce phantom dollars in the sweep destination. The
+    // bottom-of-loop clamp below is kept as a final safety net (cheap,
+    // catches any drift introduced by the post-convergence step itself).
+    for (const id in balances) if (balances[id] < 0) balances[id] = 0;
+
+    // Phase 2: post-convergence cash bucket policy. Runs AFTER applyCashFlow
+    // has settled all flows for the year. The function's signature deliberately
+    // withholds tax fields and tax modules so it cannot mutate the converged
+    // tax — see applyPostConvergenceBucketPolicy doc comment for the structural
+    // invariant. Capacity check: only runs when the policy is configured.
+    if (userData.cashBucketPolicy) {
+      const baselineForYear = precomputes.deterministicBaselineByYear?.[i] ?? null;
+      // postGrowth was captured just before calculateAnnualCashFlowCore — it's
+      // the post-growth, pre-withdrawal portfolio balance, which is the right
+      // input for the `above_baseline` trigger (do not include this year's
+      // withdrawals in the ratio — bucket-policy decisions key off plan health
+      // BEFORE we deplete for the year).
+      const routing = applyPostConvergenceBucketPolicy(
+        effectiveCashFlow,
+        balances,
+        userData.cashBucketPolicy,
+        accountIndex,
+        { stockFactor: sf, portfolioPostGrowth: postGrowth, deterministicBaseline: baselineForYear },
+      );
+      effectiveCashFlow.cashRefillFromSurplus = routing.cashRefillFromSurplus;
+      effectiveCashFlow.cashSweepToTaxable = routing.cashSweepToTaxable;
+      // cashEndingBalance was captured inside calculateAnnualCashFlowCore before
+      // applyCashFlow ran (and so before refill/sweep). Recompute it now to
+      // reflect the post-routing state — this is the value users see in the CSV
+      // and detail rows.
+      let postRoutingCashBal = 0;
+      for (const a of accountIndex.byType.cash) postRoutingCashBal += balances[a.id] ?? 0;
+      effectiveCashFlow.cashEndingBalance = postRoutingCashBal;
+    }
     // Clamp against float drift.
     for (const id in balances) if (balances[id] < 0) balances[id] = 0;
 
@@ -1894,7 +2267,20 @@ export interface SimulationResult {
 // on the main thread before fanning out to workers — otherwise each worker would
 // inject independently and synthetic account ids could diverge.
 export function prepareUserData(rawUserData: UserData): UserData {
-  return ensureRothConversionAccount(ensureReinvestmentAccount(rawUserData));
+  // Tax-strategy resolution previously happened here (Layer 3 framework, now
+  // removed). All Roth conversions are first-class income events on the
+  // scenario; legacy `taxStrategy.cachedVector` is migrated to events on load.
+  // Synthetic-account creation order matters: ensureCashAccount runs first so
+  // that ensureReinvestmentAccount sees the cash account and the
+  // synthetic-account selection rule (Cash if policy, else Reinvestment-Taxable)
+  // is consistent. ensureReinvestmentAccount still runs because surplus
+  // deposits land in Taxable initially even under bucket policy — the post-
+  // convergence step then sweeps from Taxable into Cash up to target.
+  return ensureRothConversionAccount(
+    ensureReinvestmentAccount(
+      ensureCashAccount(rawUserData)
+    )
+  );
 }
 
 // Derives the effective number of MC runs without instantiating a ReturnGenerator
@@ -1918,7 +2304,16 @@ export function getEffectiveNumRuns(userData: UserData): number {
 // independent of RNG. Exported so the SimulationClient / Web Worker can build
 // precomputes inside the worker context (where it's used to thread the same
 // shared inputs into the MC loop without re-deriving per run).
-export function buildPrecomputes(userData: UserData): Precomputes {
+export function buildPrecomputes(
+  userData: UserData,
+  options?: {
+    /** Recursion-breaker for the inner deterministic-baseline run. When true,
+     *  skips the baseline computation even if the policy would request it.
+     *  Internal use only — `runDeterministicProjection` passes this so the
+     *  baseline pass doesn't try to compute its own baseline. */
+    skipBaselineForDeterministic?: boolean;
+  }
+): Precomputes {
   const currentYear = userData.referenceYear;
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
   const inflationRate = userData.inflationRate;
@@ -1945,9 +2340,25 @@ export function buildPrecomputes(userData: UserData): Precomputes {
       ? computeBracketHeadroomForTrad(userData, incomeByYear[i], year, inflationRate, ageByYear[i], spouseAgeByYear[i])
       : 0;
   }
+
+  // Deterministic baseline precompute for the `above_baseline` refill trigger.
+  // Computed only when needed. Runs a one-shot deterministic projection with the
+  // skipBaselineForDeterministic option so the inner buildPrecomputes call does
+  // NOT recurse. The resulting `path` array is the per-year start-of-year
+  // portfolio total — exactly what the bucket-policy trigger compares against.
+  let deterministicBaselineByYear: number[] | undefined;
+  if (
+    !options?.skipBaselineForDeterministic
+    && userData.cashBucketPolicy?.refillTrigger === 'above_baseline'
+  ) {
+    const detResult = runDeterministicProjection(userData, { skipBaselineForDeterministic: true });
+    deterministicBaselineByYear = detResult.path;
+  }
+
   return {
     stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
     bracketHeadroomForTradByYear, spendingOrder: resolvedSpendingOrder,
+    deterministicBaselineByYear,
   };
 }
 
@@ -1976,12 +2387,18 @@ export function runShard(
     startRunIndex: number;
     endRunIndex: number;
     random?: () => number;
+    /** Optional pre-built indexes. When the caller is `runSimulation` (inline
+     *  path) it already builds these for the representative-replay step; pass
+     *  them in to avoid rebuilding from scratch here. Workers don't pass
+     *  them — they receive serialized userData and rebuild fresh. */
+    accountIndex?: AccountIndex;
+    blackSwanLookup?: Map<number, { stockMultiplier: number; bondMultiplier: number }>;
   }
 ): SimRun[] {
   const random = opts.random ?? Math.random;
-  const accountIndex = buildAccountIndex(userData);
+  const accountIndex = opts.accountIndex ?? buildAccountIndex(userData);
   const generator = createReturnGenerator(userData, random);
-  const blackSwanLookup = buildBlackSwanLookup(userData);
+  const blackSwanLookup = opts.blackSwanLookup ?? buildBlackSwanLookup(userData);
   const out: SimRun[] = new Array(opts.endRunIndex - opts.startRunIndex);
   for (let r = opts.startRunIndex; r < opts.endRunIndex; r++) {
     out[r - opts.startRunIndex] = simulateOneRun(
@@ -2069,11 +2486,23 @@ export function runSimulation(
   const precomputes = buildPrecomputes(userData);
   const numRuns = getEffectiveNumRuns(userData);
 
+  // Build indexes once and pass to BOTH the MC shard and the post-MC replay.
+  // (Previously runShard rebuilt them internally and we rebuilt them again here
+  // for the replay — same family of "double-call in a pipeline" pattern as the
+  // prepareUserData fingerprint bug. Pure functions, so no correctness issue,
+  // but wasteful and inconsistent.) Workers spawn their own runShard with no
+  // pre-built indexes — they receive serialized userData and rebuild fresh.
+  const accountIndex = buildAccountIndex(userData);
+  const blackSwanLookup = buildBlackSwanLookup(userData);
+
   // Inline single-shard MC. Bit-exact preservation: runShard's internal generator
   // construction (which may consume RNG for the bootstrap indexMap) happens at the
   // same logical point as today's pre-loop setup, and the per-run RNG consumption
   // order is identical.
-  const allRuns = runShard(userData, precomputes, { startRunIndex: 0, endRunIndex: numRuns, random });
+  const allRuns = runShard(userData, precomputes, {
+    startRunIndex: 0, endRunIndex: numRuns, random,
+    accountIndex, blackSwanLookup,
+  });
 
   let successCount = 0;
   for (let r = 0; r < numRuns; r++) if (!allRuns[r].failed) successCount++;
@@ -2081,8 +2510,6 @@ export function runSimulation(
 
   // Replay representative runs with audit. Replay is data-replay (uses recorded
   // factors on the SimRun), not RNG-replay — so it does not advance `random`.
-  const accountIndex = buildAccountIndex(userData);
-  const blackSwanLookup = buildBlackSwanLookup(userData);
   const { medianRun: medianSeed, downsideRun: downsideSeed } = pickRepresentatives(allRuns);
   const medianRun = replayRunWithAudit(medianSeed, userData, precomputes, accountIndex, blackSwanLookup);
   const downsideRun = replayRunWithAudit(downsideSeed, userData, precomputes, accountIndex, blackSwanLookup);
@@ -2126,7 +2553,19 @@ export function runSimulation(
 // engine that drives the "Deterministic" chart line. Exposed so callers (e.g.,
 // the Roth Conversion dialog's Net impact preview) can compute with-vs-without
 // deltas without paying for a full Monte Carlo run.
-export function runDeterministicProjection(rawUserData: UserData): {
+export function runDeterministicProjection(
+  rawUserData: UserData,
+  options?: {
+    /** Internal flag used by the cash-bucket baseline-precompute pass to break
+     *  the recursion: buildPrecomputes(userData) wants the deterministic
+     *  baseline → runs runDeterministicProjection(userData) which calls
+     *  buildPrecomputes again. When this flag is set, the inner buildPrecomputes
+     *  skips its baseline computation. Result: above_baseline triggers in the
+     *  deterministic run will never fire (since baseline=undefined), which is
+     *  the right semantic — the baseline run is the reference, not a follower. */
+    skipBaselineForDeterministic?: boolean;
+  }
+): {
   path: number[];
   breakdowns: AnnualCashFlowBreakdown[];
   inflation: number[];
@@ -2135,7 +2574,7 @@ export function runDeterministicProjection(rawUserData: UserData): {
   clearTaxCalculationCache();
   const userData = prepareUserData(rawUserData);
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
-  const precomputes = buildPrecomputes(userData);
+  const precomputes = buildPrecomputes(userData, options);
   const accountIndex = buildAccountIndex(userData);
   const blackSwanLookup = buildBlackSwanLookup(userData);
   const nominalGenerator = createNominalGenerator(userData);

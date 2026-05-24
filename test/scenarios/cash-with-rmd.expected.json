@@ -1,0 +1,11 @@
+{
+  "_rationale": "Year 0: age 75, RMD divisor 24.6 → rmdRequired = 300000/24.6 ≈ $12,195. Cash $100k covers $30k spending entirely → spendingFromCash = $30k. RMD still fires: forcedTrad = max(spending-trad-pull, rmdRequired) = max(0, 12195) = $12,195. That entire RMD is rmdExcess (cash covered spending). withdrawalFromTraditional = rmdExcess = ~$12,195. withdrawalFromCash = $30,000. Federal tax on $12,195 ordinary single is 0 (under std deduction). rmdExcess deposited to synthetic Reinvestment-Taxable account.",
+  "probability": 100,
+  "breakdownChecks": [
+    { "index": 0, "field": "withdrawalFromCash", "value": 30000, "tolerance": 1, "_note": "Cash covers spending in full" },
+    { "index": 0, "field": "rmdRequired", "min": 12000, "max": 12400, "_note": "$300k / 24.6 divisor" },
+    { "index": 0, "field": "withdrawalFromTraditional", "min": 12000, "max": 12400, "_note": "RMD fires regardless of cash" },
+    { "index": 0, "field": "rmdExcess", "min": 12000, "max": 12400, "_note": "Entire RMD is excess since cash covered spending" },
+    { "index": 0, "field": "totalTax", "value": 0, "tolerance": 100, "_note": "$12k is under single std deduction; federal tax 0" }
+  ]
+}

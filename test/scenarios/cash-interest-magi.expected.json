@@ -1,0 +1,10 @@
+{
+  "_rationale": "Year 0: cash $5M @ 4% → cashInterest = $200k credited as ordinary income (folded into otherTaxableGross). Pension $300k. Spending $60k (covered fully by surplus, deposits to synthetic Reinvestment-Taxable account). otherTaxableGross = $500k. MAGI = $500k + 0 + 0 = $500k. NIIT excess over $200k single threshold = $300k. Investment income proxy = fromTaxable + cashInterest = $0 + $200k = $200k. NIIT base = min($200k, $300k) = $200k. niitTax = 3.8% × $200k = $7,600. Asserted as range to absorb tax-feedback minor flux.",
+  "probability": 100,
+  "breakdownChecks": [
+    { "index": 0, "field": "cashInterest", "min": 199999, "max": 200001, "_note": "5M × 4% yield credited as ordinary income" },
+    { "index": 0, "field": "otherTaxableGross", "min": 499999, "max": 500001, "_note": "Pension $300k + cash interest $200k" },
+    { "index": 0, "field": "withdrawalFromTaxable", "min": 0, "max": 0.01, "_note": "Cash covers entirely; no Taxable pull" },
+    { "index": 0, "field": "niitTax", "min": 7000, "max": 8000, "_note": "NIIT base = $200k from cashInterest; 3.8% = $7,600" }
+  ]
+}

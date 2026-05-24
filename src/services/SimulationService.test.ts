@@ -1774,3 +1774,303 @@ describe('bracket_aware spending waterfall — coordination invariant', () => {
     }
   });
 });
+
+describe('cash account', () => {
+  it('grows by deterministic yield only — bypasses stock/bond multiplier even when stockAllocation is set', () => {
+    // Regression guard: if the growth loop falls through to `sa * sf + (1-sa) * bf`
+    // for a cash account, an aggressive 50% stockReturn would balloon the balance.
+    const ud = makeUserData({
+      accounts: [
+        { id: 'cash-1', name: 'Cash', type: 'cash', balance: 100_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [],
+      incomeEvents: [],
+      portfolioAssumptions: {
+        stockReturn: 0.5, stockStdDev: 0, bondReturn: 0.1, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0.04,
+      },
+      simulationSettings: { numSimulations: 10 },
+      lifeExpectancy: 62,
+    });
+    const result = runSimulation(ud, createSeededRandom(42));
+    // cashEndingBalance isolates the cash account itself (total nominal path
+    // would also include a synthetic Reinvestment-Taxable account that absorbs
+    // the $4k surplus from cash interest income — that's correct behavior, just
+    // not what we're testing here). Cash growth: 100k × 1.04 = $104k. A bypass-bug
+    // would produce ~134k (= 100k × (0.6*1.5 + 0.4*1.1)).
+    expect(result.nominalBreakdowns[0].cashInterest).toBeCloseTo(4000, 1);
+    expect(result.nominalBreakdowns[0].cashEndingBalance).toBeCloseTo(104_000, 0);
+    expect(result.nominalBreakdowns[0].cashEndingBalance).toBeLessThan(110_000); // would be ~134k if bypass missed
+  });
+
+  it('cash interest is added to NIIT investment-income base (per IRC §1411)', () => {
+    // Pension drives MAGI above the $200k single threshold; cash interest is
+    // the only "investment income" since fromTaxable = 0 (no Taxable account
+    // pulls because cash covers spending and surplus deposits to synthetic
+    // Reinvestment-Taxable account). Without the NIIT proxy extension this
+    // would yield niitTax = 0.
+    const ud = makeUserData({
+      currentAge: 60, lifeExpectancy: 61,
+      accounts: [{ id: 'cash-1', name: 'Cash', type: 'cash', balance: 5_000_000, stockAllocation: 0, portfolioBalance: '60_40' as const }],
+      spendingGoals: [baseSpending(60_000 / 12)],
+      incomeEvents: [{
+        id: 'pension-1', type: 'pension_income', name: 'Pension',
+        amount: 300_000, startAge: 60, endAge: 60,
+        taxStatus: 'before_tax', colaType: 'fixed',
+      } as any],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0.04,
+      },
+      enableNIIT: true,
+      simulationSettings: { numSimulations: 10 },
+    });
+    const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
+    // 5M × 4% = $200k cash interest. MAGI ≈ $200k pension + $200k interest = $400k.
+    // Excess over single $200k threshold = $200k. Investment income proxy =
+    // fromTaxable + cashInterest = 0 + 200k = $200k. NIIT base = $200k.
+    // niitTax = 3.8% × $200k = $7,600.
+    expect(bd.cashInterest).toBeCloseTo(200_000, 0);
+    expect(bd.withdrawalFromTaxable).toBe(0);  // cash covers spending
+    expect(bd.niitTax).toBeGreaterThan(7000);
+    expect(bd.niitTax).toBeLessThan(8000);
+  });
+
+  it('spending waterfall pulls Cash before any tax-generating source', () => {
+    // Cash + Taxable. Cash should cover all spending; Taxable should remain
+    // untouched (no LTCG realized).
+    const ud = makeUserData({
+      accounts: [
+        { id: 'cash-1', name: 'Cash', type: 'cash', balance: 100_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [baseSpending(50_000 / 12)],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0,  // isolate the waterfall test from yield-as-income
+      },
+      simulationSettings: { numSimulations: 10 },
+      lifeExpectancy: 61,
+    });
+    const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
+    expect(bd.withdrawalFromCash).toBeCloseTo(50_000, 0);
+    expect(bd.withdrawalFromTaxable).toBe(0);
+    expect(bd.federalCapGainsTax).toBe(0);  // no LTCG realized
+    expect(bd.totalTax).toBe(0);             // no taxable income, no FL state tax
+  });
+
+  it('Roth conversion tax sources from Cash before Taxable (phantom-tax avoidance)', () => {
+    // Trad + Cash + Taxable. Conversion's marginal ordinary tax should be
+    // sourced from Cash (rothConversionTaxFromCash), not from Taxable
+    // (would realize LTCG and amplify the tax bill — the phantom-tax archetype).
+    const ud = makeUserData({
+      currentAge: 60, lifeExpectancy: 61,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'cash-1', name: 'Cash', type: 'cash', balance: 200_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [],
+      incomeEvents: [{
+        id: 'conv-1', type: 'roth_conversion', name: 'Conv',
+        amount: 100_000, startAge: 60, endAge: 60,
+        taxStatus: 'before_tax', colaType: 'fixed',
+      } as any],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0,
+      },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
+    expect(bd.rothConversionGross).toBeCloseTo(100_000, 0);
+    // Cash absorbs entire marginal tax; Taxable is preserved.
+    expect(bd.rothConversionTaxFromCash).toBeGreaterThan(0);
+    expect(bd.rothConversionTaxFromTaxable).toBe(0);
+    expect(bd.rothConversionTaxWithheld).toBe(0);  // Cash covered fully
+    expect(bd.federalCapGainsTax).toBe(0);          // no Taxable pulled
+  });
+
+  // --- Phase 2: cash bucket policy ---
+  it('bucket policy "none" trigger disables auto refill and auto sweep', () => {
+    // Manual mode: cash above max stays there (no auto-sweep); cash below min
+    // is not refilled (no auto-refill).
+    const ud = makeUserData({
+      currentAge: 60, lifeExpectancy: 61,
+      accounts: [
+        { id: 'cash-1', name: 'Cash', type: 'cash', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [baseSpending(40_000 / 12)],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0,
+      },
+      simulationSettings: { numSimulations: 10 },
+      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 18, refillTrigger: 'none' },
+    });
+    const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
+    // 500k cash >> max=18×$3333≈$60k, but trigger='none' → no sweep.
+    expect(bd.cashSweepToTaxable).toBe(0);
+    expect(bd.cashRefillFromSurplus).toBe(0);
+    // Spending pulls cash with floor = 0 (suppressed by 'none' trigger).
+    expect(bd.withdrawalFromCash).toBeCloseTo(40_000, 0);
+  });
+
+  it('bucket policy max ceiling sweeps excess cash to Taxable (tax-free)', () => {
+    const ud = makeUserData({
+      currentAge: 60, lifeExpectancy: 61,
+      accounts: [
+        { id: 'cash-1', name: 'Cash', type: 'cash', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [baseSpending(40_000 / 12)],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0,
+      },
+      simulationSettings: { numSimulations: 10 },
+      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 18, refillTrigger: 'gains_only' },
+    });
+    const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
+    // maxCash = 18 × ($40k/12) ≈ $60k. After $40k spending (with $20k floor allows pull),
+    // cash = $460k. Sweep $460k − $60k = $400k. Tax-free.
+    expect(bd.cashSweepToTaxable).toBeGreaterThan(380_000);
+    expect(bd.cashSweepToTaxable).toBeLessThan(420_000);
+    expect(bd.cashEndingBalance).toBeGreaterThan(55_000);
+    expect(bd.cashEndingBalance).toBeLessThan(65_000);
+    // SWEEP MUST BE TAX-FREE — load-bearing invariant.
+    expect(bd.federalCapGainsTax).toBe(0);
+    expect(bd.totalTax).toBe(0); // no state tax (FL), no LTCG, no ordinary income
+  });
+
+  it('post-convergence step does NOT mutate any tax field (structural invariant)', () => {
+    // Run the same scenario twice: once with policy enabled, once without.
+    // The tax fields (totalTax, ordinaryTax, federalCapGainsTax, niitTax,
+    // irmaaSurcharge, stateCapGainsTax) should be identical — policy moves
+    // money between balances post-convergence but never touches the tax pipeline.
+    const baseUd = makeUserData({
+      currentAge: 60, lifeExpectancy: 61,
+      accounts: [
+        { id: 'cash-1', name: 'Cash', type: 'cash', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [baseSpending(40_000 / 12)],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0,
+      },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const noPolicy = runSimulation(baseUd, createSeededRandom(42)).nominalBreakdowns[0];
+    const withPolicy = runSimulation(
+      { ...baseUd, cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 18, refillTrigger: 'gains_only' } },
+      createSeededRandom(42)
+    ).nominalBreakdowns[0];
+    expect(withPolicy.totalTax).toBe(noPolicy.totalTax);
+    expect(withPolicy.ordinaryTax).toBe(noPolicy.ordinaryTax);
+    expect(withPolicy.federalCapGainsTax).toBe(noPolicy.federalCapGainsTax);
+    expect(withPolicy.stateCapGainsTax).toBe(noPolicy.stateCapGainsTax);
+    expect(withPolicy.niitTax).toBe(noPolicy.niitTax);
+    expect(withPolicy.irmaaSurcharge).toBe(noPolicy.irmaaSurcharge);
+    expect(withPolicy.otherTaxableGross).toBe(noPolicy.otherTaxableGross);
+    expect(withPolicy.netCashFlow).toBe(noPolicy.netCashFlow);
+    // But cash routing differs — the policy moved $400k from Cash to Taxable.
+    expect(withPolicy.cashSweepToTaxable).toBeGreaterThan(0);
+    expect(noPolicy.cashSweepToTaxable).toBe(0);
+  });
+
+  it('bucket policy soft floor preserves cash; spending falls through to Taxable', () => {
+    // Cash floor at 6 months × $5k/month = $30k. Cash starting balance $30k.
+    // Spending $60k. Cash floor immediate; spending should fall through to Taxable.
+    const ud = makeUserData({
+      currentAge: 60, lifeExpectancy: 61,
+      accounts: [
+        { id: 'cash-1', name: 'Cash', type: 'cash', balance: 30_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 200_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [baseSpending(60_000 / 12)],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0,
+      },
+      simulationSettings: { numSimulations: 10 },
+      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 24, refillTrigger: 'gains_only' },
+    });
+    const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
+    // monthly = $60k/12 = $5k. minCash = 6 × $5k = $30k.
+    // Cash balance equals the floor exactly → cashAvailableForSpending = 0.
+    // All spending pulls from Taxable.
+    expect(bd.withdrawalFromCash).toBe(0);
+    expect(bd.withdrawalFromTaxable).toBeGreaterThanOrEqual(60_000);
+  });
+
+  it('cash sweeps and balances are reflected in cashEndingBalance', () => {
+    // Sanity check the surfaced cashEndingBalance field. 100k → 4k interest →
+    // -16k principal withdrawal (since 4k interest covered part of 20k spending)
+    // = 88k end balance.
+    const ud = makeUserData({
+      accounts: [{ id: 'cash-1', name: 'Cash', type: 'cash', balance: 100_000, stockAllocation: 0, portfolioBalance: '60_40' as const }],
+      spendingGoals: [baseSpending(20_000 / 12)],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0.04,
+      },
+      simulationSettings: { numSimulations: 10 },
+      lifeExpectancy: 61,
+    });
+    const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
+    expect(bd.cashInterest).toBeCloseTo(4_000, 1);
+    expect(bd.withdrawalFromCash).toBeCloseTo(16_000, 0);
+    expect(bd.cashEndingBalance).toBeCloseTo(88_000, 0);
+  });
+
+  it('all account balances are non-negative after the per-year loop (C1 clamp invariant)', () => {
+    // Regression guard for the clamp-ordering fix: balances must be >= 0 in
+    // every breakdown's downstream consumption. We can't directly inspect
+    // intermediate state, but we can verify the OUTPUT invariant — final
+    // path values and post-loop balances are all non-negative — across a
+    // scenario that exercises both proportional withdrawal (float-drift
+    // source) AND the post-convergence sweep.
+    const ud = makeUserData({
+      currentAge: 60, lifeExpectancy: 70,
+      accounts: [
+        { id: 'cash-1', name: 'Cash', type: 'cash', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'tax-1a', name: 'Taxable A', type: 'taxable', balance: 300_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1b', name: 'Taxable B', type: 'taxable', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [baseSpending(60_000 / 12)],
+      portfolioAssumptions: {
+        stockReturn: 0.05, stockStdDev: 0, bondReturn: 0.03, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0.04,
+      },
+      simulationSettings: { numSimulations: 10 },
+      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 18, refillTrigger: 'gains_only' },
+    });
+    const result = runSimulation(ud, createSeededRandom(42));
+    for (const v of result.nominal) expect(v).toBeGreaterThanOrEqual(0);
+    for (const bd of result.nominalBreakdowns) {
+      expect(bd.cashEndingBalance).toBeGreaterThanOrEqual(0);
+      expect(bd.withdrawalFromCash).toBeGreaterThanOrEqual(0);
+      expect(bd.cashRefillFromSurplus).toBeGreaterThanOrEqual(0);
+      expect(bd.cashSweepToTaxable).toBeGreaterThanOrEqual(0);
+    }
+  });
+});

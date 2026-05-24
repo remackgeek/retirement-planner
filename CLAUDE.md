@@ -35,11 +35,22 @@ projections, and good tax awareness without overwhelming the user.
   export, scenario JSON export logic, or tests. Authoritative probability always
   comes from the live `runSimulation()` result for the active scenario.
 - **Monte Carlo** — median + 10th percentile portfolio paths, success probability
-- **Accounts** — 3 tax-profile types: `traditional` (withdrawals taxed as ordinary income),
-  `roth` (withdrawals tax-free), `taxable` (withdrawals taxed at flat LTCG rate).
+- **Accounts** — 4 tax-profile types: `traditional` (withdrawals taxed as ordinary income),
+  `roth` (withdrawals tax-free), `taxable` (withdrawals taxed at flat LTCG rate),
+  `cash` (money-market / HYSA — principal pulls tax-free, deterministic yield via
+  `portfolioAssumptions.cashYieldRate` default 4%, credited annually on accrual
+  basis as `cashInterest`, folded into `otherTaxableGross` for tax purposes AND
+  added to the NIIT investment-income proxy per IRC §1411). Cash accounts
+  **bypass the stock/bond growth multiplier and the black-swan overlay** —
+  non-volatile by construction across all return models. The yield runs
+  deterministically even in historical / bootstrap modes. UI: AccountDialog
+  hides the 80/20-60/40-50/50 allocation selector for cash and shows the yield
+  read-only (editable in Modeling); ModelingDialog reveals a Cash Yield section
+  only when ≥1 cash account exists; AccountsManager row shows a "$X.XX% yield"
+  badge instead of the allocation badge.
   Replaces the old single `currentSavings` field. All accounts share the scenario's
   stock/bond allocation. Withdrawals follow a fixed waterfall: when no RMD applies,
-  Taxable → Traditional → Roth. When an RMD applies (age ≥ 73), the forced RMD is
+  **Cash** → Taxable → Traditional → Roth. When an RMD applies (age ≥ 73), the forced RMD is
   applied to spending+tax need first (RMD-first ordering); only the residual need
   above the RMD pulls from Taxable, then Traditional-above-RMD, then Roth. This
   prevents over-pulling from Taxable (and generating phantom federal/state LTCG and
@@ -58,6 +69,35 @@ projections, and good tax awareness without overwhelming the user.
   guarantees a taxable account exists whenever none is configured, so surplus is never
   silently discarded. `AnnualCashFlowBreakdown.surplusContribution` records the
   per-year deposit for detail rows / CSV.
+  **Cash bucket policy** (Phase 2): when `UserData.cashBucketPolicy` is configured,
+  a post-convergence step (`applyPostConvergenceBucketPolicy` in
+  [src/services/SimulationService.ts](src/services/SimulationService.ts)) runs after
+  `applyCashFlow` settles all flows for the year. The policy declares a band
+  `{ minMonths, targetMonths, maxMonths, refillTrigger }` where months are
+  multiples of `totalSpendingNet / 12`. Behavior: (a) the spending waterfall
+  pulls Cash only down to `minMonths × monthly`, then falls through to Taxable
+  (the conversion-tax sourcing chain respects the same floor); (b) when cash
+  exceeds `maxMonths × monthly`, the excess sweeps to Taxable as a tax-free
+  balance transfer; (c) when cash is below `minMonths × monthly` AND the
+  trigger fires, this year's surplus reroutes from Taxable to Cash up to
+  `targetMonths × monthly`, capped by the surplus available. Refill is
+  **surplus-only** (`netCashFlow > 0`) — the engine never sells Taxable
+  mid-loop to refill cash. That rule prevents phantom-tax archetype #3
+  (the refill-LTCG leak). Triggers: `'always'`, `'gains_only'` (stockFactor > 1),
+  `'above_baseline'` (portfolio post-growth / deterministic-baseline > 1),
+  `'none'` (manual mode — also disables the spending-waterfall floor). The
+  baseline for `'above_baseline'` is computed by a one-shot deterministic
+  projection in `buildPrecomputes` (with `skipBaselineForDeterministic: true`
+  to break recursion). **Structural invariant:**
+  `applyPostConvergenceBucketPolicy` receives only a minimal subset of the
+  settled breakdown and never imports tax modules, so it is type-prevented
+  from mutating any tax field — see the function-level doc comment for the
+  full enforcement note.
+  `AnnualCashFlowBreakdown.cashRefillFromSurplus` and `cashSweepToTaxable`
+  surface the per-year amounts moved. `ensureCashAccount` mirrors
+  `ensureReinvestmentAccount`: when the policy is configured but no cash
+  account exists, the engine injects a synthetic `"Cash Bucket"` cash account
+  at $0 to serve as a routing target.
   RMD amounts are taxed as ordinary income like all Traditional withdrawals.
   RMD is calculated on the beginning-of-year (pre-growth) Traditional balance,
   matching the IRS Dec 31 prior-year rule. The simulation captures this balance
@@ -94,17 +134,19 @@ projections, and good tax awareness without overwhelming the user.
   pro-rata into Roth accounts. RMD is enforced first (IRS rule: RMD is not eligible for
   conversion); conversion is capped at the Traditional balance remaining after the forced
   RMD/spending withdrawal. **Conversion ordinary tax sourcing is hybrid**, in priority
-  order (see "Intents and funding sources" below): (1) RMD-excess cash, (2) Taxable
-  balance not consumed by spending, (3) withheld from the conversion itself (IRS Form
+  order (see "Intents and funding sources" below): (1) Cash balance not consumed by
+  spending — preferred because principal is tax-free and avoids the LTCG/NIIT
+  amplification phantom on Taxable pulls; (2) RMD-excess cash, (3) Taxable balance
+  not consumed by spending, (4) withheld from the conversion itself (IRS Form
   1099-R Box 4 mechanic). It is **never** pulled from Traditional-above-RMD or Roth —
-  that would defeat the conversion's arbitrage. When Taxable + RMD-excess can't cover
-  the marginal ordinary tax, the conversion still executes at the user's requested gross,
-  but the Roth deposit shrinks by the withheld portion (mathematically suboptimal vs.
-  paying from Taxable, but matches real-world Vanguard/Fidelity withholding behavior
+  that would defeat the conversion's arbitrage. When Cash + Taxable + RMD-excess can't
+  cover the marginal ordinary tax, the conversion still executes at the user's requested
+  gross, but the Roth deposit shrinks by the withheld portion (mathematically suboptimal
+  vs. paying from Taxable, but matches real-world Vanguard/Fidelity withholding behavior
   and keeps the UX honest). `AnnualCashFlowBreakdown` surfaces this via
   `rothConversionGross` (Trad pull / IRS conversion amount),
-  `rothConversionTaxFromTaxable`, `rothConversionTaxFromRmdExcess`, and
-  `rothConversionTaxWithheld`. The Roth deposit (in `applyCashFlow`) is
+  `rothConversionTaxFromCash`, `rothConversionTaxFromTaxable`,
+  `rothConversionTaxFromRmdExcess`, and `rothConversionTaxWithheld`. The Roth deposit (in `applyCashFlow`) is
   `rothConversionGross − rothConversionTaxWithheld`. The dialog warns when withholding
   activates in any year of the deterministic projection (via
   `conversionWillBeWithheldYears`/`Dollars` from `estimateConversionImpact`).
@@ -211,25 +253,30 @@ spending + spending-related tax only.
 | Intent              | Gross driver                                | Funding source for its tax                          |
 |---------------------|---------------------------------------------|-----------------------------------------------------|
 | RMD                 | IRS Uniform Lifetime Table                  | Self-funding (RMD net is cash)                      |
-| Spending withdrawal | `totalSpendingNet`                          | RMD-first → **Cash** → Taxable → Trad → Roth        |
-| Roth conversion     | User-entered (or future: fill-to-bracket)   | RMD-excess → **Cash** → Taxable → withhold from conversion (IRS 1099-R Box 4) |
-| Surplus deposit     | `netCashFlow > 0`                           | n/a, deposit to first Taxable (or Cash if it exists) |
+| Spending withdrawal | `totalSpendingNet`                          | **Cash** → RMD-first → Taxable → Trad → Roth        |
+| Roth conversion     | User-entered (or future: fill-to-bracket)   | **Cash** → RMD-excess → Taxable → withhold from conversion (IRS 1099-R Box 4) |
+| Surplus deposit     | `netCashFlow > 0`                           | Deposit to first Taxable in `applyCashFlow`; under `cashBucketPolicy` a post-convergence step (Phase 2) reroutes from Taxable to Cash up to `targetMonths × monthly` when the policy's trigger fires. |
+| Cash bucket refill  | `netCashFlow > 0` (this year's surplus only)| Move from first Taxable → first Cash, capped by `target × monthly − cashBal` AND by available surplus. Tax-free balance transfer. **Never sells Taxable to refill** — surplus-only sourcing prevents phantom-tax archetype #3 (the refill-LTCG leak). |
+| Cash bucket sweep   | `cashBal > maxMonths × monthly`             | Move from first Cash → first Taxable. Tax-free balance transfer (no withdrawal path, no LTCG). |
 
-*Cash* is **not yet a modeled account type** — it's reserved in the table so the
-sourcing rule survives the future Cash addition with no rewording. Today, "Cash" steps
-in the precedence are no-ops; Taxable does the work.
+Cash is **a modeled account type** (Phase 1). The Cash steps in the precedence
+above are real — `computeSpendingWaterfall` and the conversion-tax-sourcing block
+both consult `cashBal` first. When no cash account exists, the Cash steps are
+no-ops by construction (`cashBal = 0`) and the chain falls through to the next
+priority.
 
 **Implementation:** see `calculateAnnualCashFlowCore` in
 [src/services/SimulationService.ts](src/services/SimulationService.ts):
 - `computeSpendingWaterfall(w)` is spending-only (no conversion). It returns
-  `spendingFromTaxable`, `forcedTrad`, `spendingFromRoth`, `rmdExc`.
+  `spendingFromCash`, `spendingFromTaxable`, `forcedTrad`, `spendingFromRoth`, `rmdExc`.
 - Inside the fixed-point loop, after the spending pull, conversion principal is sized
   by `tradAvailForConv = tradBal − forcedTrad` (RMD must be satisfied first — IRS
   rule).
 - The conversion's marginal ordinary tax `mt` is split across three sources in
-  priority order: `ctRmd = min(mt, rmdExc)`,
-  `ctTaxable = min(mt − ctRmd, taxableBal − spendingFromTaxable)`, then
-  `ctWithheld = mt − ctRmd − ctTaxable`. The first two are paid from external account
+  priority order: `ctCash = min(mt, cashBal − spendingFromCash)`,
+  `ctRmd = min(mt − ctCash, rmdExc)`,
+  `ctTaxable = min(mt − ctCash − ctRmd, taxableBal − spendingFromTaxable)`, then
+  `ctWithheld = mt − ctCash − ctRmd − ctTaxable`. The first three are paid from external account
   flows; the third is withheld from the conversion's own Trad pull.
 - `rothConversionGross` is the IRS-conventional conversion amount (Trad pull, added to
   `withdrawalFromTraditional`). `applyCashFlow` deposits
@@ -335,51 +382,54 @@ conservative through 2028 and bit-for-bit identical after the sunset.
   conservatively tight; bracket_aware under-pulls Trad slightly. Never unsafe.
 - Doesn't change the conversion size — that's a future layer-3 strategy.
 
-## Layer 3 (future): tax-strategy plug-in framework
+## Roth Conversion generator wizard
 
-The smart-default switch in layer 2 has a known property: when a user adds
-a Roth conversion event, two things change at once — the conversion itself
-*and* the spending waterfall (auto-switches to `'bracket_aware'`). Any
-"with vs without" comparison (`estimateConversionImpact.netPlanValueImpact`,
-the What If overlay in [src/components/Content/Content.tsx](src/components/Content/Content.tsx))
-captures both effects bundled. The dollar attribution to "the conversion"
-is therefore inflated by whatever value the waterfall switch contributed.
+Roth conversion *scheduling* (sizing one or more per-year amounts) lives in [src/dialogs/RothConversionDialog.tsx](src/dialogs/RothConversionDialog.tsx) as a two-mode dialog:
 
-Patching the comparison sites to hold the waterfall constant is a band-aid.
-The structural fix is **layer 3: tax-strategy plug-ins**. Each strategy
-is an explicit, named property of the scenario (not a content-driven
-auto-default), making side-by-side comparisons honest by construction.
+- **Single conversion** — user enters one event with start/end age, COLA, etc. Identical to manual conversions in any other planner.
+- **Plan a multi-year schedule** — the generator wizard. User picks a method:
+  - **Fill to bracket** — sizes each year's conversion to fill a target federal bracket (`'12_percent'` / `'22_percent'` / `'24_percent'` / `'none'`). One-shot compute.
+  - **Auto bracket** — grid-searches all four bracket targets against the deterministic projection, scores by the configured objective, returns the winner. ~4× cost of fill-to-bracket. The `'none'` candidate is special-cased to score the user's *true* baseline (no extra conversions, content-aware spending order) so the grid honestly compares "stay where you are" against bracket-fill options.
+  - **Optimize** — coordinate descent on the per-year vector, seeded from Auto-bracket's winner. ~600–1500 deterministic projections (3–7 seconds). Reports improvement vs the *true baseline*, not vs the Auto-bracket seed.
 
-**Shape (sketch):**
+The compute backends live in [src/services/strategies/](src/services/strategies/): `computeFillToBracketSchedule`, `computeAutoBracketSchedule`, `runOptimization`. They're pure compute — given `UserData` + a `TaxStrategy` config object, they return a `PerYearStrategyDecision[]`. The engine no longer consults `userData.taxStrategy` at sim time.
 
+**Objectives:**
+- `'max_median_terminal_wealth'` (default) — start-of-last-year portfolio balance from the deterministic projection.
+- `'min_lifetime_tax'` — negative sum of `totalTax` across all years.
+- `'max_floor'` / `'max_lifetime_consumption'` — reserved; currently fall back to `'max_median_terminal_wealth'` (full MC scoring / spending-tier feedback is future work).
+
+**Apply → first-class events.** When the user clicks Apply, the dialog converts each non-zero `PerYearStrategyDecision` into a real `roth_conversion` event on `scenario.incomeEvents`, tagged with `meta = { generatedBy, generatedAt, generatorRunId }`. From then on the conversions are visible everywhere (Income panel, chart badges, CSV export, scenario JSON export).
+
+**Provenance + re-run replace policy.** [src/types/IncomeEvent.ts](src/types/IncomeEvent.ts):
 ```ts
-type TaxStrategy = {
-  name: string;
-  // Per-year: given the running scenario state, return (a) spending source
-  // policy and (b) any conversion-size adjustment vs the user-entered amount.
-  decide(args: {
-    year: number;
-    runningState: SimulationState;
-    userData: UserData;
-  }): {
-    spendingOrder: ResolvedSpendingOrder;
-    conversionAdjustment?: { eventId: string; adjustedAmount: number };
-  };
-};
+export type IncomeEventGeneratedBy = 'user' | 'fill_to_bracket' | 'auto_bracket' | 'optimize';
+export interface IncomeEventMeta {
+  generatedBy?: IncomeEventGeneratedBy;
+  generatedAt?: string;       // ISO date
+  generatorRunId?: string;    // shared across one batch
+}
 ```
+- New manual events: `meta` is undefined (treated as `'user'`).
+- Generator-Apply: every event in the batch shares one `generatorRunId` + `generatedBy = <method>` + today's ISO date.
+- **Editing a generated event flips `meta.generatedBy` to `'user'`** (`handleSubmit` in [RothConversionDialog.tsx](src/dialogs/RothConversionDialog.tsx)). The row leaves the regenerable schedule; it survives re-runs.
+- **Re-run policy** (`handleApplyGeneratedConversions` in [Content.tsx](src/components/Content/Content.tsx)): remove every `roth_conversion` event where `meta.generatedBy ∈ {fill_to_bracket, auto_bracket, optimize}`; keep all `'user'`/untagged events; append the new batch. Replace-confirm fires only when generator-tagged events exist.
 
-**Strategies on the roadmap** (none implemented yet):
+**Income panel grouping.** [src/components/IncomeEventsManager.tsx](src/components/IncomeEventsManager.tsx) collapses every group of generator-tagged events sharing a `generatorRunId` into one expandable card (`Roth Conversions · [method chip] · N years · $total · YYYY-MM-DD`). Manual conversions render as individual cards. Editing one row inside the group (which flips `generatedBy → 'user'`) pulls it out of the group on the next render.
 
-- `'conservative'` — Taxable-first, conv as entered. (= today's default for
-  no-conv scenarios.)
-- `'bracket_aware_spending'` — what layer 2 ships. (= today's default for
-  conv scenarios.)
-- `'fill_to_bracket_conversion'` — auto-size conversions to top of a target
-  bracket (12%, 22%, 24%), respecting Taxable funding.
-- `'irmaa_cliff_avoider'` — caps conversions to stay one tier below the
-  next IRMAA threshold in the lookback year.
-- `'aca_premium_credit_preserver'` — pre-65 retirees on ACA subsidies;
-  caps conv + spending Trad pull to stay below the subsidy-phaseout cliff.
+**No runtime override.** The engine has no `resolveTaxStrategy` layer — `prepareUserData` flows raw `UserData` through the synthetic-account ensures and into the MC loop unchanged. The `spendingWithdrawalOrder` field on `UserData` is the only spending-side knob; `resolveSpendingWithdrawalOrder` in [SimulationService.ts](src/services/SimulationService.ts) inlines the content-aware default (bracket-aware when any conversion event exists, else taxable-first). Users can override explicitly via the **Withdrawal Source** radio in [ScenarioDialog.tsx](src/dialogs/ScenarioDialog.tsx).
+
+**Legacy `taxStrategy` migration.** Scenarios saved before this rework carried `taxStrategy.cachedVector.perYearDecisions`. On load, [RetirementContext.tsx](src/context/RetirementContext.tsx) materializes the non-zero entries as tagged `roth_conversion` events (`meta.generatedBy = <strategy name>`), strips the dead field, persists back to IndexedDB, and shows a one-time toast. The `UserData.taxStrategy` type field still exists for the legacy parse path but is otherwise unused.
+
+### IndexedDB schema migrations
+
+Two distinct migration patterns, do not confuse them:
+
+1. **Content-level (inside a stored Scenario): in-band on load.** When a field changes shape inside a `Scenario` object — added, renamed, removed, or restructured — write a `migrate<X>` helper that takes a `Scenario` and returns a `{ scenario, ... }` tuple, and call it from the `initDB` load loop in [RetirementContext.tsx](src/context/RetirementContext.tsx). Persist the migrated scenario back via `db.put` so subsequent loads skip the work. `migrateLegacyTaxStrategy` is the reference implementation. The `DB_VERSION` constant stays the same — only the scenario content evolves.
+
+2. **Structural (the IndexedDB schema itself): bump `DB_VERSION`.** When the change is at the database layer — a new object store, a new index, a renamed key scheme — increment the `DB_VERSION` constant in [RetirementContext.tsx](src/context/RetirementContext.tsx) and add a branch to the `upgrade(db, oldVersion, newVersion, tx)` callback. The `upgrade` handler must be idempotent: users whose DB is already at the new version skip it; users at older versions step through each branch in order. The current version is 1 with a single `scenarios` object store.
+
+For all content-level changes — adding `meta` to `IncomeEvent`, splitting a goal type, adding a portfolioAssumptions field — pattern 1 is correct. Don't bump `DB_VERSION` unnecessarily.
 
 **Deliberate non-goal: multi-year optimizer.** A full optimizer (DP / RL /
 Bellman over the lifetime tax-and-withdrawal joint decision) is a research
@@ -388,23 +438,20 @@ NewRetirement, RighteousDuck) all use *heuristics* — each addresses a
 specific real-world planning constraint, named clearly, and users pick the
 one that matches their situation. We follow that pattern.
 
-**Deferred items the framework subsumes when implemented:**
+**Deferred items the generator wizard / compute backends would subsume:**
 
 - `'pro_rata'` spending order — would split the spending gap across
   Trad-above-RMD and Taxable proportionally to their balances. Not in the
-  current enum; was speculatively included in an early draft and dropped
-  when it stayed unimplemented. Tracked here for the layer-3 strategy
-  catalog; re-adding to the enum is a one-line type change.
+  current enum; tracked here for future extension; re-adding to the enum
+  is a one-line type change.
 - State retirement-income exclusions in the bracket-headroom calc (VA
   65+ age deduction, NY $20k pension exclusion, etc.).
 - Full SS-torpedo modeling in headroom (currently uses a static
   approximation — see "Blind spots" above).
 - IRMAA + NIIT cliff awareness in conversion sizing.
-- Dialog UI for selecting a strategy (currently JSON-only).
 - Liquid-cash bucket internal refactor (cleaner accounting that subsumes
   the RMD-first branch and the bracket-aware branch into one principled
-  per-year cash-flow model). Not a behavior change; an internal cleanup
-  that makes layer 3 easier to implement.
+  per-year cash-flow model).
 
 ## In-App Documentation
 
@@ -509,6 +556,29 @@ Use `<PrimeTooltip>` with rich content for all tooltips — never bare `data-pr-
 - **Gaps:** `spacing.sm`–`spacing.lg` for flex/grid gaps.
 - **General rule:** if a new element adds visible dead space, tighten it. The app should
   feel information-dense and efficient, not padded out.
+
+### Dialog widths (mobile-safe)
+
+PrimeReact's `<Dialog>` honors a fixed `width` but doesn't shrink for narrow viewports. At 360 px a 34rem dialog overflows by ~50 %. Use the `dialogWidth(rem)` helper from `theme.ts` instead of a raw width prop:
+
+```tsx
+import { dialogWidth } from '../styles/theme';
+<Dialog style={dialogWidth('34rem')} ...>
+```
+
+The helper returns `{ width: 'min(34rem, 95vw)', maxWidth: '95vw' }` so the dialog gets its desktop width when there's room and shrinks to fit phones. **All `<Dialog>` widths must use this helper**; raw `style={{ width: '34rem' }}` is a code-review reject.
+
+### Currency formatting
+
+Three patterns coexist intentionally; use the right one for the surface:
+
+- **Compact / abbreviated** (`$1.2M`, `$850K`, `$500`) — `formatCurrencyShort(amount)` from [src/utils/formatCurrencyShort.ts](src/utils/formatCurrencyShort.ts). Default mode is `'compact'`; pass `'precise'` for chart popups during scenario-compare (where small inter-scenario deltas need to be visible). Use this for: **chart axes, sidebar totals, chart tooltips.** Negatives wrap as `-$1.2M`; non-finite returns `—`.
+
+- **Full precision, currency-formatted** — `n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })`. Renders as `$28,584`. Use for: **dialog inputs, dialog preview tables, Impact Preview rows, wizard preview** — places where users compare specific dollar amounts and abbreviation would hide signal.
+
+- **Signed / delta** (`+$28,584`, `-$1,200`) — hand-rolled with a sign prefix and one of the above formatters for the magnitude. Use for: **tax-audit detail rows, surplus/shortfall indicators, what-if delta callouts.**
+
+When in doubt: compact for at-a-glance numbers (charts, sidebars); full precision for cross-checkable values (tables, dialogs); signed when the absence of a sign would itself be misleading.
 
 ## Responsive Design
 

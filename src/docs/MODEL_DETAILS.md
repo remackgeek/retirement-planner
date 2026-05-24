@@ -151,6 +151,43 @@ balance ← balance · (s · stockFactor + (1 − s) · bondFactor)
 
 Synthetic accounts (auto-created Reinvestment, Roth Conversion accounts) default to **60/40** allocation.
 
+**Cash accounts bypass this formula entirely.** Cash is non-volatile by construction. The growth loop branches on `account.type === 'cash'` and applies a deterministic yield instead:
+
+```
+cashInterest = balance · cashYieldRate
+balance ← balance + cashInterest
+```
+
+`cashYieldRate` lives on `portfolioAssumptions` (default 4%). Cash is also skipped by the black-swan overlay — a "cash is trash" 2022-style episode shows up as opportunity cost vs. equities, not as a cash shock. This holds across all return models (parametric, historical, bootstrap); cash never participates in the stochastic stream.
+
+`cashInterest` is taxed as ordinary income in the year accrued (accrual basis, matching MMF/HYSA behavior — no basis tracking). It is folded into `otherTaxableGross` for the entire tax pipeline (federal/state ordinary, SS provisional income, IRMAA MAGI) and additionally added to the NIIT investment-income proxy per IRC §1411 (MMF interest is investment income for NIIT purposes — without this proxy extension, cash-heavy retirees above the NIIT threshold would be under-taxed).
+
+Cash principal is **tax-free on withdrawal** (no LTCG, no NIIT on principal). The waterfall pulls Cash at priority 0 (before RMD and Taxable) to avoid LTCG churn and the conversion-tax amplification phantom. See "Withdrawal Waterfall" below.
+
+### Cash bucket policy (optional)
+
+`UserData.cashBucketPolicy` enables automatic cash-bucket management. The policy declares a band in **months of total annual spending** (`monthly = totalSpendingNet / 12`):
+
+```
+cashBucketPolicy: {
+  minMonths,                // soft floor — spending pulls Cash only down to this
+  targetMonths,             // surplus deposits and refills aim for this
+  maxMonths,                // hard ceiling — excess sweeps to Taxable
+  refillTrigger: 'always' | 'gains_only' | 'above_baseline' | 'none',
+}
+```
+
+Behavior:
+
+- **Soft floor.** The spending waterfall pulls Cash only down to `minMonths × monthly`. Below that, spending falls through to Taxable. This reflects the reality that users have unmodeled liquid cash (checking, bill-pay buffer) — the floor represents how much they're willing to hold in this modeled bucket. Set `minMonths: 0` for full drain-to-zero behavior. The conversion-tax-sourcing chain respects the same floor.
+- **Hard ceiling.** When cash balance exceeds `maxMonths × monthly` at end of year, the excess sweeps to the first Taxable account in a **post-convergence** step. The sweep is a **tax-free balance transfer** — implementation does not route through the withdrawal waterfall, so no LTCG / NIIT is realized.
+- **Refill.** When cash is below `minMonths × monthly` AND the trigger fires AND surplus is available, the engine reroutes this year's surplus from Taxable to Cash up to `targetMonths × monthly`. Refill is **surplus-only** — the engine never sells Taxable mid-loop to top up cash. That rule prevents phantom-tax archetype #3 (the refill-LTCG leak).
+- **Triggers.** `'always'` (any year with surplus). `'gains_only'` (this year's stockFactor > 1 — recommended; bear-aware). `'above_baseline'` (portfolio post-growth / deterministic-baseline > 1; strictest bear-aware). `'none'` (manual mode — also disables the spending-waterfall floor; equivalent to leaving the policy undefined).
+
+**Structural enforcement of the no-tax-mutation invariant.** The post-convergence step lives in `applyPostConvergenceBucketPolicy` which receives only a minimal subset of the settled breakdown (`baseSpendingNet`, `otherSpendingGoalsNet`, `netCashFlow`, `spendingShortfall`) plus account balances and the policy. It does not import any tax module. Its return type contains only cash-routing fields. As a result, the function is type-prevented from mutating `totalTax`, `ordinaryTax`, `federalCapGainsTax`, `niitTax`, `irmaaSurcharge`, or any income field — making "post-convergence step never re-enters the tax calc" a type-level guarantee rather than a runtime discipline.
+
+The `cashRefillFromSurplus` and `cashSweepToTaxable` fields in `AnnualCashFlowBreakdown` expose the per-year amounts moved.
+
 ### Blended Return (displayed in Modeling dialog)
 
 The "Blended return" shown in the Modeling dialog is the **balance-weighted arithmetic average** of stock and bond expected returns across all your accounts:
@@ -171,22 +208,26 @@ Each year, withdrawals follow a fixed sequence. Two strategies are available, se
 
 ### `'taxable_first'` (default when no Roth conversions are scheduled)
 
-1. **Traditional, up to the RMD** — the year's RMD is forced from Traditional regardless of spending need, so its gross is applied to spending+tax first. (When age < 73, RMD is $0 and this step is skipped.)
-2. **Taxable** — fills any remaining spending+tax need above the RMD (lowest tax cost on the residual)
-3. **Traditional, above the RMD** — fills any need still unmet
-4. **Roth** — drawn last to preserve tax-advantaged growth
+1. **Cash** — drains first when a cash account exists (tax-free principal pulls; cash interest already credited as ordinary income separately during growth). When no cash account exists, this step is a no-op.
+2. **Traditional, up to the RMD** — the year's RMD is forced from Traditional regardless of spending need, so its gross is applied to spending+tax first. (When age < 73, RMD is $0 and this step is skipped.)
+3. **Taxable** — fills any remaining spending+tax need above the RMD (lowest tax cost on the residual)
+4. **Traditional, above the RMD** — fills any need still unmet
+5. **Roth** — drawn last to preserve tax-advantaged growth
 
 RMD-first ordering avoids over-pulling from Taxable in high-RMD years: when the RMD's net-of-tax proceeds already cover the year's spending, `withdrawalFromTaxable` stays at 0 and no federal/state LTCG or NIIT is generated. Excess RMD (the portion not consumed by spending+tax) reinvests into the first Taxable account.
+
+Cash priority 0 has the same intent generalized: when cash covers (some of) spending, downstream LTCG/NIIT on Taxable pulls is avoided.
 
 ### `'bracket_aware'` (default when any Roth conversion event is scheduled)
 
 Inserts a **Traditional-up-to-12%-bracket-headroom** step before Taxable, so spending pulls from Traditional cheaply in low-bracket years instead of burning Taxable at LTCG rates. Order becomes:
 
-1. **Traditional, up to the RMD** (as above)
-2. **Traditional, up to bracket headroom** — the additional Traditional spending pull is capped so that conversion + this Trad pull + SS-taxable portion together stay within the top of the 12% federal bracket. Headroom is precomputed per year as `max(0, top_of_12% − max(0, (otherTaxableGross + conversionGross + ssTaxable) − stdDed))`, and the full mandatory RMD is subtracted from it at the per-year level. Conv- and SS-inclusive means a Trad pull within headroom is guaranteed to keep the year inside the 12% bracket.
-3. **Taxable** — spending overflow
-4. **Traditional, above headroom**
-5. **Roth** — last resort
+1. **Cash** — same as above; cash drains before any taxable source.
+2. **Traditional, up to the RMD** (as above)
+3. **Traditional, up to bracket headroom** — the additional Traditional spending pull is capped so that conversion + this Trad pull + SS-taxable portion together stay within the top of the 12% federal bracket. Headroom is precomputed per year as `max(0, top_of_12% − max(0, (otherTaxableGross + conversionGross + ssTaxable) − stdDed))`, and the full mandatory RMD is subtracted from it at the per-year level. Conv- and SS-inclusive means a Trad pull within headroom is guaranteed to keep the year inside the 12% bracket.
+4. **Taxable** — spending overflow
+5. **Traditional, above headroom**
+6. **Roth** — last resort
 
 **This setting only changes the spending source — it does NOT change conversion size or conversion-tax sourcing.** Conversion tax still follows the hybrid sourcing rule (RMD-excess → Taxable → withhold). The point of `bracket_aware` is to **preserve Taxable for the high-`mt` conversion years** by paying for low-bracket-year spending from Traditional cheaply. See CLAUDE.md "Cross-year spending source policy" for the rationale, blind spots, and tradeoffs.
 
@@ -410,6 +451,62 @@ A `roth_conversion` income event moves money from Traditional to Roth accounts. 
 5. If no Roth accounts exist, a `"Roth Conversion"` Roth account is auto-created.
 
 The Roth Conversion dialog's **Net impact on plan value** row is computed by running the deterministic projection (same single-path engine as the Projected chart line) twice — once with the conversion event included, once without — and diffing the end-of-plan portfolio balance. The other preview rows (first-year tax, total tax, RMD reduction, projected Roth at life expectancy) are fast closed-form estimates against your baseline income and do not include IRMAA or NIIT.
+
+---
+
+## Roth Conversion scheduling
+
+Roth conversions are first-class `roth_conversion` events on `scenario.incomeEvents`. There is no separate "strategy" runtime layer — what you see in the Income panel is exactly what the engine simulates.
+
+Two paths to add conversions, both in the **Roth Conversion** dialog:
+
+1. **Single conversion** — one event with start/end age, COLA, etc.
+2. **Plan a multi-year schedule** (generator wizard) — pick a method, click Compute, review the per-year preview table, click Apply to materialize as `roth_conversion` events.
+
+### Generator methods
+
+- **Fill to bracket** — sizes each year's conversion to fill a target federal bracket (`'12_percent'` / `'22_percent'` / `'24_percent'` / `'none'`). Reads the year's baseline ordinary income (wages, pensions, Social Security taxable portion, RMD net of conversion — but **not** the conversion itself; SS taxable portion is computed against ordinary-without-conversion as a single-pass approximation), subtracts the standard deduction (federal-only, including age 65+ extra), and emits `conversionAmount = max(0, top_of_target_bracket − baseline_taxable)`. Compute: ~5 ms.
+
+- **Auto bracket** — grid-searches all four bracket targets, runs the Fill-to-bracket schedule against the deterministic projection for each, scores by the configured `objective`, and picks the winner. Cost: 4× a deterministic projection (~20 ms). The `'none'` candidate scores the user's *true baseline* (no extra conversions, content-aware spending order) so the grid honestly compares "stay where you are" vs "switch to a bracket-fill strategy."
+
+- **Optimize** — coordinate descent on the per-year conversion vector. Seeded from Auto-bracket's winner. For each year, holds the others fixed and runs a 1D line search over conversion-amount candidates (multipliers of the current amount: 0, 0.25×, 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2×, plus a logarithmic absolute-dollar probe set `[5, 10, 15, 20, 30, 40, 50, 75, 100]k` when current is 0). Iterates forward + backward sweeps until relative improvement drops below `OPTIMIZE_CONVERGENCE_EPSILON_FRACTION` (0.1%) or `OPTIMIZE_MAX_SWEEPS` (3). Cost: ~600–1500 deterministic projections (~3–7 s). Result exposes `baselineScore` so the dialog reports improvement as "vs your current setup, +$X (+Y%)". Catches cross-year interactions Fill/Auto can't see: converting more in early years shrinks Trad and the forced RMD at 73, expanding bracket headroom later.
+
+**Open-loop caveat.** All three methods optimize against the deterministic projection — the schedule is fixed at compute time and the MC runs follow it regardless of how the stochastic state evolves. On bad paths it will be suboptimal. This matches every production planner; the wizard footer surfaces this warning before Apply.
+
+### Apply, provenance, and re-run policy
+
+Every Apply tags each event with `meta = { generatedBy: <method>, generatedAt: <ISO date>, generatorRunId: <UUID> }`. Manual events have `meta` undefined (treated as `'user'`).
+
+**Editing a generated event detaches it.** Opening any generator-tagged event in the dialog and saving (even unchanged) flips `meta.generatedBy → 'user'`. The row leaves the regenerable schedule and survives future re-runs.
+
+**Re-run replace policy.** Apply replaces every `roth_conversion` event whose `meta.generatedBy ∈ {fill_to_bracket, auto_bracket, optimize}`. Manual events and edited-detached events are untouched. Replace-confirm fires only when there are generator-tagged events to overwrite.
+
+**Income panel grouping.** Generator-tagged events sharing a `generatorRunId` collapse into one expandable card on the Income panel; manual conversions render as individual cards.
+
+### Caveats of Fill-to-bracket
+
+- Does NOT consult Traditional balance when sizing. If you have $100k Trad and the schedule wants $150k conversions, the engine caps the conversion at the available Traditional balance per year — but the schedule itself stays "what you'd convert if you had it."
+- Does NOT model IRMAA cliffs. A 12% conversion can push your two-year-prior MAGI into a higher IRMAA tier. Auto bracket and Optimize avoid IRMAA cliffs *indirectly* via terminal-wealth scoring — the surcharge cost shows up in the projection.
+- Does NOT respect ACA premium-credit cliffs (pre-65 retirees). ACA is not modeled in the engine yet.
+- SS-taxable-portion feedback is approximate. Single-pass approximation; multi-pass refinement is future work.
+
+### Objectives
+
+- **`'max_median_terminal_wealth'`** (default) — score = start-of-last-year portfolio balance from the deterministic projection. Higher = better.
+- **`'min_lifetime_tax'`** — score = − sum(totalTax) across all years. Higher = better (negated so "argmax" picks the lowest-tax schedule).
+- **`'max_floor'`** — reserved (10th-percentile MC terminal wealth). Currently falls back to terminal-wealth scoring; full MC objective is future work.
+- **`'max_lifetime_consumption'`** — reserved (discounted sum of spending-actually-delivered). Currently falls back to terminal-wealth; awaits priority-tier spending feedback to become meaningful.
+
+### Spending source order
+
+Independent of conversion sizing. `UserData.spendingWithdrawalOrder` is the only knob:
+- `'taxable_first'` — pulls Taxable before Traditional.
+- `'bracket_aware'` — pulls Traditional up to top-of-12% federal-bracket headroom (conv- and SS-inclusive) before Taxable.
+- `undefined` (auto) — content-aware default: `'bracket_aware'` if any `roth_conversion` event exists, else `'taxable_first'`. Resolved at sim start by `resolveSpendingWithdrawalOrder` in `src/services/SimulationService.ts`. User overrides via the **Withdrawal Source** radio in the Scenario dialog.
+
+### Legacy `taxStrategy` migration
+
+Scenarios saved before this rework carried `UserData.taxStrategy.cachedVector.perYearDecisions`. On load, `migrateLegacyTaxStrategy` in `src/context/RetirementContext.tsx` materializes the non-zero decisions as tagged `roth_conversion` events (provenance: the strategy that produced them) and strips the `taxStrategy` field. A one-time toast notifies the user. The `UserData.taxStrategy` type field remains for the legacy parse path but is otherwise unused by the engine.
 
 ---
 

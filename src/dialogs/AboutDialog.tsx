@@ -2,7 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 
 const Content = styled.div`
   display: flex;
@@ -121,7 +121,7 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ visible, onHide }) => {
         </>
       }
       visible={visible}
-      style={{ width: '22rem' }}
+      style={dialogWidth('22rem')}
       onHide={onHide}
       footer={footer}
     >

@@ -16,10 +16,22 @@ export function lognormalParams(mean: number, stdDev: number): { mu: number; sig
 }
 
 export function standardNormalRandom(random: () => number = Math.random): number {
-  let u = 0,
-    v = 0;
-  while (u === 0) u = random();
-  while (v === 0) v = random();
+  // Box-Muller transform. The `while` loops resample until u, v are strictly
+  // positive — Math.log(0) = -Infinity which would cascade into NaN through
+  // the entire return draw. With a well-behaved RNG (Math.random or our
+  // seeded PRNG) we get past the guard in 1 iteration with probability 1;
+  // the cap defends against a buggy / pinned-to-0 test stub that would
+  // otherwise spin forever.
+  const MAX_RESAMPLES = 100;
+  let u = 0, v = 0;
+  let i = 0;
+  while (u === 0 && i++ < MAX_RESAMPLES) u = random();
+  let j = 0;
+  while (v === 0 && j++ < MAX_RESAMPLES) v = random();
+  // Fall back to a tiny epsilon if the RNG never produced a positive — keeps
+  // the result finite (large positive z) rather than throwing or returning NaN.
+  if (u === 0) u = Number.MIN_VALUE;
+  if (v === 0) v = Number.MIN_VALUE;
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 

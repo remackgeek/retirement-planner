@@ -59,7 +59,7 @@ interface AccountTypeSelectionDialogProps {
   onSelectType: (type: AccountType) => void;
 }
 
-const accountTypes: AccountType[] = ['traditional', 'roth', 'taxable'];
+const accountTypes: AccountType[] = ['traditional', 'roth', 'taxable', 'cash'];
 
 const AccountTypeSelectionDialog: React.FC<AccountTypeSelectionDialogProps> = ({
   visible,

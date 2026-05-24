@@ -1,0 +1,51 @@
+{
+  "_description": "Cash-only portfolio, zero yield, zero inflation — verifies tax-free principal pulls and linear drawdown.",
+  "_rationale": "100k cash, 50k/yr spending, 0% yield, 0% returns, 0% inflation, Florida (0% state). Cash withdrawals are tax-free principal, so totalTax should be 0 every year. Linear drawdown: 100k/50k = 2 years. Starts age 60, runs out age 62. Life expectancy 75. Fails every time → 0%. Demonstrates that cash works as a fourth account type with no tax pipeline regressions.",
+  "_seed": 12345,
+  "name": "Cash Account Basic",
+  "currentAge": 60,
+  "lifeExpectancy": 75,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 50000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "cashYieldRate": 0
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "cash-1",
+      "name": "Cash 1",
+      "type": "cash",
+      "balance": 100000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

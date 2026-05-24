@@ -351,7 +351,17 @@ class SimulationClient {
       catch (err) { return Promise.reject(err instanceof Error ? err : new Error(String(err))); }
     }
 
-    const prepared = prepareUserData(userData);
+    const preparedRaw = prepareUserData(userData);
+    // Strip the `meta` provenance field from incomeEvents before sending to
+    // workers — the engine never reads it, and structured-cloning ~30 small
+    // objects per shard per run is wasteful (R7). The original userData in
+    // React state retains meta; only this transient copy is leaner.
+    const prepared: UserData = {
+      ...preparedRaw,
+      incomeEvents: preparedRaw.incomeEvents.map((e) =>
+        e.meta === undefined ? e : { ...e, meta: undefined }
+      ),
+    };
     const effectiveRuns = getEffectiveNumRuns(prepared);
     const poolSize = this.resolvedPoolSize(options?.poolSize);
 

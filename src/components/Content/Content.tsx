@@ -4,6 +4,7 @@ import { ProgressSpinner } from 'primereact/progressspinner';
 import { RetirementContext } from '../../context/RetirementContext';
 import { runFastPreview } from '../../services/SimulationService';
 import { simulationClient, SupersededError } from '../../services/SimulationClient';
+import { strategyComputeClient } from '../../services/StrategyComputeClient';
 import Projections from '../Chart/Chart';
 import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
@@ -107,7 +108,12 @@ const Content: React.FC<{
   const activeScenarioRef = useRef(activeScenario);
   useEffect(() => { activeScenarioRef.current = activeScenario; });
   // Warm up the worker pool on first mount so the first MC pays no cold-start cost.
-  useEffect(() => { simulationClient.warmUp(); }, []);
+  // Also pre-spawn the strategy compute worker so the wizard's first Compute click
+  // doesn't pay a ~50ms worker-boot delay.
+  useEffect(() => {
+    simulationClient.warmUp();
+    strategyComputeClient.warmUp();
+  }, []);
   // When we write the freshly-computed probability back to the active scenario
   // (sidebar display cache), the resulting activeScenario reference change would
   // re-fire this effect and run MC again. Skip exactly one run after a write-back.
@@ -299,6 +305,39 @@ const Content: React.FC<{
     updateScenario(updatedScenario);
   };
 
+  // Generator wizard "Apply": replace all generator-tagged roth_conversion
+  // events with the new batch, preserve manual conversions (meta.generatedBy
+  // === 'user' or meta absent) and all non-conversion events. Generator
+  // events are identified by `meta.generatedBy` being one of the generator
+  // names — matches the same predicate used in the wizard's replace-confirm.
+  const handleApplyGeneratedConversions = (newEvents: Omit<IncomeEvent, 'id'>[]) => {
+    if (!activeScenario) return;
+    const survivors = activeScenario.incomeEvents.filter((e) => {
+      if (e.type !== 'roth_conversion') return true;
+      const gb = e.meta?.generatedBy;
+      return gb === undefined || gb === 'user';
+    });
+    const tagged: IncomeEvent[] = newEvents.map((e) => ({ ...e, id: crypto.randomUUID() }));
+    const updatedScenario = {
+      ...activeScenario,
+      incomeEvents: [...survivors, ...tagged],
+    };
+    updateScenario(updatedScenario);
+  };
+
+  // Bulk-delete every event in a generator-tagged batch (one updateScenario,
+  // no per-event re-render thrash). Called from the IncomeEventsManager group
+  // card's "Delete all generated conversions" action.
+  const handleDeleteIncomeEventGroup = (ids: string[]) => {
+    if (!activeScenario || ids.length === 0) return;
+    const idSet = new Set(ids);
+    const updatedScenario = {
+      ...activeScenario,
+      incomeEvents: activeScenario.incomeEvents.filter((e) => !idSet.has(e.id)),
+    };
+    updateScenario(updatedScenario);
+  };
+
   const handleDeleteIncomeEvent = (id: string) => {
     if (!activeScenario) return;
     const updatedEvents = activeScenario.incomeEvents.filter(
@@ -382,6 +421,7 @@ const Content: React.FC<{
                 onUpdate={handleUpdateAccount}
                 onDelete={handleDeleteAccount}
                 spouseAge={activeScenario.spouseAge}
+                cashYieldRate={activeScenario.portfolioAssumptions.cashYieldRate ?? 0.04}
               />
             </AccountsManagerSection>
             <ManagerSection>
@@ -392,6 +432,8 @@ const Content: React.FC<{
                 onAdd={handleAddIncomeEvent}
                 onUpdate={handleUpdateIncomeEvent}
                 onDelete={handleDeleteIncomeEvent}
+                onDeleteGroup={handleDeleteIncomeEventGroup}
+                onApplyGeneratedConversions={handleApplyGeneratedConversions}
               />
             </ManagerSection>
             <ManagerSection>

@@ -61,7 +61,11 @@ const AppContent: React.FC = () => {
 
   const enterWhatIf = () => {
     if (!ctx?.activeScenario || whatIfSnapshot || compareScenarioId) return;
-    setWhatIfSnapshot(JSON.parse(JSON.stringify(ctx.activeScenario)) as Scenario);
+    // structuredClone preserves `undefined` fields and is the right primitive
+    // for plain-data scenario cloning. JSON.parse(JSON.stringify(...)) silently
+    // drops undefined and corrupts non-JSON-safe values — same family of footgun
+    // as the cache-fingerprint bug fixed elsewhere in this codebase.
+    setWhatIfSnapshot(structuredClone(ctx.activeScenario));
   };
 
   const discardWhatIf = () => {

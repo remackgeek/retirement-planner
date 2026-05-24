@@ -79,19 +79,43 @@ Don't chase 100%. A 95% success rate with comfortable spending usually beats a 1
 
 ## Accounts
 
-YARP recognizes three kinds of accounts based on how they're taxed:
+YARP recognizes four kinds of accounts based on how they're taxed:
 
 | Type | Examples | When you withdraw |
 |---|---|---|
 | **Traditional** | 401(k), Traditional IRA, 403(b) | Taxed as ordinary income |
 | **Roth** | Roth IRA, Roth 401(k) | Tax-free |
-| **Taxable** | Brokerage, savings, money market | Taxed as long-term capital gains |
+| **Taxable** | Brokerage account (with cost basis, stock/bond holdings) | Taxed as long-term capital gains |
+| **Cash** | Money-market fund, HYSA, short-term Treasury | Principal is tax-free; yield is taxed as ordinary income |
 
-For each account, enter the current balance and pick a stock/bond mix (80/20, 60/40, or 50/50). You can mix and match — for example, a more aggressive 80/20 in your Roth and a conservative 50/50 in your Traditional.
+For each non-cash account, enter the current balance and pick a stock/bond mix (80/20, 60/40, or 50/50). You can mix and match — for example, a more aggressive 80/20 in your Roth and a conservative 50/50 in your Traditional. Cash accounts don't have a stock/bond mix; they use a deterministic yield rate set in **Modeling** (default 4%, matching typical MMF / HYSA rates).
+
+### When to use Cash vs Taxable
+
+Pick **Cash** when modeling money you'd normally consider "the bucket I draw from when markets are down" — your emergency fund, a high-yield savings account, a money-market sweep. Cash in YARP is non-volatile: it doesn't move with stocks or bonds, doesn't get touched by black-swan events, and its yield is taxed as ordinary income the year it accrues (matching real-world MMF / HYSA reporting). Withdrawing principal is tax-free.
+
+Pick **Taxable** when modeling a brokerage account with stock/bond holdings where withdrawals realize long-term capital gains. Volatile, subject to market shocks, taxed at LTCG rates on withdrawal.
 
 ### How withdrawals work
 
-YARP draws from your accounts in this order each year: **Taxable first, then Traditional, then Roth**. This is the standard tax-efficient ordering — you pay the lowest tax cost on taxable accounts, save Roth for last because it grows tax-free.
+YARP draws from your accounts in this order each year: **Cash first** (tax-free principal), **then Taxable, then Traditional, then Roth**. Pulling cash first avoids realizing capital gains and the cascading NIIT (Net Investment Income Tax) those gains can trigger. When you have no cash account, the Cash step is just skipped.
+
+### Cash Bucket policy (optional)
+
+If you have a cash account and want YARP to actively manage it — refilling from market gains and sweeping when it gets too large — open **Settings → Cash Bucket** (this menu item only appears when at least one cash account exists). The dialog has four controls:
+
+- **Min months** — the floor. Spending pulls Cash only down to this many months of total annual spending; below that, spending falls through to Taxable. This reflects how much liquid cash you actually want to keep on hand. A typical value is 6.
+- **Target months** — the refill goal. When the engine refills the cash bucket from a year's surplus income, it tops up to this band. A typical value is 12–18 months.
+- **Max months** — the ceiling. If cash drifts above this, the excess is swept back into Taxable as a tax-free balance transfer. Typical: 24–36 months.
+- **Refill trigger** — when does the engine actually refill?
+  - *Gains only (recommended)* — refills only in years with positive stock returns. Bear-market aware: won't try to top up the bucket while equities are down.
+  - *Above baseline* — strictest. Refills only when the portfolio is ahead of the deterministic baseline.
+  - *Always* — refills any year with surplus. Conservative but can lock in down-market dollars as cash.
+  - *None (manual)* — no automatic refill or sweep. You manage the cash balance yourself by editing it directly.
+
+**Refill is surplus-only.** The engine will never sell securities in your Taxable account to top up cash — it only redirects this year's positive net cash flow. If a year has no surplus, the bucket simply doesn't refill that year (which is exactly what should happen in a bad year).
+
+**Sweep is tax-free.** When cash overflows the maximum, moving it back into Taxable does not realize capital gains — it's a balance transfer between two already-taxed buckets.
 
 ### Required Minimum Distributions (RMDs)
 
@@ -155,6 +179,24 @@ A Roth conversion moves money from your Traditional accounts into your Roth acco
 The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation. **When your scenario includes a Roth conversion, YARP automatically switches the spending waterfall to "bracket-aware" mode**: in low-bracket years it pulls living-expenses cash from Traditional first (up to the 12% federal bracket) and saves your Taxable account for the years when the conversion tax bill is largest. This setting only reorders where spending comes from — it does not change the conversion amount or how the conversion tax is paid. Power users who want the old behavior can set `spendingWithdrawalOrder` to `"taxable_first"` in the scenario JSON.
 
 The Roth Conversion dialog shows an **Impact Preview** with a deterministic estimate of first-year tax, total tax over the conversion window, RMD reduction at 73, and projected tax-free Roth at life expectancy. The **Net impact on plan value** row signs the trade-off in dollar terms (green when the conversion pays off, red when it costs more than it saves). That row runs the full deterministic simulation twice — once with the conversion, once without — and diffs the end-of-plan balance, so it reflects everything the Projected chart line does: the RMD withdrawal waterfall, IRMAA surcharges, NIIT, state tax on LTCG, and how conversion tax is sourced from your accounts. Multi-year conversions default to **inflation-adjusted**, so the amount you enter is a real-dollar target — turn that off if you mean a fixed nominal schedule. If you configure a conversion that is unusually large relative to your spending, crosses two or more federal brackets in a single year, or would convert most of your Traditional balance, the dialog shows an inline hint — these are advisory only and never block saving.
+
+### Let YARP plan a multi-year schedule for you
+
+Hand-tuning a conversion schedule year by year is fiddly. Open the **Roth Conversion** dialog (Income → + → Roth Conversion) and switch to the **Plan a multi-year schedule** tab. Pick a method:
+
+- **Fill to bracket** — pick a target federal bracket (12%, 22%, 24%, or "None" for an explicit zero-conversion schedule). YARP figures out, year by year, how much to convert to fill that bracket — taking into account your wages, pension, Social Security, and RMDs already in the year. Fast (~5 ms).
+- **Auto bracket** — YARP tries all four brackets ("None", 12%, 22%, 24%) and picks the one that wins by your **objective** (default: maximize terminal wealth). The "None" candidate is your **status quo** — no extra conversions — so if no bracket-fill beats doing nothing, Auto bracket says so. ~20 ms.
+- **Optimize** — coordinate descent on the per-year conversion vector. Seeds from Auto-bracket's winner and then refines each year individually, looking for cross-year savings (early-year conversions reduce later-year RMDs and bracket headroom; this strategy can find that). Takes 3–5 seconds. The dialog reports the improvement **vs your current setup** — not vs the optimizer's internal seed — so the number you see is the honest answer to "is this worth doing?" If the optimizer can't beat your status quo, it says so.
+
+Click **Compute** to generate a preview table (Year / Age / Conversion). When you're happy, click **Apply** — every non-zero year becomes a real Roth Conversion event on your scenario, tagged with the generator that produced it and today's date. They appear in the Income panel grouped under one collapsible card ("Roth Conversions — Optimize · N years · $total · YYYY-MM-DD") and as badges on the chart.
+
+**Open-loop caveat.** All three methods optimize against the *expected* deterministic projection. The schedule is baked in at compute time — actual results will differ as markets play out. The Monte Carlo runs reflect the range.
+
+**Editing a generated event detaches it.** Open one row in the group, change anything, save — that row is now treated as a manual event. It survives the next "Apply" (re-run), so you can keep an edited tweak even when you re-generate the rest of the schedule. The dialog notes this trade-off in the wizard footer.
+
+**Re-run policy.** Clicking Apply again replaces every still-generated event (rows you haven't touched) with the new batch. Your manual conversions and any rows you've previously edited are untouched. A confirmation dialog fires only when there's a generated batch to overwrite.
+
+**Picking an objective** (Auto-bracket / Optimize only): "Max terminal wealth" optimizes the start-of-last-year portfolio balance — the right default for most planning. "Min lifetime tax" picks the schedule that minimizes the sum of taxes paid across the plan — useful if you care about tax efficiency over wealth accumulation (e.g., heirs in a higher bracket than you).
 
 ---
 

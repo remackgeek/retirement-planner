@@ -8,7 +8,7 @@ import { Checkbox } from 'primereact/checkbox';
 import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, spendingGoalAgeRanges } from '../utils/ageOptions';
 
 const Form = styled.form`
@@ -219,7 +219,7 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
     <Dialog
       header={headerLabel}
       visible={visible}
-      style={{ width: '32rem' }}
+      style={dialogWidth('32rem')}
       onHide={onHide}
       closable={false}
       closeOnEscape={true}

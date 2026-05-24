@@ -1,0 +1,9 @@
+{
+  "_rationale": "stockReturn=10% deterministic → stockFactor ≈ 1.10 > 1 → gains_only trigger fires. Year 0: cash $5k < min $20k. Pension surplus easily covers refill to target $40k. cashRefillFromSurplus ≈ $35k. Year 1: cash starts at $40k (already above min), no refill.",
+  "probability": 100,
+  "breakdownChecks": [
+    { "index": 0, "field": "cashRefillFromSurplus", "min": 30000, "max": 40000, "_note": "Refill fires under bull-market gains_only" },
+    { "index": 0, "field": "cashEndingBalance", "min": 38000, "max": 42000 },
+    { "index": 1, "field": "cashRefillFromSurplus", "value": 0, "tolerance": 0.01, "_note": "Year 1 already at target; no refill needed" }
+  ]
+}

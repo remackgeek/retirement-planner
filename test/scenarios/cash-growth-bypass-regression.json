@@ -1,0 +1,51 @@
+{
+  "_description": "Cash growth bypass holds even when stockAllocation is mis-set on the cash account — regression guard for the `account.type === 'cash'` branch taking priority over allocation lookup.",
+  "_rationale": "$100k cash with stockAllocation 0.6 (wrong — cash accounts should always grow yield-only). Big stock return (50%) and bond return (10%). If the growth loop incorrectly multiplied cash by 0.6×1.5 + 0.4×1.1 = 1.34, year 1 cash would balloon to $134k pre-spending → $114k after $20k spending. The bypass requires cash to grow ONLY by cashYieldRate (4%) → 100k × 1.04 = $104k → $84k after spending. Test asserts $84k.",
+  "_seed": 12345,
+  "name": "Cash Growth Bypass Regression",
+  "currentAge": 60,
+  "lifeExpectancy": 65,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 20000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0.5,
+    "stockStdDev": 0,
+    "bondReturn": 0.1,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "cashYieldRate": 0.04
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "cash-1",
+      "name": "Cash 1",
+      "type": "cash",
+      "balance": 100000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

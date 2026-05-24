@@ -1,7 +1,71 @@
 import { createContext, useState, useEffect, type ReactNode } from 'react';
 import type { Scenario } from '../types/Scenario';
+import type { IncomeEvent, IncomeEventGeneratedBy } from '../types/IncomeEvent';
 import { openDB } from 'idb';
 import { confirmDialog } from 'primereact/confirmdialog';
+
+// One-shot migration: scenarios saved before the Roth Conversion generator
+// rework carried an opaque `taxStrategy.cachedVector` that the engine consulted
+// at sim time. The engine no longer reads it; this materializes the cached
+// per-year decisions as visible `roth_conversion` events (tagged with the
+// generator that produced them) and strips the dead field. Scenarios without a
+// cached vector lose `taxStrategy` silently — the engine ignored everything
+// but the cache anyway.
+type LegacyTaxStrategy = {
+  name?: string;
+  cachedVector?: { perYearDecisions?: Array<{ year: number; conversionAmount: number }> };
+};
+
+export function migrateLegacyTaxStrategy(scenario: Scenario): { scenario: Scenario; addedConversions: number } {
+  // The taxStrategy field is no longer part of the Scenario type, but legacy
+  // scenarios in IndexedDB / imported JSON still carry it. Read via an
+  // unknown-cast so the rest of the code stays type-clean.
+  const ts = (scenario as unknown as { taxStrategy?: LegacyTaxStrategy }).taxStrategy;
+  if (!ts) return { scenario, addedConversions: 0 };
+  const decisions = ts.cachedVector?.perYearDecisions ?? [];
+  // Drop decisions for years before referenceYear: they'd map to startAge <
+  // currentAge, and eventActiveInYear() in SimulationService checks `year ===
+  // startYear` for one-time events — so a past-year migrated event would never
+  // fire. Past-year cache entries are conversions that already happened (the
+  // user has presumably moved on); silently dropping them is correct.
+  const nonZero = decisions.filter(
+    (d) => d.conversionAmount > 0 && d.year >= scenario.referenceYear
+  );
+  const generatedBy: IncomeEventGeneratedBy =
+    ts.name === 'optimize' ? 'optimize'
+    : ts.name === 'auto_bracket' ? 'auto_bracket'
+    : ts.name === 'fill_to_bracket' ? 'fill_to_bracket'
+    : 'user';
+  const generatedAt = new Date().toISOString().slice(0, 10);
+  const generatorRunId = crypto.randomUUID();
+  const migrated: IncomeEvent[] = nonZero.map((d) => {
+    const startAge = scenario.currentAge + (d.year - scenario.referenceYear);
+    return {
+      id: `migrated-conv-${d.year}-${generatorRunId.slice(0, 8)}`,
+      type: 'roth_conversion',
+      name: `Roth conversion ${d.year}`,
+      amount: d.conversionAmount,
+      startAge,
+      endAge: startAge,
+      isOneTime: true,
+      taxStatus: 'before_tax',
+      colaType: 'fixed',
+      meta: { generatedBy, generatedAt, generatorRunId },
+    };
+  });
+  // Strip taxStrategy; the engine no longer reads it.
+  const { taxStrategy: _drop, ...rest } = scenario as unknown as Scenario & { taxStrategy?: unknown };
+  void _drop;
+  // Idempotency: if the user re-imports the original legacy JSON, drop any
+  // prior batch of migrated- events to avoid stacking duplicates per year.
+  // The id prefix is the safest signal — provenance metadata alone could
+  // be matched by future generator runs that share the same name.
+  const survivors = scenario.incomeEvents.filter((e) => !e.id.startsWith('migrated-conv-'));
+  return {
+    scenario: { ...(rest as Scenario), incomeEvents: [...survivors, ...migrated] },
+    addedConversions: migrated.length,
+  };
+}
 
 declare global {
   interface FileSystemFileHandle {
@@ -30,6 +94,13 @@ declare global {
 
 const dbName = 'RetirementPlanner';
 const storeName = 'scenarios';
+// IndexedDB schema version. Bump this AND add a branch to the `upgrade`
+// callback when making a *structural* change (new object store, new index,
+// renamed key). Content-level changes inside a stored Scenario (new field,
+// renamed field) do NOT require a version bump — handle those in-band on
+// load, e.g. `migrateLegacyTaxStrategy` below. See CLAUDE.md
+// "IndexedDB schema migrations" for the full pattern.
+const DB_VERSION = 1;
 
 export const RetirementContext = createContext<{
   scenarios: Scenario[];
@@ -54,31 +125,65 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const initDB = async () => {
-      const db = await openDB(dbName, 1, {
+      const db = await openDB(dbName, DB_VERSION, {
         upgrade(db) {
           db.createObjectStore(storeName);
         },
       });
       const savedScenarios = (await db.getAll(storeName)) as Scenario[];
-      if (savedScenarios.length > 0) {
-        setScenarios(savedScenarios);
-        setActiveScenarioState(savedScenarios[0]); // Set first scenario as active
+      let migratedCount = 0;
+      let totalConversionsAdded = 0;
+      const finalScenarios: Scenario[] = [];
+      for (const s of savedScenarios) {
+        // Legacy taxStrategy field probe — type cast to handle scenarios saved
+        // before the field was removed from the Scenario type.
+        if ((s as unknown as { taxStrategy?: unknown }).taxStrategy) {
+          const { scenario: migrated, addedConversions } = migrateLegacyTaxStrategy(s);
+          await db.put(storeName, migrated, migrated.id);
+          finalScenarios.push(migrated);
+          migratedCount += 1;
+          totalConversionsAdded += addedConversions;
+        } else {
+          finalScenarios.push(s);
+        }
+      }
+      if (finalScenarios.length > 0) {
+        setScenarios(finalScenarios);
+        setActiveScenarioState(finalScenarios[0]); // Set first scenario as active
       }
       // If no scenarios exist, leave scenarios empty and activeScenario null
       setLoading(false);
+
+      if (migratedCount > 0) {
+        const noun = migratedCount === 1 ? 'scenario' : 'scenarios';
+        const message = totalConversionsAdded > 0
+          ? `Migrated ${migratedCount} ${noun} from the old tax-strategy feature to first-class Roth Conversion events. ` +
+            `${totalConversionsAdded} Roth conversion event${totalConversionsAdded === 1 ? '' : 's'} added — ` +
+            `find them in the Income panel; chart badges will appear at conversion years.`
+          : `Cleared the legacy tax-strategy field from ${migratedCount} ${noun}. ` +
+            `No cached schedule was stored, so no Roth conversion events were created. ` +
+            `Use the Roth Conversion dialog to plan a multi-year schedule.`;
+        confirmDialog({
+          message,
+          header: 'Scenarios updated',
+          icon: 'pi pi-info-circle',
+          acceptLabel: 'OK',
+          reject: undefined,
+        });
+      }
     };
     initDB();
   }, []);
 
   const addScenario = async (data: Scenario) => {
-    const db = await openDB(dbName, 1);
+    const db = await openDB(dbName, DB_VERSION);
     await db.put(storeName, data, data.id);
     setScenarios([...scenarios, data]);
     setActiveScenarioState(data);
   };
 
   const updateScenario = async (data: Scenario) => {
-    const db = await openDB(dbName, 1);
+    const db = await openDB(dbName, DB_VERSION);
     await db.put(storeName, data, data.id);
     setScenarios(
       scenarios.map((scenario) => (scenario.id === data.id ? data : scenario))
@@ -89,7 +194,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteScenario = async (id: string) => {
-    const db = await openDB(dbName, 1);
+    const db = await openDB(dbName, DB_VERSION);
     await db.delete(storeName, id);
     const updatedScenarios = scenarios.filter((scenario) => scenario.id !== id);
     setScenarios(updatedScenarios);
@@ -140,10 +245,51 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       if (!file) return;
       try {
         const text = await file.text();
-        const importedData = JSON.parse(text) as Scenario;
+        let importedData = JSON.parse(text) as Scenario;
 
         if (!importedData.name || typeof importedData.currentAge !== 'number') {
           throw new Error('Invalid scenario: Missing name or currentAge.');
+        }
+        if (typeof importedData.lifeExpectancy !== 'number' || importedData.lifeExpectancy < importedData.currentAge) {
+          throw new Error('Invalid scenario: lifeExpectancy must be a number ≥ currentAge.');
+        }
+        if (typeof importedData.referenceYear !== 'number') {
+          throw new Error('Invalid scenario: referenceYear must be a number.');
+        }
+        if (typeof importedData.inflationRate !== 'number') {
+          throw new Error('Invalid scenario: inflationRate must be a number.');
+        }
+        // Clamp inflation to a sane range to defend Math.pow(1 + r, n) from
+        // producing NaN with negative bases (caught by H3 review item).
+        if (importedData.inflationRate <= -0.99) {
+          importedData.inflationRate = -0.99;
+        }
+        const validFilings = new Set(['single', 'mfs', 'mfj', 'hoh']);
+        if (!validFilings.has(importedData.filingStatus)) {
+          throw new Error(`Invalid scenario: filingStatus must be one of single/mfs/mfj/hoh (got "${importedData.filingStatus}").`);
+        }
+        if (!Array.isArray(importedData.incomeEvents)) {
+          throw new Error('Invalid scenario: incomeEvents must be an array.');
+        }
+        if (!Array.isArray(importedData.spendingGoals)) {
+          throw new Error('Invalid scenario: spendingGoals must be an array.');
+        }
+        if (!Array.isArray(importedData.stateTimeline) || importedData.stateTimeline.length === 0) {
+          throw new Error('Invalid scenario: stateTimeline must be a non-empty array.');
+        }
+        for (const entry of importedData.stateTimeline) {
+          if (!entry || typeof entry.state !== 'string' || entry.state.length === 0) {
+            throw new Error('Invalid scenario: every stateTimeline entry must have a non-empty state name.');
+          }
+        }
+        if (!importedData.simulationSettings || typeof importedData.simulationSettings.numSimulations !== 'number') {
+          throw new Error('Invalid scenario: simulationSettings.numSimulations must be a number.');
+        }
+        // E1: a zero or negative numSimulations would crash runSimulation
+        // (division by zero in probability, undefined deref in pickRepresentatives).
+        // Reject loudly at import rather than blowing up on the first MC tick.
+        if (!Number.isFinite(importedData.simulationSettings.numSimulations) || importedData.simulationSettings.numSimulations < 1) {
+          throw new Error('Invalid scenario: simulationSettings.numSimulations must be at least 1.');
         }
         if (!Array.isArray(importedData.accounts)) {
           throw new Error('Invalid scenario: Missing accounts array.');
@@ -191,6 +337,14 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           importedData.id = crypto.randomUUID();
         }
 
+        // Same one-shot migration as initDB: convert legacy taxStrategy.cachedVector
+        // into visible roth_conversion events before persisting.
+        const { scenario: migratedImport, addedConversions } = migrateLegacyTaxStrategy(importedData);
+        importedData = migratedImport;
+        const migrationNote = addedConversions > 0
+          ? ` This scenario used the old tax-strategy feature; ${addedConversions} Roth conversion event${addedConversions === 1 ? '' : 's'} ${addedConversions === 1 ? 'was' : 'were'} migrated into the Income panel.`
+          : '';
+
         const existingIndex = scenarios.findIndex((s) => s.id === importedData.id);
 
         if (existingIndex !== -1) {
@@ -204,7 +358,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
               await updateScenario(importedData);
               setActiveScenarioState(importedData);
               confirmDialog({
-                message: 'Scenario imported successfully!',
+                message: `Scenario imported successfully!${migrationNote}`,
                 header: 'Success',
                 icon: 'pi pi-check',
                 acceptLabel: 'OK',
@@ -216,7 +370,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
               await addScenario(copy);
               setActiveScenarioState(copy);
               confirmDialog({
-                message: 'Scenario imported as a new copy.',
+                message: `Scenario imported as a new copy.${migrationNote}`,
                 header: 'Success',
                 icon: 'pi pi-check',
                 acceptLabel: 'OK',
@@ -228,7 +382,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           await addScenario(importedData);
           setActiveScenarioState(importedData);
           confirmDialog({
-            message: 'Scenario imported successfully!',
+            message: `Scenario imported successfully!${migrationNote}`,
             header: 'Success',
             icon: 'pi pi-check',
             acceptLabel: 'OK',
@@ -272,7 +426,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const setActiveScenario = async (id: string) => {
-    const db = await openDB(dbName, 1);
+    const db = await openDB(dbName, DB_VERSION);
     const scenario = await db.get(storeName, id);
     if (scenario) {
       setActiveScenarioState(scenario);

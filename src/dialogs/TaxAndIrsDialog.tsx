@@ -6,7 +6,7 @@ import { Checkbox } from 'primereact/checkbox';
 import type { Scenario } from '../types/Scenario';
 import type { ContributionLimits } from '../types/UserData';
 import { getContributionLimits } from '../utils/contributionLimits';
-import { fontSize } from '../styles/theme';
+import { fontSize, dialogWidth } from '../styles/theme';
 import {
   Form,
   Section,
@@ -76,7 +76,7 @@ const TaxAndIrsDialog: React.FC<TaxAndIrsDialogProps> = ({
     <Dialog
       header="Tax & IRS"
       visible={visible}
-      style={{ width: '30rem' }}
+      style={dialogWidth('30rem')}
       onHide={onHide}
       footer={dialogFooter}
     >

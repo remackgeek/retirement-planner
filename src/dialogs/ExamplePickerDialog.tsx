@@ -1,7 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
-import { spacing, colors, border, fontSize } from '../styles/theme';
+import { spacing, colors, border, fontSize, dialogWidth } from '../styles/theme';
 import { EXAMPLE_SCENARIOS, type ExampleTemplate } from '../data/exampleScenarios';
 
 const List = styled.div`
@@ -63,7 +63,7 @@ const ExamplePickerDialog: React.FC<ExamplePickerDialogProps> = ({
     <Dialog
       header="Load Example Scenario"
       visible={visible}
-      style={{ width: '26rem' }}
+      style={dialogWidth('26rem')}
       onHide={onHide}
     >
       <List>

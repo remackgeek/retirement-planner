@@ -8,8 +8,9 @@ import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import type { UserData } from '../types/UserData';
+import type { BracketTarget, StrategyObjective, PerYearStrategyDecision } from '../services/strategies/types';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, border, fontSize } from '../styles/theme';
+import { spacing, colors, border, fontSize, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 import { generateDefaultIncomeEventName, eventTypeIcons } from '../utils/defaultName';
 import { resolveOwnerAge } from '../utils/ownerAge';
@@ -19,6 +20,7 @@ import {
   crossesMultipleBracketsHeuristic,
   exceedsMostOfTradHeuristic,
 } from '../services/conversionImpact';
+import { strategyComputeClient, StrategyCancelledError } from '../services/StrategyComputeClient';
 
 const Form = styled.form`
   display: flex;
@@ -138,6 +140,62 @@ const ImpactValue = styled.span`
   text-align: right;
 `;
 
+const ModeTabBar = styled.div`
+  display: flex;
+  gap: ${spacing.xs};
+  border-bottom: ${border.light};
+  margin-bottom: ${spacing.sm};
+`;
+
+const ModeTab = styled.button<{ $active: boolean }>`
+  background: ${({ $active }) => ($active ? colors.bgLight : 'transparent')};
+  border: none;
+  border-bottom: 2px solid ${({ $active }) => ($active ? colors.primary : 'transparent')};
+  padding: ${spacing.xs} ${spacing.md};
+  font-size: ${fontSize.sm};
+  font-weight: ${({ $active }) => ($active ? 600 : 400)};
+  color: ${({ $active }) => ($active ? colors.textPrimary : colors.textSecondary)};
+  cursor: pointer;
+  &:hover { color: ${colors.textPrimary}; }
+`;
+
+const WizardTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  font-size: ${fontSize.xs};
+  margin-top: ${spacing.sm};
+  th, td {
+    padding: ${spacing.xs} ${spacing.sm};
+    text-align: left;
+    border-bottom: ${border.light};
+  }
+  th {
+    color: ${colors.textSecondary};
+    font-weight: 600;
+    background: ${colors.bgLight};
+  }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+`;
+
+const WizardMessage = styled.div`
+  padding: ${spacing.sm};
+  background: ${colors.bgLight};
+  border-radius: ${border.radius};
+  font-size: ${fontSize.xs};
+  line-height: 1.4;
+  color: ${colors.textPrimary};
+`;
+
+const OpenLoopCaveat = styled.div`
+  margin-top: ${spacing.sm};
+  padding: ${spacing.xs} ${spacing.sm};
+  background: ${colors.bgLight};
+  border-left: 3px solid ${colors.primary};
+  color: ${colors.textSecondary};
+  font-size: ${fontSize.xs};
+  line-height: 1.4;
+`;
+
 interface RothConversionDialogProps {
   visible: boolean;
   onHide: () => void;
@@ -146,7 +204,38 @@ interface RothConversionDialogProps {
   editEvent?: IncomeEvent;
   existingEvents: IncomeEvent[];
   userData: UserData;
+  /** Apply a generator-produced batch of conversion events. Caller is
+   *  responsible for replacing existing generator-tagged events and
+   *  preserving manual ones. When undefined, the wizard tab is hidden. */
+  onApplyBatch?: (events: Omit<IncomeEvent, 'id'>[]) => void;
 }
+
+type WizardMethod = 'fill_to_bracket' | 'auto_bracket' | 'optimize';
+type Mode = 'single' | 'wizard';
+
+const METHOD_OPTIONS: { label: string; value: WizardMethod }[] = [
+  { label: 'Fill to bracket', value: 'fill_to_bracket' },
+  { label: 'Auto bracket (grid search)', value: 'auto_bracket' },
+  { label: 'Optimize (coordinate descent)', value: 'optimize' },
+];
+
+const BRACKET_OPTIONS: { label: string; value: BracketTarget }[] = [
+  { label: '12% bracket', value: '12_percent' },
+  { label: '22% bracket', value: '22_percent' },
+  { label: '24% bracket', value: '24_percent' },
+  { label: 'No conversions', value: 'none' },
+];
+
+const OBJECTIVE_OPTIONS: { label: string; value: StrategyObjective }[] = [
+  { label: 'Max median terminal wealth', value: 'max_median_terminal_wealth' },
+  { label: 'Min lifetime tax', value: 'min_lifetime_tax' },
+];
+
+const prettyBracket = (b: BracketTarget): string =>
+  b === '12_percent' ? '12%'
+    : b === '22_percent' ? '22%'
+      : b === '24_percent' ? '24%'
+        : 'none';
 
 const makeDefaultFormData = () => ({
   name: '',
@@ -169,10 +258,43 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
   editEvent,
   existingEvents,
   userData,
+  onApplyBatch,
 }) => {
   const isEditing = !!editEvent;
   const isMfj = userData.filingStatus === 'mfj';
   const [formData, setFormData] = useState(makeDefaultFormData());
+  // Wizard mode is hidden when editing (it adds new events) and when no
+  // onApplyBatch callback was supplied (caller opted out).
+  const wizardAvailable = !isEditing && !!onApplyBatch;
+  const [mode, setMode] = useState<Mode>('single');
+  const [wizMethod, setWizMethod] = useState<WizardMethod>('fill_to_bracket');
+  const [wizBracket, setWizBracket] = useState<BracketTarget>('12_percent');
+  const [wizObjective, setWizObjective] = useState<StrategyObjective>('max_median_terminal_wealth');
+  const [wizSchedule, setWizSchedule] = useState<PerYearStrategyDecision[] | null>(null);
+  const [wizRunning, setWizRunning] = useState(false);
+  const [wizMessage, setWizMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!visible) {
+      setMode('single');
+      setWizSchedule(null);
+      setWizMessage(null);
+      // Reset wizard params too — a fresh open should always start at
+      // Fill-to-bracket/12%/Max-terminal-wealth, not whatever the user
+      // selected last session.
+      setWizMethod('fill_to_bracket');
+      setWizBracket('12_percent');
+      setWizObjective('max_median_terminal_wealth');
+    }
+  }, [visible]);
+
+  // Defensive: if the parent flips editEvent while the dialog is open and the
+  // wizard tab is showing, the tab bar disappears (wizardAvailable becomes
+  // false) but mode would still be 'wizard'. Reset to 'single' so the form
+  // renders correctly. In practice IncomeEventsManager doesn't trigger this,
+  // but defensive code is cheap and covers re-rendered parent state.
+  useEffect(() => {
+    if (editEvent && mode === 'wizard') setMode('single');
+  }, [editEvent, mode]);
 
   const ownerAge = resolveOwnerAge(formData.owner, userData.currentAge, userData.spouseAge);
   const range = incomeEventAgeRanges['roth_conversion'];
@@ -282,6 +404,14 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Edit-detaches-from-schedule: when editing a generator-tagged event, flip
+    // meta.generatedBy to 'user'. The user explicitly touched this entry, so
+    // it's no longer part of the regenerable schedule. Keeps generatorRunId
+    // for audit but exempts the row from the next "Replace generated" pass.
+    let meta = editEvent?.meta;
+    if (meta && meta.generatedBy && meta.generatedBy !== 'user') {
+      meta = { ...meta, generatedBy: 'user' };
+    }
     onSave({
       type: 'roth_conversion',
       name: formData.name,
@@ -292,8 +422,181 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
       isOneTime: formData.isOneTime,
       taxStatus: 'before_tax',
       colaType: formData.colaType,
+      ...(meta ? { meta } : {}),
     });
     onHide();
+  };
+
+  // ---------- Wizard handlers ----------
+
+  // Build a UserData shape suitable for the compute backends. The engine
+  // ignores `taxStrategy`, so we don't need to set it. The backends accept
+  // a TaxStrategy argument explicitly.
+  const wizardUserData: UserData = userData;
+
+  const handleWizCompute = async () => {
+    setWizRunning(true);
+    // Show a visible "Computing…" message during the worker run so the
+    // dialog doesn't look frozen during a 3–7 s Optimize. The result message
+    // overwrites this on completion (or it clears on Cancel).
+    const runningMessage =
+      wizMethod === 'optimize'
+        ? 'Optimizing… this takes a few seconds.'
+        : wizMethod === 'auto_bracket'
+          ? 'Auto-bracket grid search…'
+          : 'Computing schedule…';
+    setWizMessage(runningMessage);
+    setWizSchedule(null);
+    const t0 = performance.now();
+    try {
+      if (wizMethod === 'fill_to_bracket') {
+        const schedule = await strategyComputeClient.computeFill(wizardUserData, {
+          name: 'fill_to_bracket', bracketTarget: wizBracket,
+        });
+        const nonZero = schedule.filter((d) => d.conversionAmount > 0);
+        setWizSchedule(schedule);
+        setWizMessage(
+          nonZero.length === 0
+            ? `Fill-to-bracket(${prettyBracket(wizBracket)}): no conversions fit inside the bracket headroom for this scenario.`
+            : `Generated ${nonZero.length} conversion year${nonZero.length === 1 ? '' : 's'} (Fill-to-bracket · ${prettyBracket(wizBracket)}). Click Apply to add to your plan.`
+        );
+      } else if (wizMethod === 'auto_bracket') {
+        const result = await strategyComputeClient.computeAuto(wizardUserData, {
+          name: 'auto_bracket', objective: wizObjective,
+        });
+        setWizSchedule(result.perYearDecisions);
+        const baselineScore = result.candidateScores.find((c) => c.bracket === 'none')?.score
+          ?? result.winnerScore;
+        const delta = result.winnerScore - baselineScore;
+        const pct = baselineScore !== 0 ? (delta / Math.abs(baselineScore)) * 100 : 0;
+        const nonZero = result.perYearDecisions.filter((d) => d.conversionAmount > 0).length;
+        if (result.chosenBracket === 'none') {
+          setWizMessage(
+            `Auto-bracket: keeping your current setup beats all bracket-fill options. Nothing to apply.`
+          );
+        } else if (delta > 0) {
+          setWizMessage(
+            `Auto-bracket chose the ${prettyBracket(result.chosenBracket)} schedule. ` +
+            `Generated ${nonZero} conversion year${nonZero === 1 ? '' : 's'}. ` +
+            `vs your current setup: +$${Math.round(delta).toLocaleString()} (+${pct.toFixed(2)}%) at end of plan.`
+          );
+        } else {
+          setWizMessage(
+            `Auto-bracket chose the ${prettyBracket(result.chosenBracket)} schedule. ` +
+            `Generated ${nonZero} conversion year${nonZero === 1 ? '' : 's'}.`
+          );
+        }
+      } else {
+        const result = await strategyComputeClient.optimize(wizardUserData, {
+          name: 'optimize', objective: wizObjective,
+        });
+        const elapsed = (performance.now() - t0) / 1000;
+        setWizSchedule(result.perYearDecisions);
+        const delta = result.finalScore - result.baselineScore;
+        const pct = result.baselineScore !== 0 ? (delta / Math.abs(result.baselineScore)) * 100 : 0;
+        const nonZero = result.perYearDecisions.filter((d) => d.conversionAmount > 0).length;
+        if (delta > 0) {
+          setWizMessage(
+            `Optimized in ${elapsed.toFixed(1)}s (${result.projectionCount} projections). ` +
+            `vs your current setup: +$${Math.round(delta).toLocaleString()} (+${pct.toFixed(2)}%) ` +
+            `at end of plan, from ${nonZero} conversion year${nonZero === 1 ? '' : 's'}.`
+          );
+        } else {
+          setWizMessage(
+            `Optimized in ${elapsed.toFixed(1)}s. The optimizer couldn't improve on your current setup. ` +
+            `Apply will add a zero-conversion schedule (effectively nothing).`
+          );
+        }
+      }
+    } catch (err) {
+      // Cancellation is the normal "user clicked Cancel / closed dialog"
+      // exit; don't show an error.
+      if (!(err instanceof StrategyCancelledError)) {
+        setWizMessage('Error: ' + (err as Error).message);
+      }
+    } finally {
+      setWizRunning(false);
+    }
+  };
+
+  // Cancel any in-flight compute. Wired to the Cancel button (shown only
+  // while running) and to `onHide` so closing the dialog mid-run doesn't
+  // leave a worker chewing through projections off-screen.
+  const handleWizCancel = () => {
+    strategyComputeClient.cancel();
+    setWizRunning(false);
+    setWizMessage(null);
+  };
+
+  const handleHide = () => {
+    if (wizRunning) {
+      strategyComputeClient.cancel();
+      // Snap wizRunning false synchronously so a fast re-open doesn't briefly
+      // mount with the Cancel-run button. The finally block in handleWizCompute
+      // will also run as a microtask, but the explicit sync write here closes
+      // the race window.
+      setWizRunning(false);
+    }
+    onHide();
+  };
+
+  const handleWizApply = () => {
+    if (!wizSchedule || !onApplyBatch) return;
+    const nonZero = wizSchedule.filter((d) => d.conversionAmount > 0);
+    if (nonZero.length === 0) {
+      confirmDialog({
+        message: 'The computed schedule has no non-zero conversion years — nothing to apply.',
+        header: 'Empty schedule',
+        icon: 'pi pi-info-circle',
+        acceptLabel: 'OK',
+        reject: undefined,
+      });
+      return;
+    }
+    const generatorName: NonNullable<IncomeEvent['meta']>['generatedBy'] =
+      wizMethod === 'fill_to_bracket' ? 'fill_to_bracket'
+        : wizMethod === 'auto_bracket' ? 'auto_bracket'
+          : 'optimize';
+    const generatedAt = new Date().toISOString().slice(0, 10);
+    const generatorRunId = crypto.randomUUID();
+    const batch: Omit<IncomeEvent, 'id'>[] = nonZero.map((d) => {
+      const startAge = userData.currentAge + (d.year - userData.referenceYear);
+      return {
+        type: 'roth_conversion',
+        name: `Roth conversion ${d.year}`,
+        amount: d.conversionAmount,
+        startAge,
+        endAge: startAge,
+        isOneTime: true,
+        taxStatus: 'before_tax',
+        colaType: 'fixed',
+        meta: { generatedBy: generatorName, generatedAt, generatorRunId },
+      };
+    });
+    // Replace-confirm fires only when there are existing generator-tagged
+    // conversions to overwrite (manual events are always preserved by the
+    // parent's handler). Per the plan, manual events are untouched.
+    const hasGenerated = existingEvents.some(
+      (e) => e.type === 'roth_conversion' && e.meta?.generatedBy && e.meta.generatedBy !== 'user'
+    );
+    const commit = () => {
+      onApplyBatch(batch);
+    };
+    if (hasGenerated) {
+      const genCount = existingEvents.filter(
+        (e) => e.type === 'roth_conversion' && e.meta?.generatedBy && e.meta.generatedBy !== 'user'
+      ).length;
+      confirmDialog({
+        message: `Replace ${genCount} previously generated Roth conversion${genCount === 1 ? '' : 's'} with the new schedule? Your manual conversions are preserved.`,
+        header: 'Replace generated conversions?',
+        icon: 'pi pi-exclamation-triangle',
+        acceptLabel: 'Replace',
+        rejectLabel: 'Cancel',
+        accept: commit,
+      });
+    } else {
+      commit();
+    }
   };
 
   const ownerOptions = [
@@ -301,7 +604,32 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
     { label: 'Spouse', value: 'spouse' },
   ];
 
-  const dialogFooter = (
+  const dialogFooter = mode === 'wizard' ? (
+    <div>
+      <Button label='Close' icon='pi pi-times' onClick={handleHide} className='p-button-text' />
+      {wizRunning ? (
+        <Button
+          label='Cancel run'
+          icon='pi pi-stop-circle'
+          onClick={handleWizCancel}
+          className='p-button-secondary'
+        />
+      ) : (
+        <Button
+          label='Compute'
+          icon='pi pi-play'
+          onClick={handleWizCompute}
+          className='p-button-secondary'
+        />
+      )}
+      <Button
+        label='Apply'
+        icon='pi pi-check'
+        onClick={handleWizApply}
+        disabled={!wizSchedule || wizRunning || !wizSchedule.some((d) => d.conversionAmount > 0)}
+      />
+    </div>
+  ) : (
     <div>
       <Button label='Cancel' icon='pi pi-times' onClick={onHide} className='p-button-text' />
       <Button
@@ -338,13 +666,105 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
         </div>
       }
       visible={visible}
-      style={{ width: '34rem' }}
-      onHide={onHide}
+      style={dialogWidth('34rem')}
+      onHide={handleHide}
       closable={false}
       closeOnEscape={true}
       footer={dialogFooter}
     >
+      {wizardAvailable && (
+        <ModeTabBar>
+          <ModeTab type='button' $active={mode === 'single'} onClick={() => setMode('single')}>
+            Single conversion
+          </ModeTab>
+          <ModeTab type='button' $active={mode === 'wizard'} onClick={() => setMode('wizard')}>
+            Plan a multi-year schedule
+          </ModeTab>
+        </ModeTabBar>
+      )}
+      {mode === 'wizard' ? (
+        <Form as='div'>
+          <InputGroup>
+            <label>Method</label>
+            <Dropdown
+              value={wizMethod}
+              options={METHOD_OPTIONS}
+              onChange={(e) => { setWizMethod(e.value); setWizSchedule(null); setWizMessage(null); }}
+            />
+            <HelpText>
+              <strong>Fill to bracket</strong> sizes each year's conversion to fill a target federal bracket.
+              {' '}<strong>Auto bracket</strong> grid-searches all four bracket targets and picks the best.
+              {' '}<strong>Optimize</strong> runs coordinate descent on the per-year vector (~3–5 s).
+            </HelpText>
+          </InputGroup>
+          {wizMethod === 'fill_to_bracket' && (
+            <InputGroup>
+              <label>Target bracket</label>
+              <Dropdown
+                value={wizBracket}
+                options={BRACKET_OPTIONS}
+                onChange={(e) => { setWizBracket(e.value); setWizSchedule(null); setWizMessage(null); }}
+              />
+            </InputGroup>
+          )}
+          {(wizMethod === 'auto_bracket' || wizMethod === 'optimize') && (
+            <InputGroup>
+              <label>Objective</label>
+              <Dropdown
+                value={wizObjective}
+                options={OBJECTIVE_OPTIONS}
+                onChange={(e) => { setWizObjective(e.value); setWizSchedule(null); setWizMessage(null); }}
+              />
+            </InputGroup>
+          )}
+          {wizMessage && <WizardMessage>{wizMessage}</WizardMessage>}
+          {wizSchedule && wizSchedule.some((d) => d.conversionAmount > 0) && (
+            <div style={{ maxHeight: '14rem', overflowY: 'auto' }}>
+              <WizardTable>
+                <thead>
+                  <tr>
+                    <th>Year</th>
+                    <th>Age</th>
+                    <th style={{ textAlign: 'right' }}>Conversion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {wizSchedule
+                    .filter((d) => d.conversionAmount > 0)
+                    .map((d) => (
+                      <tr key={d.year}>
+                        <td>{d.year}</td>
+                        <td>{userData.currentAge + (d.year - userData.referenceYear)}</td>
+                        <td className='num'>{currency(d.conversionAmount)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </WizardTable>
+            </div>
+          )}
+          <OpenLoopCaveat>
+            This schedule is built against expected market conditions and the
+            deterministic baseline projection. Actual results will differ as
+            markets play out — the Monte Carlo runs reflect the range. Editing
+            any generated event (or saving it without changes) detaches it
+            from the schedule, so it survives future re-runs.
+          </OpenLoopCaveat>
+        </Form>
+      ) : (
       <Form onSubmit={handleSubmit}>
+        {isEditing && editEvent?.meta?.generatedBy && editEvent.meta.generatedBy !== 'user' && (
+          <HelpText style={{ color: colors.warning, lineHeight: 1.4 }}>
+            <i className='pi pi-info-circle' style={{ marginRight: spacing.xs }} />
+            This event was generated by{' '}
+            <strong>
+              {editEvent.meta.generatedBy === 'fill_to_bracket' ? 'Fill to bracket'
+                : editEvent.meta.generatedBy === 'auto_bracket' ? 'Auto bracket'
+                  : 'Optimize'}
+            </strong>
+            . Saving any change — or saving with no change at all — detaches it from
+            the schedule, so it survives the next re-run.
+          </HelpText>
+        )}
         <InputGroup>
           <label>Name</label>
           <InputText
@@ -509,6 +929,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
           </ImpactPanel>
         )}
       </Form>
+      )}
     </Dialog>
   );
 };

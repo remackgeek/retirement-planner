@@ -1,6 +1,6 @@
 import type { PortfolioType } from './IncomeEvent';
 
-export type AccountType = 'traditional' | 'roth' | 'taxable';
+export type AccountType = 'traditional' | 'roth' | 'taxable' | 'cash';
 
 export type AccountKind = '401k' | 'ira' | 'brokerage';
 

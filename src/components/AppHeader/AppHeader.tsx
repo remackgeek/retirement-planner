@@ -6,6 +6,7 @@ import type { MenuItem } from 'primereact/menuitem';
 import { spacing, colors, fontSize, mediaQuery } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
 import ModelingDialog from '../../dialogs/ModelingDialog';
+import CashBucketDialog from '../../dialogs/CashBucketDialog';
 import TaxAndIrsDialog from '../../dialogs/TaxAndIrsDialog';
 import ExamplePickerDialog from '../../dialogs/ExamplePickerDialog';
 import AboutDialog from '../../dialogs/AboutDialog';
@@ -95,7 +96,16 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   const reportsMenuRef = useRef<Menu>(null);
   const helpMenuRef = useRef<Menu>(null);
   const [modelingVisible, setModelingVisible] = useState(false);
+  const [cashBucketVisible, setCashBucketVisible] = useState(false);
   const [taxIrsVisible, setTaxIrsVisible] = useState(false);
+  // Gate the Cash Bucket menu item: visible only when ≥1 cash account exists OR
+  // the policy has been previously configured (so the user can still re-open it
+  // to edit even after the cash account is removed). Progressive disclosure:
+  // casual users never see this item.
+  const hasCashContext = !!activeScenario && (
+    activeScenario.accounts.some((a) => a.type === 'cash')
+    || !!activeScenario.cashBucketPolicy
+  );
   const [examplePickerVisible, setExamplePickerVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
   const [userGuideVisible, setUserGuideVisible] = useState(false);
@@ -114,6 +124,13 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
       command: () => setModelingVisible(true),
       disabled: !activeScenario,
     },
+    ...(hasCashContext
+      ? [{
+          label: 'Cash Bucket',
+          icon: 'pi pi-wallet',
+          command: () => setCashBucketVisible(true),
+        }]
+      : []),
     {
       label: 'Tax & IRS',
       icon: 'pi pi-percentage',
@@ -196,6 +213,14 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
         <ModelingDialog
           visible={modelingVisible}
           onHide={() => setModelingVisible(false)}
+          scenario={activeScenario}
+          onSave={handleSave}
+        />
+      )}
+      {activeScenario && (
+        <CashBucketDialog
+          visible={cashBucketVisible}
+          onHide={() => setCashBucketVisible(false)}
           scenario={activeScenario}
           onSave={handleSave}
         />

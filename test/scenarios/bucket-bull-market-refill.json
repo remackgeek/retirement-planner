@@ -1,0 +1,68 @@
+{
+  "_description": "Sustained bull market with gains_only — refill fires each year because stockFactor > 1.",
+  "_rationale": "Cash $5k, pension $100k/yr, spending $20k. Policy min=12 target=24 max=36 'gains_only'. With stockReturn=10% deterministic and no shock, stockFactor = exp(ln(1.10) - 0.5×0²) ≈ 1.10 > 1 → refill fires. Year 0: refill from surplus to target (~$40k). Year 1: cash starts at $40k (above min $20k) — no refill needed.",
+  "_seed": 12345,
+  "name": "Bucket Bull Refill",
+  "currentAge": 60,
+  "lifeExpectancy": 62,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 20000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "name": "Pension",
+      "amount": 100000,
+      "startAge": 60,
+      "endAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0.10,
+    "stockStdDev": 0,
+    "bondReturn": 0.05,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "cashYieldRate": 0
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "cash-1",
+      "name": "Cash",
+      "type": "cash",
+      "balance": 5000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "cashBucketPolicy": {
+    "minMonths": 12,
+    "targetMonths": 24,
+    "maxMonths": 36,
+    "refillTrigger": "gains_only"
+  },
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

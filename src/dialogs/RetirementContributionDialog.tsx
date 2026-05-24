@@ -9,7 +9,7 @@ import { Checkbox } from 'primereact/checkbox';
 import { confirmDialog } from 'primereact/confirmdialog';
 import type { IncomeEvent, ContributionType } from '../types/IncomeEvent';
 import type { Account, AccountType } from '../types/Account';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 import { generateDefaultIncomeEventName, eventTypeIcons } from '../utils/defaultName';
 import { resolveOwnerAge } from '../utils/ownerAge';
@@ -267,7 +267,7 @@ const RetirementContributionDialog: React.FC<RetirementContributionDialogProps> 
         </div>
       }
       visible={visible}
-      style={{ width: '34rem' }}
+      style={dialogWidth('34rem')}
       onHide={onHide}
       closable={false}
       closeOnEscape={true}

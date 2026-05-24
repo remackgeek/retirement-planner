@@ -9,7 +9,7 @@ import type { Account, AccountType, AccountKind } from '../types/Account';
 import type { PortfolioType } from '../types/IncomeEvent';
 import { PORTFOLIO_PRESETS } from '../utils/portfolioPresets';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import {
   accountTypeLabels,
   accountTypeIcons,
@@ -87,6 +87,9 @@ interface AccountDialogProps {
   editAccount?: Account;
   existingAccounts: Account[];
   spouseAge: number | null;
+  // Scenario-level cash yield (from portfolioAssumptions.cashYieldRate).
+  // Displayed read-only for cash accounts; editable in Modeling dialog.
+  cashYieldRate: number;
 }
 
 const ownerOptions = [
@@ -108,6 +111,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   editAccount,
   existingAccounts,
   spouseAge,
+  cashYieldRate,
 }) => {
   const [name, setName] = useState('');
   const [balance, setBalance] = useState<number>(0);
@@ -115,8 +119,15 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   const [portfolioBalance, setPortfolioBalance] = useState<PortfolioType>('60_40');
   const [accountKind, setAccountKind] = useState<AccountKind>('ira');
 
-  const showOwnerField = accountType === 'traditional' && spouseAge !== null;
-  const showAccountKindField = accountType === 'traditional' || accountType === 'roth';
+  const isCash = accountType === 'cash';
+  // Owner field is deliberately hidden for cash in Phase 1. Cash accounts are
+  // commonly joint, and per-owner RMD (the original reason the owner field
+  // exists for Traditional) doesn't apply. Community-property nuance is
+  // future work — when an MFS-related cash-specific tax distinction appears,
+  // re-enable this field with the spouse-age gate.
+  const showOwnerField = !isCash && accountType === 'traditional' && spouseAge !== null;
+  const showAccountKindField = !isCash && (accountType === 'traditional' || accountType === 'roth');
+  const showAllocationField = !isCash;
 
   useEffect(() => {
     if (visible) {
@@ -142,12 +153,17 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
 
   const handleSave = () => {
     if (!isValid) return;
+    // Cash accounts have no meaningful stockAllocation (growth loop bypasses
+    // the market factor entirely — see SimulationService growth-loop bypass).
+    // Persist 0 so any consumer that reads stockAllocation gets a sensible
+    // value, while the growth loop branches on `account.type === 'cash'`
+    // before consulting allocation.
     const account: Omit<Account, 'id'> = {
       type: accountType,
       name: name.trim(),
       balance,
-      portfolioBalance,
-      stockAllocation: PORTFOLIO_PRESETS[portfolioBalance].stockAllocation,
+      portfolioBalance: isCash ? '60_40' : portfolioBalance,
+      stockAllocation: isCash ? 0 : PORTFOLIO_PRESETS[portfolioBalance].stockAllocation,
       ...(showOwnerField ? { owner } : {}),
       ...(showAccountKindField ? { accountKind } : {}),
     };
@@ -190,7 +206,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         </div>
       }
       visible={visible}
-      style={{ width: '24rem' }}
+      style={dialogWidth('24rem')}
       onHide={onHide}
       closable={false}
       closeOnEscape={true}
@@ -235,24 +251,46 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
             min={0}
           />
         </InputGroup>
-        <InputGroup style={{ marginTop: spacing.md }}>
-          <label>Stocks / Bonds Mix</label>
-          <AllocationRow>
-            {(Object.keys(PORTFOLIO_PRESETS) as PortfolioType[]).map((key) => (
-              <PresetBtn
-                key={key}
-                type="button"
-                $active={portfolioBalance === key}
-                onClick={() => setPortfolioBalance(key)}
-              >
-                {PORTFOLIO_PRESETS[key].label.split(' ')[0]}
-              </PresetBtn>
-            ))}
-          </AllocationRow>
-          <small style={{ color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.xs }}>
-            Sets how this account is split between stocks and bonds. Return and volatility assumptions apply to all accounts and are configured in Modeling.
-          </small>
-        </InputGroup>
+        {showAllocationField && (
+          <InputGroup style={{ marginTop: spacing.md }}>
+            <label>Stocks / Bonds Mix</label>
+            <AllocationRow>
+              {(Object.keys(PORTFOLIO_PRESETS) as PortfolioType[]).map((key) => (
+                <PresetBtn
+                  key={key}
+                  type="button"
+                  $active={portfolioBalance === key}
+                  onClick={() => setPortfolioBalance(key)}
+                >
+                  {PORTFOLIO_PRESETS[key].label.split(' ')[0]}
+                </PresetBtn>
+              ))}
+            </AllocationRow>
+            <small style={{ color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.xs }}>
+              Sets how this account is split between stocks and bonds. Return and volatility assumptions apply to all accounts and are configured in Modeling.
+            </small>
+          </InputGroup>
+        )}
+        {isCash && (
+          <InputGroup style={{ marginTop: spacing.md }}>
+            <label>Yield</label>
+            <div
+              style={{
+                padding: `${spacing.xs} ${spacing.sm}`,
+                background: colors.bgLight,
+                border: border.standard,
+                borderRadius: border.radius,
+                fontSize: fontSize.base,
+                color: colors.textSecondary,
+              }}
+            >
+              {(cashYieldRate * 100).toFixed(2)}% annual (set in Modeling)
+            </div>
+            <small style={{ color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.xs }}>
+              Cash accounts accrue a deterministic yield (treated as ordinary income) and are not subject to stock/bond market shocks. Interest counts toward IRMAA MAGI and the NIIT investment-income base.
+            </small>
+          </InputGroup>
+        )}
       </Form>
     </Dialog>
   );

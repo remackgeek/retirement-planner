@@ -13,6 +13,22 @@ export type IncomeEventType =
 
 export type ContributionType = 'pre_tax' | 'roth' | 'after_tax';
 
+// Provenance for events created by the Roth Conversion generator wizard.
+// 'user' (or undefined) = manually entered or edited; the other names match
+// the generator that produced the event. Editing a generated event in the
+// dialog flips generatedBy to 'user', detaching it from re-runs.
+export type IncomeEventGeneratedBy =
+  | 'user'
+  | 'fill_to_bracket'
+  | 'auto_bracket'
+  | 'optimize';
+
+export interface IncomeEventMeta {
+  generatedBy?: IncomeEventGeneratedBy;
+  generatedAt?: string; // ISO date the generator created this event
+  generatorRunId?: string; // shared across events from the same generator batch
+}
+
 export interface IncomeEvent {
   id: string;
   type: IncomeEventType;
@@ -20,8 +36,8 @@ export interface IncomeEvent {
   name: string;
   amount: number; // Annual amount in today's dollars
   startAge: number;
-  endAge?: number; // Optional for ongoing income
-  isOneTime?: boolean; // If true, income occurs only in the start year
+  endAge?: number; // Optional for ongoing income; IGNORED when isOneTime is true
+  isOneTime?: boolean; // If true, income occurs only in the start year (endAge unused)
   taxStatus: 'before_tax' | 'after_tax'; // Except Social Security is always before_tax
   colaType: 'fixed' | 'inflation_adjusted';
   ssHaircutEnabled?: boolean; // SS only — apply trust fund reduction from 2034
@@ -33,6 +49,7 @@ export interface IncomeEvent {
   employerMatchPercent?: number; // retirement_contribution only — % of wage base matched by employer
   employerMatchCeilingPercent?: number; // retirement_contribution only — cap on match as % of wage base
   wageEventId?: string; // retirement_contribution only — optional linked wage event for match-base calc
+  meta?: IncomeEventMeta; // provenance — set by the Roth Conversion generator wizard
 }
 
 export type PortfolioType = '80_20' | '60_40' | '50_50';
@@ -71,4 +88,9 @@ export interface PortfolioAssumptions {
   historicalWrapEnabled?: boolean; // if true, horizon wraps to series start when data runs out
   historicalBlockSize?: number;    // required when returnModel === 'historical_bootstrap'; valid: 1, 3, 5, 10
   blackSwanEvents?: BlackSwanEvent[];
+  // Annual yield for cash accounts (money-market / HYSA). Credited deterministically
+  // each year regardless of returnModel; taxed as ordinary income (accrual basis).
+  // Cash accounts bypass the stock/bond shock + black-swan overlay entirely —
+  // they are non-volatile by construction in this model. Default ~0.04 (4%).
+  cashYieldRate?: number;
 }
