@@ -26,6 +26,7 @@ import { Menu } from 'primereact/menu';
 import { TabView, TabPanel } from 'primereact/tabview';
 import YearTaxAudit from './YearTaxAudit';
 import YearIncomeDetail from './YearIncomeDetail';
+import YearCashFlowSankey from './YearCashFlowSankey';
 import CloneScenarioDialog from '../../dialogs/CloneScenarioDialog';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
 import { useUIState } from '../../context/UIStateContext';
@@ -297,7 +298,7 @@ function exportCsv(
     'SS Gross', 'Other Taxable Income', 'After-Tax Income', 'Total Gross Income',
     'Base Spending', 'Goal Spending', 'Total Spending',
     'Total Tax', 'Ordinary Income Tax', 'Federal LTCG Tax', 'State LTCG Tax', 'NIIT (3.8%)', 'IRMAA Surcharge', 'Portfolio Withdrawal',
-    'Withdrawal — Taxable', 'Withdrawal — Traditional', 'Withdrawal — Roth',
+    'Withdrawal — Brokerage', 'Withdrawal — Traditional', 'Withdrawal — Roth',
     'RMD Required', 'RMD Reinvested',
     'Roth Conversion',
     'Surplus Contribution',
@@ -348,7 +349,7 @@ function exportCsv(
       Math.round(toDisplay(bd.niitTax, bdF, displayCurrency)),
       Math.round(toDisplay(bd.irmaaSurcharge, bdF, displayCurrency)),
       Math.round(toDisplay(bd.portfolioWithdrawal, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.withdrawalFromTaxable, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.withdrawalFromBrokerage, bdF, displayCurrency)),
       Math.round(toDisplay(bd.withdrawalFromTraditional, bdF, displayCurrency)),
       Math.round(toDisplay(bd.withdrawalFromRoth, bdF, displayCurrency)),
       Math.round(toDisplay(bd.rmdRequired, bdF, displayCurrency)),
@@ -1678,13 +1679,13 @@ const Projections = ({
                                   Portfolio withdrawal: ${fmt(dispWithdrawal)}
                                 </div>
                                 {(() => {
-                                  const dispFromTaxable = toDisplay(breakdown.withdrawalFromTaxable, pathFactor, displayCurrency);
+                                  const dispFromBrokerage = toDisplay(breakdown.withdrawalFromBrokerage, pathFactor, displayCurrency);
                                   const dispFromTrad = toDisplay(breakdown.withdrawalFromTraditional, pathFactor, displayCurrency);
                                   const dispFromRoth = toDisplay(breakdown.withdrawalFromRoth, pathFactor, displayCurrency);
                                   return (
                                     <>
-                                      {dispFromTaxable > 0.5 && (
-                                        <div style={noteStyle}>Taxable: ${fmt(dispFromTaxable)}</div>
+                                      {dispFromBrokerage > 0.5 && (
+                                        <div style={noteStyle}>Brokerage: ${fmt(dispFromBrokerage)}</div>
                                       )}
                                       {dispFromTrad > 0.5 && (
                                         <div style={noteStyle}>Traditional: ${fmt(dispFromTrad)}</div>
@@ -1707,7 +1708,7 @@ const Projections = ({
                                       RMD required: ${fmt(dispRmdRequired)}
                                     </div>
                                     {dispRmdExcess > 0.5 && (
-                                      <div style={noteStyle}>Reinvested to Taxable: ${fmt(dispRmdExcess)}</div>
+                                      <div style={noteStyle}>Reinvested to Brokerage: ${fmt(dispRmdExcess)}</div>
                                     )}
                                   </>
                                 );
@@ -1726,7 +1727,7 @@ const Projections = ({
                                 const dispSurplus = toDisplay(breakdown.surplusContribution, pathFactor, displayCurrency);
                                 return (
                                   <div style={{ color: colors.textMuted, fontSize: fontSize.xs, textAlign: 'right', paddingTop: spacing.xs }}>
-                                    Surplus reinvested to Taxable: ${fmt(dispSurplus)}
+                                    Surplus reinvested to Brokerage: ${fmt(dispSurplus)}
                                   </div>
                                 );
                               })()}
@@ -1747,6 +1748,13 @@ const Projections = ({
                               </TabPanel>
                               <TabPanel header="Income Detail">
                                 <YearIncomeDetail
+                                  breakdown={breakdown}
+                                  pathFactor={pathFactor}
+                                  displayCurrency={displayCurrency}
+                                />
+                              </TabPanel>
+                              <TabPanel header="Cash Flow">
+                                <YearCashFlowSankey
                                   breakdown={breakdown}
                                   pathFactor={pathFactor}
                                   displayCurrency={displayCurrency}

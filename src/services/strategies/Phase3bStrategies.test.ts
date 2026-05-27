@@ -106,7 +106,7 @@ describe('AutoBracketStrategy baseline candidate (post-review fix)', () => {
       currentAge: 80, lifeExpectancy: 82,  // 3-year horizon
       accounts: [
         { id: 'trad-1', name: 'Trad', type: 'traditional', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Tax',  type: 'taxable',     balance: 100_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Tax',  type: 'brokerage',     balance: 100_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
       ],
       spendingGoals: [{
         id: 'sg', name: 'LE', type: 'living_expenses' as const,

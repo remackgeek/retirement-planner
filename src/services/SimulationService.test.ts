@@ -571,7 +571,7 @@ describe('calculateAnnualCashFlow', () => {
         currentAge: 40,
         contributionLimits: lowCaps,
         accounts: [
-          { id: 'tx', name: 'Brokerage', type: 'taxable', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'tx', name: 'Brokerage', type: 'brokerage', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         ],
         incomeEvents: [
           { id: 'w', name: 'Salary', type: 'wage_income', amount: 200000, startAge: 40, taxStatus: 'before_tax', colaType: 'fixed' },
@@ -650,13 +650,13 @@ describe('calculateAnnualCashFlow', () => {
   describe('account-aware withdrawal waterfall', () => {
     it('computes LTCG tax on taxable withdrawal: 50k spending from 100k taxable → W≈58,824', () => {
       const userData = makeUserData({
-        accounts: [{ id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+        accounts: [{ id: 'tax-1', name: 'Taxable 1', type: 'brokerage', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
         longTermCapGainsRate: 0.15,
         spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 50000, startAge: 60, inflationAdjusted: false }],
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
       // Solver: W = 50k + 0.15*W → W = 50k/0.85 ≈ 58,824; LTCG tax ≈ 8,824
-      expect(result.withdrawalFromTaxable).toBeCloseTo(58824, 0);
+      expect(result.withdrawalFromBrokerage).toBeCloseTo(58824, 0);
       expect(result.withdrawalFromTraditional).toBe(0);
       expect(result.withdrawalFromRoth).toBe(0);
       expect(result.totalTax).toBeCloseTo(8824, 0);
@@ -697,7 +697,7 @@ describe('calculateAnnualCashFlow', () => {
     it('draws from taxable first, then traditional, with explicit accountBalances', () => {
       const userData = makeUserData({
         accounts: [
-          { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 30000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'tax-1', name: 'Taxable 1', type: 'brokerage', balance: 30000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
           { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
           { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         ],
@@ -706,11 +706,11 @@ describe('calculateAnnualCashFlow', () => {
       });
       // Taxable only has 30k (0% LTCG). Remaining ~30k+ comes from traditional.
       const result = calculateAnnualCashFlow(userData, 2026, 0);
-      expect(result.withdrawalFromTaxable).toBe(30000); // exhausted
+      expect(result.withdrawalFromBrokerage).toBe(30000); // exhausted
       expect(result.withdrawalFromTraditional).toBeGreaterThan(0);
       expect(result.withdrawalFromRoth).toBe(0); // roth not touched yet
       expect(result.portfolioWithdrawal).toBeCloseTo(
-        result.withdrawalFromTaxable + result.withdrawalFromTraditional + result.withdrawalFromRoth, 0
+        result.withdrawalFromBrokerage + result.withdrawalFromTraditional + result.withdrawalFromRoth, 0
       );
     });
 
@@ -724,14 +724,14 @@ describe('calculateAnnualCashFlow', () => {
       // Roth withdrawals are tax-free regardless of LTCG rate
       expect(result.totalTax).toBe(0);
       expect(result.withdrawalFromRoth).toBe(100000);
-      expect(result.withdrawalFromTaxable).toBe(0);
+      expect(result.withdrawalFromBrokerage).toBe(0);
       expect(result.withdrawalFromTraditional).toBe(0);
     });
 
     it('per-bucket withdrawals sum to portfolioWithdrawal', () => {
       const userData = makeUserData({
         accounts: [
-          { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 20000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+          { id: 'tax-1', name: 'Taxable 1', type: 'brokerage', balance: 20000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
           { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 20000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
           { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 20000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         ],
@@ -740,7 +740,7 @@ describe('calculateAnnualCashFlow', () => {
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
       expect(result.portfolioWithdrawal).toBeCloseTo(
-        result.withdrawalFromTaxable + result.withdrawalFromTraditional + result.withdrawalFromRoth, 0
+        result.withdrawalFromBrokerage + result.withdrawalFromTraditional + result.withdrawalFromRoth, 0
       );
     });
   });
@@ -962,7 +962,7 @@ describe('runSimulation — hoisted precomputation equivalence', () => {
     const userData = makeUserData({
       currentAge: 60,
       lifeExpectancy: 62,
-      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 300_000, stockAllocation: 1, portfolioBalance: '80_20' as const }],
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'brokerage' as const, balance: 300_000, stockAllocation: 1, portfolioBalance: '80_20' as const }],
       inflationRate: 0.03,
       portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
       simulationSettings: { numSimulations: 1 },
@@ -999,7 +999,7 @@ describe('runSimulation — hoisted precomputation equivalence', () => {
       inflationStdDev: 0.01,
       portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.03, bondStdDev: 0.05, stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
       simulationSettings: { numSimulations: 100 },
-      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'brokerage' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
     });
     const result = runSimulation(userData);
     expect(result.probability).toBeGreaterThanOrEqual(0);
@@ -1154,7 +1154,7 @@ describe('runSimulation — Student\'s t return distribution', () => {
     };
     const shared = {
       currentAge: 60, lifeExpectancy: 80,
-      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'taxable' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      accounts: [{ id: 'acct-1', name: 'Taxable 1', type: 'brokerage' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
       spendingGoals: [],
       incomeEvents: [],
       inflationRate: 0, inflationStdDev: 0,
@@ -1356,13 +1356,18 @@ describe('computeMarginalStackAttribution', () => {
     type: string,
     gross: number,
     classification: EventIncomeRecord['classification'],
-  ): EventIncomeRecord => ({ eventId: id, eventName: name, eventType: type, gross, classification });
+    owner: 'self' | 'spouse' = 'self',
+  ): EventIncomeRecord => ({ eventId: id, eventName: name, eventType: type, gross, classification, owner });
 
   const baseArgs = {
     ssGross: 0,
     ssTaxableAmount: 0,
     fromTrad: 0,
     rothConversionTotal: 0,
+    // Default the per-owner totals to mirror the aggregate (single-owner default).
+    // Tests that exercise per-owner scaling override these explicitly.
+    rothConversionTotalSelf: 0,
+    rothConversionTotalSpouse: 0,
     filingStatus: 'single' as const,
     stateEffectiveRate: 0,
     age: 65,
@@ -1455,10 +1460,34 @@ describe('computeMarginalStackAttribution', () => {
       eventBreakdowns: events,
       fromTrad: 20_000,           // = conversion only (no spending pull)
       rothConversionTotal: 20_000, // capped at $20k
+      // Single-owner default (Self) — mirrors the aggregate.
+      rothConversionTotalSelf: 20_000,
     });
     const convOut = out.find((e) => e.eventId === 'rc1');
     expect(convOut).toBeDefined();
     expect(convOut!.gross).toBeCloseTo(20_000, 4); // scaled down to actual
+  });
+
+  it('per-owner conversion scaling: Self capped, Spouse uncapped → events scale independently', () => {
+    // Self event requests $50k but Self-Trad caps at $40k. Spouse event requests
+    // $30k and Spouse-Trad has plenty. Per-owner scale should give Self $40k and
+    // Spouse $30k (uniform scale 70/80=0.875 would mis-show $43.75k / $26.25k).
+    const events = [
+      r('rcS', 'Self Conv',   'roth_conversion', 50_000, 'roth_conversion', 'self'),
+      r('rcP', 'Spouse Conv', 'roth_conversion', 30_000, 'roth_conversion', 'spouse'),
+    ];
+    const out = computeMarginalStackAttribution({
+      ...baseArgs,
+      eventBreakdowns: events,
+      fromTrad: 70_000,
+      rothConversionTotal:       70_000,
+      rothConversionTotalSelf:   40_000,
+      rothConversionTotalSpouse: 30_000,
+    });
+    const selfOut   = out.find(e => e.eventId === 'rcS');
+    const spouseOut = out.find(e => e.eventId === 'rcP');
+    expect(selfOut!.gross).toBeCloseTo(40_000, 4);
+    expect(spouseOut!.gross).toBeCloseTo(30_000, 4);
   });
 
   it('two SS events split the SS step proportionally by gross', () => {
@@ -1511,8 +1540,8 @@ describe('computeMarginalStackAttribution', () => {
 
   it('reconciliation with non-zero stateEffectiveRate: sum ≈ federal + state·combinedTaxable', () => {
     const events: EventIncomeRecord[] = [
-      { eventId: 'w1', eventName: 'Wages', eventType: 'wage_income', gross: 50_000, classification: 'ordinary' },
-      { eventId: 'p1', eventName: 'Pension', eventType: 'pension_income', gross: 50_000, classification: 'ordinary' },
+      { eventId: 'w1', eventName: 'Wages', eventType: 'wage_income', gross: 50_000, classification: 'ordinary', owner: 'self' },
+      { eventId: 'p1', eventName: 'Pension', eventType: 'pension_income', gross: 50_000, classification: 'ordinary', owner: 'self' },
     ];
     const stateRate = 0.05;
     const out = computeMarginalStackAttribution({
@@ -1537,6 +1566,10 @@ describe('computeMarginalStackAttribution', () => {
 
 describe('audit.accountFlows (via runSimulation)', () => {
   it('captures pro-rata withdrawals across two Traditional accounts', () => {
+    // Both accounts omit `owner`, so they default to 'self'. The engine routes
+    // the entire RMD through Pass 1 (Self) which pro-rates across both — the
+    // expected behavior. For mixed-owner verification see the dedicated
+    // 'rmdByAccount honors per-owner RMD discipline' test below.
     const ud = makeUserData({
       currentAge: 73,
       lifeExpectancy: 75,
@@ -1560,6 +1593,358 @@ describe('audit.accountFlows (via runSimulation)', () => {
     const aRow = tradRows.find((r) => r.accountId === 'trad-a')!;
     const bRow = tradRows.find((r) => r.accountId === 'trad-b')!;
     expect(aRow.withdrawal / bRow.withdrawal).toBeCloseTo(2.0, 1);
+  });
+
+  it('rmdByAccount honors per-owner RMD discipline (Spouse-owned Trad untouched when only Self is at RMD age)', () => {
+    // IRS rule: each owner's RMD must come from their own Traditional accounts.
+    // This locks in the engine fix that splits the Trad withdrawal into three
+    // passes — Self RMD from Self-owned only, Spouse RMD from Spouse-owned only,
+    // and non-RMD (discretionary + conversion) pro-rata across all Trad.
+    const ud = makeUserData({
+      currentAge: 75, // Self at RMD age
+      spouseAge: 65,  // Spouse not yet at RMD age
+      lifeExpectancy: 76,
+      filingStatus: 'mfj',
+      spendingGoals: [],
+      incomeEvents: [],
+      accounts: [
+        { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 800_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'trad-spouse', name: 'Spouse Trad', type: 'traditional', balance: 200_000, owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    expect(bd.audit!.rmdSelf).toBeGreaterThan(0);
+    expect(bd.audit!.rmdSpouse).toBe(0);
+    const rmdRows = bd.audit!.rmdByAccount!;
+    const selfRow   = rmdRows.find(r => r.accountId === 'trad-self');
+    const spouseRow = rmdRows.find(r => r.accountId === 'trad-spouse');
+    // All RMD comes from Self-owned Trad; Spouse-owned Trad has zero RMD.
+    expect(selfRow).toBeDefined();
+    expect(selfRow!.withdrawal).toBeCloseTo(bd.rmdRequired, 0);
+    expect(spouseRow).toBeUndefined(); // sink rows for zero amounts are not emitted
+    // Conservation: per-account RMD sums to rmdRequired.
+    const sum = rmdRows.reduce((s, r) => s + r.withdrawal, 0);
+    expect(Math.abs(sum - bd.rmdRequired)).toBeLessThan(1);
+  });
+
+  it('mixed-owner Trad with both RMD and discretionary spending: RMD per-owner, discretionary pro-rata', () => {
+    // Self age 75 with $800k Self-Trad, Spouse age 65 with $200k Spouse-Trad,
+    // big living-expense forces the engine to pull beyond just RMD. Expected:
+    //  - Pass 1 (Self RMD): Self-Trad gives up rmdSelf, Spouse-Trad untouched.
+    //  - Pass 3 (non-RMD): the remaining discretionary withdrawal pro-rates
+    //    across BOTH Trad accounts based on their (post-Pass-1) balances.
+    // So Spouse-Trad SHOULD appear in accountFlows (it contributes to non-RMD)
+    // but SHOULD NOT appear in rmdByAccount (zero RMD share).
+    const ud = makeUserData({
+      currentAge: 75,
+      spouseAge: 65,
+      lifeExpectancy: 76,
+      filingStatus: 'mfj',
+      spendingGoals: [baseSpending(8000)], // $96k/yr — way above RMD
+      accounts: [
+        { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 800_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'trad-spouse', name: 'Spouse Trad', type: 'traditional', balance: 200_000, owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    const flows = bd.audit!.accountFlows!;
+    const rmdRows = bd.audit!.rmdByAccount!;
+
+    // rmdByAccount: only Self contributes RMD (per-owner discipline).
+    expect(rmdRows.find(r => r.accountId === 'trad-self')?.withdrawal).toBeCloseTo(bd.rmdRequired, 0);
+    expect(rmdRows.find(r => r.accountId === 'trad-spouse')).toBeUndefined();
+    // Conservation: per-account RMD sums to rmdRequired.
+    const rmdSum = rmdRows.reduce((s, r) => s + r.withdrawal, 0);
+    expect(Math.abs(rmdSum - bd.rmdRequired)).toBeLessThan(1);
+
+    // accountFlows: BOTH accounts have non-zero outflow (Spouse-Trad gets a
+    // pro-rata share of the non-RMD discretionary pull, even with zero RMD).
+    const selfFlow   = flows.find(f => f.accountId === 'trad-self')!;
+    const spouseFlow = flows.find(f => f.accountId === 'trad-spouse')!;
+    expect(selfFlow.withdrawal).toBeGreaterThan(bd.rmdRequired); // Self pays RMD + Self's share of non-RMD
+    expect(spouseFlow.withdrawal).toBeGreaterThan(0); // Spouse contributes to non-RMD only
+    // Conservation: per-account withdrawals sum to withdrawalFromTraditional.
+    const tradSum = selfFlow.withdrawal + spouseFlow.withdrawal;
+    expect(Math.abs(tradSum - bd.withdrawalFromTraditional)).toBeLessThan(1);
+    // The non-RMD portion pro-rates 4:1 (post-Pass-1 balances: $800k-rmdSelf vs $200k).
+    const nonRmdSelf   = selfFlow.withdrawal - bd.rmdRequired;
+    const nonRmdSpouse = spouseFlow.withdrawal;
+    const totalNonRmd = nonRmdSelf + nonRmdSpouse;
+    // Self's share of non-RMD ≈ (800k - rmdSelf) / (800k - rmdSelf + 200k)
+    const expectedSelfShare = (800_000 - bd.rmdRequired) / (800_000 - bd.rmdRequired + 200_000);
+    expect(nonRmdSelf / totalNonRmd).toBeCloseTo(expectedSelfShare, 2);
+  });
+
+  it('rmdByAccount empty when no RMD is active (pre-73)', () => {
+    const ud = makeUserData({
+      currentAge: 70,
+      lifeExpectancy: 71,
+      spendingGoals: [],
+      accounts: [
+        { id: 'trad-a', name: 'Trad A', type: 'traditional', balance: 100_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    expect(bd.rmdRequired).toBe(0);
+    expect(bd.audit!.rmdByAccount).toEqual([]);
+  });
+
+  it('Self-only conversion in mixed-owner household: only Self-Trad drains, only Self-Roth gains', () => {
+    // IRS rule: a Roth conversion moves Self's Trad to Self's Roth — Spouse's
+    // Trad cannot fund it and Spouse's Roth cannot receive it.
+    const ud = makeUserData({
+      currentAge: 65,
+      spouseAge: 65,
+      lifeExpectancy: 66,
+      filingStatus: 'mfj',
+      spendingGoals: [],
+      incomeEvents: [
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 50_000, startAge: 65, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+      ],
+      accounts: [
+        { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 500_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'trad-spouse', name: 'Spouse Trad', type: 'traditional', balance: 200_000, owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'roth-self',   name: 'Self Roth',   type: 'roth',        balance: 0,       owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'roth-spouse', name: 'Spouse Roth', type: 'roth',        balance: 0,       owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+        // Brokerage account to fund the conversion's ordinary tax (so no withholding).
+        { id: 'brok',        name: 'Brokerage',   type: 'brokerage',   balance: 200_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+
+    // Per-owner conversion gross is the load-bearing invariant: Self gross
+    // = full $50k, Spouse gross = 0. The aggregate Trad pull may be slightly
+    // larger when bracket-aware spending fills a few dollars of headroom from
+    // the LTCG cascade triggered by Brokerage-funded conv tax — that pro-rata
+    // pull legitimately touches both Trad accounts and is correct IRS-wise
+    // (no per-owner constraint on the discretionary remainder).
+    expect(bd.rothConversionGross).toBeCloseTo(50_000, 0);
+    expect(bd.rothConversionGrossSelf).toBeCloseTo(50_000, 0);
+    expect(bd.rothConversionGrossSpouse).toBe(0);
+
+    const flows = bd.audit!.accountFlows!;
+    const selfTradFlow   = flows.find(f => f.accountId === 'trad-self')!;
+    const spouseTradFlow = flows.find(f => f.accountId === 'trad-spouse');
+    // Self-Trad carries at least the full conversion principal.
+    expect(selfTradFlow.withdrawal).toBeGreaterThanOrEqual(50_000);
+    // Spouse-Trad carries at most the tiny pro-rata discretionary share —
+    // orders of magnitude smaller than the Self conversion. Asserting Spouse-Trad
+    // is "small" rather than "exactly zero" because the IRS-correct behavior
+    // does pro-rate any discretionary spending pull across all Trad.
+    if (spouseTradFlow) {
+      expect(spouseTradFlow.withdrawal).toBeLessThan(100);
+    }
+    // Self-Roth receives the deposit; Spouse-Roth untouched (no Spouse conv).
+    const selfRothFlow   = flows.find(f => f.accountId === 'roth-self')!;
+    const spouseRothFlow = flows.find(f => f.accountId === 'roth-spouse');
+    expect(selfRothFlow.deposit).toBeCloseTo(50_000, 0);
+    expect(spouseRothFlow).toBeUndefined();
+  });
+
+  it('Both-owner conversions in the same year route to their own Trad/Roth pairs', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      spouseAge: 60,
+      lifeExpectancy: 61,
+      filingStatus: 'mfj',
+      spendingGoals: [],
+      incomeEvents: [
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv',   amount: 30_000, startAge: 60, owner: 'self',   taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 20_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+      ],
+      accounts: [
+        { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 400_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'trad-spouse', name: 'Spouse Trad', type: 'traditional', balance: 300_000, owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'roth-self',   name: 'Self Roth',   type: 'roth',        balance: 0,       owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'roth-spouse', name: 'Spouse Roth', type: 'roth',        balance: 0,       owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'brok',        name: 'Brokerage',   type: 'brokerage',   balance: 200_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+
+    expect(bd.rothConversionGrossSelf).toBeCloseTo(30_000, 0);
+    expect(bd.rothConversionGrossSpouse).toBeCloseTo(20_000, 0);
+    const flows = bd.audit!.accountFlows!;
+    // Per-owner conversion principal lands in its own Trad and Roth pair.
+    // Trad withdrawal may be slightly larger due to discretionary spending
+    // cascade from LTCG on the conv-tax Brokerage pull (tolerance accommodates).
+    expect(flows.find(f => f.accountId === 'trad-self')!.withdrawal).toBeGreaterThanOrEqual(30_000);
+    expect(flows.find(f => f.accountId === 'trad-self')!.withdrawal).toBeLessThan(31_000);
+    expect(flows.find(f => f.accountId === 'trad-spouse')!.withdrawal).toBeGreaterThanOrEqual(20_000);
+    expect(flows.find(f => f.accountId === 'trad-spouse')!.withdrawal).toBeLessThan(21_000);
+    // Roth deposits are exactly the conv principal (no withholding).
+    expect(flows.find(f => f.accountId === 'roth-self')!.deposit).toBeCloseTo(30_000, 0);
+    expect(flows.find(f => f.accountId === 'roth-spouse')!.deposit).toBeCloseTo(20_000, 0);
+  });
+
+  it('Self-conversion capped by Self-Trad balance even when Spouse-Trad has plenty', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      spouseAge: 60,
+      lifeExpectancy: 61,
+      filingStatus: 'mfj',
+      spendingGoals: [],
+      incomeEvents: [
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 100_000, startAge: 60, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+      ],
+      accounts: [
+        { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 40_000,  owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'trad-spouse', name: 'Spouse Trad', type: 'traditional', balance: 500_000, owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'roth-self',   name: 'Self Roth',   type: 'roth',        balance: 0,       owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'brok',        name: 'Brokerage',   type: 'brokerage',   balance: 200_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    // Per-owner cap is the load-bearing invariant: capped at Self-Trad ($40k),
+    // NOT bumped up to use Spouse-Trad's plenty. Spouse-Trad may absorb a tiny
+    // pro-rata share of discretionary spending cascade from the LTCG-on-conv-tax,
+    // but Self's conversion explicitly does not draw from Spouse's account.
+    expect(bd.rothConversionGross).toBeCloseTo(40_000, 0);
+    expect(bd.rothConversionGrossSelf).toBeCloseTo(40_000, 0);
+    expect(bd.rothConversionRequested).toBeCloseTo(100_000, 0);
+    const flows = bd.audit!.accountFlows!;
+    const spouseTradFlow = flows.find(f => f.accountId === 'trad-spouse');
+    if (spouseTradFlow) {
+      // Allow the tiny discretionary cascade pro-rata pull, orders of magnitude
+      // smaller than the Spouse-Trad plenty.
+      expect(spouseTradFlow.withdrawal).toBeLessThan(500);
+    }
+  });
+
+  it('Per-owner withholding splits proportionally when external sourcing runs dry', () => {
+    // No Cash, no Brokerage → conversion tax must be withheld. With mixed-owner
+    // conversion, the withholding splits proportionally to each owner's gross.
+    const ud = makeUserData({
+      currentAge: 60,
+      spouseAge: 60,
+      lifeExpectancy: 61,
+      filingStatus: 'mfj',
+      spendingGoals: [],
+      incomeEvents: [
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv',   amount: 60_000, startAge: 60, owner: 'self',   taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 40_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+      ],
+      accounts: [
+        { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 500_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'trad-spouse', name: 'Spouse Trad', type: 'traditional', balance: 500_000, owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'roth-self',   name: 'Self Roth',   type: 'roth',        balance: 0,       owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'roth-spouse', name: 'Spouse Roth', type: 'roth',        balance: 0,       owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+        // No brokerage, no cash → conversion tax has no external source.
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    expect(bd.rothConversionTaxWithheld).toBeGreaterThan(0);
+    // Per-owner withholding split ≈ 60:40 (Self:Spouse conv ratio).
+    const withheldRatioSelf = bd.rothConversionTaxWithheldSelf / bd.rothConversionTaxWithheld;
+    expect(withheldRatioSelf).toBeCloseTo(0.6, 2);
+    // Conservation: per-owner withheld sums to aggregate.
+    expect(bd.rothConversionTaxWithheldSelf + bd.rothConversionTaxWithheldSpouse).toBeCloseTo(bd.rothConversionTaxWithheld, 1);
+  });
+
+  it('rothConvDepositByAccount: Self conversion distributes pro-rata across multiple Self-owned Roth accounts', () => {
+    // Two Self-owned Roth accounts ($30k + $70k = $100k total). A $50k Self
+    // conversion should deposit pro-rata: 30% to Vanguard ($15k), 70% to Fidelity
+    // ($35k). Spouse-owned Roth (if any) should receive zero from this Self conv.
+    const ud = makeUserData({
+      currentAge: 60,
+      spouseAge: 60,
+      lifeExpectancy: 61,
+      filingStatus: 'mfj',
+      spendingGoals: [],
+      incomeEvents: [
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 50_000, startAge: 60, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+      ],
+      accounts: [
+        { id: 'trad-self',    name: 'Self Trad',      type: 'traditional', balance: 500_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'roth-self-1',  name: 'Vanguard Roth',  type: 'roth',        balance: 30_000,  owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'roth-self-2',  name: 'Fidelity Roth',  type: 'roth',        balance: 70_000,  owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'roth-spouse',  name: 'Spouse Roth',    type: 'roth',        balance: 50_000,  owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'brok',         name: 'Brokerage',      type: 'brokerage',   balance: 200_000,                  stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    const rows = bd.audit!.rothConvDepositByAccount!;
+
+    const vanguard = rows.find(r => r.accountId === 'roth-self-1');
+    const fidelity = rows.find(r => r.accountId === 'roth-self-2');
+    const spouse   = rows.find(r => r.accountId === 'roth-spouse');
+
+    // Pro-rata within Self-owned Roths: 30% to Vanguard, 70% to Fidelity.
+    expect(vanguard!.deposit).toBeCloseTo(50_000 * 0.3, 0);
+    expect(fidelity!.deposit).toBeCloseTo(50_000 * 0.7, 0);
+    // Spouse-owned Roth is NOT a target for Self's conversion.
+    expect(spouse).toBeUndefined();
+    // Conservation: sum equals rothConversionGross − rothConversionTaxWithheld.
+    const sum = rows.reduce((s, r) => s + r.deposit, 0);
+    expect(Math.abs(sum - (bd.rothConversionGross - bd.rothConversionTaxWithheld))).toBeLessThan(1);
+  });
+
+  it('rothConvDepositByAccount empty when there is no conversion', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 61,
+      spendingGoals: [],
+      accounts: [
+        { id: 'roth-self', name: 'Roth Self', type: 'roth', balance: 100_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+        { id: 'brok',      name: 'Brokerage', type: 'brokerage', balance: 200_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    expect(bd.rothConversionGross).toBe(0);
+    expect(bd.audit!.rothConvDepositByAccount).toEqual([]);
+  });
+
+  it('Spouse-conversion injects a Spouse synthetic Roth when none exists', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      spouseAge: 60,
+      lifeExpectancy: 61,
+      filingStatus: 'mfj',
+      spendingGoals: [],
+      incomeEvents: [
+        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 25_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+      ],
+      accounts: [
+        { id: 'trad-spouse', name: 'Spouse Trad', type: 'traditional', balance: 300_000, owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
+        // No Roth accounts at all — the engine should inject a Spouse-owned synthetic.
+        { id: 'brok',        name: 'Brokerage',   type: 'brokerage',   balance: 200_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
+      ],
+      portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd = result.nominalBreakdowns[0];
+    // Synthetic Spouse Roth received the conversion deposit.
+    const spouseRothFlow = bd.audit!.accountFlows!.find(f => f.accountName === 'Roth Conversion (Spouse)');
+    expect(spouseRothFlow).toBeDefined();
+    expect(spouseRothFlow!.deposit).toBeGreaterThan(0);
   });
 
   it('captures surplus deposit into the synthetic Reinvestment account', () => {
@@ -1594,15 +1979,15 @@ describe('audit.accountFlows (via runSimulation)', () => {
 describe('resolveSpendingWithdrawalOrder', () => {
   it('returns the explicit field value when set', () => {
     expect(
-      resolveSpendingWithdrawalOrder(makeUserData({ spendingWithdrawalOrder: 'taxable_first' })),
-    ).toBe('taxable_first');
+      resolveSpendingWithdrawalOrder(makeUserData({ spendingWithdrawalOrder: 'brokerage_first' })),
+    ).toBe('brokerage_first');
     expect(
       resolveSpendingWithdrawalOrder(makeUserData({ spendingWithdrawalOrder: 'bracket_aware' })),
     ).toBe('bracket_aware');
   });
 
-  it("defaults to 'taxable_first' when no roth_conversion event exists", () => {
-    expect(resolveSpendingWithdrawalOrder(makeUserData())).toBe('taxable_first');
+  it("defaults to 'brokerage_first' when no roth_conversion event exists", () => {
+    expect(resolveSpendingWithdrawalOrder(makeUserData())).toBe('brokerage_first');
   });
 
   it("defaults to 'bracket_aware' when any roth_conversion event exists", () => {
@@ -1617,24 +2002,24 @@ describe('resolveSpendingWithdrawalOrder', () => {
 
   it('honors an explicit override even when a conversion exists', () => {
     const ud = makeUserData({
-      spendingWithdrawalOrder: 'taxable_first',
+      spendingWithdrawalOrder: 'brokerage_first',
       incomeEvents: [{
         id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 25_000,
         startAge: 65, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed',
       }],
     });
-    expect(resolveSpendingWithdrawalOrder(ud)).toBe('taxable_first');
+    expect(resolveSpendingWithdrawalOrder(ud)).toBe('brokerage_first');
   });
 
   it('falls back to the content-aware default when the field holds an unknown value', () => {
     // Legacy 'pro_rata' (dropped from the enum) and outright typos must not
-    // silently behave like taxable_first with no signal — they fall through
+    // silently behave like brokerage_first with no signal — they fall through
     // to the content-aware default. This is the S3 fix.
     const noConv = makeUserData({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       spendingWithdrawalOrder: 'pro_rata' as any,
     });
-    expect(resolveSpendingWithdrawalOrder(noConv)).toBe('taxable_first');
+    expect(resolveSpendingWithdrawalOrder(noConv)).toBe('brokerage_first');
     const withConv = makeUserData({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       spendingWithdrawalOrder: 'foobar' as any,
@@ -1654,6 +2039,8 @@ describe('computeBracketHeadroomForTrad', () => {
     otherTaxableGross: overrides.otherTaxableGross ?? 0,
     afterTaxIncome: 0,
     conversionGross: overrides.conversionGross ?? 0,
+    conversionGrossSelf: overrides.conversionGross ?? 0,
+    conversionGrossSpouse: 0,
     wageIncomeGross: 0,
     preTaxContributions: 0,
     rothContributions: 0,
@@ -1737,7 +2124,7 @@ describe('bracket_aware spending waterfall — coordination invariant', () => {
   // active AND Taxable can absorb the spending overflow (no spill to
   // Trad-above-headroom), federal bracket index stays ≤ 1 (the 12% bracket).
   // When Taxable runs out the spillover falls to Trad-above-headroom and
-  // bracket may exceed 12% — that's the existing taxable_first fallback,
+  // bracket may exceed 12% — that's the existing brokerage_first fallback,
   // not a bracket_aware violation. The scenario below sizes Taxable large
   // enough that the invariant holds across the full conv window.
   it('keeps federalBracketIndex ≤ 1 across the conv window when Taxable absorbs the overflow', () => {
@@ -1757,7 +2144,7 @@ describe('bracket_aware spending waterfall — coordination invariant', () => {
         { id: 't-1', name: 'Trad 1', type: 'traditional', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
         { id: 'r-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0, portfolioBalance: '60_40' as const },
         // Taxable large enough to absorb 3 years of spending overflow + conv tax + LTCG cascade.
-        { id: 'b-1', name: 'Taxable 1', type: 'taxable', balance: 400_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'b-1', name: 'Taxable 1', type: 'brokerage', balance: 400_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
       ],
       simulationSettings: { numSimulations: 10 },
       portfolioAssumptions: { stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0, stockBondCorrelationEnabled: false, stockBondCorrelation: 0, returnDistribution: 'lognormal', degreesOfFreedom: 4 },
@@ -1807,7 +2194,7 @@ describe('cash account', () => {
 
   it('cash interest is added to NIIT investment-income base (per IRC §1411)', () => {
     // Pension drives MAGI above the $200k single threshold; cash interest is
-    // the only "investment income" since fromTaxable = 0 (no Taxable account
+    // the only "investment income" since fromBrokerage = 0 (no Taxable account
     // pulls because cash covers spending and surplus deposits to synthetic
     // Reinvestment-Taxable account). Without the NIIT proxy extension this
     // would yield niitTax = 0.
@@ -1832,10 +2219,10 @@ describe('cash account', () => {
     const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
     // 5M × 4% = $200k cash interest. MAGI ≈ $200k pension + $200k interest = $400k.
     // Excess over single $200k threshold = $200k. Investment income proxy =
-    // fromTaxable + cashInterest = 0 + 200k = $200k. NIIT base = $200k.
+    // fromBrokerage + cashInterest = 0 + 200k = $200k. NIIT base = $200k.
     // niitTax = 3.8% × $200k = $7,600.
     expect(bd.cashInterest).toBeCloseTo(200_000, 0);
-    expect(bd.withdrawalFromTaxable).toBe(0);  // cash covers spending
+    expect(bd.withdrawalFromBrokerage).toBe(0);  // cash covers spending
     expect(bd.niitTax).toBeGreaterThan(7000);
     expect(bd.niitTax).toBeLessThan(8000);
   });
@@ -1846,7 +2233,7 @@ describe('cash account', () => {
     const ud = makeUserData({
       accounts: [
         { id: 'cash-1', name: 'Cash', type: 'cash', balance: 100_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'brokerage', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
       ],
       spendingGoals: [baseSpending(50_000 / 12)],
       portfolioAssumptions: {
@@ -1860,7 +2247,7 @@ describe('cash account', () => {
     });
     const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
     expect(bd.withdrawalFromCash).toBeCloseTo(50_000, 0);
-    expect(bd.withdrawalFromTaxable).toBe(0);
+    expect(bd.withdrawalFromBrokerage).toBe(0);
     expect(bd.federalCapGainsTax).toBe(0);  // no LTCG realized
     expect(bd.totalTax).toBe(0);             // no taxable income, no FL state tax
   });
@@ -1874,7 +2261,7 @@ describe('cash account', () => {
       accounts: [
         { id: 'trad-1', name: 'Trad', type: 'traditional', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
         { id: 'cash-1', name: 'Cash', type: 'cash', balance: 200_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'brokerage', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
       ],
       spendingGoals: [],
       incomeEvents: [{
@@ -1894,7 +2281,7 @@ describe('cash account', () => {
     expect(bd.rothConversionGross).toBeCloseTo(100_000, 0);
     // Cash absorbs entire marginal tax; Taxable is preserved.
     expect(bd.rothConversionTaxFromCash).toBeGreaterThan(0);
-    expect(bd.rothConversionTaxFromTaxable).toBe(0);
+    expect(bd.rothConversionTaxFromBrokerage).toBe(0);
     expect(bd.rothConversionTaxWithheld).toBe(0);  // Cash covered fully
     expect(bd.federalCapGainsTax).toBe(0);          // no Taxable pulled
   });
@@ -1920,7 +2307,7 @@ describe('cash account', () => {
     });
     const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
     // 500k cash >> max=18×$3333≈$60k, but trigger='none' → no sweep.
-    expect(bd.cashSweepToTaxable).toBe(0);
+    expect(bd.cashSweepToBrokerage).toBe(0);
     expect(bd.cashRefillFromSurplus).toBe(0);
     // Spending pulls cash with floor = 0 (suppressed by 'none' trigger).
     expect(bd.withdrawalFromCash).toBeCloseTo(40_000, 0);
@@ -1945,8 +2332,8 @@ describe('cash account', () => {
     const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
     // maxCash = 18 × ($40k/12) ≈ $60k. After $40k spending (with $20k floor allows pull),
     // cash = $460k. Sweep $460k − $60k = $400k. Tax-free.
-    expect(bd.cashSweepToTaxable).toBeGreaterThan(380_000);
-    expect(bd.cashSweepToTaxable).toBeLessThan(420_000);
+    expect(bd.cashSweepToBrokerage).toBeGreaterThan(380_000);
+    expect(bd.cashSweepToBrokerage).toBeLessThan(420_000);
     expect(bd.cashEndingBalance).toBeGreaterThan(55_000);
     expect(bd.cashEndingBalance).toBeLessThan(65_000);
     // SWEEP MUST BE TAX-FREE — load-bearing invariant.
@@ -1987,8 +2374,8 @@ describe('cash account', () => {
     expect(withPolicy.otherTaxableGross).toBe(noPolicy.otherTaxableGross);
     expect(withPolicy.netCashFlow).toBe(noPolicy.netCashFlow);
     // But cash routing differs — the policy moved $400k from Cash to Taxable.
-    expect(withPolicy.cashSweepToTaxable).toBeGreaterThan(0);
-    expect(noPolicy.cashSweepToTaxable).toBe(0);
+    expect(withPolicy.cashSweepToBrokerage).toBeGreaterThan(0);
+    expect(noPolicy.cashSweepToBrokerage).toBe(0);
   });
 
   it('bucket policy soft floor preserves cash; spending falls through to Taxable', () => {
@@ -1998,7 +2385,7 @@ describe('cash account', () => {
       currentAge: 60, lifeExpectancy: 61,
       accounts: [
         { id: 'cash-1', name: 'Cash', type: 'cash', balance: 30_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 200_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'brokerage', balance: 200_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
       ],
       spendingGoals: [baseSpending(60_000 / 12)],
       portfolioAssumptions: {
@@ -2015,7 +2402,7 @@ describe('cash account', () => {
     // Cash balance equals the floor exactly → cashAvailableForSpending = 0.
     // All spending pulls from Taxable.
     expect(bd.withdrawalFromCash).toBe(0);
-    expect(bd.withdrawalFromTaxable).toBeGreaterThanOrEqual(60_000);
+    expect(bd.withdrawalFromBrokerage).toBeGreaterThanOrEqual(60_000);
   });
 
   it('cash sweeps and balances are reflected in cashEndingBalance', () => {
@@ -2051,8 +2438,8 @@ describe('cash account', () => {
       currentAge: 60, lifeExpectancy: 70,
       accounts: [
         { id: 'cash-1', name: 'Cash', type: 'cash', balance: 500_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
-        { id: 'tax-1a', name: 'Taxable A', type: 'taxable', balance: 300_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
-        { id: 'tax-1b', name: 'Taxable B', type: 'taxable', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1a', name: 'Taxable A', type: 'brokerage', balance: 300_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1b', name: 'Taxable B', type: 'brokerage', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
       ],
       spendingGoals: [baseSpending(60_000 / 12)],
       portfolioAssumptions: {
@@ -2070,7 +2457,7 @@ describe('cash account', () => {
       expect(bd.cashEndingBalance).toBeGreaterThanOrEqual(0);
       expect(bd.withdrawalFromCash).toBeGreaterThanOrEqual(0);
       expect(bd.cashRefillFromSurplus).toBeGreaterThanOrEqual(0);
-      expect(bd.cashSweepToTaxable).toBeGreaterThanOrEqual(0);
+      expect(bd.cashSweepToBrokerage).toBeGreaterThanOrEqual(0);
     }
   });
 });

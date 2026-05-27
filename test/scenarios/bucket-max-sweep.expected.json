@@ -7,7 +7,7 @@
   ],
   "breakdownChecks": [
     { "index": 0, "field": "withdrawalFromCash", "value": 40000, "tolerance": 1 },
-    { "index": 0, "field": "cashSweepToTaxable", "min": 399000, "max": 401000, "_note": "$460k - $60k maxCash" },
+    { "index": 0, "field": "cashSweepToBrokerage", "min": 399000, "max": 401000, "_note": "$460k - $60k maxCash" },
     { "index": 0, "field": "cashEndingBalance", "min": 59500, "max": 60500, "_note": "= maxMonths × monthly ≈ $60k" },
     { "index": 0, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "Sweep is tax-free; FL = 0 state tax; cash interest = 0" },
     { "index": 0, "field": "federalCapGainsTax", "value": 0, "tolerance": 1, "_note": "Sweep does not realize LTCG" }

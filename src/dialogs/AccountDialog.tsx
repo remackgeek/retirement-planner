@@ -137,14 +137,14 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         setOwner(editAccount.owner ?? 'self');
         setPortfolioBalance(editAccount.portfolioBalance ?? '60_40');
         setAccountKind(
-          editAccount.accountKind ?? (editAccount.type === 'taxable' ? 'brokerage' : 'ira')
+          editAccount.accountKind ?? (editAccount.type === 'brokerage' ? 'brokerage' : 'ira')
         );
       } else {
         setName(generateDefaultAccountName(accountType, existingAccounts));
         setBalance(0);
         setOwner('self');
         setPortfolioBalance('60_40');
-        setAccountKind(accountType === 'taxable' ? 'brokerage' : 'ira');
+        setAccountKind(accountType === 'brokerage' ? 'brokerage' : 'ira');
       }
     }
   }, [visible, editAccount, accountType, existingAccounts]);

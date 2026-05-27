@@ -1,15 +1,15 @@
 {
-  "_rationale": "Year 0 (age 74): RMD = 180,000 exactly. Conversion = 30,000 (taxed as ordinary). Total ordinary income = 210k → federal tax ~$39-40k single 2026 (FL no state). Spending+tax ≈ $148k < RMD $180k, so RMD-first waterfall absorbs everything from forced RMD: withdrawalFromTaxable = 0, federalCapGainsTax = 0, stateCapGainsTax = 0, niitTax = 0 (no taxable withdrawal). withdrawalFromTraditional = RMD + conversion = $210k. rmdExcess = RMD - (spending + ordinary tax) ≈ $32k, reinvested to Taxable.",
+  "_rationale": "Year 0 (age 74): RMD = 180,000 exactly. Conversion = 30,000 (taxed as ordinary). Total ordinary income = 210k → federal tax ~$39-40k single 2026 (FL no state). Spending+tax ≈ $148k < RMD $180k, so RMD-first waterfall absorbs everything from forced RMD: withdrawalFromBrokerage = 0, federalCapGainsTax = 0, stateCapGainsTax = 0, niitTax = 0 (no taxable withdrawal). withdrawalFromTraditional = RMD + conversion = $210k. rmdExcess = RMD - (spending + ordinary tax) ≈ $32k, reinvested to Taxable.",
   "probability": 100,
   "tolerance": 1.0,
   "breakdownChecks": [
     { "index": 0, "field": "rmdRequired", "value": 180000, "tolerance": 1, "_note": "4,590,000 / 25.5" },
-    { "index": 0, "field": "withdrawalFromTaxable", "value": 0, "tolerance": 0.01, "_note": "RMD-first: no Taxable pull even with conversion adding tax" },
+    { "index": 0, "field": "withdrawalFromBrokerage", "value": 0, "tolerance": 0.01, "_note": "RMD-first: no Taxable pull even with conversion adding tax" },
     { "index": 0, "field": "withdrawalFromTraditional", "value": 210000, "tolerance": 1, "_note": "RMD $180k + conversion $30k" },
     { "index": 0, "field": "rothConversionGross", "value": 30000, "tolerance": 0.01, "_note": "Full conversion executed; balance has ample headroom" },
     { "index": 0, "field": "federalCapGainsTax", "value": 0, "tolerance": 0.01 },
     { "index": 0, "field": "stateCapGainsTax", "value": 0, "tolerance": 0.01, "_note": "FL no state tax" },
-    { "index": 0, "field": "niitTax", "value": 0, "tolerance": 0.01, "_note": "fromTaxable = 0 => NIIT investment-income base = 0" },
+    { "index": 0, "field": "niitTax", "value": 0, "tolerance": 0.01, "_note": "fromBrokerage = 0 => NIIT investment-income base = 0" },
     { "index": 0, "field": "rmdExcess", "min": 20000, "max": 50000, "_note": "RMD $180k minus (spending $108k + ordinary tax on $210k ≈ $40k)" }
   ]
 }

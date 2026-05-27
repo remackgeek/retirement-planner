@@ -21,7 +21,7 @@
     },
     {
       "index": 0,
-      "field": "withdrawalFromTaxable",
+      "field": "withdrawalFromBrokerage",
       "value": 58824,
       "tolerance": 5,
       "_note": "All withdrawal from taxable account"

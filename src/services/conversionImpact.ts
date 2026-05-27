@@ -68,7 +68,7 @@ function incrementalTaxOnConversion(
     ssTaxableFederal: baseSsTaxable,
     ssGross: baseSsGross,
     traditionalWithdrawal: 0,
-    ltcgFromTaxable: 0,
+    ltcgFromBrokerage: 0,
     age, spouseAge: spouseAgeYear, filingStatus: userData.filingStatus,
     year, inflationRate: userData.inflationRate,
   }, resolvedKey);
@@ -77,7 +77,7 @@ function incrementalTaxOnConversion(
     ssTaxableFederal: withConvSsTaxable,
     ssGross: withConvSsGross,
     traditionalWithdrawal: convAmount,
-    ltcgFromTaxable: 0,
+    ltcgFromBrokerage: 0,
     age, spouseAge: spouseAgeYear, filingStatus: userData.filingStatus,
     year, inflationRate: userData.inflationRate,
   }, resolvedKey);

@@ -1,6 +1,6 @@
 {
   "_description": "Bracket-aware spending waterfall (smart default for conversion-planning scenarios). Single 60, $60k spending, $50k conversion 60-62, Trad $500k, Taxable $100k, FL. In low-bracket years 60-62, spending should pull from Trad up to the 12%-bracket headroom (conv-inclusive) BEFORE Taxable, preserving Taxable. Verifies the cross-year spending source policy.",
-  "_rationale": "Single 60, 2026 std ded ~$15.75k, top of 12% bracket ~$50,400 (taxable income). Year 1: conv $50k → baseline taxable = $50k − $15.75k = $34.25k. Bracket headroom = $50,400 − $34.25k = $16,150 of additional Trad room. Spending = $60k. Under bracket_aware: pull ~$16k Trad for spending (at 12% federal, 0 FL) → remaining $44k spending pull from Taxable + LTCG cascade (~$52k Taxable pull). withdrawalFromTraditional = forcedTrad ($16k+) + convCandidate ($50k) ≈ $66k. Under taxable_first the same year would pull ~$70k+ from Taxable (incl. LTCG cascade on the full $60k) and ZERO Trad for spending → Trad only carries the $50k conv.",
+  "_rationale": "Single 60, 2026 std ded ~$15.75k, top of 12% bracket ~$50,400 (taxable income). Year 1: conv $50k → baseline taxable = $50k − $15.75k = $34.25k. Bracket headroom = $50,400 − $34.25k = $16,150 of additional Trad room. Spending = $60k. Under bracket_aware: pull ~$16k Trad for spending (at 12% federal, 0 FL) → remaining $44k spending pull from Taxable + LTCG cascade (~$52k Taxable pull). withdrawalFromTraditional = forcedTrad ($16k+) + convCandidate ($50k) ≈ $66k. Under brokerage_first the same year would pull ~$70k+ from Taxable (incl. LTCG cascade on the full $60k) and ZERO Trad for spending → Trad only carries the $50k conv.",
   "_seed": 12345,
   "name": "Bracket-aware spending — pre-pension conv years",
   "currentAge": 60,
@@ -74,7 +74,7 @@
     {
       "id": "tax-1",
       "name": "Taxable 1",
-      "type": "taxable",
+      "type": "brokerage",
       "balance": 100000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"

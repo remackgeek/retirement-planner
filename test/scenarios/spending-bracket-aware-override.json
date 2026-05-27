@@ -1,8 +1,8 @@
 {
-  "_description": "Regression guard for the explicit 'taxable_first' override. Identical inputs to spending-bracket-aware-conv.json but with spendingWithdrawalOrder forced to taxable_first. Verifies that power users can opt out of the smart default and get the conservative waterfall.",
-  "_rationale": "Single age 60, FL, $60k spending, $50k conv 60-62. Under explicit taxable_first: Trad pull = conv principal only ($50k); all $60k spending + conv tax cascade pulled from Taxable (no Trad spending pull within bracket headroom). Sharp contrast with the bracket_aware sibling scenario where withdrawalFromTraditional > $60k.",
+  "_description": "Regression guard for the explicit 'brokerage_first' override. Identical inputs to spending-bracket-aware-conv.json but with spendingWithdrawalOrder forced to brokerage_first. Verifies that power users can opt out of the smart default and get the conservative waterfall.",
+  "_rationale": "Single age 60, FL, $60k spending, $50k conv 60-62. Under explicit brokerage_first: Trad pull = conv principal only ($50k); all $60k spending + conv tax cascade pulled from Taxable (no Trad spending pull within bracket headroom). Sharp contrast with the bracket_aware sibling scenario where withdrawalFromTraditional > $60k.",
   "_seed": 12345,
-  "name": "Bracket-aware override — taxable_first",
+  "name": "Bracket-aware override — brokerage_first",
   "currentAge": 60,
   "lifeExpectancy": 64,
   "referenceYear": 2026,
@@ -74,7 +74,7 @@
     {
       "id": "tax-1",
       "name": "Taxable 1",
-      "type": "taxable",
+      "type": "brokerage",
       "balance": 100000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"
@@ -83,5 +83,5 @@
   "longTermCapGainsRate": 0.15,
   "enableIRMAA": false,
   "enableNIIT": false,
-  "spendingWithdrawalOrder": "taxable_first"
+  "spendingWithdrawalOrder": "brokerage_first"
 }

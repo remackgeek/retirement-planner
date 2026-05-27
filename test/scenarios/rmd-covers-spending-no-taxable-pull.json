@@ -1,6 +1,6 @@
 {
   "_description": "Age 74, large Traditional ($4.59M) + Taxable ($100k) + modest spending ($108k). RMD's net-of-tax proceeds exceed spending, so no Taxable withdrawal should occur. Regression for over-pull bug that generated phantom federal/state LTCG and NIIT.",
-  "_rationale": "RMD at 74 = 4,590,000 / 25.5 = 180,000 exactly. As ordinary income, $180k taxed (single filer, FL no state tax) leaves substantially more than the $108k spending need. With RMD-first waterfall, residual spending need is fully absorbed by the RMD itself: withdrawalFromTaxable = 0, federal/state LTCG = 0, NIIT = 0 (MAGI $180k < $200k single threshold). The leftover RMD (rmdExcess > 0) reinvests into the existing Taxable account.",
+  "_rationale": "RMD at 74 = 4,590,000 / 25.5 = 180,000 exactly. As ordinary income, $180k taxed (single filer, FL no state tax) leaves substantially more than the $108k spending need. With RMD-first waterfall, residual spending need is fully absorbed by the RMD itself: withdrawalFromBrokerage = 0, federal/state LTCG = 0, NIIT = 0 (MAGI $180k < $200k single threshold). The leftover RMD (rmdExcess > 0) reinvests into the existing Taxable account.",
   "_seed": 12345,
   "name": "RMD Covers Spending — No Taxable Pull",
   "currentAge": 74,
@@ -54,7 +54,7 @@
     {
       "id": "taxable-1",
       "name": "Taxable 1",
-      "type": "taxable",
+      "type": "brokerage",
       "balance": 100000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"

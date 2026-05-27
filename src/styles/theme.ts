@@ -124,6 +124,18 @@ export const colors = {
   spending:   palette.orange600,
   spendingBg: palette.orange10,
 
+  // Sankey tax-treatment buckets (per-year Cash Flow tab)
+  bucketOrdinary: palette.amber500,
+  bucketCapGains: palette.orange600,
+  bucketExempt:   palette.lime600,
+  // Sankey column-0 detail nodes (per-event / per-account upstream of aggregators).
+  // MUST be a solid color (no alpha) — the SVG link stroke multiplies the stroke
+  // color's alpha with `strokeOpacity={0.32}`, so an already-translucent base
+  // becomes invisible. green500 is solid forest green; reads as a darker
+  // "tributary" feeding the brighter green600 income aggregator. We escalated
+  // here from green50 because that mint was still too faint in practice.
+  bucketDetail:   palette.green500,
+
   // Chart view lines
   chartMedian:   palette.green500,
   chartNominal:  palette.gray400,

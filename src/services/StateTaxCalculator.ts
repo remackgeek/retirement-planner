@@ -17,7 +17,7 @@
 //                     + (traditionalWithdrawal − retirementExclusionApplied)
 //   stateTaxableOrdinary = max(0, stateOrdinaryBase − stateStdDed)
 //   stateOrdinaryTax = walk(brackets, stateTaxableOrdinary)
-//   stateCapGainsTax = ltcgRule(ltcgFromTaxable, filingStatus, year)
+//   stateCapGainsTax = ltcgRule(ltcgFromBrokerage, filingStatus, year)
 //   localitySurcharge = optional NYC layer
 //
 // Limitations: see header notes in stateTaxProfiles.ts. HoH/MFS map to single
@@ -44,7 +44,7 @@ export interface StateTaxInput {
   /** Traditional account withdrawal (subject to retirement-income exclusion). */
   traditionalWithdrawal: number;
   /** Realized LTCG (state cap-gains treatment). */
-  ltcgFromTaxable: number;
+  ltcgFromBrokerage: number;
   /** Primary filer age (for age-gated SS/retirement exclusions). */
   age: number;
   /** Spouse age (used for MFJ senior age-gate approximation). */
@@ -123,7 +123,7 @@ function stateAgiProxy(profile: StateTaxProfile, input: StateTaxInput): number {
   return input.ordinaryGross
     + input.traditionalWithdrawal
     + (includeSS ? input.ssTaxableFederal : 0)
-    + input.ltcgFromTaxable;
+    + input.ltcgFromBrokerage;
 }
 
 function applySSRule(profile: StateTaxProfile, input: StateTaxInput): number {
@@ -181,7 +181,7 @@ function applyLtcgRule(
   input: StateTaxInput,
   ltcgFactor: number,
 ): { capGainsTax: number; ltcgTaxableAtState: number; thresholdApplied: number } {
-  const ltcg = Math.max(0, input.ltcgFromTaxable);
+  const ltcg = Math.max(0, input.ltcgFromBrokerage);
   if (ltcg === 0) return { capGainsTax: 0, ltcgTaxableAtState: 0, thresholdApplied: 0 };
   switch (profile.ltcgRule.kind) {
     case 'exempt':
@@ -241,14 +241,14 @@ export function computeStateTax(
   let ltcgTaxableAtState = 0;
   let ltcgThresholdApplied = 0;
   if (profile.ltcgRule.kind === 'ordinary') {
-    if (input.ltcgFromTaxable > 0 && brackets.length > 0) {
+    if (input.ltcgFromBrokerage > 0 && brackets.length > 0) {
       // Stack LTCG on the *pre-deduction* ordinary base + LTCG, then subtract
       // the std deduction once. This way residual deduction (when ordinary <
       // stdDed) correctly absorbs into LTCG before walking brackets.
-      const totalTaxable = Math.max(0, stateOrdinaryBaseGross + input.ltcgFromTaxable - stateStdDeduction);
+      const totalTaxable = Math.max(0, stateOrdinaryBaseGross + input.ltcgFromBrokerage - stateStdDeduction);
       const stackedWalk = walkBrackets(brackets, totalTaxable, factor);
       stateCapGainsTax = Math.max(0, stackedWalk.tax - ordinaryWalk.tax);
-      ltcgTaxableAtState = input.ltcgFromTaxable;
+      ltcgTaxableAtState = input.ltcgFromBrokerage;
     }
   } else {
     const ltcgRes = applyLtcgRule(profile, input, ltcgFactor);
@@ -263,7 +263,7 @@ export function computeStateTax(
   if (profile.localitySurcharge) {
     const base = profile.localitySurcharge.appliesToOrdinaryOnly
       ? stateTaxableOrdinary
-      : stateTaxableOrdinary + input.ltcgFromTaxable;
+      : stateTaxableOrdinary + input.ltcgFromBrokerage;
     stateLocalitySurcharge = base * profile.localitySurcharge.rate;
   }
 

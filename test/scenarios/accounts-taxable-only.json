@@ -44,7 +44,7 @@
     {
       "id": "taxable-1",
       "name": "Taxable 1",
-      "type": "taxable",
+      "type": "brokerage",
       "balance": 500000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"

@@ -7,6 +7,6 @@
     { "index": 1, "field": "withdrawalFromCash", "value": 50000, "tolerance": 1, "_note": "Year 1 still drains cash" },
     { "index": 1, "field": "cashEndingBalance", "value": 0, "tolerance": 1, "_note": "Cash hits 0 — allowed under min=0" },
     { "index": 2, "field": "withdrawalFromCash", "value": 0, "tolerance": 1, "_note": "Year 2: cash empty, falls through to Taxable" },
-    { "index": 2, "field": "withdrawalFromTaxable", "min": 49000, "max": 60000, "_note": "Year 2 spending now from Taxable" }
+    { "index": 2, "field": "withdrawalFromBrokerage", "min": 49000, "max": 60000, "_note": "Year 2 spending now from Taxable" }
   ]
 }

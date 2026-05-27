@@ -88,7 +88,7 @@ describe('estimateConversionImpact', () => {
       accounts: [
         { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable 1', type: 'brokerage', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
       ],
     });
     const conversion = makeConversion({
@@ -227,7 +227,7 @@ describe('estimateConversionImpact', () => {
       accounts: [
         { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'brokerage', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
       ],
       incomeEvents: [
         {
@@ -326,7 +326,7 @@ describe('estimateConversionImpact', () => {
       accounts: [
         { id: 'trad-1', name: 'Traditional', type: 'traditional', balance: 800_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         { id: 'roth-1', name: 'Roth', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 150_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'brokerage', balance: 150_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
       ],
       spendingGoals: [
         { id: 'le-1', type: 'living_expenses', name: 'Living', amount: 45000, startAge: 60, inflationAdjusted: true },
@@ -359,7 +359,7 @@ describe('estimateConversionImpact', () => {
       accounts: [
         { id: 'trad-1', name: 'Traditional', type: 'traditional', balance: 800_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         { id: 'roth-1', name: 'Roth', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'brokerage', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
       ],
       spendingGoals: [
         { id: 'le-1', type: 'living_expenses', name: 'Living', amount: 50000, startAge: 60, inflationAdjusted: true },

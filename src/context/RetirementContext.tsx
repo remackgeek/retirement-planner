@@ -16,6 +16,40 @@ type LegacyTaxStrategy = {
   cachedVector?: { perYearDecisions?: Array<{ year: number; conversionAmount: number }> };
 };
 
+/**
+ * Content-level migration: account.type === 'taxable' → 'brokerage', and
+ * spendingWithdrawalOrder === 'taxable_first' → 'brokerage_first'.
+ *
+ * The AccountType enum and the withdrawal-order enum were renamed so the
+ * Sankey's tax-treatment labels would stop colliding with the account
+ * type. Scenarios persisted before the rename still carry the old
+ * literals; this helper rewrites them on load. Idempotent — running
+ * twice on the same scenario is a no-op.
+ */
+export function migrateTaxableAccountTypeToBrokerage(scenario: Scenario): {
+  scenario: Scenario;
+  changed: boolean;
+} {
+  let changed = false;
+  const accounts = (scenario.accounts ?? []).map((a) => {
+    if ((a.type as string) === 'taxable') {
+      changed = true;
+      return { ...a, type: 'brokerage' as const };
+    }
+    return a;
+  });
+  let spendingWithdrawalOrder = scenario.spendingWithdrawalOrder;
+  if ((spendingWithdrawalOrder as string) === 'taxable_first') {
+    changed = true;
+    spendingWithdrawalOrder = 'brokerage_first';
+  }
+  if (!changed) return { scenario, changed: false };
+  return {
+    scenario: { ...scenario, accounts, spendingWithdrawalOrder },
+    changed: true,
+  };
+}
+
 export function migrateLegacyTaxStrategy(scenario: Scenario): { scenario: Scenario; addedConversions: number } {
   // The taxStrategy field is no longer part of the Scenario type, but legacy
   // scenarios in IndexedDB / imported JSON still carry it. Read via an
@@ -133,19 +167,34 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       const savedScenarios = (await db.getAll(storeName)) as Scenario[];
       let migratedCount = 0;
       let totalConversionsAdded = 0;
+      let brokerageRenamedCount = 0;
       const finalScenarios: Scenario[] = [];
       for (const s of savedScenarios) {
-        // Legacy taxStrategy field probe — type cast to handle scenarios saved
-        // before the field was removed from the Scenario type.
-        if ((s as unknown as { taxStrategy?: unknown }).taxStrategy) {
-          const { scenario: migrated, addedConversions } = migrateLegacyTaxStrategy(s);
-          await db.put(storeName, migrated, migrated.id);
-          finalScenarios.push(migrated);
-          migratedCount += 1;
+        let working = s;
+        let migratedThisScenario = false;
+
+        // Content migration 1: legacy taxStrategy field → first-class events.
+        if ((working as unknown as { taxStrategy?: unknown }).taxStrategy) {
+          const { scenario: migrated, addedConversions } = migrateLegacyTaxStrategy(working);
+          working = migrated;
+          migratedThisScenario = true;
           totalConversionsAdded += addedConversions;
-        } else {
-          finalScenarios.push(s);
         }
+
+        // Content migration 2: account.type 'taxable' → 'brokerage'.
+        const { scenario: brokerageMigrated, changed: brokerageChanged } =
+          migrateTaxableAccountTypeToBrokerage(working);
+        if (brokerageChanged) {
+          working = brokerageMigrated;
+          migratedThisScenario = true;
+          brokerageRenamedCount += 1;
+        }
+
+        if (migratedThisScenario) {
+          await db.put(storeName, working, working.id);
+          migratedCount += 1;
+        }
+        finalScenarios.push(working);
       }
       if (finalScenarios.length > 0) {
         setScenarios(finalScenarios);
@@ -156,15 +205,29 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
 
       if (migratedCount > 0) {
         const noun = migratedCount === 1 ? 'scenario' : 'scenarios';
-        const message = totalConversionsAdded > 0
-          ? `Migrated ${migratedCount} ${noun} from the old tax-strategy feature to first-class Roth Conversion events. ` +
+        const parts: string[] = [];
+        if (totalConversionsAdded > 0) {
+          parts.push(
+            `Migrated ${migratedCount} ${noun} from the old tax-strategy feature to first-class Roth Conversion events. ` +
             `${totalConversionsAdded} Roth conversion event${totalConversionsAdded === 1 ? '' : 's'} added — ` +
             `find them in the Income panel; chart badges will appear at conversion years.`
-          : `Cleared the legacy tax-strategy field from ${migratedCount} ${noun}. ` +
+          );
+        } else if (brokerageRenamedCount === 0) {
+          parts.push(
+            `Cleared the legacy tax-strategy field from ${migratedCount} ${noun}. ` +
             `No cached schedule was stored, so no Roth conversion events were created. ` +
-            `Use the Roth Conversion dialog to plan a multi-year schedule.`;
+            `Use the Roth Conversion dialog to plan a multi-year schedule.`
+          );
+        }
+        if (brokerageRenamedCount > 0) {
+          const brokNoun = brokerageRenamedCount === 1 ? 'scenario' : 'scenarios';
+          parts.push(
+            `Renamed "Taxable" accounts to "Brokerage" in ${brokerageRenamedCount} ${brokNoun}. ` +
+            `No data was lost — only the type label changed.`
+          );
+        }
         confirmDialog({
-          message,
+          message: parts.join(' '),
           header: 'Scenarios updated',
           icon: 'pi pi-info-circle',
           acceptLabel: 'OK',
@@ -337,10 +400,12 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           importedData.id = crypto.randomUUID();
         }
 
-        // Same one-shot migration as initDB: convert legacy taxStrategy.cachedVector
-        // into visible roth_conversion events before persisting.
+        // Same one-shot migrations as initDB: convert legacy taxStrategy.cachedVector
+        // into visible roth_conversion events, and rename any account.type 'taxable'
+        // to 'brokerage' before persisting.
         const { scenario: migratedImport, addedConversions } = migrateLegacyTaxStrategy(importedData);
-        importedData = migratedImport;
+        const { scenario: brokerageMigratedImport } = migrateTaxableAccountTypeToBrokerage(migratedImport);
+        importedData = brokerageMigratedImport;
         const migrationNote = addedConversions > 0
           ? ` This scenario used the old tax-strategy feature; ${addedConversions} Roth conversion event${addedConversions === 1 ? '' : 's'} ${addedConversions === 1 ? 'was' : 'were'} migrated into the Income panel.`
           : '';

@@ -59,7 +59,7 @@ export function computeAutoBracketSchedule(
     // conversions". To make it an honest baseline to compare the other
     // candidates against, we strip the taxStrategy entirely so the user's
     // existing `spendingWithdrawalOrder` resolves naturally (auto-defaulting
-    // to 'taxable_first' when no conversion events exist, 'bracket_aware'
+    // to 'brokerage_first' when no conversion events exist, 'bracket_aware'
     // when they do). The other candidates (12/22/24%) DO force bracket_aware
     // spending — which is the strategy's signature — so a "switching to a
     // strategy" choice is fairly compared against "stay where you are."

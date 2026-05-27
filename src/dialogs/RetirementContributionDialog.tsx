@@ -92,7 +92,7 @@ interface RetirementContributionDialogProps {
 const accountTypeForContribution: Record<ContributionType, AccountType> = {
   pre_tax: 'traditional',
   roth: 'roth',
-  after_tax: 'taxable',
+  after_tax: 'brokerage',
 };
 
 const makeDefaultFormData = () => ({
@@ -227,7 +227,7 @@ const RetirementContributionDialog: React.FC<RetirementContributionDialogProps> 
   const contributionTypeOptions = [
     { label: 'Pre-tax (Traditional 401k/IRA)', value: 'pre_tax' },
     { label: 'Roth (Roth 401k/IRA)', value: 'roth' },
-    { label: 'After-tax (Taxable brokerage)', value: 'after_tax' },
+    { label: 'After-tax (Brokerage)', value: 'after_tax' },
   ];
 
   const dialogFooter = (
@@ -296,7 +296,7 @@ const RetirementContributionDialog: React.FC<RetirementContributionDialogProps> 
             {formData.contributionType === 'roth' &&
               'Roth contributions are made with after-tax dollars. Growth and qualified withdrawals are tax-free.'}
             {formData.contributionType === 'after_tax' &&
-              'After-tax contributions go to a taxable brokerage. Growth is taxed (LTCG on withdrawal in this model).'}
+              'After-tax contributions go to a brokerage account. Growth is taxed (LTCG on withdrawal in this model).'}
           </HelpText>
         </InputGroup>
 

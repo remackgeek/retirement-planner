@@ -70,21 +70,21 @@ export function generateDefaultIncomeEventName(
 export const accountTypeLabels: Record<AccountType, string> = {
   traditional: 'Traditional IRA/401k',
   roth: 'Roth IRA/401k',
-  taxable: 'Taxable Brokerage',
+  brokerage: 'Brokerage',
   cash: 'Cash / Money Market',
 };
 
 export const accountTypeIcons: Record<AccountType, string> = {
   traditional: 'pi pi-building',
   roth: 'pi pi-shield',
-  taxable: 'pi pi-chart-line',
+  brokerage: 'pi pi-chart-line',
   cash: 'pi pi-wallet',
 };
 
 export const accountTypeShortLabels: Record<AccountType, string> = {
   traditional: 'Traditional',
   roth: 'Roth',
-  taxable: 'Taxable',
+  brokerage: 'Brokerage',
   cash: 'Cash',
 };
 

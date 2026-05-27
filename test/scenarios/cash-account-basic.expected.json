@@ -8,7 +8,7 @@
   ],
   "breakdownChecks": [
     { "index": 0, "field": "withdrawalFromCash", "value": 50000, "tolerance": 1, "_note": "Cash drains 50k/yr" },
-    { "index": 0, "field": "withdrawalFromTaxable", "value": 0, "tolerance": 1 },
+    { "index": 0, "field": "withdrawalFromBrokerage", "value": 0, "tolerance": 1 },
     { "index": 0, "field": "withdrawalFromTraditional", "value": 0, "tolerance": 1 },
     { "index": 0, "field": "withdrawalFromRoth", "value": 0, "tolerance": 1 },
     { "index": 0, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "Cash principal is tax-free" },

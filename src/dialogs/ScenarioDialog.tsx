@@ -427,26 +427,26 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
       {/* Withdrawal source policy. Controls where living-expenses cash comes
           from — independent of Roth conversion sizing. Empty (auto) resolves
           at sim time to bracket_aware when any conversion event exists, else
-          taxable_first. */}
+          brokerage_first. */}
       <div style={{ marginTop: spacing.xl, paddingTop: spacing.sm, borderTop: border.light }}>
         <h4 style={{ margin: 0, marginBottom: spacing.xs, fontSize: fontSize.sm, fontWeight: 600, color: colors.textSecondary }}>
           Withdrawal Source <span className="withdrawal-help-tip" style={{ marginLeft: spacing.xs, color: colors.textMuted, cursor: 'help', fontWeight: 400 }}>(?)</span>
         </h4>
         <PrimeTooltip target=".withdrawal-help-tip" position="bottom" showDelay={150}>
           <div style={{ maxWidth: '22rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
-            <strong>Taxable first</strong> pulls from your Taxable bucket before
+            <strong>Brokerage first</strong> pulls from your Brokerage bucket before
             Traditional, preserving Traditional. <strong>Bracket-aware</strong>{' '}
             pulls Traditional up to the top of the 12% federal bracket first
-            (cheap dollars), then falls through to Taxable — preserves Taxable
+            (cheap dollars), then falls through to Brokerage — preserves Brokerage
             for high-tax conversion years. <strong>Auto</strong> picks
             bracket-aware when any Roth conversion event exists, otherwise
-            taxable-first.
+            brokerage-first.
           </div>
         </PrimeTooltip>
         <div style={{ display: 'flex', gap: spacing.lg, fontSize: fontSize.sm }}>
           {([
             { value: undefined, label: 'Auto (recommended)' },
-            { value: 'taxable_first' as const, label: 'Taxable first' },
+            { value: 'brokerage_first' as const, label: 'Brokerage first' },
             { value: 'bracket_aware' as const, label: 'Bracket-aware' },
           ]).map((opt) => {
             const inputId = `spendingWithdrawalOrder-${opt.value ?? 'auto'}`;

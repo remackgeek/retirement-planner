@@ -3,9 +3,9 @@
   "probability": 100,
   "breakdownChecks": [
     { "index": 0, "field": "withdrawalFromCash", "value": 40000, "tolerance": 1, "_note": "Full spending pull from cash; min floor suppressed under 'none'" },
-    { "index": 0, "field": "withdrawalFromTaxable", "value": 0, "tolerance": 1 },
+    { "index": 0, "field": "withdrawalFromBrokerage", "value": 0, "tolerance": 1 },
     { "index": 0, "field": "cashEndingBalance", "value": 60000, "tolerance": 1 },
     { "index": 0, "field": "cashRefillFromSurplus", "value": 0, "tolerance": 0.01, "_note": "'none' trigger; no refill" },
-    { "index": 0, "field": "cashSweepToTaxable", "value": 0, "tolerance": 0.01, "_note": "Cash 60k below max 120k; no sweep" }
+    { "index": 0, "field": "cashSweepToBrokerage", "value": 0, "tolerance": 0.01, "_note": "Cash 60k below max 120k; no sweep" }
   ]
 }

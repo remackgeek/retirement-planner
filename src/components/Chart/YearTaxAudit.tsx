@@ -234,19 +234,32 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
               </>
             )}
             <Row label="Total RMD required" value={`$${fmtMoney(d(breakdown.rmdRequired))}`} />
-            {breakdown.rmdExcess > 0.5 && <Row label="Excess reinvested to Taxable" value={`$${fmtMoney(d(breakdown.rmdExcess))}`} muted />}
+            {breakdown.rmdExcess > 0.5 && <Row label="Excess reinvested to Brokerage" value={`$${fmtMoney(d(breakdown.rmdExcess))}`} muted />}
+            {audit.rmdByAccount && audit.rmdByAccount.length > 0 && (
+              <>
+                <Row label="— Per-account distribution —" value="" muted />
+                {audit.rmdByAccount.map((row) => (
+                  <Row
+                    key={row.accountId}
+                    label={`From ${row.accountName}`}
+                    value={`$${fmtMoney(d(row.withdrawal))}`}
+                    muted
+                  />
+                ))}
+              </>
+            )}
           </Section>
         )}
 
         {(breakdown.federalCapGainsTax > 0.5 || breakdown.stateCapGainsTax > 0.5) && (
-          <Section title="Capital Gains (taxable account withdrawal)">
-            <Row label="Taxable withdrawal" value={`$${fmtMoney(d(breakdown.withdrawalFromTaxable))}`} />
+          <Section title="Capital Gains (brokerage account withdrawal)">
+            <Row label="Brokerage withdrawal" value={`$${fmtMoney(d(breakdown.withdrawalFromBrokerage))}`} />
             <Row label="Federal LTCG (flat rate)" value={`$${fmtMoney(d(breakdown.federalCapGainsTax))}`} />
             {audit.stateLtcgThresholdApplied > 0 && (
               <Row label="State LTCG threshold (indexed)" value={`$${fmtMoney(d(audit.stateLtcgThresholdApplied))}`} muted />
             )}
             <Row label={`State LTCG (${audit.effectiveStateName})`} value={`$${fmtMoney(d(breakdown.stateCapGainsTax))}`} />
-            {audit.stateLtcgTaxableAtState !== breakdown.withdrawalFromTaxable && (
+            {audit.stateLtcgTaxableAtState !== breakdown.withdrawalFromBrokerage && (
               <Row label="State-taxable LTCG portion" value={`$${fmtMoney(d(audit.stateLtcgTaxableAtState))}`} muted />
             )}
             <div style={{ fontSize: fontSize.xs, color: colors.textMuted, marginTop: spacing.xs, lineHeight: 1.4 }}>

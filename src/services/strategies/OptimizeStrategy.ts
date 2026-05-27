@@ -132,7 +132,7 @@ export function runOptimization(
   // always evaluates with `taxStrategy: 'fixed' + spendingWithdrawalOrder:
   // 'bracket_aware'` (see `evaluate` above). Without this re-scoring,
   // descent can silently miss the spending-order gain — if seed score uses
-  // taxable_first and the descent's all-zero schedule scores higher under
+  // brokerage_first and the descent's all-zero schedule scores higher under
   // bracket_aware, the year-update guard (`yearBestAmount !== currentAmount`)
   // skips the improvement because both amounts are 0.
   let bestScore = evaluate(bestSchedule);

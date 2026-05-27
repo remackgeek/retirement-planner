@@ -43,7 +43,7 @@
     {
       "id": "acct-1",
       "name": "Taxable",
-      "type": "taxable",
+      "type": "brokerage",
       "balance": 1000000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"

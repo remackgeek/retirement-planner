@@ -63,7 +63,7 @@
     {
       "id": "tax-1",
       "name": "Taxable 1",
-      "type": "taxable",
+      "type": "brokerage",
       "balance": 50000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"
@@ -72,5 +72,5 @@
   "longTermCapGainsRate": 0.15,
   "enableIRMAA": false,
   "enableNIIT": false,
-  "spendingWithdrawalOrder": "taxable_first"
+  "spendingWithdrawalOrder": "brokerage_first"
 }

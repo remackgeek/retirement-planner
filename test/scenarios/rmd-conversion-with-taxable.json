@@ -1,6 +1,6 @@
 {
-  "_description": "Age 74 with Traditional $4.59M (RMD $180k), Taxable $100k, $108k spending, and a one-time $30k Roth conversion. Covers the conversion + RMD + Taxable interaction path: RMD-first absorbs spending + RMD-tax + conversion-tax via reduced rmdExcess, so withdrawalFromTaxable stays at 0.",
-  "_rationale": "RMD = 4,590,000 / 25.5 = $180,000. Conversion adds $30k to ordinary income (total ordinary gross = $210k). Federal tax on $210k single (FL: no state) ≈ $39-40k. Spending need $108k + tax ≈ $148k, comfortably below RMD gross of $180k. RMD-first waterfall absorbs the entire need from forced RMD, so withdrawalFromTaxable = 0; rmdExcess = $180k - ~$148k ≈ $32k. Total Traditional outflow = forced RMD ($180k) + conversion ($30k) = $210k. Roth account receives the $30k conversion deposit. NIIT = 0 (no taxable withdrawal => no investment-income base, even though MAGI exceeds single $200k threshold).",
+  "_description": "Age 74 with Traditional $4.59M (RMD $180k), Taxable $100k, $108k spending, and a one-time $30k Roth conversion. Covers the conversion + RMD + Taxable interaction path: RMD-first absorbs spending + RMD-tax + conversion-tax via reduced rmdExcess, so withdrawalFromBrokerage stays at 0.",
+  "_rationale": "RMD = 4,590,000 / 25.5 = $180,000. Conversion adds $30k to ordinary income (total ordinary gross = $210k). Federal tax on $210k single (FL: no state) ≈ $39-40k. Spending need $108k + tax ≈ $148k, comfortably below RMD gross of $180k. RMD-first waterfall absorbs the entire need from forced RMD, so withdrawalFromBrokerage = 0; rmdExcess = $180k - ~$148k ≈ $32k. Total Traditional outflow = forced RMD ($180k) + conversion ($30k) = $210k. Roth account receives the $30k conversion deposit. NIIT = 0 (no taxable withdrawal => no investment-income base, even though MAGI exceeds single $200k threshold).",
   "_seed": 12345,
   "name": "RMD + Conversion with Taxable Present",
   "currentAge": 74,
@@ -65,7 +65,7 @@
     {
       "id": "taxable-1",
       "name": "Taxable 1",
-      "type": "taxable",
+      "type": "brokerage",
       "balance": 100000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"
@@ -82,5 +82,5 @@
   "longTermCapGainsRate": 0.15,
   "enableIRMAA": false,
   "enableNIIT": true,
-  "spendingWithdrawalOrder": "taxable_first"
+  "spendingWithdrawalOrder": "brokerage_first"
 }

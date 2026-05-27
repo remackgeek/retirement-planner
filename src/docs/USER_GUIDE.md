@@ -85,45 +85,45 @@ YARP recognizes four kinds of accounts based on how they're taxed:
 |---|---|---|
 | **Traditional** | 401(k), Traditional IRA, 403(b) | Taxed as ordinary income |
 | **Roth** | Roth IRA, Roth 401(k) | Tax-free |
-| **Taxable** | Brokerage account (with cost basis, stock/bond holdings) | Taxed as long-term capital gains |
+| **Brokerage** | Brokerage account (with cost basis, stock/bond holdings) | Taxed as long-term capital gains |
 | **Cash** | Money-market fund, HYSA, short-term Treasury | Principal is tax-free; yield is taxed as ordinary income |
 
 For each non-cash account, enter the current balance and pick a stock/bond mix (80/20, 60/40, or 50/50). You can mix and match — for example, a more aggressive 80/20 in your Roth and a conservative 50/50 in your Traditional. Cash accounts don't have a stock/bond mix; they use a deterministic yield rate set in **Modeling** (default 4%, matching typical MMF / HYSA rates).
 
-### When to use Cash vs Taxable
+### When to use Cash vs Brokerage
 
 Pick **Cash** when modeling money you'd normally consider "the bucket I draw from when markets are down" — your emergency fund, a high-yield savings account, a money-market sweep. Cash in YARP is non-volatile: it doesn't move with stocks or bonds, doesn't get touched by black-swan events, and its yield is taxed as ordinary income the year it accrues (matching real-world MMF / HYSA reporting). Withdrawing principal is tax-free.
 
-Pick **Taxable** when modeling a brokerage account with stock/bond holdings where withdrawals realize long-term capital gains. Volatile, subject to market shocks, taxed at LTCG rates on withdrawal.
+Pick **Brokerage** when modeling a brokerage account with stock/bond holdings where withdrawals realize long-term capital gains. Volatile, subject to market shocks, taxed at LTCG rates on withdrawal.
 
 ### How withdrawals work
 
-YARP draws from your accounts in this order each year: **Cash first** (tax-free principal), **then Taxable, then Traditional, then Roth**. Pulling cash first avoids realizing capital gains and the cascading NIIT (Net Investment Income Tax) those gains can trigger. When you have no cash account, the Cash step is just skipped.
+YARP draws from your accounts in this order each year: **Cash first** (tax-free principal), **then Brokerage, then Traditional, then Roth**. Pulling cash first avoids realizing capital gains and the cascading NIIT (Net Investment Income Tax) those gains can trigger. When you have no cash account, the Cash step is just skipped.
 
 ### Cash Bucket policy (optional)
 
 If you have a cash account and want YARP to actively manage it — refilling from market gains and sweeping when it gets too large — open **Settings → Cash Bucket** (this menu item only appears when at least one cash account exists). The dialog has four controls:
 
-- **Min months** — the floor. Spending pulls Cash only down to this many months of total annual spending; below that, spending falls through to Taxable. This reflects how much liquid cash you actually want to keep on hand. A typical value is 6.
+- **Min months** — the floor. Spending pulls Cash only down to this many months of total annual spending; below that, spending falls through to Brokerage. This reflects how much liquid cash you actually want to keep on hand. A typical value is 6.
 - **Target months** — the refill goal. When the engine refills the cash bucket from a year's surplus income, it tops up to this band. A typical value is 12–18 months.
-- **Max months** — the ceiling. If cash drifts above this, the excess is swept back into Taxable as a tax-free balance transfer. Typical: 24–36 months.
+- **Max months** — the ceiling. If cash drifts above this, the excess is swept back into Brokerage as a tax-free balance transfer. Typical: 24–36 months.
 - **Refill trigger** — when does the engine actually refill?
   - *Gains only (recommended)* — refills only in years with positive stock returns. Bear-market aware: won't try to top up the bucket while equities are down.
   - *Above baseline* — strictest. Refills only when the portfolio is ahead of the deterministic baseline.
   - *Always* — refills any year with surplus. Conservative but can lock in down-market dollars as cash.
   - *None (manual)* — no automatic refill or sweep. You manage the cash balance yourself by editing it directly.
 
-**Refill is surplus-only.** The engine will never sell securities in your Taxable account to top up cash — it only redirects this year's positive net cash flow. If a year has no surplus, the bucket simply doesn't refill that year (which is exactly what should happen in a bad year).
+**Refill is surplus-only.** The engine will never sell securities in your Brokerage account to top up cash — it only redirects this year's positive net cash flow. If a year has no surplus, the bucket simply doesn't refill that year (which is exactly what should happen in a bad year).
 
-**Sweep is tax-free.** When cash overflows the maximum, moving it back into Taxable does not realize capital gains — it's a balance transfer between two already-taxed buckets.
+**Sweep is tax-free.** When cash overflows the maximum, moving it back into Brokerage does not realize capital gains — it's a balance transfer between two already-taxed buckets.
 
 ### Required Minimum Distributions (RMDs)
 
-Once you turn **73**, the IRS requires you to withdraw a minimum amount from Traditional accounts each year, whether you need the money or not. YARP handles this automatically: it forces the minimum withdrawal, taxes it as ordinary income, and reinvests anything you didn't actually need into a taxable account. Roth accounts don't have RMDs.
+Once you turn **73**, the IRS requires you to withdraw a minimum amount from Traditional accounts each year, whether you need the money or not. YARP handles this automatically: it forces the minimum withdrawal, taxes it as ordinary income, and reinvests anything you didn't actually need into a brokerage account. Roth accounts don't have RMDs.
 
 ### Surplus reinvestment
 
-In any year where your income exceeds your spending and taxes, the leftover cash is deposited into your first taxable account. If you don't have one, YARP creates a synthetic "Reinvestment" account during the simulation so surplus is never silently lost. The yearly data detail rows and CSV export show this as **Surplus Contribution**.
+In any year where your income exceeds your spending and taxes, the leftover cash is deposited into your first brokerage account. If you don't have one, YARP creates a synthetic "Reinvestment" account during the simulation so surplus is never silently lost. The yearly data detail rows and CSV export show this as **Surplus Contribution**.
 
 If you're married and have Traditional accounts in both your names, YARP calculates each person's RMD using their own age — set the **owner** (Self / Spouse) on each account.
 
@@ -151,7 +151,7 @@ If you're still working, model your earnings and savings as two separate events:
 - **Retirement Contribution** captures the slice of those wages going into a retirement account. Pick one of three flavors:
   - **Pre-tax** — reduces this year's taxable income and deposits to a Traditional account.
   - **Roth** — no tax break today; deposits to a Roth account; growth and qualified withdrawals are tax-free.
-  - **After-tax** — deposits to a taxable brokerage; growth taxed at LTCG on withdrawal.
+  - **After-tax** — deposits to a brokerage account; growth taxed at LTCG on withdrawal.
 
 Optional: an **employer match** (e.g. "100% up to 6% of wages") deposits additional dollars to the same account as your contribution. Link the contribution to a specific salary event so the match ceiling is computed against the actual wage base.
 
@@ -175,8 +175,9 @@ A Roth conversion moves money from your Traditional accounts into your Roth acco
 - **It's not income you can spend** — it's an internal transfer between buckets.
 - **You owe tax on the converted amount** in the year you do it (it counts as ordinary income).
 - **You have to take your RMD first** if you're 73 or older — the IRS doesn't let RMDs be converted.
+- **Conversions are per-owner** — if you mark a conversion as Self, it pulls only from your Self-owned Traditional accounts and lands only in your Self-owned Roth; same for Spouse. The engine will not cross-mix the two spouses' retirement accounts. If you have plenty in Spouse's Trad but only a little in Self's, marking the conversion as Self will cap it at the Self-Trad balance.
 
-The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation. **When your scenario includes a Roth conversion, YARP automatically switches the spending waterfall to "bracket-aware" mode**: in low-bracket years it pulls living-expenses cash from Traditional first (up to the 12% federal bracket) and saves your Taxable account for the years when the conversion tax bill is largest. This setting only reorders where spending comes from — it does not change the conversion amount or how the conversion tax is paid. You can override this in the Scenario dialog under **Withdrawal Source** (Auto / Taxable first / Bracket-aware) if you want to lock in one behavior regardless of whether a conversion event exists.
+The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation. **When your scenario includes a Roth conversion, YARP automatically switches the spending waterfall to "bracket-aware" mode**: in low-bracket years it pulls living-expenses cash from Traditional first (up to the 12% federal bracket) and saves your Brokerage account for the years when the conversion tax bill is largest. This setting only reorders where spending comes from — it does not change the conversion amount or how the conversion tax is paid. You can override this in the Scenario dialog under **Withdrawal Source** (Auto / Brokerage first / Bracket-aware) if you want to lock in one behavior regardless of whether a conversion event exists.
 
 The Roth Conversion dialog shows an **Impact Preview** with a deterministic estimate of first-year tax, total tax over the conversion window, RMD reduction at 73, and projected tax-free Roth at life expectancy. The **Net impact on plan value** row signs the trade-off in dollar terms (green when the conversion pays off, red when it costs more than it saves). That row runs the full deterministic simulation twice — once with the conversion, once without — and diffs the end-of-plan balance, so it reflects everything the Projected chart line does: the RMD withdrawal waterfall, IRMAA surcharges, NIIT, state tax on LTCG, and how conversion tax is sourced from your accounts. Multi-year conversions default to **inflation-adjusted**, so the amount you enter is a real-dollar target — turn that off if you mean a fixed nominal schedule. If you configure a conversion that is unusually large relative to your spending, crosses two or more federal brackets in a single year, or would convert most of your Traditional balance, the dialog shows an inline hint — these are advisory only and never block saving.
 
@@ -236,9 +237,9 @@ The standard deduction (including the larger amount you get at 65+) is applied a
 Two additional taxes show up as separate line items in the yearly detail:
 
 - **Medicare IRMAA** — once you're 65, your Medicare Part B and Part D premiums include a surcharge if your modified AGI was high two years ago. The surcharge is per Medicare enrollee, so a married couple where both are 65+ pays it twice. If you retired with a high-income final working year, set **Last working year MAGI** under Settings → Tax & IRS so the first two retirement years correctly reflect the IRS lookback; otherwise YARP assumes $0 there and you won't see IRMAA until age 67. Toggle off under **Settings → Tax & IRS** if you'd rather model premiums separately.
-- **NIIT** — a flat 3.8% on investment income above $200k MAGI (single) or $250k (MFJ). Mostly relevant for high-balance taxable accounts. Toggle off under **Settings → Tax & IRS**.
+- **NIIT** — a flat 3.8% on investment income above $200k MAGI (single) or $250k (MFJ). Mostly relevant for high-balance brokerage accounts. Toggle off under **Settings → Tax & IRS**.
 
-Both matter most in years with large Roth conversions, sizable RMDs, or big taxable-account withdrawals.
+Both matter most in years with large Roth conversions, sizable RMDs, or big brokerage-account withdrawals.
 
 ---
 
@@ -272,11 +273,12 @@ Below the chart, expand **Yearly Data** for a complete breakdown of each year: b
 
 This is where you go when something on the chart looks surprising — expand the year in question and you can see exactly what's happening.
 
-When you expand a year, the detail panel has three tabs:
+When you expand a year, the detail panel has four tabs:
 
 - **Summary** — the high-level income / spending / tax / cash-flow numbers, plus portfolio withdrawal breakdown and RMD/Roth-conversion notes. Use this for an at-a-glance read.
 - **Tax Audit** — IRS-level intermediates so you can verify the model's arithmetic. Shows AGI, the full federal bracket table with the dollars and tax landing in each rate, your standard deduction broken into the base + senior add-on + temporary OBBB bonus, the Social Security provisional-income calc with which 50%/85% zone you hit, the IRMAA lookback MAGI with the exact tier and per-enrollee surcharge, the NIIT MAGI excess and 3.8% base, and per-owner RMD with the IRS Uniform Lifetime Table divisor and beginning-of-year Traditional balance.
 - **Income Detail** — per-income-event ordinary tax attribution using marginal stacking (events are layered in IRS order so each event's tax is its incremental delta on top of the prior stack — pre-tax contributions appear as negative reductions). Also shows per-account flows: which account each dollar of withdrawal came from and which account received each deposit (Roth conversion, RMD excess, retirement contribution, surplus reinvestment).
+- **Cash Flow** — a Sankey diagram of the year's flows, organized into five columns so the tax story is legible at a glance. The leftmost **Detailed Sources** column shows individual income events by name (each pension, rental, wage event, Social Security event by recipient, Roth conversion event), per-account withdrawals when multiple Brokerage / Cash / Roth accounts contribute, and per-Traditional-account RMD attribution (Self's RMD pulls only from Self-owned Trad; Spouse's only from Spouse-owned). Each detail node feeds an **Aggregated Source** in the next column. For Social Security, each event splits in two — its taxable share flows into "Social Security (Taxable)" and its tax-free share into "Social Security (Tax-Free)" using the year's overall taxability ratio. Three **tax-treatment buckets** sit in the middle: **Ordinary Income** (Social Security taxable, wages, RMD, Traditional withdrawals, Cash Interest, Roth conversion gross), **Capital Gains** (Brokerage account withdrawals only), and **Tax-Exempt** (Roth withdrawals, Cash principal, after-tax income, employer match). Each bucket pays its own taxes directly: Ordinary → Federal Ordinary + State Ordinary + IRMAA; Capital Gains → Federal LTCG + State LTCG + NIIT; Tax-Exempt → no tax. The remainder from each bucket flows into a single **After-Tax Cash** pool, which funds Living Expenses, Other Goals, account contributions, surplus to Brokerage, and the Roth Deposit from any conversion. The conversion pass-through is visible as a chain: Roth Conversion event → Roth Conversion (gross) → Ordinary Income → Roth Deposit. Hover any node or link for the precise dollar figure and share of the year; bucket hovers also show the inflow/outflow split. Inflows always equal outflows globally, within each bucket, and within each multi-detail aggregator — the diagram is conservation-checked, so if anything looks off it's showing you a real number. Inter-account cash-bucket refill or sweep activity, if any, appears as a separate row below the diagram (balance-sheet moves that don't pass through the buckets). If the portfolio depleted in a year, a red banner notes how much spending went unmet and the spending edges shrink to the funded amount.
 
 You can **export the whole table to CSV** using the button in the header — useful for sharing with an advisor or sanity-checking against another tool. The CSV includes scalar audit columns (AGI, deductions, bracket index, marginal rate, federal vs state split, SS zone, IRMAA tier, NIIT components, per-owner RMD). Per-event and per-account tables are in-app only — they don't fit a flat CSV cleanly.
 

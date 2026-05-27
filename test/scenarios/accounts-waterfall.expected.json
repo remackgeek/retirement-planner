@@ -13,7 +13,7 @@
   "breakdownChecks": [
     {
       "index": 0,
-      "field": "withdrawalFromTaxable",
+      "field": "withdrawalFromBrokerage",
       "value": 58824,
       "tolerance": 5,
       "_note": "Year 0: LTCG-only draw; W=50k/0.85=58,824"
@@ -41,7 +41,7 @@
     },
     {
       "index": 1,
-      "field": "withdrawalFromTaxable",
+      "field": "withdrawalFromBrokerage",
       "value": 41176,
       "tolerance": 5,
       "_note": "Year 1: taxable balance fully exhausted"
@@ -62,7 +62,7 @@
     },
     {
       "index": 3,
-      "field": "withdrawalFromTaxable",
+      "field": "withdrawalFromBrokerage",
       "value": 0,
       "tolerance": 1,
       "_note": "Year 3: taxable exhausted in year 1"
@@ -90,7 +90,7 @@
     },
     {
       "index": 4,
-      "field": "withdrawalFromTaxable",
+      "field": "withdrawalFromBrokerage",
       "value": 0,
       "tolerance": 1,
       "_note": "Year 4: taxable depleted"

@@ -4,7 +4,7 @@
   "breakdownChecks": [
     { "index": 0, "field": "withdrawalFromCash", "min": 0, "max": 0.01, "_note": "Pension covers spending; cash untouched" },
     { "index": 0, "field": "cashRefillFromSurplus", "min": 30000, "max": 40000, "_note": "~$35k refill from surplus" },
-    { "index": 0, "field": "cashSweepToTaxable", "value": 0, "tolerance": 0.01, "_note": "Refill doesn't trigger sweep; below max" },
+    { "index": 0, "field": "cashSweepToBrokerage", "value": 0, "tolerance": 0.01, "_note": "Refill doesn't trigger sweep; below max" },
     { "index": 0, "field": "cashEndingBalance", "min": 38000, "max": 42000, "_note": "Refilled to ≈ target ($40k)" }
   ]
 }
