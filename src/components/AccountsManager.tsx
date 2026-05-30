@@ -23,6 +23,7 @@ interface AccountsManagerProps {
   onDelete: (id: string) => void;
   spouseAge: number | null;
   cashYieldRate: number;
+  onCashYieldChange: (rate: number) => void;
 }
 
 export const AccountsManager: React.FC<AccountsManagerProps> = ({
@@ -32,6 +33,7 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
   onDelete,
   spouseAge,
   cashYieldRate,
+  onCashYieldChange,
 }) => {
   const [selectionDialogVisible, setSelectionDialogVisible] = useState(false);
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -126,6 +128,7 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
         existingAccounts={accounts}
         spouseAge={spouseAge}
         cashYieldRate={cashYieldRate}
+        onCashYieldChange={onCashYieldChange}
       />
     </Container>
   );

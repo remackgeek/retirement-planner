@@ -366,6 +366,16 @@ const Content: React.FC<{
     updateScenario(updatedScenario);
   };
 
+  // Scenario-wide cash yield, edited inline from the cash AccountDialog. Writes
+  // straight to portfolioAssumptions (applies to every cash account).
+  const handleCashYieldChange = (rate: number) => {
+    if (!activeScenario) return;
+    updateScenario({
+      ...activeScenario,
+      portfolioAssumptions: { ...activeScenario.portfolioAssumptions, cashYieldRate: rate },
+    });
+  };
+
   const handleDeleteAccount = (id: string) => {
     if (!activeScenario) return;
     const updatedAccounts = activeScenario.accounts.filter((acct) => acct.id !== id);
@@ -422,6 +432,7 @@ const Content: React.FC<{
                 onDelete={handleDeleteAccount}
                 spouseAge={activeScenario.spouseAge}
                 cashYieldRate={activeScenario.portfolioAssumptions.cashYieldRate ?? 0.04}
+                onCashYieldChange={handleCashYieldChange}
               />
             </AccountsManagerSection>
             <ManagerSection>

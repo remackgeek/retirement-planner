@@ -42,20 +42,24 @@ export interface UserData {
   // doesn't yet exist). Single value, applied to both i=0 and i=1.
   priorWorkingMagi?: number;
   contributionLimits?: ContributionLimits;
-  // Spending withdrawal source policy. Controls ONLY where living-expenses cash
-  // comes from — does NOT change the conversion gross, conversion-tax sourcing,
-  // or any other intent.
-  //   'brokerage_first' — RMD → Taxable → Trad-above-RMD → Roth (current default
-  //     when no conversions exist). Conservative; preserves Traditional.
-  //   'bracket_aware' — RMD → Trad up to top-of-12%-federal-bracket headroom
-  //     (conv- and SS-inclusive) → Taxable → Trad-above-headroom → Roth. Smart
-  //     default when any roth_conversion event exists: pulls Trad cheaply in
-  //     low-bracket years to preserve Taxable for high-mt conversion years.
-  //     See CLAUDE.md "Cross-year spending source policy" for blind spots
-  //     (IRMAA cliffs, NIIT thresholds, state retirement exclusions, etc.).
-  // When undefined, resolved at sim start: 'bracket_aware' if conversions exist,
-  // else 'brokerage_first'.
-  spendingWithdrawalOrder?: 'brokerage_first' | 'bracket_aware';
+  // Caps the Roth Conversion wizard's generated per-year conversion so the
+  // year's MAGI stays under (a) the next IRMAA tier ceiling — avoiding a
+  // higher Medicare surcharge 2 years later — and (b) the NIIT threshold.
+  // Conservative: it only ever lowers a conversion. Affects generated
+  // schedules only, NOT manually entered conversions and NOT the
+  // bracket-aware spending pull (the 12% spending headroom sits below both
+  // cliffs and can't trip them). Default ON (undefined or true): practitioner
+  // consensus treats IRMAA cliffs as hard caps. Explicit `false` opts out.
+  // Exposed in the Roth Conversion wizard, not in the Scenario dialog.
+  // See CLAUDE.md "Cross-year spending source policy" and
+  // MODEL_DETAILS "respectIrmaaNiitCliffs".
+  respectIrmaaNiitCliffs?: boolean;
+  // When true, federal long-term capital-gains tax uses 0/15/20% bracket
+  // stacking (gains stack on top of ordinary taxable income) instead of the
+  // flat `longTermCapGainsRate`. Default (undefined/false) keeps the flat rate,
+  // so results are bit-identical to before this option existed. State LTCG is
+  // unaffected (it always uses the per-state profile). See MODEL_DETAILS.
+  useStackedLtcgBrackets?: boolean;
   // Cash bucket management policy. Governs how cash account balances move
   // year-to-year (refill from surplus when low; sweep to Taxable when high).
   // Does NOT change cash interest, growth, or tax treatment — only mid-year

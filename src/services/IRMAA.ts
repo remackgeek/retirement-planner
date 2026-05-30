@@ -140,6 +140,31 @@ export function calculateIRMAA(
   return perEnrollee * enrollees;
 }
 
+// Inflation-indexed upper bound of the IRMAA tier that `magiBaseline` currently
+// falls into. Staying at or below this keeps the beneficiary in their current
+// tier (i.e. avoids tripping into the next surcharge bracket). Returns Infinity
+// when already in the top tier. Used by FillToBracketStrategy's optional
+// cliff-aware conversion sizing to avoid pushing the year's MAGI (and thus the
+// 2-year-later IRMAA lookback) into a higher tier.
+export function nextIrmaaTierCeiling(
+  magiBaseline: number,
+  filingStatus: FilingStatus,
+  year: number,
+  inflationRate: number,
+): number {
+  const factor = year > BASE_YEAR ? Math.pow(1 + inflationRate, year - BASE_YEAR) : 1;
+  const tiers = tiersFor(filingStatus);
+  for (const tier of tiers) {
+    if (magiBaseline <= tier.magiUpper * factor) return tier.magiUpper * factor;
+  }
+  return Infinity;
+}
+
+// Statutory NIIT MAGI threshold for a filing status (not inflation-indexed).
+export function getNiitThreshold(filingStatus: FilingStatus): number {
+  return NIIT_THRESHOLDS[filingStatus];
+}
+
 // NIIT thresholds — statutory, NOT indexed for inflation.
 const NIIT_THRESHOLDS: Record<FilingStatus, number> = {
   single: 200_000,

@@ -14,13 +14,21 @@ import {
 } from './SimulationService';
 import { getStateTaxProfile } from '../data/stateTaxProfiles';
 import { computeStateTax } from './StateTaxCalculator';
+import { deflateToYearZero } from '../utils/deflate';
 
 export interface ConversionImpact {
-  firstYearTax: number;             // incremental ordinary tax in the first conversion year
-  totalTaxOverConversion: number;   // sum of incremental taxes across all active years
-  rmdReductionAt73: number;         // $ reduction in the first-year RMD attributable to conversion
-  projectedRothAtEndOfPlan: number; // nominal Roth value from conversions at life expectancy
-  netPlanValueImpact: number;       // signed delta of plan value at life expectancy (with vs without)
+  // ALL dollar fields are reported in **real (year-0) dollars** so they're
+  // mutually comparable in the dialog grid. The per-year nominal helpers
+  // deflate before summing; `netPlanValueImpact` derives from engine paths
+  // which are already deflated. This was a latent bug — the engine path is
+  // pre-deflated by `path.push(startBalance / cumulativeInflation)` in
+  // SimulationService.ts but the closed-form helpers here used to return
+  // nominal-year values, mixing units in the same grid.
+  firstYearTax: number;             // incremental ordinary tax in the first conversion year (real)
+  totalTaxOverConversion: number;   // sum of incremental taxes across all active years (real)
+  rmdReductionAt73: number;         // $ reduction in the first-year RMD attributable to conversion (real)
+  projectedRothAtEndOfPlan: number; // Roth value from conversions at life expectancy (real)
+  netPlanValueImpact: number;       // signed delta of plan value at life expectancy (real; with vs without)
   // True-cap detection: years where Trad balance (after RMD/spending) limited the conversion
   // below the user's requested amount. Rare — only fires when the Trad bucket itself is too small.
   conversionShortfallYears: number;
@@ -205,6 +213,18 @@ export function estimateConversionImpact(
   let totalTaxOverConversion = 0;
   let projectedRothAtEndOfPlan = 0;
 
+  // All four "summary" preview values are reported in **real (year-0) dollars**
+  // to match `netPlanValueImpact` (which derives from `path[last]` — the engine
+  // pre-deflates paths in SimulationService.ts via `path.push(startBalance /
+  // cumulativeInflation)`). Without per-year deflation here, the grid would mix
+  // nominal tax/Roth-growth values against a real Net impact, off by a factor
+  // of (1+r)^horizon. Use the shared `deflateToYearZero` helper for the formula.
+  const realDollars = (nominalValue: number, yearIndex: number): number =>
+    deflateToYearZero(nominalValue, yearIndex, inflationRate);
+  // Loop-invariant: the year index for the end-of-plan terminal point, used
+  // to deflate the projected Roth value contributed by each conversion year.
+  const lastPlanYearIdx = lastPlanYear - userData.referenceYear;
+
   for (let year = startYear; year <= Math.min(endYear, lastPlanYear); year++) {
     const convAmount = conversionAmountInYear(userData, conversion, year, inflationRate);
     if (convAmount <= 0) continue;
@@ -227,25 +247,35 @@ export function estimateConversionImpact(
     const withConvOrdinary = baseOrdinary + convAmount;
     const baseSsTaxable = calculateSSTaxableAmount(ssGross, baseOrdinary, userData.filingStatus);
     const withConvSsTaxable = calculateSSTaxableAmount(ssGross, withConvOrdinary, userData.filingStatus);
-    const incrementalTax = incrementalTaxOnConversion(
+    const incrementalTaxNominal = incrementalTaxOnConversion(
       userData, year,
       baseOrdinary, baseSsTaxable, ssGross,
       withConvOrdinary, withConvSsTaxable, ssGross,
       convAmount, age, spouseAgeYear,
     );
 
-    if (year === startYear) firstYearTax = incrementalTax;
-    totalTaxOverConversion += incrementalTax;
+    const yearIdx = year - userData.referenceYear;
+    const incrementalTaxReal = realDollars(incrementalTaxNominal, yearIdx);
+    if (year === startYear) firstYearTax = incrementalTaxReal;
+    totalTaxOverConversion += incrementalTaxReal;
 
-    // Project Roth growth of this year's converted amount out to life expectancy.
+    // Project Roth growth of this year's converted amount out to life expectancy
+    // in NOMINAL terms, then deflate the END value to year-0 dollars. Note: the
+    // per-year `convAmount` is already nominal-for-that-year (the conversion
+    // event's inflation handling produces nominal dollars for the conversion
+    // year). Growing at nominal blendedReturn and deflating by horizon-from-now
+    // yields a real-dollar end-of-plan value that's apples-to-apples with the
+    // other rows.
     const yearsToLastPlan = Math.max(0, lastPlanYear - year);
-    projectedRothAtEndOfPlan += convAmount * Math.pow(1 + blendedReturn, yearsToLastPlan);
+    const nominalAtEnd = convAmount * Math.pow(1 + blendedReturn, yearsToLastPlan);
+    projectedRothAtEndOfPlan += realDollars(nominalAtEnd, lastPlanYearIdx);
   }
 
   // RMD reduction at the first RMD year (age 73) relative to baseline. Project
   // Trad balance to age 73 with and without the conversion schedule. Use the
   // initial account balances as the starting point (ignoring regular withdrawals,
-  // which is acceptable for a rough preview).
+  // which is acceptable for a rough preview). Result is the NOMINAL year-73
+  // RMD-dollar savings, deflated to year-0 dollars for the display grid.
   const accountBalances = initialAccountBalances(userData);
   const initialTradBalance = userData.accounts
     .filter((a) => a.type === 'traditional')
@@ -266,7 +296,8 @@ export function estimateConversionImpact(
       tradWithConv = Math.max(0, tradWithConv - convAmount);
     }
     const divisor = IRS_UNIFORM_LIFETIME_TABLE[rmdAge] ?? 26.5;
-    rmdReductionAt73 = Math.max(0, tradNoConv / divisor - tradWithConv / divisor);
+    const rmdReductionNominal = Math.max(0, tradNoConv / divisor - tradWithConv / divisor);
+    rmdReductionAt73 = realDollars(rmdReductionNominal, yearsFromNowToRmd);
   }
 
   // Net plan-value impact: run the full deterministic simulation engine twice
@@ -292,6 +323,12 @@ export function estimateConversionImpact(
     const withEvents = [...withoutEvents, conversion];
     const userDataWith: UserData = { ...userData, incomeEvents: withEvents };
     const userDataWithout: UserData = { ...userData, incomeEvents: withoutEvents };
+    // The engine now auto-selects the spending policy per scenario inside
+    // runDeterministicProjection, so the baseline already gets the best
+    // policy for "no conversion" and the with-run gets the best policy for
+    // "with conversion." The diff is the honest net impact — no waterfall
+    // switch bundled in. Previously this required a third projection to
+    // decompose; that's no longer needed.
     const withRun = runDeterministicProjection(userDataWith);
     const withoutRun = runDeterministicProjection(userDataWithout);
     const lastIdx = withRun.path.length - 1;

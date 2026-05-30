@@ -27,7 +27,10 @@
  *    then re-fills to the bracket ceiling. Without this loop a high
  *    conversion in an SS-claiming year would push SS into the 85% tier and
  *    silently over-fill the bracket.
- *  - Does NOT respect IRMAA cliffs (Design A is naive; upgrade path = Design B).
+ *  - IRMAA / NIIT cliffs: ignored by default, but when
+ *    `userData.respectIrmaaNiitCliffs` is set the per-year fill is additionally
+ *    capped so MAGI stays under the next IRMAA tier (year+2 lookback) and the
+ *    NIIT threshold. Conservative — it only ever reduces the conversion.
  *  - Does NOT model funding-availability for the marginal tax (Cash / Taxable /
  *    RMD-excess). The engine's existing conv-tax sourcing handles that.
  *  - Does NOT cap below zero — when the user's baseline already exceeds the
@@ -36,6 +39,7 @@
 
 import type { UserData } from '../../types/UserData';
 import type { TaxStrategy, PerYearStrategyDecision, BracketTarget } from './types';
+import { DEFAULT_END_AGE_CAP } from './types';
 import type { IncomeEvent } from '../../types/IncomeEvent';
 import {
   getBracketCeilingTaxableIncome,
@@ -44,6 +48,7 @@ import {
   getNumQualifyingSeniors,
   calculateSSTaxableAmount,
 } from '../TaxCalculator';
+import { nextIrmaaTierCeiling, getNiitThreshold } from '../IRMAA';
 
 /** Read `taxStatus` from an event, with a 'before_tax' default for events that
  *  don't declare one (most income types). Centralizes the optional-field
@@ -87,6 +92,7 @@ export function computeFillToBracketSchedule(
 ): PerYearStrategyDecision[] {
   const target: BracketTarget = taxStrategy.bracketTarget ?? '12_percent';
   const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
+  const endAgeCap = taxStrategy.endAgeCap ?? DEFAULT_END_AGE_CAP;
 
   // 'none' yields zero-amount entries per year (not an empty vector). Empty
   // would cause downstream consumers (Optimize's coordinate descent) to skip
@@ -110,6 +116,21 @@ export function computeFillToBracketSchedule(
     const year = userData.referenceYear + i;
     const age = userData.currentAge + i;
     const spouseAge = userData.spouseAge !== null ? userData.spouseAge + i : null;
+
+    // End-age cap: past the cap, owner-lifetime conversion arbitrage is
+    // essentially exhausted; emit 0 so the vector length stays totalYears
+    // (Optimize's coordinate descent expects fixed-length vectors) but no
+    // synthetic conversion is created. The wizard generates self-owned
+    // conversion events (handleWizApply in RothConversionDialog defaults to
+    // self), so the cap applies to **self's age**, not the younger spouse's.
+    // Using min(age, spouseAge) would let self-owned conversions fire past
+    // the cap whenever the spouse is still younger — pulling from self's
+    // past-cap Trad. If/when per-owner schedules are added, this check
+    // should check the owner's age via PerYearStrategyDecision.owner.
+    if (age > endAgeCap) {
+      decisions.push({ year, conversionAmount: 0 });
+      continue;
+    }
 
     const topOfBracket = getBracketCeilingTaxableIncome(
       userData.filingStatus, bracketIndex, year, inflationRate
@@ -152,10 +173,68 @@ export function computeFillToBracketSchedule(
       // Converged when the conversion amount stops moving (dollar-precision).
       if (Math.abs(convAmount - prevConv) < 1) break;
     }
+
+    // Optional IRMAA / NIIT cliff cap (off by default; see capConversionForCliffs).
+    convAmount = capConversionForCliffs(userData, year, i, convAmount);
+
     decisions.push({ year, conversionAmount: convAmount });
   }
 
   return decisions;
+}
+
+/**
+ * Optional IRMAA / NIIT cliff cap (off by default — returns `convAmount`
+ * unchanged unless `userData.respectIrmaaNiitCliffs` is set). A conversion adds
+ * to MAGI roughly dollar-for-dollar; for the 22%/24% targets the fill can reach
+ * the IRMAA tiers ($103k single / $206k MFJ, indexed) and the NIIT threshold.
+ * Caps the conversion so the year's MAGI stays under (a) the next IRMAA tier
+ * ceiling — relevant only if a Medicare enrollee exists in year+2 (2-year
+ * lookback) — and (b) the NIIT threshold. MAGI baseline proxy is ordinary +
+ * SS-taxable (computed inclusive of `convAmount`, mirroring the fill loop).
+ *
+ * Shared between `computeFillToBracketSchedule` (per-year fill) and the Optimize
+ * coordinate descent (per-candidate cap), so all three backends honor the flag
+ * identically — fill/auto/optimize treat the cliffs as the same hard cap.
+ *
+ * Known looseness (the cap can under-count MAGI, so a capped conversion may
+ * still nudge slightly past a tier): the baseline OMITS (1) forced RMD — a
+ * Traditional withdrawal in the real MAGI proxy, so 73+ conversion years are the
+ * exposed case — and (2) the Brokerage pull that funds the conversion's own
+ * ordinary tax, which adds LTCG to the NIIT MAGI base. Acceptable for an opt-in
+ * heuristic; the engine's true per-year MAGI still drives the actual IRMAA/NIIT
+ * charged in the simulation. Only ever reduces the conversion.
+ */
+export function capConversionForCliffs(
+  userData: UserData,
+  year: number,
+  yearIndex: number,
+  convAmount: number,
+): number {
+  // Default ON: practitioner consensus treats IRMAA cliffs as hard caps, not
+  // soft scoring penalties. Only an explicit `false` opt-out skips the cap.
+  if (userData.respectIrmaaNiitCliffs === false || convAmount <= 0) return convAmount;
+  const age = userData.currentAge + yearIndex;
+  const spouseAge = userData.spouseAge !== null ? userData.spouseAge + yearIndex : null;
+  const ssGross = sumSSForYear(userData, year, yearIndex);
+  const otherOrdinary = computeBaselineOrdinaryGrossForYear(userData, year, yearIndex) - ssGross;
+  const ssTaxable = ssGross > 0
+    ? calculateSSTaxableAmount(ssGross, otherOrdinary + convAmount, userData.filingStatus)
+    : 0;
+  const magiBaseline = otherOrdinary + ssTaxable;
+  let magiCeiling = Infinity;
+  const selfMedicareSoon = age + 2 >= 65;
+  const spouseMedicareSoon = spouseAge !== null && spouseAge + 2 >= 65;
+  if (userData.enableIRMAA !== false && (selfMedicareSoon || spouseMedicareSoon)) {
+    magiCeiling = Math.min(
+      magiCeiling,
+      nextIrmaaTierCeiling(magiBaseline, userData.filingStatus, year + 2, userData.inflationRate),
+    );
+  }
+  if (userData.enableNIIT !== false) {
+    magiCeiling = Math.min(magiCeiling, getNiitThreshold(userData.filingStatus));
+  }
+  return isFinite(magiCeiling) ? Math.min(convAmount, Math.max(0, magiCeiling - magiBaseline)) : convAmount;
 }
 
 /**

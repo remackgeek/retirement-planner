@@ -6,8 +6,9 @@ import {
   computeMarginalStackAttribution,
   getEffectiveStateName,
   IRS_UNIFORM_LIFETIME_TABLE,
-  resolveSpendingWithdrawalOrder,
+  runDeterministicProjection,
   runSimulation,
+  selectBestSpendingOrder,
   SYNTHETIC_TRAD_WITHDRAWAL_ID,
   type EventIncomeRecord,
 } from './SimulationService';
@@ -1976,59 +1977,156 @@ describe('audit.accountFlows (via runSimulation)', () => {
   });
 });
 
-describe('resolveSpendingWithdrawalOrder', () => {
-  it('returns the explicit field value when set', () => {
-    expect(
-      resolveSpendingWithdrawalOrder(makeUserData({ spendingWithdrawalOrder: 'brokerage_first' })),
-    ).toBe('brokerage_first');
-    expect(
-      resolveSpendingWithdrawalOrder(makeUserData({ spendingWithdrawalOrder: 'bracket_aware' })),
-    ).toBe('bracket_aware');
+describe('selectBestSpendingOrder', () => {
+  // The selector runs two full deterministic projections (one with each
+  // policy pinned) and picks the higher real terminal balance. These tests
+  // exercise the mechanics — that the returned value is one of the two
+  // policies, that auto-selected projections match forced-with-winner runs,
+  // and that the selector never throws on edge-case scenarios.
+
+  const spendyMfjScenario = (): UserData => makeUserData({
+    currentAge: 62,
+    lifeExpectancy: 80,
+    filingStatus: 'mfj',
+    spouseAge: 62,
+    stateTimeline: [{ state: 'Florida' }],
+    portfolioAssumptions: {
+      stockReturn: 0.07, stockStdDev: 0, bondReturn: 0.04, bondStdDev: 0,
+      stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+      returnDistribution: 'lognormal' as const, degreesOfFreedom: 4,
+    },
+    accounts: [
+      { id: 't-1', name: 'Trad', type: 'traditional', balance: 3_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: 'ira' as const },
+      { id: 'b-1', name: 'Brokerage', type: 'brokerage', balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: 'brokerage' as const },
+    ],
+    spendingGoals: [
+      { id: 'sp-1', type: 'living_expenses', name: 'Living', amount: 200_000, startAge: 62, inflationAdjusted: false, isOneTime: false, amountPeriod: 'annual' as const },
+    ],
   });
 
-  it("defaults to 'brokerage_first' when no roth_conversion event exists", () => {
-    expect(resolveSpendingWithdrawalOrder(makeUserData())).toBe('brokerage_first');
+  it('returns one of the two valid policies', () => {
+    const order = selectBestSpendingOrder(spendyMfjScenario());
+    expect(['brokerage_first', 'bracket_aware']).toContain(order);
   });
 
-  it("defaults to 'bracket_aware' when any roth_conversion event exists", () => {
+  it('auto-selected projection matches forcing the selector-picked winner', () => {
+    // The auto-selection picks a winner; forcing that same winner via
+    // _forceSpendingOrder must produce a bit-identical path. This proves
+    // the auto-select path threads through to the precomputes correctly
+    // and that the engine isn't reading the policy from anywhere else.
+    const ud = spendyMfjScenario();
+    const auto = runDeterministicProjection(ud);
+    const winner = selectBestSpendingOrder(ud);
+    const forced = runDeterministicProjection(ud, { _forceSpendingOrder: winner });
+    expect(forced.path[forced.path.length - 1]).toBeCloseTo(auto.path[auto.path.length - 1], 0);
+  });
+
+  it('the two forced policies produce distinct paths on a scenario where the choice matters', () => {
+    // Guards against a refactor that accidentally makes _forceSpendingOrder
+    // a no-op. On a heavy-spending, mixed-bucket scenario the two policies
+    // exit at materially different terminal balances.
+    const ud = spendyMfjScenario();
+    const brokerageRun = runDeterministicProjection(ud, { _forceSpendingOrder: 'brokerage_first' });
+    const bracketRun = runDeterministicProjection(ud, { _forceSpendingOrder: 'bracket_aware' });
+    const last = brokerageRun.path.length - 1;
+    expect(brokerageRun.path[last]).not.toBe(bracketRun.path[last]);
+  });
+
+  it('does not throw on a degenerate single-account scenario', () => {
+    // The default makeUserData has only a single Traditional account, no
+    // spending, no events. Auto-selection should still complete (it can't
+    // differentiate the policies but it can't throw either).
+    expect(() => selectBestSpendingOrder(makeUserData())).not.toThrow();
+  });
+
+  it('picks bracket_aware when high-spending makes 12% Trad headroom cheaper than 15% LTCG', () => {
+    // Pre-SS MFJ retirees, heavy Trad ($5M), modest Brokerage ($1M), high
+    // spending ($200K). LTCG on Brokerage pulls lands well into the 15%
+    // federal bracket because spending pushes ordinary-equivalent stacking
+    // past the 0% LTCG threshold. 12% Trad headroom (~$130K) is cheaper.
+    // Long horizon (30 years) so the cumulative tax savings × compounding
+    // wins clearly above the tiebreaker tolerance.
     const ud = makeUserData({
-      incomeEvents: [{
-        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 25_000,
-        startAge: 65, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed',
-      }],
+      currentAge: 62,
+      lifeExpectancy: 92,
+      filingStatus: 'mfj',
+      spouseAge: 62,
+      stateTimeline: [{ state: 'Florida' }],
+      portfolioAssumptions: {
+        stockReturn: 0.07, stockStdDev: 0, bondReturn: 0.04, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal' as const, degreesOfFreedom: 4,
+      },
+      inflationRate: 0.03,
+      accounts: [
+        { id: 't-1', name: 'Trad', type: 'traditional', balance: 5_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: 'ira' as const },
+        { id: 'b-1', name: 'Brokerage', type: 'brokerage', balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: 'brokerage' as const },
+      ],
+      spendingGoals: [
+        { id: 'sp-1', type: 'living_expenses', name: 'Living', amount: 200_000, startAge: 62, inflationAdjusted: true, isOneTime: false, amountPeriod: 'annual' as const },
+      ],
     });
-    expect(resolveSpendingWithdrawalOrder(ud)).toBe('bracket_aware');
+    expect(selectBestSpendingOrder(ud)).toBe('bracket_aware');
   });
 
-  it('honors an explicit override even when a conversion exists', () => {
+  it('picks brokerage_first on a low-spending pre-SS scenario when LTCG bracket stacking is on (0% LTCG bracket dominates)', () => {
+    // Pre-SS MFJ retirees with modest spending ($50K), balanced
+    // Trad/Brokerage, and `useStackedLtcgBrackets: true` so the 0%/15%/20%
+    // federal LTCG brackets are honored. With $0 ordinary income, $50K LTCG
+    // sits entirely in the 0% federal bracket (top of MFJ 0% LTCG bracket
+    // is ~$94K taxable income). Pulling Brokerage is FREE federally;
+    // bracket_aware would pay 10–12% federal on $50K Trad pulls. Over a
+    // 30-year horizon the difference clearly exceeds the tiebreaker.
+    // Without bracket stacking (flat 15% LTCG default), the test would flip
+    // because Brokerage pulls would cost 15% — that's covered by the
+    // mirror-image `bracket_aware wins on high-spending` test above.
     const ud = makeUserData({
-      spendingWithdrawalOrder: 'brokerage_first',
-      incomeEvents: [{
-        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 25_000,
-        startAge: 65, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed',
-      }],
+      currentAge: 62,
+      lifeExpectancy: 92,
+      filingStatus: 'mfj',
+      spouseAge: 62,
+      stateTimeline: [{ state: 'Florida' }],
+      portfolioAssumptions: {
+        stockReturn: 0.07, stockStdDev: 0, bondReturn: 0.04, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal' as const, degreesOfFreedom: 4,
+      },
+      inflationRate: 0.03,
+      useStackedLtcgBrackets: true,
+      accounts: [
+        { id: 't-1', name: 'Trad', type: 'traditional', balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: 'ira' as const },
+        { id: 'b-1', name: 'Brokerage', type: 'brokerage', balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: 'brokerage' as const },
+      ],
+      spendingGoals: [
+        { id: 'sp-1', type: 'living_expenses', name: 'Living', amount: 50_000, startAge: 62, inflationAdjusted: true, isOneTime: false, amountPeriod: 'annual' as const },
+      ],
     });
-    expect(resolveSpendingWithdrawalOrder(ud)).toBe('brokerage_first');
+    expect(selectBestSpendingOrder(ud)).toBe('brokerage_first');
   });
 
-  it('falls back to the content-aware default when the field holds an unknown value', () => {
-    // Legacy 'pro_rata' (dropped from the enum) and outright typos must not
-    // silently behave like brokerage_first with no signal — they fall through
-    // to the content-aware default. This is the S3 fix.
-    const noConv = makeUserData({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      spendingWithdrawalOrder: 'pro_rata' as any,
+  it('picks brokerage_first as tiebreaker when the two policies are operationally equivalent', () => {
+    // A scenario with no spending: both policies pull Trad to fund only the
+    // conversion event's tax cascade. Real terminal balances differ by ~$500
+    // (the small LTCG-cascade refeed under bracket_aware). With the widened
+    // tiebreaker tolerance ($100 absolute or 0.05% relative ≈ $250 on the
+    // $500K terminal), the noise is absorbed and brokerage_first wins by
+    // default. Guards against the original double-deflation-era test that
+    // flipped to bracket_aware over floating-point noise.
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 63,
+      filingStatus: 'single',
+      stateTimeline: [{ state: 'Florida' }],
+      accounts: [
+        { id: 't-1', name: 'Trad', type: 'traditional', balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'b-1', name: 'Brokerage', type: 'brokerage', balance: 50_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [],
+      incomeEvents: [
+        { id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 50_000, startAge: 60, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed' },
+      ],
     });
-    expect(resolveSpendingWithdrawalOrder(noConv)).toBe('brokerage_first');
-    const withConv = makeUserData({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      spendingWithdrawalOrder: 'foobar' as any,
-      incomeEvents: [{
-        id: 'conv-1', type: 'roth_conversion', name: 'Conv', amount: 25_000,
-        startAge: 65, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed',
-      }],
-    });
-    expect(resolveSpendingWithdrawalOrder(withConv)).toBe('bracket_aware');
+    expect(selectBestSpendingOrder(ud)).toBe('brokerage_first');
   });
 });
 
@@ -2116,6 +2214,36 @@ describe('computeBracketHeadroomForTrad', () => {
     // Add $80k conv → baselineTaxable = 80000 − 35500 = 44500. Headroom = 100800 − 44500 = 56300.
     const headroomWithConv = computeBracketHeadroomForTrad(ud, incomeOf({ conversionGross: 80_000 }), 2026, 0, 65, 65);
     expect(headroomWithConv).toBe(56300);
+  });
+});
+
+describe('stacked LTCG brackets (useStackedLtcgBrackets)', () => {
+  // Single retiree, age 70, only a Brokerage account, modest spending forces a
+  // ~$50k brokerage withdrawal with ~no ordinary income. Under the flat 15%
+  // rate that gain is taxed $7,500; under 0/15/20% stacking it sits entirely
+  // below the 0% ceiling (~$49,450) so federal LTCG ≈ 0.
+  const base = (overrides: Partial<UserData> = {}) => makeUserData({
+    currentAge: 70,
+    lifeExpectancy: 75,
+    accounts: [{ id: 'brk-1', name: 'Brokerage', type: 'brokerage', balance: 600_000, stockAllocation: 0, portfolioBalance: '60_40' as const }],
+    spendingGoals: [baseSpending(4_000, 70)], // $48k/yr
+    longTermCapGainsRate: 0.15,
+    ...overrides,
+  });
+
+  it('taxes a low-income brokerage gain at ~0% under stacking but 15% under the flat rate', () => {
+    const flat = runSimulation(base(), createSeededRandom(1));
+    const stacked = runSimulation(base({ useStackedLtcgBrackets: true }), createSeededRandom(1));
+    expect(flat.medianBreakdowns[0].federalCapGainsTax).toBeGreaterThan(3_000);
+    expect(stacked.medianBreakdowns[0].federalCapGainsTax).toBeLessThan(500);
+    expect(stacked.medianBreakdowns[0].federalCapGainsTax)
+      .toBeLessThan(flat.medianBreakdowns[0].federalCapGainsTax);
+  });
+
+  it('is bit-identical to the flat path when the flag is off (default)', () => {
+    const a = runSimulation(base(), createSeededRandom(7));
+    const b = runSimulation(base({ useStackedLtcgBrackets: undefined }), createSeededRandom(7));
+    expect(a.medianBreakdowns[0].federalCapGainsTax).toBe(b.medianBreakdowns[0].federalCapGainsTax);
   });
 });
 

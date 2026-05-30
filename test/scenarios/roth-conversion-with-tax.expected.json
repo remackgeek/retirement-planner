@@ -1,12 +1,13 @@
 {
-  "_rationale": "Conversion executes: rothConversionGross=100000, withdrawalFromTraditional=100000 (conversion only, since tax is absorbed by the Taxable account). ordinaryTax > 0 (federal + state on ~$67k taxable after MFJ senior deduction). Taxable account handles tax via waterfall, so withdrawalFromBrokerage > 0. CA tax + federal on $100k gross for MFJ senior comes out in the $10-20k range.",
+  "_rationale": "Conversion executes: rothConversionGross=100000. Conv tax is absorbed by the Taxable account (Brokerage → conv tax sourcing rule). Total withdrawalFromTraditional may be slightly above 100k because the engine auto-selects bracket_aware spending (adds a small Trad pull to soak up the LTCG-cascade overflow at 12% federal instead of leaving it on Brokerage at 15% LTCG). That extra Trad pull is spending-side, not conv-tax-side — the rothConversionTaxFromBrokerage > 0 / rothConversionTaxWithheld == 0 invariant still holds.",
   "probability": 100,
   "tolerance": 1.0,
   "breakdownChecks": [
     { "index": 0, "field": "rothConversionGross", "value": 100000, "tolerance": 1, "_note": "Full $100k conversion" },
-    { "index": 0, "field": "withdrawalFromTraditional", "value": 100000, "tolerance": 1, "_note": "Trad outflow is exactly conversion; tax drawn from Taxable first in waterfall" },
+    { "index": 0, "field": "withdrawalFromTraditional", "min": 100000, "max": 105000, "_note": "Conversion principal plus a small bracket_aware spending pull" },
     { "index": 0, "field": "ordinaryTax", "min": 5000, "max": 25000, "_note": "Federal + CA state tax on ~$67k taxable after MFJ senior deduction" },
     { "index": 0, "field": "withdrawalFromBrokerage", "min": 5000, "max": 25000, "_note": "Taxable absorbs the tax via waterfall" },
+    { "index": 0, "field": "rothConversionTaxFromBrokerage", "min": 1000, "max": 25000, "_note": "Conv tax sourced from Taxable, not withheld" },
     { "index": 1, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "One-time: no conversion in year 1" }
   ]
 }

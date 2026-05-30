@@ -29,8 +29,10 @@
 
 import type { UserData } from '../../types/UserData';
 import type { TaxStrategy, PerYearStrategyDecision } from './types';
-import { runDeterministicProjection } from '../SimulationService';
+import { DEFAULT_END_AGE_CAP } from './types';
+import { runDeterministicProjection, selectBestSpendingOrder } from '../SimulationService';
 import { computeAutoBracketSchedule, scoreProjection } from './AutoBracketStrategy';
+import { capConversionForCliffs } from './FillToBracketStrategy';
 import { buildStrategyConversionEvents, isGeneratorProducedConversion } from './syntheticEvents';
 
 // Tunables. Named (not magic numbers in the descent loop body) per the plan's
@@ -60,13 +62,10 @@ export interface OptimizeResult {
   sweepScores: number[];
   /** Cost in deterministic-projection evaluations (informational). */
   projectionCount: number;
-  /** Score of the user's TRUE pre-strategy baseline (no taxStrategy, uses
-   *  the user's existing spendingWithdrawalOrder resolution). The dialog
-   *  uses this to report "vs your current setup, the optimizer found
-   *  +X% improvement" — which is what users actually want to know. The
-   *  internal seed→final improvement is often tiny and misleading because
-   *  the seed (Auto-bracket winner) is itself a significant strategy
-   *  change from the user's baseline. */
+  /** Score of the user's TRUE pre-strategy baseline (scenario as-saved,
+   *  with no synthetic conversions added, run under the same pinned
+   *  spending policy the descent uses). The dialog reports "vs your
+   *  current setup, optimizer found +$X" using this baseline. */
   baselineScore: number;
 }
 
@@ -84,32 +83,43 @@ export function runOptimization(
   const objective = taxStrategy.objective ?? 'max_median_terminal_wealth';
   let projectionCount = 0;
 
-  // True baseline: user's scenario with no taxStrategy at all. This is the
-  // "stay where you are" reference point. We score it explicitly so the UI
-  // can report "vs your current setup, optimizer found +X% improvement" —
-  // not the misleading "vs Auto-bracket seed" delta.
-  // True baseline = the scenario as-saved. The engine no longer reads any
-  // strategy-override field, so no extra stripping is needed.
-  const baselineProjection = runDeterministicProjection(userData);
-  const baselineScore = scoreProjection(baselineProjection, objective);
+  // **Perf:** pin the spending policy once for the entire descent. Without
+  // pinning, every `runDeterministicProjection` call below triggers
+  // `selectBestSpendingOrder` internally → 2 extra inner projections per
+  // call. Across ~600–1500 candidate evaluations, that's a ~3× slowdown
+  // (10–15 s vs the documented 3–5 s). We pin to the policy picked for the
+  // user's true baseline (no extra conversions). The choice is unlikely to
+  // flip across candidate schedules — they all share the same underlying
+  // account balances, spending, and SS profile — and if it does flip, the
+  // margin is small enough to be within the selector's tiebreaker
+  // tolerance. Trade some marginal accuracy for ~3× perf.
+  const pinnedSpendingOrder = selectBestSpendingOrder(userData);
+  // Two deterministic projections inside selectBestSpendingOrder.
+  projectionCount += 2;
+
+  // True baseline: user's scenario as-saved, run with the pinned policy.
+  // This is the "stay where you are" reference for "vs your current setup".
+  const baselineProjection = runDeterministicProjection(userData, {
+    _forceSpendingOrder: pinnedSpendingOrder,
+  });
+  const baselineScore = scoreProjection(baselineProjection, objective, userData.inflationRate);
   projectionCount++;
 
-  // Initialize: Auto-bracket's best schedule.
-  const seed = computeAutoBracketSchedule(userData, taxStrategy);
-  projectionCount += 4; // Auto-bracket evaluated 4 candidates
+  // Initialize: Auto-bracket's best schedule. Pass our already-pinned
+  // policy down to AutoBracket so it doesn't redundantly recompute the
+  // same selector answer (saves 2 projections).
+  const seed = computeAutoBracketSchedule(userData, taxStrategy, pinnedSpendingOrder);
+  // Auto-bracket: 4 candidate projections (no selector probe — pinned).
+  projectionCount += 4;
   let bestSchedule: PerYearStrategyDecision[] = seed.perYearDecisions.map((d) => ({ ...d }));
 
   // Helper: evaluate a candidate schedule via deterministic projection.
+  // Passes `_forceSpendingOrder: pinnedSpendingOrder` so the inner call
+  // skips selectBestSpendingOrder.
   const evaluate = (schedule: PerYearStrategyDecision[]): number => {
     projectionCount++;
-    // Inject the schedule as synthetic conversion events on a userData copy.
-    // We use 'fill_to_bracket' as the inner strategy name with a precomputed
-    // schedule — but the framework's fill_to_bracket recomputes the schedule
-    // from bracket headroom, not from the candidate. So we use 'fixed' with
-    // pre-injected synthetic events. The synthetic-event factory is shared
-    // with TaxStrategyFramework via syntheticEvents.ts.
     const synthetic = buildStrategyConversionEvents(userData, schedule);
-    // Strip only generator-produced conversions; keep manual + user-detached
+    // Strip generator-produced conversions; keep manual + user-detached
     // events (they survive Apply per the replace-only-generated policy) so the
     // candidate's score matches the post-Apply state.
     const candidateUserData: UserData = {
@@ -118,25 +128,40 @@ export function runOptimization(
         ...userData.incomeEvents.filter((e) => !isGeneratorProducedConversion(e)),
         ...synthetic,
       ],
-      // Force bracket_aware spending order; mirror what optimize uses at sim time.
-      spendingWithdrawalOrder: 'bracket_aware',
     };
-    const projection = runDeterministicProjection(candidateUserData);
-    return scoreProjection(projection, objective);
+    const projection = runDeterministicProjection(candidateUserData, {
+      _forceSpendingOrder: pinnedSpendingOrder,
+    });
+    return scoreProjection(projection, objective, userData.inflationRate);
   };
 
-  // Score the seed UNDER THE DESCENT'S SCORING FRAME so subsequent
-  // comparisons are apples-to-apples. The seed from AutoBracket's grid uses
-  // a different scoring frame depending on the winner (the 'none' candidate
-  // strips taxStrategy entirely; others force bracket_aware). The descent
-  // always evaluates with `taxStrategy: 'fixed' + spendingWithdrawalOrder:
-  // 'bracket_aware'` (see `evaluate` above). Without this re-scoring,
-  // descent can silently miss the spending-order gain — if seed score uses
-  // brokerage_first and the descent's all-zero schedule scores higher under
-  // bracket_aware, the year-update guard (`yearBestAmount !== currentAmount`)
-  // skips the improvement because both amounts are 0.
-  let bestScore = evaluate(bestSchedule);
+  // Use AutoBracket's reported winner score directly — no re-score needed.
+  //
+  // Contract that makes this safe: both AutoBracket and this descent now
+  //   (a) pin the same `pinnedSpendingOrder` (both compute it via
+  //       `selectBestSpendingOrder(userData)` against the same userData),
+  //   (b) construct candidate userData identically — strip generator-tagged
+  //       conversions from `userData.incomeEvents`, then append synthetic
+  //       events built from the schedule via `buildStrategyConversionEvents`.
+  // So `evaluate(seed.perYearDecisions)` would produce exactly `seed.winnerScore`
+  // — the re-score was historically needed because AutoBracket's 'none' branch
+  // used different settings than the bracket branches, but that asymmetry was
+  // removed in the Pass 1 audit (MEDIUM-1). Saves one projection per Optimize
+  // invocation; not huge, but it's the same logical fix as HIGH-3.
+  let bestScore = seed.winnerScore;
   const sweepScores: number[] = [bestScore];
+
+  // End-age cap: skip years past the cap entirely. The seed (Auto-bracket
+  // winner) already emits 0 for these years; coordinate descent shouldn't
+  // probe non-zero candidates past the cap either. Wizard-generated
+  // conversions are self-owned (handleWizApply doesn't set owner; engine
+  // defaults to self), so the cap applies to self's age. See
+  // FillToBracketStrategy for the matching rationale.
+  const endAgeCap = taxStrategy.endAgeCap ?? DEFAULT_END_AGE_CAP;
+  const yearIsCapped = (yearIndex: number): boolean => {
+    const age = userData.currentAge + yearIndex;
+    return age > endAgeCap;
+  };
 
   // Coordinate descent. Forward sweep, then backward sweep per iteration.
   for (let sweep = 0; sweep < OPTIMIZE_MAX_SWEEPS; sweep++) {
@@ -146,18 +171,29 @@ export function runOptimization(
     const startIdx = direction === 1 ? 0 : totalYears - 1;
     const endIdx = direction === 1 ? totalYears : -1;
     for (let i = startIdx; i !== endIdx; i += direction) {
+      if (yearIsCapped(i)) continue;
       const currentAmount = bestSchedule[i].conversionAmount;
-      const candidates: number[] = OPTIMIZE_CANDIDATE_MULTIPLIERS.map((m) => currentAmount * m);
+      const year = bestSchedule[i].year; // === userData.referenceYear + i
+      const rawCandidates: number[] = OPTIMIZE_CANDIDATE_MULTIPLIERS.map((m) => currentAmount * m);
       // Always include 0 explicitly (in case currentAmount was already 0,
       // multipliers all collapse).
-      if (!candidates.includes(0)) candidates.push(0);
+      if (!rawCandidates.includes(0)) rawCandidates.push(0);
       // Zero-init year: multipliers all collapse to 0, so we have nothing to
       // explore around. Use absolute-dollar probes to "wake up" the year.
       // The probe set is logarithmic-ish in the $5-100k range where most
       // bracket-headroom conversions land.
       if (currentAmount === 0) {
-        for (const probe of OPTIMIZE_ZERO_INIT_PROBES) candidates.push(probe);
+        for (const probe of OPTIMIZE_ZERO_INIT_PROBES) rawCandidates.push(probe);
       }
+      // Cliff-aware candidate generation: cap each candidate under the IRMAA/NIIT
+      // ceiling so the descent never probes a conversion that trips a cliff — the
+      // same hard cap fill-to-bracket and auto-bracket already apply. No-op when
+      // `respectIrmaaNiitCliffs` is off (capConversionForCliffs returns its input),
+      // so results stay bit-exact with the prior blind candidate set. Dedupe so
+      // candidates that collapse onto the ceiling don't trigger redundant projections.
+      const candidates = [
+        ...new Set(rawCandidates.map((c) => (c < 0 ? c : capConversionForCliffs(userData, year, i, c)))),
+      ];
 
       let yearBestAmount = currentAmount;
       let yearBestScore = bestScore;

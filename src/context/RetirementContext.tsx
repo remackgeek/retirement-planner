@@ -17,14 +17,12 @@ type LegacyTaxStrategy = {
 };
 
 /**
- * Content-level migration: account.type === 'taxable' → 'brokerage', and
- * spendingWithdrawalOrder === 'taxable_first' → 'brokerage_first'.
+ * Content-level migration: account.type === 'taxable' → 'brokerage'.
  *
- * The AccountType enum and the withdrawal-order enum were renamed so the
- * Sankey's tax-treatment labels would stop colliding with the account
- * type. Scenarios persisted before the rename still carry the old
- * literals; this helper rewrites them on load. Idempotent — running
- * twice on the same scenario is a no-op.
+ * The AccountType enum was renamed so the Sankey's tax-treatment labels
+ * would stop colliding with the account type. Scenarios persisted before
+ * the rename still carry the old literals; this helper rewrites them on
+ * load. Idempotent — running twice on the same scenario is a no-op.
  */
 export function migrateTaxableAccountTypeToBrokerage(scenario: Scenario): {
   scenario: Scenario;
@@ -38,16 +36,32 @@ export function migrateTaxableAccountTypeToBrokerage(scenario: Scenario): {
     }
     return a;
   });
-  let spendingWithdrawalOrder = scenario.spendingWithdrawalOrder;
-  if ((spendingWithdrawalOrder as string) === 'taxable_first') {
-    changed = true;
-    spendingWithdrawalOrder = 'brokerage_first';
-  }
   if (!changed) return { scenario, changed: false };
   return {
-    scenario: { ...scenario, accounts, spendingWithdrawalOrder },
+    scenario: { ...scenario, accounts },
     changed: true,
   };
+}
+
+/**
+ * Content-level migration: strip the deprecated `spendingWithdrawalOrder`
+ * field. Added in Revision 2 when the field was removed from `UserData` —
+ * the engine now auto-selects the spending policy per scenario via
+ * `selectBestSpendingOrder`, so this user-facing knob no longer exists.
+ *
+ * Idempotent — running twice on the same scenario is a no-op.
+ */
+export function stripDeprecatedSpendingWithdrawalOrder(scenario: Scenario): {
+  scenario: Scenario;
+  changed: boolean;
+} {
+  const scenarioWithLegacy = scenario as Scenario & { spendingWithdrawalOrder?: string };
+  if (scenarioWithLegacy.spendingWithdrawalOrder === undefined) {
+    return { scenario, changed: false };
+  }
+  // Destructure to drop the field; rest spread carries every other key.
+  const { spendingWithdrawalOrder: _, ...rest } = scenarioWithLegacy;
+  return { scenario: rest as Scenario, changed: true };
 }
 
 export function migrateLegacyTaxStrategy(scenario: Scenario): { scenario: Scenario; addedConversions: number } {
@@ -188,6 +202,18 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           working = brokerageMigrated;
           migratedThisScenario = true;
           brokerageRenamedCount += 1;
+        }
+
+        // Content migration 3: strip the deprecated spendingWithdrawalOrder
+        // field (removed in Revision 2 when the engine switched to auto-
+        // selecting the spending policy). Idempotent on already-stripped
+        // scenarios. Counted under brokerageRenamedCount for telemetry
+        // simplicity — both are field-shape migrations.
+        const { scenario: spendingStripped, changed: spendingStrippedChanged } =
+          stripDeprecatedSpendingWithdrawalOrder(working);
+        if (spendingStrippedChanged) {
+          working = spendingStripped;
+          migratedThisScenario = true;
         }
 
         if (migratedThisScenario) {
@@ -401,11 +427,12 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         }
 
         // Same one-shot migrations as initDB: convert legacy taxStrategy.cachedVector
-        // into visible roth_conversion events, and rename any account.type 'taxable'
-        // to 'brokerage' before persisting.
+        // into visible roth_conversion events, rename any account.type 'taxable'
+        // to 'brokerage', and strip the deprecated spendingWithdrawalOrder field.
         const { scenario: migratedImport, addedConversions } = migrateLegacyTaxStrategy(importedData);
         const { scenario: brokerageMigratedImport } = migrateTaxableAccountTypeToBrokerage(migratedImport);
-        importedData = brokerageMigratedImport;
+        const { scenario: spendingStrippedImport } = stripDeprecatedSpendingWithdrawalOrder(brokerageMigratedImport);
+        importedData = spendingStrippedImport;
         const migrationNote = addedConversions > 0
           ? ` This scenario used the old tax-strategy feature; ${addedConversions} Roth conversion event${addedConversions === 1 ? '' : 's'} ${addedConversions === 1 ? 'was' : 'were'} migrated into the Income panel.`
           : '';

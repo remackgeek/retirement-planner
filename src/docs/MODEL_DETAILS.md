@@ -204,7 +204,7 @@ This is a UI summary only — the simulation always uses each account's individu
 
 ## Withdrawal Waterfall
 
-Each year, withdrawals follow a fixed sequence. Two strategies are available, selected per scenario via `UserData.spendingWithdrawalOrder`.
+Each year, withdrawals follow a fixed sequence. Two strategies are available, auto-selected per scenario by `selectBestSpendingOrder` (runs two deterministic projections, picks the higher real terminal balance). No user knob.
 
 ### `'brokerage_first'` (default when no Roth conversions are scheduled)
 
@@ -229,9 +229,9 @@ Inserts a **Traditional-up-to-12%-bracket-headroom** step before Brokerage, so s
 5. **Traditional, above headroom**
 6. **Roth** — last resort
 
-**This setting only changes the spending source — it does NOT change conversion size or conversion-tax sourcing.** Conversion tax still follows the hybrid sourcing rule (RMD-excess → Brokerage → withhold). The point of `bracket_aware` is to **preserve Brokerage for the high-`mt` conversion years** by paying for low-bracket-year spending from Traditional cheaply. See CLAUDE.md "Cross-year spending source policy" for the rationale, blind spots, and tradeoffs.
+**The waterfall choice only changes the spending source — it does NOT change conversion size or conversion-tax sourcing.** Conversion tax still follows the hybrid sourcing rule (RMD-excess → Brokerage → withhold). The point of `bracket_aware` is to **preserve Brokerage for the high-`mt` conversion years** by paying for low-bracket-year spending from Traditional cheaply. See CLAUDE.md "Spending source policy" for the rationale, blind spots, and tradeoffs.
 
-Override the auto-resolved default via the **Withdrawal Source** radio in the Scenario dialog (Auto / Brokerage first / Bracket-aware) — e.g. select Brokerage first on a conversion-bearing scenario to opt out of the smart default.
+The waterfall is fully auto-selected at sim start by `selectBestSpendingOrder`. Two deterministic projections (one per candidate policy) run via `runDeterministicProjection` with an internal `_forceSpendingOrder` option to pin each policy; the higher real terminal balance wins, tiebreaker `brokerage_first` within `max(100, |score| × 5e-4)` tolerance to absorb noise on operationally-equivalent scenarios (e.g., the LTCG-cascade refeed under bracket_aware on a zero-spending scenario). The resolved order is cached in `Precomputes.spendingOrder` so the MC inner loop never re-selects. The UI does not expose an override; the `UserData.spendingWithdrawalOrder` field was removed entirely. A test-only `_forceSpendingOrder` hook on `runSimulation`-adjacent entry points (`runDeterministicProjection`, `buildPrecomputes`, `calculateAnnualCashFlow`, and `computeAutoBracketSchedule`'s `pinnedSpendingOrder` third arg) lets unit tests isolate a specific policy without exposing it as user data.
 
 ### Spending Shortfall
 
@@ -263,7 +263,10 @@ ordinaryIncome = Traditional withdrawals
 capitalGains   = Brokerage account withdrawals (taxed at flat LTCG rate)
 ```
 
-The LTCG rate is **per-scenario configurable** (default 15%) — the model uses a single flat rate, not the federal 0%/15%/20% brackets. If you expect to fall in the 0% LTCG bracket some years, set the rate lower; if you expect to be in the 20% bracket, set it higher.
+Federal LTCG has two modes, selected per scenario under Settings → Tax & IRS:
+
+- **Flat rate (default)** — `longTermCapGainsRate × fromBrokerage`, a single configurable rate (default 15%). If you expect to fall in the 0% LTCG bracket some years, set the rate lower; if you expect the 20% bracket, set it higher.
+- **0/15/20% bracket stacking** (`useStackedLtcgBrackets: true`) — gains stack on top of your ordinary taxable income: the portion below the 0% ceiling is untaxed, the portion up to the 15% ceiling is taxed 15%, and anything above is 20%. Breakpoints are per-filing-status, inflation-indexed forward from 2026 (`getLtcgBreakpoints`). The flat rate is ignored in this mode. State LTCG is unaffected either way (it always uses the per-state profile).
 
 Each income event carries a `taxStatus` flag: **`before_tax`** events (pension, part-time work, rental income, etc.) flow into `ordinaryIncome`. **`after_tax`** events (inheritance, gifts, tax-free settlements) bypass the tax engine entirely and contribute directly to spendable cash.
 
@@ -324,6 +327,8 @@ The state tax flows are exposed in `AnnualCashFlowBreakdown.audit` as: `stateOrd
 Starting at age 65, Medicare Part B and Part D premiums include an **IRMAA** (Income-Related Monthly Adjustment Amount) surcharge for beneficiaries whose modified AGI exceeds tiered thresholds. The model uses the 2024 official tier table, inflation-indexed forward by `inflationRate`, and applies the IRS **2-year lookback** (year N's surcharge depends on year N-2's MAGI). Surcharge is per Medicare-enrolled person — so a married couple where both spouses are 65+ pays the surcharge twice.
 
 MFS tiers are approximated with the single tier table (the actual MFS table is compressed). Set `enableIRMAA: false` to disable.
+
+**`respectIrmaaNiitCliffs`** (optional `UserData` field, default `undefined`/off) — when set, the Roth Conversion wizard's fill-to-bracket compute (`computeFillToBracketSchedule`, also used by Auto-bracket) caps each year's generated conversion so MAGI stays under (a) the next IRMAA tier ceiling — applied only when a Medicare enrollee exists in year+2, matching the 2-year lookback — and (b) the NIIT threshold. It is conservative (only ever lowers a conversion) and affects generated schedules only, not manually entered conversions or the bracket-aware spending pull. Exposed in the Scenario dialog as "Cap Roth conversions under IRMAA / NIIT cliffs (advanced)".
 
 ### Net Investment Income Tax (NIIT)
 
@@ -538,7 +543,7 @@ A `roth_conversion` income event moves money from Traditional to Roth accounts. 
 2. Converted amount is taxed as **ordinary income** in the year of conversion (joint household calculation; per-owner accounting only matters for sourcing).
 3. **Routing is per-owner** (IRS rule: a conversion moves one owner's Trad to that same owner's Roth — Spouse's Trad cannot fund Self's conversion). Each conversion event carries `owner` (defaults to `'self'`). The engine routes the Trad pull pro-rata across that owner's own Traditional accounts only, and the Roth deposit pro-rata across that owner's own Roth accounts only. The breakdown surfaces per-owner totals via `rothConversionGrossSelf` / `rothConversionGrossSpouse` (sum = `rothConversionGross`) and per-owner withholding via `rothConversionTaxWithheldSelf` / `Spouse` (sum = `rothConversionTaxWithheld`; withholding splits proportionally to each owner's gross because each owner's 1099-R is independent). If an owner has conversions but no Roth account, `ensureRothConversionAccount` injects a per-owner synthetic (`Roth Conversion` for self, `Roth Conversion (Spouse)` for spouse). The marginal-stack attribution in `computeMarginalStackAttribution` scales per-event conversion gross by per-owner ratio so the displayed per-event gross matches the per-owner cap when one owner is capped and the other isn't.
 4. **Conversion tax sourcing is hybrid**, in priority order: (1) **Cash** balance not consumed by spending (above the cash-bucket floor when a policy is configured) — preferred because cash principal is tax-free and avoids the LTCG/NIIT amplification phantom on Brokerage pulls, (2) RMD-excess cash (already pulled from Trad as part of the forced RMD; using it costs nothing extra), (3) Brokerage balance not consumed by spending, (4) withheld from the conversion itself (IRS Form 1099-R Box 4). Tax is **never** pulled from Traditional-above-RMD or Roth — paying conversion tax from Trad would shrink the conversion's tax arbitrage; paying from Roth would deplete the dollars just deposited. When Cash + RMD-excess + Brokerage can't cover the marginal ordinary tax, the conversion still executes at the requested gross — but the Roth deposit shrinks by the withheld amount. This matches real-world Vanguard/Fidelity withholding mechanics. Withholding is mathematically suboptimal vs. paying tax from external accounts (you give up some of the arbitrage), so the Roth Conversion dialog warns when it activates and advises adding Cash/Brokerage funds or reducing the conversion. The breakdown surfaces `rothConversionGross` (Trad pull), `rothConversionRequested` (user intent), `rothConversionTaxFromCash`, `rothConversionTaxFromRmdExcess`, `rothConversionTaxFromBrokerage`, and `rothConversionTaxWithheld`.
-5. **Smart spending waterfall**: when any Roth conversion event is in the scenario, the engine defaults `UserData.spendingWithdrawalOrder` to `'bracket_aware'` so spending pulls from Traditional in low-bracket years instead of burning Brokerage. This preserves Brokerage for the high-`mt` conversion years and improves the conversion's net wealth impact — but it only reorders spending sources, it does NOT change the conversion size or conversion-tax sourcing. See **Withdrawal Waterfall** above for the mechanics.
+5. **Smart spending waterfall**: the engine auto-selects the spending policy per scenario via `selectBestSpendingOrder` (`'brokerage_first'` vs `'bracket_aware'`). For conversion-bearing plans, `'bracket_aware'` usually wins — it pulls Traditional in low-bracket years to preserve Brokerage for high-`mt` conversion years. The choice is independent of conversion sizing and conversion-tax sourcing. See **Withdrawal Waterfall** above for the mechanics.
 6. If an owner has conversions but no Roth account, a per-owner synthetic Roth account is auto-created (`"Roth Conversion"` for self, `"Roth Conversion (Spouse)"` for spouse).
 
 The Roth Conversion dialog's **Net impact on plan value** row is computed by running the deterministic projection (same single-path engine as the Projected chart line) twice — once with the conversion event included, once without — and diffing the end-of-plan portfolio balance. The other preview rows (first-year tax, total tax, RMD reduction, projected Roth at life expectancy) are fast closed-form estimates against your baseline income and do not include IRMAA or NIIT.
@@ -552,17 +557,31 @@ Roth conversions are first-class `roth_conversion` events on `scenario.incomeEve
 Two paths to add conversions, both in the **Roth Conversion** dialog:
 
 1. **Single conversion** — one event with start/end age, COLA, etc.
-2. **Plan a multi-year schedule** (generator wizard) — pick a method, click Compute, review the per-year preview table, click Apply to materialize as `roth_conversion` events.
+2. **Plan a multi-year schedule** (generator wizard, default tab) — pick a **plan window** (end-age cap, default 80) and toggle **cliff awareness** (default ON), click **Generate plan**, review the per-year preview table and the inline what-if chart, click **Apply** to materialize as `roth_conversion` events.
+
+### Plan window (`endAgeCap`)
+
+All three generator backends honor `taxStrategy.endAgeCap` (default `DEFAULT_END_AGE_CAP = 80` in `src/services/strategies/types.ts`). Years where `min(self_age, spouse_age) > endAgeCap` emit zero conversions. The vector length stays `totalYears` so OptimizeStrategy's coordinate descent indexing is uniform. Rationale: practitioner consensus says past ~80 the math is estate planning, not owner-lifetime tax arbitrage — and the wizard doesn't model heir brackets.
 
 ### Generator methods
 
-- **Fill to bracket** — sizes each year's conversion to fill a target federal bracket (`'12_percent'` / `'22_percent'` / `'24_percent'` / `'none'`). Reads the year's baseline ordinary income (wages, pensions, Social Security taxable portion, RMD net of conversion — but **not** the conversion itself; SS taxable portion is computed against ordinary-without-conversion as a single-pass approximation), subtracts the standard deduction (federal-only, including age 65+ extra), and emits `conversionAmount = max(0, top_of_target_bracket − baseline_taxable)`. Compute: ~5 ms.
+The wizard's **Generate plan** button calls `runOptimization` directly. The three compute primitives below are all involved internally; the user sees one button and one result.
 
-- **Auto bracket** — grid-searches all four bracket targets, runs the Fill-to-bracket schedule against the deterministic projection for each, scores by the configured `objective`, and picks the winner. Cost: 4× a deterministic projection (~20 ms). The `'none'` candidate scores the user's *true baseline* (no extra conversions, content-aware spending order) so the grid honestly compares "stay where you are" vs "switch to a bracket-fill strategy."
+- **Fill to bracket** (internal building block) — sizes each year's conversion to fill a target federal bracket (`'12_percent'` / `'22_percent'` / `'24_percent'` / `'none'`). Reads the year's baseline ordinary income (wages, pensions, Social Security taxable portion, RMD net of conversion — but **not** the conversion itself; SS taxable portion is computed against ordinary-without-conversion as a single-pass approximation), subtracts the standard deduction (federal-only, including age 65+ extra), and emits `conversionAmount = max(0, top_of_target_bracket − baseline_taxable)`. Compute: ~5 ms. Not user-facing.
 
-- **Optimize** — coordinate descent on the per-year conversion vector. Seeded from Auto-bracket's winner. For each year, holds the others fixed and runs a 1D line search over conversion-amount candidates (multipliers of the current amount: 0, 0.25×, 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2×, plus a logarithmic absolute-dollar probe set `[5, 10, 15, 20, 30, 40, 50, 75, 100]k` when current is 0). Iterates forward + backward sweeps until relative improvement drops below `OPTIMIZE_CONVERGENCE_EPSILON_FRACTION` (0.1%) or `OPTIMIZE_MAX_SWEEPS` (3). Cost: ~600–1500 deterministic projections (~3–7 s). Result exposes `baselineScore` so the dialog reports improvement as "vs your current setup, +$X (+Y%)". Catches cross-year interactions Fill/Auto can't see: converting more in early years shrinks Trad and the forced RMD at 73, expanding bracket headroom later.
+- **Auto bracket** (internal warm-start for Optimize) — grid-searches all four bracket targets, runs the Fill-to-bracket schedule against the deterministic projection for each, scores by the configured `objective`, and picks the winner. Cost: 4× a deterministic projection (~150 ms total). The `'none'` candidate scores the user's *true baseline* (no extra conversions, content-aware spending order) so the grid honestly compares "stay where you are" vs "switch to a bracket-fill strategy." Not user-facing — its winner is the seed for the coordinate descent.
 
-**Open-loop caveat.** All three methods optimize against the deterministic projection — the schedule is fixed at compute time and the MC runs follow it regardless of how the stochastic state evolves. On bad paths it will be suboptimal. This matches every production planner; the wizard footer surfaces this warning before Apply.
+- **Optimize** (what the **Generate plan** button runs) — coordinate descent on the per-year conversion vector. Seeded internally from Auto-bracket's winner. For each year, holds the others fixed and runs a 1D line search over conversion-amount candidates (multipliers of the current amount: 0, 0.25×, 0.5×, 0.75×, 1×, 1.25×, 1.5×, 2×, plus a logarithmic absolute-dollar probe set `[5, 10, 15, 20, 30, 40, 50, 75, 100]k` when current is 0). Each candidate is cliff-capped by `capConversionForCliffs` before scoring. Iterates forward + backward sweeps until relative improvement drops below `OPTIMIZE_CONVERGENCE_EPSILON_FRACTION` (0.1%) or `OPTIMIZE_MAX_SWEEPS` (3). **Cost:** ~600–1500 deterministic projections (~3–5 s). The spending policy is pinned upstream (`runOptimization` picks it once via `selectBestSpendingOrder` and threads it through every candidate via `_forceSpendingOrder`), so each candidate is exactly 1 projection — no 3× multiplier from auto-select firing inside the descent. Setup overhead: 2 for the policy pin + 1 for the baseline + 4 for the Auto-bracket seed (Auto-bracket also receives the pin, so its own selector call is skipped) = 7 projections before the descent starts. Result exposes `baselineScore` so the dialog reports improvement as "vs your current setup, +$X". Catches cross-year interactions Fill/Auto can't see: converting more in early years shrinks Trad and the forced RMD at 73, expanding bracket headroom later.
+
+**Open-loop caveat.** The optimizer scores against the deterministic projection — the schedule is fixed at compute time and the MC runs follow it regardless of how the stochastic state evolves. On bad paths it will be suboptimal. This matches every production planner; the wizard footer surfaces this warning before Apply.
+
+### Inline what-if chart
+
+After Generate plan completes, the dialog renders a small Chart.js line plot ([src/dialogs/RothConversionComparisonChart.tsx](src/dialogs/RothConversionComparisonChart.tsx)) with two deterministic projection lines: the current plan (generator-tagged conversions stripped, manual conversions kept) vs the proposed plan (current + new schedule as synthetic events). **Real (year-0) dollars**, matching the wizard's scoring frame so the optimizer's "improvement" claim aligns visually with the chart.
+
+### Impact Preview unit invariant
+
+**All `ConversionImpact` dollar fields are reported in year-0 (real) dollars** — `firstYearTax`, `totalTaxOverConversion`, `rmdReductionAt73`, `projectedRothAtEndOfPlan`, and `netPlanValueImpact`. The engine path is pre-deflated by `path.push(startBalance / cumulativeInflation)` in [SimulationService.ts](src/services/SimulationService.ts), so the `netPlanValueImpact` derived from path-last-value is already real. The closed-form helpers (tax, Roth growth, RMD reduction) deflate per-year nominal values using the shared `deflateToYearZero` utility ([src/utils/deflate.ts](src/utils/deflate.ts)) before summing. A future contributor adding a new row should reuse `deflateToYearZero` rather than inlining the formula — keeps the grid unit-consistent and prevents the recurring "real vs nominal" confusion that originally caused the +$172K vs +$514K mismatch.
 
 ### Apply, provenance, and re-run policy
 
@@ -581,19 +600,26 @@ Every Apply tags each event with `meta = { generatedBy: <method>, generatedAt: <
 - Does NOT respect ACA premium-credit cliffs (pre-65 retirees). ACA is not modeled in the engine yet.
 - SS-taxable-portion feedback is approximate. Single-pass approximation; multi-pass refinement is future work.
 
-### Objectives
+### Objectives (under Advanced in the wizard)
 
-- **`'max_median_terminal_wealth'`** (default) — score = start-of-last-year portfolio balance from the deterministic projection. Higher = better.
-- **`'min_lifetime_tax'`** — score = − sum(totalTax) across all years. Higher = better (negated so "argmax" picks the lowest-tax schedule).
+All scoring is in **real (year-0) dollars** — the projection is deflated by `(1+inflationRate)^horizon` before scoring. This prevents the optimizer being seduced by nominal terminal wealth into late-life conversions whose owner-lifetime payoff is near zero once you correct for inflation.
+
+- **`'max_median_terminal_wealth'`** (default) — score = start-of-last-year portfolio balance, deflated. Higher = better.
+- **`'min_lifetime_tax'`** — score = − sum(deflated per-year totalTax). Higher = better (negated so "argmax" picks the lowest-tax schedule).
 - **`'max_floor'`** — reserved (10th-percentile MC terminal wealth). Currently falls back to terminal-wealth scoring; full MC objective is future work.
 - **`'max_lifetime_consumption'`** — reserved (discounted sum of spending-actually-delivered). Currently falls back to terminal-wealth; awaits priority-tier spending feedback to become meaningful.
 
+### IRMAA / NIIT cliff cap
+
+`UserData.respectIrmaaNiitCliffs` is **default ON** (treats `undefined` and `true` as enabled; only explicit `false` opts out). Practitioner consensus treats IRMAA tier crossings as hard caps. `capConversionForCliffs` in `src/services/strategies/FillToBracketStrategy.ts` caps each year's generated conversion so MAGI stays under the next IRMAA tier (year+2 lookback, gated on a Medicare enrollee in that year) and the NIIT threshold. Honored by Fill, Auto-bracket, and Optimize uniformly — the toggle is the same hard cap across all three. Exposed in the Roth Conversion wizard, not the Scenario dialog (it's a generation-time concern).
+
 ### Spending source order
 
-Independent of conversion sizing. `UserData.spendingWithdrawalOrder` is the only knob:
+Auto-selected per scenario by `selectBestSpendingOrder` in `src/services/SimulationService.ts`. Two policies are candidates:
 - `'brokerage_first'` — pulls Brokerage before Traditional.
 - `'bracket_aware'` — pulls Traditional up to top-of-12% federal-bracket headroom (conv- and SS-inclusive) before Brokerage.
-- `undefined` (auto) — content-aware default: `'bracket_aware'` if any `roth_conversion` event exists, else `'brokerage_first'`. Resolved at sim start by `resolveSpendingWithdrawalOrder` in `src/services/SimulationService.ts`. User overrides via the **Withdrawal Source** radio in the Scenario dialog.
+
+The selector runs two deterministic projections (one per candidate, via the internal `_forceSpendingOrder` option) and picks the higher real terminal balance. Tiebreaker `brokerage_first` within `max(100, |score| × 5e-4)` tolerance. No user knob — the previous `UserData.spendingWithdrawalOrder` field was removed. The Roth Conversion wizard's `netPlanValueImpact` is now the honest marginal effect of the conversion on top of the engine already doing its best (no more "+$514K bonus for a $1 placeholder conversion" surprise — see CLAUDE.md "Spending source policy" for the full story).
 
 ### Legacy `taxStrategy` migration
 
@@ -647,7 +673,7 @@ This is a deliberate choice. Stochastic mortality would inflate success rates ar
 - **No stochastic inflation in cash flows** — only portfolio deflation uses per-run inflation; income/spending use the deterministic mean.
 - **State tax on capital gains** uses the per-state profile's `ltcgRule`: most states stack LTCG on top of state ordinary brackets, Missouri exempts LTCG entirely, and Washington applies a 7% rate above an inflation-indexed $270k threshold (with no underlying ordinary state tax). NH/TN dividend & interest tax is not modeled.
 - **No state SS exemption** — applied uniformly even in states that exempt SS (CA, NY, etc.).
-- **Flat federal LTCG rate** — the 0/15/20% federal LTCG brackets and ordinary-income-stacking interaction are not modeled; capital gains tax is `longTermCapGainsRate × fromBrokerage`.
+- **Federal LTCG rate** — defaults to a flat `longTermCapGainsRate × fromBrokerage`. Optional 0/15/20% bracket stacking (gains stacked on ordinary taxable income) is available per scenario via `useStackedLtcgBrackets`; when off, the flat rate is used. Cost-basis tracking is still absent in both modes — the entire brokerage withdrawal is treated as gain.
 - **No cost-basis tracking** in brokerage accounts; the entire withdrawal is treated as long-term capital gain (and as investment income for NIIT).
 - **IRMAA tier table is 2024** inflation-indexed forward, not refreshed annually; thresholds and surcharge amounts will drift from real IRS figures as Medicare updates the table.
 - **IRMAA threshold indexing uses scenario `inflationRate`** as a proxy. CMS's actual formula tracks Part B premium growth and SS COLAs, which can drift from CPI over a 30-year horizon.

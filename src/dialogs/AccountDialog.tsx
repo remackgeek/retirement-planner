@@ -5,6 +5,7 @@ import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
+import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import type { Account, AccountType, AccountKind } from '../types/Account';
 import type { PortfolioType } from '../types/IncomeEvent';
 import { PORTFOLIO_PRESETS } from '../utils/portfolioPresets';
@@ -88,8 +89,11 @@ interface AccountDialogProps {
   existingAccounts: Account[];
   spouseAge: number | null;
   // Scenario-level cash yield (from portfolioAssumptions.cashYieldRate).
-  // Displayed read-only for cash accounts; editable in Modeling dialog.
+  // Shown for cash accounts. Editable inline when onCashYieldChange is provided
+  // (writes back to the scenario immediately, independent of account Save);
+  // otherwise read-only.
   cashYieldRate: number;
+  onCashYieldChange?: (rate: number) => void;
 }
 
 const ownerOptions = [
@@ -112,6 +116,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   existingAccounts,
   spouseAge,
   cashYieldRate,
+  onCashYieldChange,
 }) => {
   const [name, setName] = useState('');
   const [balance, setBalance] = useState<number>(0);
@@ -223,7 +228,19 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         </InputGroup>
         {showOwnerField && (
           <InputGroup>
-            <label>Owner</label>
+            <label>
+              Owner{' '}
+              <span className="owner-help-tip" style={{ color: colors.textMuted, cursor: 'help', fontWeight: 400 }}>(?)</span>
+            </label>
+            <PrimeTooltip target=".owner-help-tip" position="right" showDelay={150}>
+              <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                Whose account this is. Required Minimum Distributions are computed
+                per owner using each spouse's own age (Self uses your age, Spouse
+                uses your spouse's), and Roth conversions stay within the same
+                owner's accounts — so the owner here changes when and how much this
+                account is forced to distribute.
+              </div>
+            </PrimeTooltip>
             <Dropdown
               value={owner}
               options={ownerOptions}
@@ -273,21 +290,34 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         )}
         {isCash && (
           <InputGroup style={{ marginTop: spacing.md }}>
-            <label>Yield</label>
-            <div
-              style={{
-                padding: `${spacing.xs} ${spacing.sm}`,
-                background: colors.bgLight,
-                border: border.standard,
-                borderRadius: border.radius,
-                fontSize: fontSize.base,
-                color: colors.textSecondary,
-              }}
-            >
-              {(cashYieldRate * 100).toFixed(2)}% annual (set in Modeling)
-            </div>
+            <label>Yield (annual)</label>
+            {onCashYieldChange ? (
+              <InputNumber
+                value={cashYieldRate * 100}
+                onValueChange={(e) => onCashYieldChange((e.value ?? 0) / 100)}
+                mode="decimal"
+                minFractionDigits={2}
+                maxFractionDigits={2}
+                suffix="%"
+                min={0}
+                max={20}
+              />
+            ) : (
+              <div
+                style={{
+                  padding: `${spacing.xs} ${spacing.sm}`,
+                  background: colors.bgLight,
+                  border: border.standard,
+                  borderRadius: border.radius,
+                  fontSize: fontSize.base,
+                  color: colors.textSecondary,
+                }}
+              >
+                {(cashYieldRate * 100).toFixed(2)}% annual (set in Modeling)
+              </div>
+            )}
             <small style={{ color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.xs }}>
-              Cash accounts accrue a deterministic yield (treated as ordinary income) and are not subject to stock/bond market shocks. Interest counts toward IRMAA MAGI and the NIIT investment-income base.
+              Cash accounts accrue a deterministic yield (treated as ordinary income) and are not subject to stock/bond market shocks. Interest counts toward IRMAA MAGI and the NIIT investment-income base. This rate is scenario-wide — changing it here applies to every cash account and saves immediately.
             </small>
           </InputGroup>
         )}

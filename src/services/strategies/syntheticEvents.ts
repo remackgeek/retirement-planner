@@ -55,6 +55,14 @@ export function createStrategyConversionEvent(
     id: `${STRATEGY_CONVERSION_ID_PREFIX}${decision.year}`,
     type: 'roth_conversion',
     name: `Strategy conversion ${decision.year}`,
+    // Explicit self-ownership. Matches the wizard's Apply batch (which sets
+    // owner: 'self' explicitly per the Revision 3 audit) so scoring matches
+    // Apply by design rather than by coincidence — both currently route to
+    // self by default, but if the engine's owner default ever changes, this
+    // anchor prevents silent divergence between the wizard's reported "+$X"
+    // and what Apply produces. When PerYearStrategyDecision grows an owner
+    // field for per-owner scheduling, this defaults to that owner.
+    owner: 'self',
     amount: decision.conversionAmount,
     startAge,
     endAge: startAge,

@@ -22,8 +22,9 @@
 import type { UserData } from '../../types/UserData';
 import type { TaxStrategy, PerYearStrategyDecision, BracketTarget, StrategyObjective } from './types';
 import { computeFillToBracketSchedule } from './FillToBracketStrategy';
-import { runDeterministicProjection } from '../SimulationService';
+import { runDeterministicProjection, selectBestSpendingOrder, type ResolvedSpendingOrder } from '../SimulationService';
 import { buildStrategyConversionEvents, isGeneratorProducedConversion } from './syntheticEvents';
+import { deflateToYearZero } from '../../utils/deflate';
 
 const CANDIDATE_BRACKETS: BracketTarget[] = ['none', '12_percent', '22_percent', '24_percent'];
 
@@ -45,51 +46,53 @@ export interface AutoBracketResult {
 export function computeAutoBracketSchedule(
   userData: UserData,
   taxStrategy: TaxStrategy,
+  /** Optional pin for the spending policy used to score each candidate.
+   *  When provided, this is used directly — useful when `runOptimization` (the
+   *  primary caller) has already picked the pin and wants to avoid recomputing
+   *  it (2 redundant projections per Optimize invocation). When omitted,
+   *  AutoBracket picks its own pin via `selectBestSpendingOrder` — preserves
+   *  standalone callability for the success-probability MC and other direct
+   *  callers. The same userData → same pinned answer, so the parameter is
+   *  semantically a hint, not an override. */
+  pinnedSpendingOrder?: ResolvedSpendingOrder,
 ): AutoBracketResult {
   const objective = taxStrategy.objective ?? 'max_median_terminal_wealth';
   const candidateScores: { bracket: BracketTarget; score: number }[] = [];
   let best: AutoBracketResult | null = null;
 
+  // Pin the spending policy once for all 4 candidates. Without pinning, each
+  // `runDeterministicProjection` triggers `selectBestSpendingOrder` → 2
+  // extra projections per candidate (4×3=12 total instead of 4). Accept an
+  // upstream pin to avoid recomputing the same answer when called from
+  // runOptimization.
+  const policyPin = pinnedSpendingOrder ?? selectBestSpendingOrder(userData);
+
   for (const bracket of CANDIDATE_BRACKETS) {
     const schedule = computeFillToBracketSchedule(userData, { ...taxStrategy, bracketTarget: bracket });
-    // Build a userData copy with the candidate strategy applied so the
-    // deterministic projection runs against THIS bracket's conversion plan.
-    //
-    // SPECIAL CASE for 'none': this candidate represents "don't add any
-    // conversions". To make it an honest baseline to compare the other
-    // candidates against, we strip the taxStrategy entirely so the user's
-    // existing `spendingWithdrawalOrder` resolves naturally (auto-defaulting
-    // to 'brokerage_first' when no conversion events exist, 'bracket_aware'
-    // when they do). The other candidates (12/22/24%) DO force bracket_aware
-    // spending — which is the strategy's signature — so a "switching to a
-    // strategy" choice is fairly compared against "stay where you are."
-    //
-    // Without this special-case, the 'none' candidate forces bracket_aware
-    // too, making it a hidden change from the user's status quo. The user
-    // sees the optimizer "improve" by switching spending order — but
-    // attributes that improvement to a non-existent conversion schedule.
-    // Engine no longer reads `taxStrategy`. Inject the candidate's schedule as
-    // synthetic conversion events for non-'none' candidates; force bracket_aware
-    // spending order to match the strategy's signature. The 'none' candidate
-    // strips conversion events entirely and leaves spending order to the
-    // content-aware default — that's the true "stay where you are" baseline.
-    // Non-'none' candidates: keep manual + user-detached conversions (those
-    // survive Apply per the replace-only-generated policy) and append the
-    // candidate's generator-produced schedule. Stripping ALL conversions here
-    // would understate the candidate's score whenever the user has manual
-    // conversions in the scenario.
+    // Build the candidate userData for this bracket's projection.
+    //  - 'none' = clean status-quo baseline (strips generator-tagged
+    //    conversions; keeps manual / user-detached events). Matches
+    //    OptimizeStrategy.evaluate()'s frame so the seed score is comparable
+    //    to descent scores (Revision 3 MEDIUM-1 fix).
+    //  - 12% / 22% / 24% = same survivor base + synthetic events from the
+    //    fill-to-bracket schedule.
+    // The spending policy is pinned uniformly across all candidates via
+    // `_forceSpendingOrder: policyPin` (Revision 3 HIGH-3), so the grid
+    // measures conversion-schedule effect on a consistent spending frame.
+    const survivors = userData.incomeEvents.filter((e) => !isGeneratorProducedConversion(e));
     const candidateUserData: UserData = bracket === 'none'
-      ? userData
+      ? { ...userData, incomeEvents: survivors }
       : {
           ...userData,
           incomeEvents: [
-            ...userData.incomeEvents.filter((e) => !isGeneratorProducedConversion(e)),
+            ...survivors,
             ...buildStrategyConversionEvents(userData, schedule),
           ],
-          spendingWithdrawalOrder: 'bracket_aware',
         };
-    const projection = runDeterministicProjection(candidateUserData);
-    const score = scoreProjection(projection, objective);
+    const projection = runDeterministicProjection(candidateUserData, {
+      _forceSpendingOrder: policyPin,
+    });
+    const score = scoreProjection(projection, objective, userData.inflationRate);
     candidateScores.push({ bracket, score });
     if (best === null || score > best.winnerScore) {
       best = {
@@ -118,18 +121,30 @@ export function computeAutoBracketSchedule(
  * Maps a deterministic-projection result to a scalar score by the configured
  * objective. Higher is always better (we negate "min" objectives).
  *
- * Phase 3b scoring:
+ * **Units note.** The projection stores two kinds of values that differ in
+ * their deflation state:
+ *  - `path[i]` is **already deflated to real (year-0) dollars** by the engine
+ *    at SimulationService.ts `path.push(startBalance / cumulativeInflation)`.
+ *    So terminal-wealth scoring just reads it directly — deflating again
+ *    here would produce double-deflated units and a delta that mismatches
+ *    the inline chart's visible end-of-plan diff.
+ *  - `breakdowns[i].totalTax` is **nominal-year-i** (the actual tax bill in
+ *    that year's dollars). Summing nominal across years conflates units, so
+ *    for a real lifetime-tax score we deflate each year to year 0 before
+ *    summing.
+ *
  *  - `'max_median_terminal_wealth'` (default): start-of-last-year portfolio
- *    balance from the projection's path. We use start-of-last-year rather
- *    than a true end-of-plan because the simulation engine doesn't capture
+ *    balance, already real. We use start-of-last-year rather than a true
+ *    end-of-plan because the simulation engine doesn't capture
  *    end-of-last-year in the path array; for COMPARING strategies across
  *    the same horizon, this is bit-for-bit equivalent (both candidates'
  *    last-year start-balance reflects their full-horizon outcome).
- *  - `'min_lifetime_tax'`: negative sum of totalTax across breakdowns.
- *    Maximizing the negative = minimizing the tax.
+ *  - `'min_lifetime_tax'`: negative sum of per-year nominal totalTax,
+ *    deflated to year 0 before summing. Maximizing the negative =
+ *    minimizing the real tax burden.
  *  - `'max_floor'`: not implementable from deterministic alone (it needs
- *    the 10th-percentile MC path). Falls back to terminal wealth for
- *    Phase 3b; full MC scoring is a future refinement.
+ *    the 10th-percentile MC path). Falls back to terminal wealth; full MC
+ *    scoring is a future refinement.
  *  - `'max_lifetime_consumption'`: spending isn't tier-aware in this codebase,
  *    so totalSpendingNet is exogenous (same across all strategies). Falls
  *    back to terminal wealth.
@@ -137,11 +152,20 @@ export function computeAutoBracketSchedule(
 export function scoreProjection(
   projection: ReturnType<typeof runDeterministicProjection>,
   objective: StrategyObjective,
+  // `inflationRate` is consumed only by the `'min_lifetime_tax'` branch, which
+  // deflates each year's nominal `totalTax` to year-0 dollars before summing.
+  // `'max_median_terminal_wealth'` (the default branch) reads `path[last]`
+  // which the engine has already deflated — no further deflation needed.
+  // The parameter stays in the signature so callers don't have to remember
+  // which objective uses it; passing it is harmless when unused.
+  inflationRate: number,
 ): number {
   switch (objective) {
     case 'min_lifetime_tax': {
       let sum = 0;
-      for (const b of projection.breakdowns) sum += b.totalTax;
+      for (let i = 0; i < projection.breakdowns.length; i++) {
+        sum += deflateToYearZero(projection.breakdowns[i].totalTax, i, inflationRate);
+      }
       return -sum;
     }
     case 'max_median_terminal_wealth':

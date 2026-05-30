@@ -1,8 +1,10 @@
 import type { UserData, CashBucketPolicy } from '../types/UserData';
-// Spending-source order is now resolved inline here (see
-// `resolveSpendingWithdrawalOrder`). The legacy `taxStrategy` field on
-// UserData is no longer consulted by the engine — it is stripped on scenario
-// load by `migrateLegacyTaxStrategy` in RetirementContext.
+// Spending-source order is auto-selected per scenario via
+// `selectBestSpendingOrder`. The legacy `taxStrategy` field on UserData is
+// no longer consulted by the engine — it is stripped on scenario load by
+// `migrateLegacyTaxStrategy` in RetirementContext. The legacy
+// `spendingWithdrawalOrder` field is similarly stripped by
+// `stripDeprecatedSpendingWithdrawalOrder`.
 import type { Account, AccountType, AccountKind } from '../types/Account';
 import {
   calculateNetFromGross,
@@ -14,6 +16,8 @@ import {
   getNumQualifyingSeniors,
   getStandardDeduction,
   getUsualSeniorExtra,
+  computeFederalLTCGTax,
+  getFederalTaxableIncome,
   type FederalBracketDetail,
   type FilingStatus,
   type SsZone,
@@ -716,7 +720,7 @@ export interface AnnualCashFlowBreakdown {
   cashSweepToBrokerage: number;        // (Phase 2) dollars moved Cash→Taxable by the post-convergence sweep when cash > maxMonths × monthly. Tax-free balance transfer.
   totalTax: number;
   ordinaryTax: number;      // ordinary income tax (federal + state + locality surcharge) on Traditional + SS + other taxable
-  federalCapGainsTax: number; // federal LTCG tax on taxable account withdrawals (longTermCapGainsRate × fromBrokerage)
+  federalCapGainsTax: number; // federal LTCG tax on taxable account withdrawals (flat longTermCapGainsRate × fromBrokerage, or 0/15/20% stacked when useStackedLtcgBrackets)
   stateCapGainsTax: number;   // state tax on taxable account withdrawals (most states treat LTCG as ordinary; WA flat threshold; MO exempt)
   stateLocalitySurcharge: number; // NYC ~3.876% municipal income tax (0 elsewhere); already included in `ordinaryTax` total
   irmaaSurcharge: number;     // Medicare IRMAA Part B+D surcharge (per enrollee × enrollee count); 0 if disabled or pre-65
@@ -1506,7 +1510,12 @@ export function calculateAnnualCashFlow(
   inflationRate: number = 0.03,
   accountBalances?: Record<string, number>,
   maxWithdrawal?: number,
-  beginningTradBalance?: number
+  beginningTradBalance?: number,
+  /** Optional pin for the spending policy. When omitted, runs the auto-selector
+   *  (which costs two deterministic projections). Tests and callers that want
+   *  to isolate a specific policy — or skip the selector's cost — should pass
+   *  this explicitly. */
+  _forceSpendingOrder?: ResolvedSpendingOrder,
 ): AnnualCashFlowBreakdown {
   const i = year - userData.referenceYear;
   const spouseAge = userData.spouseAge !== null ? userData.spouseAge + i : null;
@@ -1525,7 +1534,7 @@ export function calculateAnnualCashFlow(
   const stateName = getEffectiveStateName(userData, year);
   const { profile: stateProfile, resolvedKey: stateResolvedKey } = getStateTaxProfile(stateName, year);
   const income = accumulateIncome(userData, year, inflationRate);
-  const spendingOrder = resolveSpendingWithdrawalOrder(userData);
+  const spendingOrder = _forceSpendingOrder ?? selectBestSpendingOrder(userData);
   const bracketHeadroom = spendingOrder === 'bracket_aware'
     ? computeBracketHeadroomForTrad(userData, income, year, inflationRate, userData.currentAge + i, spouseAge)
     : 0;
@@ -1592,6 +1601,12 @@ export function computeBracketHeadroomForTrad(
   const topOf12 = getBracketCeilingTaxableIncome(userData.filingStatus, 1, year, inflationRate);
   if (!isFinite(topOf12)) return 0;
   const baselineTaxable = Math.max(0, baselineOrdGross - totalDed);
+  // No IRMAA/NIIT cliff clamp here on purpose: the 12% bracket fills to roughly
+  // $66k (single) / $133k (MFJ) of gross MAGI, both well below the first IRMAA
+  // tier ($103k / $206k) and the NIIT threshold ($200k / $250k), so a 12%-bracket
+  // spending pull can never trip those cliffs. Cliff-awareness lives where it can
+  // bind — the 22%/24% conversion-sizing fill (respectIrmaaNiitCliffs in
+  // FillToBracketStrategy).
   return Math.max(0, topOf12 - baselineTaxable);
 }
 
@@ -1619,7 +1634,7 @@ function calculateAnnualCashFlowCore(
   // 2-year-prior MAGI proxy used to determine the current year's IRMAA surcharge
   // (IRS lookback rule). Caller passes undefined / 0 when unavailable.
   priorMagi?: number,
-  // Resolved spending-source strategy (see resolveSpendingWithdrawalOrder).
+  // Resolved spending-source strategy (see selectBestSpendingOrder).
   // Public wrapper resolves it; fast-path passes the precomputed value.
   spendingOrder: ResolvedSpendingOrder = 'brokerage_first',
   // Max additional Trad-spending dollars that stay within the 12% federal
@@ -1934,7 +1949,20 @@ function calculateAnnualCashFlowCore(
     stateLocalitySurcharge = stateRes.stateLocalitySurcharge;
     stateCapGainsTax = stateRes.stateCapGainsTax;
     ordinaryTax = federalOrdinaryTaxIter + stateOrdinaryTaxOnly + stateLocalitySurcharge;
-    federalCapGainsTax = fromBrokerage * ltcgRate;
+    if (userData.useStackedLtcgBrackets) {
+      // Stacked 0/15/20%: gains sit on top of ordinary taxable income. Use the
+      // after-deduction ordinary taxable as the stack height (combinedTaxable is
+      // the pre-deduction gross — getFederalTaxableIncome applies the same
+      // deduction stack the ordinary-tax path uses).
+      const ordinaryTaxable = getFederalTaxableIncome(
+        combinedTaxable, userData.filingStatus, age, year, spouseAge, inflationRate,
+      );
+      federalCapGainsTax = computeFederalLTCGTax(
+        ordinaryTaxable, fromBrokerage, userData.filingStatus, year, inflationRate,
+      );
+    } else {
+      federalCapGainsTax = fromBrokerage * ltcgRate;
+    }
     if (niitEnabled) {
       const magi = ordinaryGross + ssTaxableAmount + fromBrokerage;
       // NIIT investment-income proxy includes both taxable-account gross withdrawals
@@ -1956,7 +1984,16 @@ function calculateAnnualCashFlowCore(
     const newWithdrawal = Math.min(uncappedNewWithdrawal, cap);
     capWasBinding = uncappedNewWithdrawal > cap;
 
-    if (Math.abs(newWithdrawal - withdrawal) < 0.01) {
+    // Convergence tolerance: $0.01 absolute floor, scaled up for very large
+    // withdrawals by a 1e-9 relative term. On normal portfolios the floor
+    // dominates (1e-9 × w < 0.01 until w > $10M), so results are bit-identical
+    // to the old absolute-only check. On $10M+ withdrawals, where one fixed-point
+    // step can't shrink below $0.01 due to float granularity, the relative term
+    // lets the loop terminate instead of burning all iterations and warning.
+    // (Deliberately NOT a pure relative epsilon, which would loosen every normal
+    // scenario and force re-baselining the hand-verified expected files.)
+    const convergenceTol = Math.max(0.01, Math.abs(newWithdrawal) * 1e-9);
+    if (Math.abs(newWithdrawal - withdrawal) < convergenceTol) {
       withdrawal = newWithdrawal;
       break;
     }
@@ -2205,11 +2242,11 @@ interface Precomputes {
   /** Max additional Trad-spending dollars per year that stay within the 12%
    *  federal bracket, **conv-inclusive** (the year's conversion gross is already
    *  in the baseline). Used by `computeSpendingWaterfall` under
-   *  `spendingWithdrawalOrder === 'bracket_aware'`. Zero when no headroom
-   *  (high-bracket years) or when the strategy is `brokerage_first`. */
+   *  the resolved spending policy is `'bracket_aware'`. Zero when no headroom
+   *  (high-bracket years) or when the policy is `'brokerage_first'`. */
   bracketHeadroomForTradByYear: number[];
   /** Resolved spending-source strategy for the scenario. Computed once via
-   *  `resolveSpendingWithdrawalOrder` so each MC run doesn't re-scan
+   *  `selectBestSpendingOrder` so each MC run doesn't re-scan
    *  `incomeEvents`. */
   spendingOrder: ResolvedSpendingOrder;
   /** Per-year portfolio balance from the deterministic projection (nominal $).
@@ -2220,41 +2257,60 @@ interface Precomputes {
   deterministicBaselineByYear?: number[];
 }
 
-// Resolve the spending-source strategy for the scenario. Content-aware default:
-// if any roth_conversion event exists, default to 'bracket_aware' (preserves
-// Taxable for high-mt conversion years); otherwise 'brokerage_first' (current
-// conservative behavior). User can override via UserData.spendingWithdrawalOrder.
-//
-// Unknown values (legacy 'pro_rata' from a prior enum draft, typos in
-// hand-edited JSON, etc.) are NOT trusted — they fall through to the
-// content-aware default rather than silently behaving like brokerage_first
-// with no signal. The TypeScript type prevents this for code-authored
-// scenarios; the runtime check covers JSON-imported scenarios.
 export type ResolvedSpendingOrder = 'brokerage_first' | 'bracket_aware';
+
 /**
- * Resolve the scenario's spending-source order. Honors an explicit user value
- * on `UserData.spendingWithdrawalOrder` when it is a recognized literal;
- * otherwise applies the content-aware default: `'bracket_aware'` when any
- * `roth_conversion` event exists (preserves Taxable for high-mt conversion
- * years), else `'brokerage_first'`.
+ * Pick the better spending-source strategy for this scenario by running a
+ * quick deterministic projection with each candidate and comparing real
+ * terminal portfolio balances.
  *
- * Unknown values (legacy 'pro_rata' from a prior enum draft, typos in
- * hand-edited JSON) fall through to the content-aware default rather than
- * silently behaving like `brokerage_first` with no signal.
+ * **Why auto-select**: `bracket_aware` is not always better than
+ * `brokerage_first`. It depends on the scenario:
+ *  - Pre-SS retiree with low spending and a balanced Trad/Brokerage split →
+ *    brokerage_first wins (LTCG sits in 0% federal bracket; Trad pulls
+ *    needlessly trigger 10–12% federal).
+ *  - Pre-SS retiree with high spending or a heavy Trad balance →
+ *    bracket_aware wins (spending pushes LTCG into 15% bracket; filling
+ *    12% Trad headroom is cheaper).
+ *
+ * Previously the engine gated the choice on conversion-event presence —
+ * surprisingly user-hostile (adding a $1 placeholder conversion could
+ * unlock hundreds of $K of benefit). Auto-selection removes that gating
+ * and the implicit user-trigger requirement.
+ *
+ * Cost: two deterministic projections, ~10–20 ms total at sim setup
+ * (and once per generator-candidate inside the Roth wizard). Run once
+ * per `runSimulation` / `runDeterministicProjection` entry; the result
+ * is cached in `Precomputes.spendingOrder` so the MC inner loop never
+ * re-selects.
+ *
+ * Tiebreaker on exact score equality: `brokerage_first` (conservative —
+ * preserves Traditional balance for later flexibility).
  */
-export function resolveSpendingWithdrawalOrder(userData: UserData): ResolvedSpendingOrder {
-  const v = userData.spendingWithdrawalOrder;
-  if (v === 'brokerage_first' || v === 'bracket_aware') return v;
-  if (v !== undefined && v !== null) {
-    // Hand-edited JSON or legacy enum value (e.g., 'pro_rata' from an early
-    // draft). Surface the coercion so it doesn't fail silently.
-    console.warn(
-      `[SimulationService] Unknown spendingWithdrawalOrder ${JSON.stringify(v)} — ` +
-      `falling back to content-aware default.`
-    );
-  }
-  const hasConversion = userData.incomeEvents.some((e) => e.type === 'roth_conversion');
-  return hasConversion ? 'bracket_aware' : 'brokerage_first';
+export function selectBestSpendingOrder(userData: UserData): ResolvedSpendingOrder {
+  // The inner projections pass `_forceSpendingOrder` so they skip
+  // re-running this selector (recursion guard).
+  const brokerageResult = runDeterministicProjection(userData, { _forceSpendingOrder: 'brokerage_first' });
+  const bracketResult = runDeterministicProjection(userData, { _forceSpendingOrder: 'bracket_aware' });
+  const brokerageScore = brokerageResult.path[brokerageResult.path.length - 1] ?? 0;
+  const bracketScore = bracketResult.path[bracketResult.path.length - 1] ?? 0;
+  // Prefer brokerage_first unless bracket_aware shows a MEANINGFUL improvement.
+  // The tiebreaker tolerance is the larger of $100 absolute and 0.05% relative
+  // (= $500 on a $1M portfolio, $5K on $10M). Three reasons for the wider
+  // floor than a naive epsilon:
+  //   1. Zero-spending scenarios still produce small REAL differences (~$500–
+  //      $1500 of Trad pull from the bracket-aware LTCG-cascade refeed), big
+  //      enough to defeat a 1e-6 tolerance on high-balance scenarios. The
+  //      policies are operationally equivalent for the user's intent in
+  //      those cases — we don't want to flip to bracket_aware over noise.
+  //   2. For meaningful policy wins (the bracket_aware-dominant high-spending
+  //      retiree case), the delta is hundreds of thousands of dollars over a
+  //      30-year horizon — orders of magnitude above this floor.
+  //   3. The conservative default (brokerage_first) preserves Traditional for
+  //      future flexibility, which has option value the deterministic
+  //      terminal score doesn't capture.
+  const tieTol = Math.max(100, Math.abs(brokerageScore) * 5e-4);
+  return bracketScore - brokerageScore > tieTol ? 'bracket_aware' : 'brokerage_first';
 }
 
 // Execute a single simulation run (Monte Carlo sim, historical slice, or nominal
@@ -2544,6 +2600,12 @@ export function buildPrecomputes(
      *  Internal use only — `runDeterministicProjection` passes this so the
      *  baseline pass doesn't try to compute its own baseline. */
     skipBaselineForDeterministic?: boolean;
+    /** Recursion-breaker for `selectBestSpendingOrder`. When set, the engine
+     *  uses this spending policy directly instead of running auto-selection.
+     *  The selector itself uses this to pin each candidate without recursing
+     *  back into the selector. Unit tests use it to isolate behavior under
+     *  a specific policy. Not exposed via UserData. */
+    _forceSpendingOrder?: ResolvedSpendingOrder;
   }
 ): Precomputes {
   const currentYear = userData.referenceYear;
@@ -2557,7 +2619,8 @@ export function buildPrecomputes(
   const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
   const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
   const bracketHeadroomForTradByYear: number[] = new Array(totalYears);
-  const resolvedSpendingOrder = resolveSpendingWithdrawalOrder(userData);
+  const resolvedSpendingOrder: ResolvedSpendingOrder =
+    options?._forceSpendingOrder ?? selectBestSpendingOrder(userData);
   for (let i = 0; i < totalYears; i++) {
     const year = currentYear + i;
     const sn = getEffectiveStateName(userData, year);
@@ -2576,14 +2639,20 @@ export function buildPrecomputes(
   // Deterministic baseline precompute for the `above_baseline` refill trigger.
   // Computed only when needed. Runs a one-shot deterministic projection with the
   // skipBaselineForDeterministic option so the inner buildPrecomputes call does
-  // NOT recurse. The resulting `path` array is the per-year start-of-year
-  // portfolio total — exactly what the bucket-policy trigger compares against.
+  // NOT recurse on its own baseline. We also pin the resolved spending policy
+  // via `_forceSpendingOrder` so the inner projection skips
+  // `selectBestSpendingOrder` — without this, the selector would fire on the
+  // inner call, run its own two projections, EACH of which would re-enter this
+  // baseline branch and infinitely recurse.
   let deterministicBaselineByYear: number[] | undefined;
   if (
     !options?.skipBaselineForDeterministic
     && userData.cashBucketPolicy?.refillTrigger === 'above_baseline'
   ) {
-    const detResult = runDeterministicProjection(userData, { skipBaselineForDeterministic: true });
+    const detResult = runDeterministicProjection(userData, {
+      skipBaselineForDeterministic: true,
+      _forceSpendingOrder: resolvedSpendingOrder,
+    });
     deterministicBaselineByYear = detResult.path;
   }
 
@@ -2796,6 +2865,10 @@ export function runDeterministicProjection(
      *  deterministic run will never fire (since baseline=undefined), which is
      *  the right semantic — the baseline run is the reference, not a follower. */
     skipBaselineForDeterministic?: boolean;
+    /** Recursion-breaker for `selectBestSpendingOrder`. When set, the engine
+     *  uses this spending policy directly instead of running auto-selection.
+     *  See `buildPrecomputes` for the full rationale. */
+    _forceSpendingOrder?: ResolvedSpendingOrder;
   }
 ): {
   path: number[];

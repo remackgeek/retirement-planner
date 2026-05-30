@@ -6,7 +6,6 @@ import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import { Checkbox } from 'primereact/checkbox';
-import { RadioButton } from 'primereact/radiobutton';
 import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import type { Scenario } from '../types/Scenario';
 import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
@@ -424,47 +423,6 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         </div>
       )}
 
-      {/* Withdrawal source policy. Controls where living-expenses cash comes
-          from — independent of Roth conversion sizing. Empty (auto) resolves
-          at sim time to bracket_aware when any conversion event exists, else
-          brokerage_first. */}
-      <div style={{ marginTop: spacing.xl, paddingTop: spacing.sm, borderTop: border.light }}>
-        <h4 style={{ margin: 0, marginBottom: spacing.xs, fontSize: fontSize.sm, fontWeight: 600, color: colors.textSecondary }}>
-          Withdrawal Source <span className="withdrawal-help-tip" style={{ marginLeft: spacing.xs, color: colors.textMuted, cursor: 'help', fontWeight: 400 }}>(?)</span>
-        </h4>
-        <PrimeTooltip target=".withdrawal-help-tip" position="bottom" showDelay={150}>
-          <div style={{ maxWidth: '22rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
-            <strong>Brokerage first</strong> pulls from your Brokerage bucket before
-            Traditional, preserving Traditional. <strong>Bracket-aware</strong>{' '}
-            pulls Traditional up to the top of the 12% federal bracket first
-            (cheap dollars), then falls through to Brokerage — preserves Brokerage
-            for high-tax conversion years. <strong>Auto</strong> picks
-            bracket-aware when any Roth conversion event exists, otherwise
-            brokerage-first.
-          </div>
-        </PrimeTooltip>
-        <div style={{ display: 'flex', gap: spacing.lg, fontSize: fontSize.sm }}>
-          {([
-            { value: undefined, label: 'Auto (recommended)' },
-            { value: 'brokerage_first' as const, label: 'Brokerage first' },
-            { value: 'bracket_aware' as const, label: 'Bracket-aware' },
-          ]).map((opt) => {
-            const inputId = `spendingWithdrawalOrder-${opt.value ?? 'auto'}`;
-            return (
-              <label key={String(opt.value)} htmlFor={inputId} style={{ display: 'flex', alignItems: 'center', gap: spacing.xs, cursor: 'pointer' }}>
-                <RadioButton
-                  inputId={inputId}
-                  name='spendingWithdrawalOrder'
-                  value={opt.value}
-                  checked={tempData.spendingWithdrawalOrder === opt.value}
-                  onChange={() => setTempData({ ...tempData, spendingWithdrawalOrder: opt.value })}
-                />
-                {opt.label}
-              </label>
-            );
-          })}
-        </div>
-      </div>
     </Dialog>
   );
 };

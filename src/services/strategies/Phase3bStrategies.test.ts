@@ -31,6 +31,137 @@ const baseUserData = (overrides: Partial<UserData> = {}): UserData => ({
   ...overrides,
 });
 
+describe('FillToBracketStrategy IRMAA/NIIT cliff cap', () => {
+  it('caps the 24%-bracket fill at the IRMAA tier-1 MAGI ceiling when respectIrmaaNiitCliffs is set', () => {
+    // Single filer age 64 (Medicare enrollee in year+2 = 2028), no other income,
+    // big Trad. Target 24% — the unclamped fill pushes MAGI well past the IRMAA
+    // tier-1 ceiling ($103k single, inflation 0 → unchanged in 2028). With the
+    // flag, the year-0 conversion must be capped at ~$103k (MAGI baseline 0).
+    const common = {
+      currentAge: 64,
+      lifeExpectancy: 66,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 2_000_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      enableIRMAA: true,
+      enableNIIT: true,
+    };
+    const udClamped = baseUserData({ ...common, respectIrmaaNiitCliffs: true });
+    const udUnclamped = baseUserData({ ...common, respectIrmaaNiitCliffs: false });
+    const clamped = computeFillToBracketSchedule(udClamped, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    const unclamped = computeFillToBracketSchedule(udUnclamped, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    // Unclamped 24% fill reaches deep into six figures; clamped stops at the tier ceiling.
+    expect(unclamped[0].conversionAmount).toBeGreaterThan(150_000);
+    expect(clamped[0].conversionAmount).toBeLessThan(unclamped[0].conversionAmount);
+    expect(clamped[0].conversionAmount).toBeCloseTo(103_000, -2); // within ~$100
+  });
+
+  it('treats undefined as cap-on (practitioner-consensus default)', () => {
+    // After the default flip, `undefined` is equivalent to `true` — the cap is
+    // applied. Only an explicit `false` opts out. This test asserts the new
+    // default semantic: `undefined` == `true` for the cap behavior.
+    const ud = baseUserData({
+      currentAge: 64, lifeExpectancy: 66,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 2_000_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      enableIRMAA: true, enableNIIT: true,
+    });
+    const onByUndefined = computeFillToBracketSchedule({ ...ud, respectIrmaaNiitCliffs: undefined }, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    const onByTrue = computeFillToBracketSchedule({ ...ud, respectIrmaaNiitCliffs: true }, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    const off = computeFillToBracketSchedule({ ...ud, respectIrmaaNiitCliffs: false }, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    expect(onByUndefined[0].conversionAmount).toBe(onByTrue[0].conversionAmount);
+    expect(off[0].conversionAmount).toBeGreaterThan(onByUndefined[0].conversionAmount);
+  });
+
+  it('does not apply the IRMAA cap before Medicare proximity (enrollee not within 2 years of 65)', () => {
+    // Age 55: year+2 = age 57, no Medicare → IRMAA ceiling does not apply. NIIT
+    // disabled here to isolate the IRMAA branch, so nothing should bind and the
+    // schedule is unchanged.
+    const ud = baseUserData({
+      currentAge: 55, lifeExpectancy: 57,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 2_000_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      enableIRMAA: true, enableNIIT: false, respectIrmaaNiitCliffs: true,
+    });
+    const clamped = computeFillToBracketSchedule(ud, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    const unclamped = computeFillToBracketSchedule({ ...ud, respectIrmaaNiitCliffs: false }, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    expect(clamped[0].conversionAmount).toBe(unclamped[0].conversionAmount);
+  });
+
+  it('applies the NIIT cap regardless of age (threshold is not age-gated)', () => {
+    // Age 55, NIIT enabled, IRMAA disabled. The 24% single-filer fill exceeds the
+    // $200k NIIT threshold, so the cap binds even pre-Medicare.
+    const ud = baseUserData({
+      currentAge: 55, lifeExpectancy: 57,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 2_000_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      enableIRMAA: false, enableNIIT: true, respectIrmaaNiitCliffs: true,
+    });
+    const clamped = computeFillToBracketSchedule(ud, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    expect(clamped[0].conversionAmount).toBeCloseTo(200_000, -2);
+  });
+});
+
+describe('OptimizeStrategy IRMAA/NIIT cliff cap (candidate generation)', () => {
+  // Positive stock return so conversions are genuinely valuable (Roth grows
+  // tax-free); without growth the optimizer rationally avoids converting and the
+  // cap never binds. stockAllocation 1 + 0 std dev keeps the deterministic
+  // projection clean. Single filer age 64 → Medicare enrollee in year+2, so the
+  // IRMAA tier-1 ceiling (~$103k MAGI, inflation 0) applies. No other income, so
+  // the MAGI baseline is 0 and the per-year conversion cap equals the ceiling.
+  const cliffAccounts = [
+    { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 2_000_000, stockAllocation: 1, portfolioBalance: '80_20' as const },
+  ];
+  const cliffAssumptions = {
+    stockReturn: 0.07, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+    stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+    returnDistribution: 'lognormal' as const, degreesOfFreedom: 4,
+  };
+
+  it('never emits a conversion that trips the IRMAA tier-1 ceiling when respectIrmaaNiitCliffs is set', () => {
+    // With growth on, the unclamped optimizer wants large conversions; the cap
+    // prunes every candidate at the IRMAA tier-1 ceiling, so no year's emitted
+    // conversion exceeds it. We assert both that the cap holds AND that the
+    // unclamped run actually wanted more (proving the cap is binding, not vacuous).
+    const common = {
+      currentAge: 64, lifeExpectancy: 67,
+      accounts: cliffAccounts,
+      portfolioAssumptions: cliffAssumptions,
+      enableIRMAA: true, enableNIIT: true,
+    };
+    const clamped = runOptimization(baseUserData({ ...common, respectIrmaaNiitCliffs: true }), { name: 'optimize', objective: 'max_median_terminal_wealth' });
+    // Allow a tiny margin for the tier ceiling itself ($103k).
+    for (const d of clamped.perYearDecisions) {
+      expect(d.conversionAmount).toBeLessThanOrEqual(104_000);
+    }
+    // The cap is binding, not vacuous: the optimizer seeds from auto-bracket →
+    // fill-to-bracket, and an UNcapped 24%-bracket fill demands well above the
+    // ceiling — so the cliff cap is the only reason the schedule stays under it.
+    const uncappedFill = computeFillToBracketSchedule(
+      baseUserData({ ...common, respectIrmaaNiitCliffs: false }),
+      { name: 'fill_to_bracket', bracketTarget: '24_percent' },
+    );
+    expect(uncappedFill.some((d) => d.conversionAmount > 104_000)).toBe(true);
+  });
+
+  it('produces an identical schedule whether respectIrmaaNiitCliffs is false or undefined (cap is a no-op when off)', () => {
+    const common = {
+      currentAge: 64, lifeExpectancy: 67,
+      accounts: cliffAccounts,
+      portfolioAssumptions: cliffAssumptions,
+      enableIRMAA: true, enableNIIT: true,
+    };
+    const rFalse = runOptimization(baseUserData({ ...common, respectIrmaaNiitCliffs: false }), { name: 'optimize', objective: 'max_median_terminal_wealth' });
+    const rUndef = runOptimization(baseUserData({ ...common, respectIrmaaNiitCliffs: undefined }), { name: 'optimize', objective: 'max_median_terminal_wealth' });
+    expect(rFalse.perYearDecisions.map((d) => d.conversionAmount)).toEqual(
+      rUndef.perYearDecisions.map((d) => d.conversionAmount),
+    );
+  });
+});
+
 describe('FillToBracketStrategy SS-feedback fix-point (direct compute)', () => {
   it('sizes the first-year conversion below the no-SS amount when Social Security is present', () => {
     // Single filer age 67 with $40k SS gross + $300k Trad. The fix-point loop
@@ -266,18 +397,109 @@ describe('scoreProjection', () => {
   it('min_lifetime_tax negates the sum so higher = better', () => {
     const ud = baseUserData();
     const projection = runDeterministicProjection(ud);
-    const score = scoreProjection(projection, 'min_lifetime_tax');
+    const score = scoreProjection(projection, 'min_lifetime_tax', ud.inflationRate);
     // No income, no spending → totalTax = 0 each year → score = -0 (the
     // sum of zeros, then negated). Use toBeCloseTo to absorb the +0/-0
     // distinction (`expect(-0).toBe(0)` fails on Object.is).
     expect(score).toBeCloseTo(0, 10);
   });
 
-  it('max_median_terminal_wealth returns last path value', () => {
+  it('max_median_terminal_wealth returns the path value as-is (engine already deflates)', () => {
+    // The engine stores `path` already deflated to real dollars (see
+    // SimulationService.ts `path.push(startBalance / cumulativeInflation)`).
+    // scoreProjection must NOT deflate again — the displayed delta would no
+    // longer match the inline chart's visible end-of-plan diff if it did.
     const ud = baseUserData();
     const projection = runDeterministicProjection(ud);
-    const score = scoreProjection(projection, 'max_median_terminal_wealth');
+    const score = scoreProjection(projection, 'max_median_terminal_wealth', ud.inflationRate);
     const lastIdx = projection.path.length - 1;
     expect(score).toBe(projection.path[lastIdx]);
+  });
+
+  it('max_median_terminal_wealth does not double-deflate when inflation > 0', () => {
+    // Regression: previously this scored `path[lastIdx] / (1+r)^horizon`, but
+    // `path` is already real-deflated by the engine. The result was scores in
+    // "real-real" units that mismatched the chart hover delta by a factor of
+    // (1+r)^horizon. With inflation 3% over 10 years, the factor is ~1.34 —
+    // big enough that a $1M chart delta would be displayed as ~$745K.
+    const inflationRate = 0.03;
+    const ud = baseUserData({
+      inflationRate,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+    });
+    const projection = runDeterministicProjection(ud);
+    const lastIdx = projection.path.length - 1;
+    const score = scoreProjection(projection, 'max_median_terminal_wealth', inflationRate);
+    expect(score).toBe(projection.path[lastIdx]);
+  });
+});
+
+describe('endAgeCap', () => {
+  it('FillToBracket emits zero conversions past the endAgeCap', () => {
+    const ud = baseUserData({
+      currentAge: 65, lifeExpectancy: 90,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 2_000_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      enableIRMAA: false, enableNIIT: false, respectIrmaaNiitCliffs: false,
+    });
+    const schedule = computeFillToBracketSchedule(ud, {
+      name: 'fill_to_bracket', bracketTarget: '24_percent', endAgeCap: 80,
+    });
+    // Every entry from age 81 onward (i.e. yearIndex >= 16) must be zero.
+    for (let i = 0; i < schedule.length; i++) {
+      const age = ud.currentAge + i;
+      if (age > 80) expect(schedule[i].conversionAmount).toBe(0);
+    }
+    // Sanity: at least one conversion year is non-zero inside the window.
+    expect(schedule.some((d, i) => ud.currentAge + i <= 80 && d.conversionAmount > 0)).toBe(true);
+  });
+
+  it('FillToBracket defaults to age-80 cap when endAgeCap is omitted', () => {
+    const ud = baseUserData({
+      currentAge: 65, lifeExpectancy: 90,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 2_000_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      enableIRMAA: false, enableNIIT: false, respectIrmaaNiitCliffs: false,
+    });
+    const schedule = computeFillToBracketSchedule(ud, {
+      name: 'fill_to_bracket', bracketTarget: '24_percent',
+    });
+    for (let i = 0; i < schedule.length; i++) {
+      const age = ud.currentAge + i;
+      if (age > 80) expect(schedule[i].conversionAmount).toBe(0);
+    }
+  });
+
+  it("FillToBracket uses self's age for the cap when MFJ has a younger spouse (regression for HIGH-2)", () => {
+    // Self is 82 (past the cap of 80); spouse is 78 (under). The wizard
+    // generates self-owned conversions by default, so the cap MUST apply to
+    // self's age — not min(self, spouse). Before the Revision 3 HIGH-2 fix,
+    // min(82, 78) = 78 ≤ 80 → schedule would emit conversions ages 82+, all
+    // self-owned and pulling from self's past-cap Trad. After the fix, all
+    // years should be zero because self starts past the cap.
+    const ud = baseUserData({
+      currentAge: 82,
+      lifeExpectancy: 90,
+      filingStatus: 'mfj',
+      spouseAge: 78,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 2_000_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      enableIRMAA: false, enableNIIT: false, respectIrmaaNiitCliffs: false,
+    });
+    const schedule = computeFillToBracketSchedule(ud, {
+      name: 'fill_to_bracket', bracketTarget: '24_percent',
+      // Use the default cap (80) explicitly so the test doesn't drift with
+      // the constant.
+      endAgeCap: 80,
+    });
+    // Every year should be zero — self is already past the cap.
+    for (const decision of schedule) {
+      expect(decision.conversionAmount).toBe(0);
+    }
   });
 });

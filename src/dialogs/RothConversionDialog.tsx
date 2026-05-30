@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
@@ -8,7 +8,8 @@ import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import type { UserData } from '../types/UserData';
-import type { BracketTarget, StrategyObjective, PerYearStrategyDecision } from '../services/strategies/types';
+import type { StrategyObjective, PerYearStrategyDecision } from '../services/strategies/types';
+import { DEFAULT_END_AGE_CAP } from '../services/strategies/types';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { spacing, colors, border, fontSize, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
@@ -21,6 +22,11 @@ import {
   exceedsMostOfTradHeuristic,
 } from '../services/conversionImpact';
 import { strategyComputeClient, StrategyCancelledError } from '../services/StrategyComputeClient';
+import { simulationClient, SupersededError } from '../services/SimulationClient';
+import { runDeterministicProjection } from '../services/SimulationService';
+import { buildStrategyConversionEvents, isGeneratorProducedConversion } from '../services/strategies/syntheticEvents';
+import RothConversionComparisonChart from './RothConversionComparisonChart';
+import { useUIState } from '../context/UIStateContext';
 
 const Form = styled.form`
   display: flex;
@@ -186,6 +192,29 @@ const WizardMessage = styled.div`
   color: ${colors.textPrimary};
 `;
 
+const SuccessLine = styled.div<{ $positive: boolean }>`
+  padding: ${spacing.xs} ${spacing.sm};
+  border-radius: ${border.radius};
+  font-size: ${fontSize.xs};
+  font-weight: 600;
+  line-height: 1.4;
+  background: ${colors.bgLight};
+  color: ${({ $positive }) => ($positive ? colors.income : colors.textSecondary)};
+`;
+
+// Footer container for the wizard mode — has 3–4 buttons that don't fit in one
+// row at narrow dialog widths (the dialog clamps to 95vw on phones). Default
+// PrimeReact `.p-dialog-footer` is inline-flex without wrap, so a 4th button
+// overlaps the 3rd. Force flex-wrap + a gap so buttons stack cleanly without
+// overlap, and justify to the right to match the standard footer convention.
+const WizardFooter = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: ${spacing.xs};
+  justify-content: flex-end;
+  align-items: center;
+`;
+
 const OpenLoopCaveat = styled.div`
   margin-top: ${spacing.sm};
   padding: ${spacing.xs} ${spacing.sm};
@@ -210,32 +239,51 @@ interface RothConversionDialogProps {
   onApplyBatch?: (events: Omit<IncomeEvent, 'id'>[]) => void;
 }
 
-type WizardMethod = 'fill_to_bracket' | 'auto_bracket' | 'optimize';
 type Mode = 'single' | 'wizard';
 
-const METHOD_OPTIONS: { label: string; value: WizardMethod }[] = [
-  { label: 'Fill to bracket', value: 'fill_to_bracket' },
-  { label: 'Auto bracket (grid search)', value: 'auto_bracket' },
-  { label: 'Optimize (coordinate descent)', value: 'optimize' },
-];
-
-const BRACKET_OPTIONS: { label: string; value: BracketTarget }[] = [
-  { label: '12% bracket', value: '12_percent' },
-  { label: '22% bracket', value: '22_percent' },
-  { label: '24% bracket', value: '24_percent' },
-  { label: 'No conversions', value: 'none' },
-];
-
 const OBJECTIVE_OPTIONS: { label: string; value: StrategyObjective }[] = [
-  { label: 'Max median terminal wealth', value: 'max_median_terminal_wealth' },
-  { label: 'Min lifetime tax', value: 'min_lifetime_tax' },
+  { label: 'Max terminal wealth (real $)', value: 'max_median_terminal_wealth' },
+  { label: 'Min lifetime tax (real $)', value: 'min_lifetime_tax' },
 ];
 
-const prettyBracket = (b: BracketTarget): string =>
-  b === '12_percent' ? '12%'
-    : b === '22_percent' ? '22%'
-      : b === '24_percent' ? '24%'
-        : 'none';
+// Plan-window options: end-age cap for the conversion schedule. Default 80
+// reflects practitioner consensus — past ~80 the math shifts from
+// owner-lifetime tax arbitrage to estate planning, which is a different
+// objective the wizard doesn't model.
+// Base END_AGE_OPTIONS — the fixed-age choices. The 'through life expectancy
+// (advanced)' option is appended at render time because its value depends on
+// userData.lifeExpectancy. Surfacing it as the last option keeps the default-
+// case UX clean while giving heir-rate-arbitrage users an explicit escape
+// hatch (vs. having to pick 90 as a workaround).
+const BASE_END_AGE_OPTIONS: { label: string; value: number }[] = [
+  { label: 'through age 73 (RMD start)', value: 73 },
+  { label: 'through age 75', value: 75 },
+  { label: 'through age 80 (default)', value: DEFAULT_END_AGE_CAP },
+  { label: 'through age 85', value: 85 },
+  { label: 'through age 90', value: 90 },
+];
+
+export const buildPlanWindowOptions = (lifeExpectancy: number): { label: string; value: number }[] => {
+  // Keep fixed-age options up to AND INCLUDING lifeExpectancy (no point
+  // offering "through age 90" when the plan ends at 85). Append a separate
+  // "through life expectancy" option ONLY when lifeExpectancy doesn't
+  // already equal one of the fixed values — otherwise we'd duplicate the
+  // value (e.g. for lifeExpectancy=80, "through age 80 (default)" and
+  // "through life expectancy (age 80, advanced)" would both have value=80,
+  // and the dropdown would show whichever label rendered last as the
+  // selected state, confusingly relabeling the default as "advanced").
+  const fixed = BASE_END_AGE_OPTIONS.filter((o) => o.value <= lifeExpectancy);
+  const alreadyCovered = BASE_END_AGE_OPTIONS.some((o) => o.value === lifeExpectancy);
+  return alreadyCovered
+    ? fixed
+    : [...fixed, { label: `through life expectancy (age ${lifeExpectancy}, advanced)`, value: lifeExpectancy }];
+};
+
+/** Initial / reset value for `wizEndAgeCap`. Clamps the default (80) to the
+ *  scenario's `lifeExpectancy` so users with a short plan don't end up with
+ *  a state value that doesn't match any option in the dropdown. */
+export const defaultPlanWindow = (lifeExpectancy: number): number =>
+  Math.min(DEFAULT_END_AGE_CAP, lifeExpectancy);
 
 const makeDefaultFormData = () => ({
   name: '',
@@ -250,6 +298,7 @@ const makeDefaultFormData = () => ({
 const currency = (n: number): string =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
+
 const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
   visible,
   onHide,
@@ -262,30 +311,55 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
 }) => {
   const isEditing = !!editEvent;
   const isMfj = userData.filingStatus === 'mfj';
+  // Mirror the main chart's view selector so the inline what-if chart shows
+  // matching units (Today's $ when the main chart is on 'real', Future $ when
+  // it's on 'nominal').
+  const { displayCurrency } = useUIState();
   const [formData, setFormData] = useState(makeDefaultFormData());
   // Wizard mode is hidden when editing (it adds new events) and when no
   // onApplyBatch callback was supplied (caller opted out).
   const wizardAvailable = !isEditing && !!onApplyBatch;
-  const [mode, setMode] = useState<Mode>('single');
-  const [wizMethod, setWizMethod] = useState<WizardMethod>('fill_to_bracket');
-  const [wizBracket, setWizBracket] = useState<BracketTarget>('12_percent');
+  // Wizard mode is the default for first-time visits (the multi-year schedule
+  // is the conceptually correct answer for most users); we fall back to
+  // 'single' only when the wizard is unavailable.
+  const [mode, setMode] = useState<Mode>(wizardAvailable ? 'wizard' : 'single');
+  const [wizEndAgeCap, setWizEndAgeCap] = useState<number>(defaultPlanWindow(userData.lifeExpectancy));
+  const [wizRespectCliffs, setWizRespectCliffs] = useState<boolean>(userData.respectIrmaaNiitCliffs !== false);
   const [wizObjective, setWizObjective] = useState<StrategyObjective>('max_median_terminal_wealth');
+  const [wizShowAdvanced, setWizShowAdvanced] = useState<boolean>(false);
   const [wizSchedule, setWizSchedule] = useState<PerYearStrategyDecision[] | null>(null);
   const [wizRunning, setWizRunning] = useState(false);
   const [wizMessage, setWizMessage] = useState<string | null>(null);
+  const [wizCurrentPath, setWizCurrentPath] = useState<number[] | null>(null);
+  const [wizProposedPath, setWizProposedPath] = useState<number[] | null>(null);
+  const [wizInflationFactors, setWizInflationFactors] = useState<number[] | null>(null);
+  // Monte Carlo success probability of the generated schedule vs the no-schedule
+  // baseline. The schedule table is deterministic-optimized; this line tells the
+  // user how the schedule actually fares across the MC range before they Apply.
+  const [wizSuccess, setWizSuccess] = useState<{ candidate: number; baseline: number } | null>(null);
+  const [wizSuccessRunning, setWizSuccessRunning] = useState(false);
+  // Monotonic token to discard stale/superseded MC results — the simulationClient
+  // is a shared singleton, so a newer compute (or the main chart's run) can preempt.
+  const wizSuccessToken = useRef(0);
   useEffect(() => {
     if (!visible) {
-      setMode('single');
+      setMode(wizardAvailable ? 'wizard' : 'single');
       setWizSchedule(null);
       setWizMessage(null);
-      // Reset wizard params too — a fresh open should always start at
-      // Fill-to-bracket/12%/Max-terminal-wealth, not whatever the user
-      // selected last session.
-      setWizMethod('fill_to_bracket');
-      setWizBracket('12_percent');
+      setWizSuccess(null);
+      setWizSuccessRunning(false);
+      setWizCurrentPath(null);
+      setWizProposedPath(null);
+      setWizInflationFactors(null);
+      setWizShowAdvanced(false);
+      wizSuccessToken.current++;
+      // Reset wizard params too — a fresh open should always start at the
+      // defaults (80 cap, cliffs on, terminal-wealth objective).
+      setWizEndAgeCap(defaultPlanWindow(userData.lifeExpectancy));
+      setWizRespectCliffs(userData.respectIrmaaNiitCliffs !== false);
       setWizObjective('max_median_terminal_wealth');
     }
-  }, [visible]);
+  }, [visible, wizardAvailable, userData.respectIrmaaNiitCliffs, userData.lifeExpectancy]);
 
   // Defensive: if the parent flips editEvent while the dialog is open and the
   // wizard tab is showing, the tab bar disappears (wizardAvailable becomes
@@ -429,88 +503,144 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
 
   // ---------- Wizard handlers ----------
 
-  // Build a UserData shape suitable for the compute backends. The engine
-  // ignores `taxStrategy`, so we don't need to set it. The backends accept
-  // a TaxStrategy argument explicitly.
-  const wizardUserData: UserData = userData;
+  // Build a UserData shape suitable for the compute backends. The cliff
+  // toggle lives on the wizard (not on the scenario), so we override the
+  // field locally for the compute call without persisting back.
+  const wizardUserData: UserData = useMemo(
+    () => ({ ...userData, respectIrmaaNiitCliffs: wizRespectCliffs }),
+    [userData, wizRespectCliffs],
+  );
 
-  const handleWizCompute = async () => {
+  // Materialize a schedule's non-zero years into roth_conversion events (mirrors
+  // handleWizApply's batch builder, minus the provenance meta the engine ignores).
+  const scheduleToEvents = (schedule: PerYearStrategyDecision[]): IncomeEvent[] =>
+    schedule
+      .filter((d) => d.conversionAmount > 0)
+      .map((d) => {
+        const startAge = userData.currentAge + (d.year - userData.referenceYear);
+        return {
+          id: crypto.randomUUID(),
+          type: 'roth_conversion',
+          name: `Roth conversion ${d.year}`,
+          amount: d.conversionAmount,
+          startAge,
+          endAge: startAge,
+          isOneTime: true,
+          taxStatus: 'before_tax',
+          colaType: 'fixed',
+        } as IncomeEvent;
+      });
+
+  // Run two MC sims — baseline (current plan minus any prior generated batch) and
+  // candidate (baseline + this schedule) — and surface both success probabilities.
+  // Fire-and-forget: the deterministic schedule table renders immediately; this
+  // fills in when the workers return. Guarded by wizSuccessToken so a superseded
+  // run (newer compute, or the chart's own run preempting the shared client) is
+  // silently dropped rather than showing a stale number.
+  //
+  // Note: when the spending order is on Auto, the candidate run auto-flips to
+  // bracket_aware (a conversion now exists) while the baseline stays
+  // brokerage_first. So this delta deliberately BUNDLES the conversion effect
+  // with the withdrawal-order switch — unlike the Net-impact decomposition,
+  // which separates them. That's intentional here: this line answers "what's my
+  // success if I click Apply?", and Apply does flip the order.
+  const runScheduleSuccess = async (schedule: PerYearStrategyDecision[]) => {
+    const token = ++wizSuccessToken.current;
+    setWizSuccess(null);
+    setWizSuccessRunning(true);
+    try {
+      // Baseline mirrors the Apply replace policy: strip generator-tagged
+      // conversions, keep manual ones and all other events.
+      const survivors = userData.incomeEvents.filter(
+        (e) => e.type !== 'roth_conversion' || !e.meta?.generatedBy || e.meta.generatedBy === 'user',
+      );
+      const baselineData: UserData = { ...userData, incomeEvents: survivors };
+      const candidateData: UserData = {
+        ...userData,
+        incomeEvents: [...survivors, ...scheduleToEvents(schedule)],
+      };
+      const baselineRes = await simulationClient.run(baselineData);
+      const candidateRes = await simulationClient.run(candidateData);
+      if (token !== wizSuccessToken.current) return; // superseded by a newer request
+      setWizSuccess({ candidate: candidateRes.probability, baseline: baselineRes.probability });
+    } catch (err) {
+      // Shared client got preempted (or sim errored) — just leave the line hidden.
+      if (!(err instanceof SupersededError)) {
+        console.warn('[RothConversionDialog] schedule success MC failed:', err);
+      }
+    } finally {
+      if (token === wizSuccessToken.current) setWizSuccessRunning(false);
+    }
+  };
+
+  // Run the two deterministic projections that feed the inline what-if chart:
+  // (a) the current plan with generator-tagged conversions stripped, (b) the
+  // current plan with the new schedule appended. Mirrors `runScheduleSuccess`'s
+  // event-survivor logic so the chart matches what Apply would produce.
+  const updateComparisonChart = (schedule: PerYearStrategyDecision[]) => {
+    const survivors = userData.incomeEvents.filter((e) => !isGeneratorProducedConversion(e));
+    const baselineData: UserData = { ...userData, incomeEvents: survivors };
+    const candidateData: UserData = {
+      ...userData,
+      incomeEvents: [...survivors, ...buildStrategyConversionEvents(userData, schedule)],
+    };
+    const baselineProj = runDeterministicProjection(baselineData);
+    const candidateProj = runDeterministicProjection(candidateData);
+    setWizCurrentPath(baselineProj.path);
+    setWizProposedPath(candidateProj.path);
+    // **Assumption check:** for deterministic projections both runs use the
+    // same scenario inflation rate, so `inflation[i] = (1 + r)^i` is identical
+    // across baselineProj and candidateProj. If this function ever switches
+    // to stochastic MC results, both `inflation` arrays would diverge per-run
+    // and we'd need to pass them separately to the chart (or re-think the
+    // re-inflation contract). Single-array assumption is captured here so
+    // a future refactor doesn't silently produce mismatched scales between
+    // the two displayed lines.
+    // Inflation factors are identical across the two runs (same scenario
+    // inflation); just take the baseline's. Used by the inline chart to
+    // re-inflate real paths when the main view is 'nominal' / Future $.
+    setWizInflationFactors(baselineProj.inflation);
+  };
+
+  // Generate the schedule via coordinate-descent optimization (seeded internally
+  // from an Auto-bracket grid search). ~3–5 s — the wizard's only compute path.
+  // Honors the plan-window cap and cliff-awareness toggle. Cancelled by Close,
+  // parameter changes, or an in-flight cancellation request.
+  const handleWizGenerate = async () => {
     setWizRunning(true);
-    // Show a visible "Computing…" message during the worker run so the
-    // dialog doesn't look frozen during a 3–7 s Optimize. The result message
-    // overwrites this on completion (or it clears on Cancel).
-    const runningMessage =
-      wizMethod === 'optimize'
-        ? 'Optimizing… this takes a few seconds.'
-        : wizMethod === 'auto_bracket'
-          ? 'Auto-bracket grid search…'
-          : 'Computing schedule…';
-    setWizMessage(runningMessage);
+    setWizMessage('Optimizing… this takes a few seconds.');
     setWizSchedule(null);
+    setWizCurrentPath(null);
+    setWizProposedPath(null);
+    setWizInflationFactors(null);
+    wizSuccessToken.current++;
+    setWizSuccess(null);
+    setWizSuccessRunning(false);
     const t0 = performance.now();
     try {
-      if (wizMethod === 'fill_to_bracket') {
-        const schedule = await strategyComputeClient.computeFill(wizardUserData, {
-          name: 'fill_to_bracket', bracketTarget: wizBracket,
-        });
-        const nonZero = schedule.filter((d) => d.conversionAmount > 0);
-        setWizSchedule(schedule);
+      const result = await strategyComputeClient.optimize(wizardUserData, {
+        name: 'optimize', objective: wizObjective, endAgeCap: wizEndAgeCap,
+      });
+      const elapsed = (performance.now() - t0) / 1000;
+      setWizSchedule(result.perYearDecisions);
+      const delta = result.finalScore - result.baselineScore;
+      const nonZero = result.perYearDecisions.filter((d) => d.conversionAmount > 0).length;
+      if (delta > 0) {
         setWizMessage(
-          nonZero.length === 0
-            ? `Fill-to-bracket(${prettyBracket(wizBracket)}): no conversions fit inside the bracket headroom for this scenario.`
-            : `Generated ${nonZero.length} conversion year${nonZero.length === 1 ? '' : 's'} (Fill-to-bracket · ${prettyBracket(wizBracket)}). Click Apply to add to your plan.`
+          `Generated in ${elapsed.toFixed(1)}s. Projected gain vs your current plan: ` +
+          `+${currency(delta)} (real dollars at end of plan), from ${nonZero} conversion year${nonZero === 1 ? '' : 's'}.`
         );
-      } else if (wizMethod === 'auto_bracket') {
-        const result = await strategyComputeClient.computeAuto(wizardUserData, {
-          name: 'auto_bracket', objective: wizObjective,
-        });
-        setWizSchedule(result.perYearDecisions);
-        const baselineScore = result.candidateScores.find((c) => c.bracket === 'none')?.score
-          ?? result.winnerScore;
-        const delta = result.winnerScore - baselineScore;
-        const pct = baselineScore !== 0 ? (delta / Math.abs(baselineScore)) * 100 : 0;
-        const nonZero = result.perYearDecisions.filter((d) => d.conversionAmount > 0).length;
-        if (result.chosenBracket === 'none') {
-          setWizMessage(
-            `Auto-bracket: keeping your current setup beats all bracket-fill options. Nothing to apply.`
-          );
-        } else if (delta > 0) {
-          setWizMessage(
-            `Auto-bracket chose the ${prettyBracket(result.chosenBracket)} schedule. ` +
-            `Generated ${nonZero} conversion year${nonZero === 1 ? '' : 's'}. ` +
-            `vs your current setup: +$${Math.round(delta).toLocaleString()} (+${pct.toFixed(2)}%) at end of plan.`
-          );
-        } else {
-          setWizMessage(
-            `Auto-bracket chose the ${prettyBracket(result.chosenBracket)} schedule. ` +
-            `Generated ${nonZero} conversion year${nonZero === 1 ? '' : 's'}.`
-          );
-        }
       } else {
-        const result = await strategyComputeClient.optimize(wizardUserData, {
-          name: 'optimize', objective: wizObjective,
-        });
-        const elapsed = (performance.now() - t0) / 1000;
-        setWizSchedule(result.perYearDecisions);
-        const delta = result.finalScore - result.baselineScore;
-        const pct = result.baselineScore !== 0 ? (delta / Math.abs(result.baselineScore)) * 100 : 0;
-        const nonZero = result.perYearDecisions.filter((d) => d.conversionAmount > 0).length;
-        if (delta > 0) {
-          setWizMessage(
-            `Optimized in ${elapsed.toFixed(1)}s (${result.projectionCount} projections). ` +
-            `vs your current setup: +$${Math.round(delta).toLocaleString()} (+${pct.toFixed(2)}%) ` +
-            `at end of plan, from ${nonZero} conversion year${nonZero === 1 ? '' : 's'}.`
-          );
-        } else {
-          setWizMessage(
-            `Optimized in ${elapsed.toFixed(1)}s. The optimizer couldn't improve on your current setup. ` +
-            `Apply will add a zero-conversion schedule (effectively nothing).`
-          );
-        }
+        setWizMessage(
+          `Generated in ${elapsed.toFixed(1)}s. The optimizer couldn't improve on your current plan — ` +
+          `Apply would add a zero-conversion schedule.`
+        );
+      }
+      if (result.perYearDecisions.some((d) => d.conversionAmount > 0)) {
+        updateComparisonChart(result.perYearDecisions);
+        void runScheduleSuccess(result.perYearDecisions);
       }
     } catch (err) {
-      // Cancellation is the normal "user clicked Cancel / closed dialog"
-      // exit; don't show an error.
       if (!(err instanceof StrategyCancelledError)) {
         setWizMessage('Error: ' + (err as Error).message);
       }
@@ -526,6 +656,9 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
     strategyComputeClient.cancel();
     setWizRunning(false);
     setWizMessage(null);
+    wizSuccessToken.current++;
+    setWizSuccess(null);
+    setWizSuccessRunning(false);
   };
 
   const handleHide = () => {
@@ -553,10 +686,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
       });
       return;
     }
-    const generatorName: NonNullable<IncomeEvent['meta']>['generatedBy'] =
-      wizMethod === 'fill_to_bracket' ? 'fill_to_bracket'
-        : wizMethod === 'auto_bracket' ? 'auto_bracket'
-          : 'optimize';
+    const generatorName: NonNullable<IncomeEvent['meta']>['generatedBy'] = 'optimize';
     const generatedAt = new Date().toISOString().slice(0, 10);
     const generatorRunId = crypto.randomUUID();
     const batch: Omit<IncomeEvent, 'id'>[] = nonZero.map((d) => {
@@ -564,6 +694,15 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
       return {
         type: 'roth_conversion',
         name: `Roth conversion ${d.year}`,
+        // Explicit self-ownership. The wizard doesn't currently produce
+        // per-owner schedules — the optimizer treats the household as a
+        // single Trad bucket and the endAgeCap is checked against self's age
+        // (see FillToBracketStrategy / OptimizeStrategy). Surfacing the
+        // default explicitly: (a) makes the intent visible in the saved
+        // event, (b) decouples behavior from any future change to the
+        // engine's owner-default, (c) is the right anchor when we eventually
+        // thread per-owner schedules through PerYearStrategyDecision.
+        owner: 'self',
         amount: d.conversionAmount,
         startAge,
         endAge: startAge,
@@ -605,7 +744,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
   ];
 
   const dialogFooter = mode === 'wizard' ? (
-    <div>
+    <WizardFooter>
       <Button label='Close' icon='pi pi-times' onClick={handleHide} className='p-button-text' />
       {wizRunning ? (
         <Button
@@ -616,9 +755,9 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
         />
       ) : (
         <Button
-          label='Compute'
+          label={wizSchedule ? 'Re-generate' : 'Generate plan'}
           icon='pi pi-play'
-          onClick={handleWizCompute}
+          onClick={handleWizGenerate}
           className='p-button-secondary'
         />
       )}
@@ -628,7 +767,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
         onClick={handleWizApply}
         disabled={!wizSchedule || wizRunning || !wizSchedule.some((d) => d.conversionAmount > 0)}
       />
-    </div>
+    </WizardFooter>
   ) : (
     <div>
       <Button label='Cancel' icon='pi pi-times' onClick={onHide} className='p-button-text' />
@@ -684,40 +823,89 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
       )}
       {mode === 'wizard' ? (
         <Form as='div'>
-          <InputGroup>
-            <label>Method</label>
-            <Dropdown
-              value={wizMethod}
-              options={METHOD_OPTIONS}
-              onChange={(e) => { setWizMethod(e.value); setWizSchedule(null); setWizMessage(null); }}
-            />
-            <HelpText>
-              <strong>Fill to bracket</strong> sizes each year's conversion to fill a target federal bracket.
-              {' '}<strong>Auto bracket</strong> grid-searches all four bracket targets and picks the best.
-              {' '}<strong>Optimize</strong> runs coordinate descent on the per-year vector (~3–5 s).
-            </HelpText>
-          </InputGroup>
-          {wizMethod === 'fill_to_bracket' && (
+          <HelpText style={{ lineHeight: 1.4 }}>
+            Roth conversions make sense when your <em>current</em> marginal tax rate
+            is lower than your <em>future</em> rate — typically the gap years between
+            retirement and your first RMD. The generator sizes a per-year schedule
+            inside that window. Click <strong>Generate plan</strong> to see what it
+            recommends, compare it to your current plan, then <strong>Apply</strong>.
+          </HelpText>
+          <FieldRow>
             <InputGroup>
-              <label>Target bracket</label>
+              <label>Plan window</label>
               <Dropdown
-                value={wizBracket}
-                options={BRACKET_OPTIONS}
-                onChange={(e) => { setWizBracket(e.value); setWizSchedule(null); setWizMessage(null); }}
+                value={wizEndAgeCap}
+                options={buildPlanWindowOptions(userData.lifeExpectancy)}
+                onChange={(e) => { setWizEndAgeCap(e.value); setWizSchedule(null); setWizMessage(null); setWizSuccess(null); setWizCurrentPath(null); setWizProposedPath(null); setWizInflationFactors(null); wizSuccessToken.current++; }}
               />
             </InputGroup>
-          )}
-          {(wizMethod === 'auto_bracket' || wizMethod === 'optimize') && (
             <InputGroup>
-              <label>Objective</label>
-              <Dropdown
-                value={wizObjective}
-                options={OBJECTIVE_OPTIONS}
-                onChange={(e) => { setWizObjective(e.value); setWizSchedule(null); setWizMessage(null); }}
-              />
+              <label>&nbsp;</label>
+              <CheckboxGroup>
+                <Checkbox
+                  inputId='wizCliffs'
+                  checked={wizRespectCliffs}
+                  onChange={(e) => { setWizRespectCliffs(e.checked || false); setWizSchedule(null); setWizMessage(null); setWizSuccess(null); setWizCurrentPath(null); setWizProposedPath(null); setWizInflationFactors(null); wizSuccessToken.current++; }}
+                />
+                <label htmlFor='wizCliffs' style={{ fontSize: fontSize.sm, cursor: 'pointer' }}>
+                  Cap under IRMAA / NIIT cliffs
+                </label>
+              </CheckboxGroup>
             </InputGroup>
-          )}
+          </FieldRow>
+          <div>
+            <button
+              type='button'
+              onClick={() => setWizShowAdvanced((v) => !v)}
+              style={{
+                background: 'none', border: 'none', padding: 0,
+                color: colors.textSecondary, fontSize: fontSize.xs, cursor: 'pointer',
+              }}
+            >
+              <i className={`pi ${wizShowAdvanced ? 'pi-chevron-down' : 'pi-chevron-right'}`} style={{ marginRight: spacing.xs, fontSize: fontSize.xs }} />
+              Advanced
+            </button>
+            {wizShowAdvanced && (
+              <InputGroup style={{ marginTop: spacing.xs }}>
+                <label>Objective</label>
+                <Dropdown
+                  value={wizObjective}
+                  options={OBJECTIVE_OPTIONS}
+                  onChange={(e) => { setWizObjective(e.value); setWizSchedule(null); setWizMessage(null); setWizSuccess(null); setWizCurrentPath(null); setWizProposedPath(null); setWizInflationFactors(null); wizSuccessToken.current++; }}
+                />
+                <HelpText>
+                  Default maximizes the deterministic terminal portfolio in real
+                  (today's) dollars. Min lifetime tax minimizes the real-dollar
+                  sum of federal + state tax across the plan. Differences are
+                  usually small.
+                </HelpText>
+              </InputGroup>
+            )}
+          </div>
           {wizMessage && <WizardMessage>{wizMessage}</WizardMessage>}
+          {wizSchedule && wizSchedule.some((d) => d.conversionAmount > 0) && (wizSuccessRunning || wizSuccess) && (
+            <SuccessLine $positive={!!wizSuccess && wizSuccess.candidate >= wizSuccess.baseline}>
+              {wizSuccess
+                ? `Projected success with this schedule: ${wizSuccess.candidate}% ` +
+                  `(vs ${wizSuccess.baseline}% baseline)`
+                : 'Estimating Monte Carlo success probability…'}
+            </SuccessLine>
+          )}
+          {wizCurrentPath && wizProposedPath && wizInflationFactors && (
+            <div>
+              <RothConversionComparisonChart
+                currentPath={wizCurrentPath}
+                proposedPath={wizProposedPath}
+                inflationFactors={wizInflationFactors}
+                currentAge={userData.currentAge}
+                displayCurrency={displayCurrency}
+              />
+              <HelpText style={{ display: 'block', textAlign: 'center', marginTop: spacing.xs }}>
+                Deterministic projection in {displayCurrency === 'nominal' ? 'future' : "today's"} dollars
+                (matches the main chart's view). Live MC band on the main chart shows the full range.
+              </HelpText>
+            </div>
+          )}
           {wizSchedule && wizSchedule.some((d) => d.conversionAmount > 0) && (
             <div style={{ maxHeight: '14rem', overflowY: 'auto' }}>
               <WizardTable>
@@ -905,21 +1093,20 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
                 impact row and the live success probability.
               </div>
               <div>
-                <DisclaimerLabel>What it still doesn't include:</DisclaimerLabel>{' '}
+                <DisclaimerLabel>Net impact reflects the engine's full behavior:</DisclaimerLabel>{' '}
+                including the per-scenario auto-selected spending policy (the
+                engine picks whichever of brokerage-first or bracket-aware
+                gives the higher real terminal balance, for both the with-
+                and without-conversion projections). So this is the honest
+                marginal effect of this conversion on top of the engine
+                already doing its best.
+              </div>
+              <div>
+                <DisclaimerLabel>What's still not included:</DisclaimerLabel>{' '}
                 ACA premium tax credit effects before 65, the surviving-spouse
                 shift from joint to single brackets, and federal 0/15/20% LTCG
                 bracket stacking. Each can materially change whether a conversion
                 is worthwhile.
-              </div>
-              <div>
-                <DisclaimerLabel>Net impact reflects the engine's full behavior:</DisclaimerLabel>{' '}
-                when you add a conversion, the engine also auto-switches the
-                spending waterfall to <em>bracket-aware</em> mode (pulling
-                Traditional cheaply in low-bracket years to preserve Taxable).
-                That switch contributes to the Net impact alongside the
-                conversion itself. To isolate the conversion alone, set
-                <code style={{ fontSize: 'inherit' }}> spendingWithdrawalOrder</code> explicitly on the scenario
-                JSON so both before/after use the same waterfall.
               </div>
               <div>
                 Treat this as a starting point, not a recommendation. Talk to a tax
