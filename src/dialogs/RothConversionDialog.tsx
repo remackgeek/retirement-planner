@@ -25,7 +25,7 @@ import { strategyComputeClient, StrategyCancelledError } from '../services/Strat
 import { simulationClient, SupersededError } from '../services/SimulationClient';
 import { runDeterministicProjection } from '../services/SimulationService';
 import { buildStrategyConversionEvents, isGeneratorProducedConversion } from '../services/strategies/syntheticEvents';
-import RothConversionComparisonChart from './RothConversionComparisonChart';
+import PlanComparisonChart from './PlanComparisonChart';
 import { useUIState } from '../context/UIStateContext';
 
 const Form = styled.form`
@@ -893,7 +893,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
           )}
           {wizCurrentPath && wizProposedPath && wizInflationFactors && (
             <div>
-              <RothConversionComparisonChart
+              <PlanComparisonChart
                 currentPath={wizCurrentPath}
                 proposedPath={wizProposedPath}
                 inflationFactors={wizInflationFactors}

@@ -21,7 +21,8 @@ export type IncomeEventGeneratedBy =
   | 'user'
   | 'fill_to_bracket'
   | 'auto_bracket'
-  | 'optimize';
+  | 'optimize'
+  | 'ss_optimizer'; // Social Security claiming-age wizard (informational provenance only)
 
 export interface IncomeEventMeta {
   generatedBy?: IncomeEventGeneratedBy;

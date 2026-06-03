@@ -24,7 +24,7 @@ interface Props {
    *  `path.push(startBalance / cumulativeInflation)`. We re-inflate for the
    *  'nominal' display mode via `pathToDisplay`, mirroring the main chart. */
   currentPath: number[];
-  /** Same as `currentPath` but for the proposed-conversion plan. */
+  /** Same as `currentPath` but for the proposed plan. */
   proposedPath: number[];
   /** Cumulative inflation factor per year `[1, 1+r, (1+r)^2, ...]` from the
    *  projection. Used to re-inflate real path values back to nominal when the
@@ -35,50 +35,77 @@ interface Props {
   /** Display mode driven by the main chart's view selector (UIStateContext).
    *  'real' shows today's purchasing power; 'nominal' shows future dollars. */
   displayCurrency: DisplayCurrency;
+  /** Optional dataset labels (defaults to "Current plan" / "Proposed plan"). */
+  currentLabel?: string;
+  proposedLabel?: string;
+  /** Optional third reference line (e.g. the user's originally-saved plan).
+   *  Rendered as a distinct dotted line when provided with length > 0. */
+  referencePath?: number[];
+  referenceLabel?: string;
 }
 
 /**
- * Side-by-side deterministic projection: current plan vs proposed conversion
- * schedule. Matches the main chart's units exactly — when the user toggles
- * the main chart between Today's $ / Future $, this chart follows so the two
- * are never visually inconsistent.
+ * Side-by-side deterministic projection: current plan vs a proposed plan.
+ * Matches the main chart's units exactly — when the user toggles the main chart
+ * between Today's $ / Future $, this chart follows so the two are never visually
+ * inconsistent. Used by the Roth Conversion wizard and the Social Security
+ * claiming-age wizard.
  *
  * Stripped-down Chart.js render — no annotations, no plugins, no axes
  * cross-talk with the main chart. Just two lines.
  */
-const RothConversionComparisonChart: React.FC<Props> = ({
+const PlanComparisonChart: React.FC<Props> = ({
   currentPath, proposedPath, inflationFactors, currentAge, displayCurrency,
+  currentLabel = 'Current plan', proposedLabel = 'Proposed plan',
+  referencePath, referenceLabel = 'Reference',
 }) => {
   const data = useMemo(() => {
-    const n = Math.min(currentPath.length, proposedPath.length, inflationFactors.length);
+    const hasRef = !!referencePath && referencePath.length > 0;
+    const n = Math.min(
+      currentPath.length,
+      proposedPath.length,
+      inflationFactors.length,
+      hasRef ? referencePath!.length : Infinity,
+    );
     const labels = Array.from({ length: n }, (_, i) => String(currentAge + i));
     const display = (path: number[]) =>
       path.slice(0, n).map((v, i) => pathToDisplay(v, inflationFactors[i] ?? 1, displayCurrency));
-    return {
-      labels,
-      datasets: [
-        {
-          label: 'Current plan',
-          data: display(currentPath),
-          borderColor: colors.textMuted,
-          backgroundColor: colors.textMuted,
-          borderWidth: 1.5,
-          pointRadius: 0,
-          tension: 0.1,
-        },
-        {
-          label: 'Proposed plan',
-          data: display(proposedPath),
-          borderColor: colors.primary,
-          backgroundColor: colors.primary,
-          borderWidth: 2,
-          borderDash: [4, 3],
-          pointRadius: 0,
-          tension: 0.1,
-        },
-      ],
-    };
-  }, [currentPath, proposedPath, inflationFactors, currentAge, displayCurrency]);
+    // Order: current → reference → proposed, so the proposed line draws on top.
+    const datasets = [
+      {
+        label: currentLabel,
+        data: display(currentPath),
+        borderColor: colors.textMuted,
+        backgroundColor: colors.textMuted,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.1,
+      },
+      ...(hasRef
+        ? [{
+            label: referenceLabel,
+            data: display(referencePath!),
+            borderColor: colors.draftOverlay,
+            backgroundColor: colors.draftOverlay,
+            borderWidth: 1.5,
+            borderDash: [2, 2],
+            pointRadius: 0,
+            tension: 0.1,
+          }]
+        : []),
+      {
+        label: proposedLabel,
+        data: display(proposedPath),
+        borderColor: colors.primary,
+        backgroundColor: colors.primary,
+        borderWidth: 2,
+        borderDash: [4, 3],
+        pointRadius: 0,
+        tension: 0.1,
+      },
+    ];
+    return { labels, datasets };
+  }, [currentPath, proposedPath, referencePath, inflationFactors, currentAge, displayCurrency, currentLabel, proposedLabel, referenceLabel]);
 
   const yAxisLabel = displayCurrency === 'nominal' ? 'Future $' : "Today's $";
   const options = useMemo(
@@ -125,4 +152,4 @@ const RothConversionComparisonChart: React.FC<Props> = ({
   );
 };
 
-export default RothConversionComparisonChart;
+export default PlanComparisonChart;

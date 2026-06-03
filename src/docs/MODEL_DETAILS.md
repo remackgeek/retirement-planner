@@ -577,7 +577,7 @@ The wizard's **Generate plan** button calls `runOptimization` directly. The thre
 
 ### Inline what-if chart
 
-After Generate plan completes, the dialog renders a small Chart.js line plot ([src/dialogs/RothConversionComparisonChart.tsx](src/dialogs/RothConversionComparisonChart.tsx)) with two deterministic projection lines: the current plan (generator-tagged conversions stripped, manual conversions kept) vs the proposed plan (current + new schedule as synthetic events). **Real (year-0) dollars**, matching the wizard's scoring frame so the optimizer's "improvement" claim aligns visually with the chart.
+After Generate plan completes, the dialog renders a small Chart.js line plot ([src/dialogs/PlanComparisonChart.tsx](src/dialogs/PlanComparisonChart.tsx) — a generic current-vs-proposed component shared with the Social Security wizard) with two deterministic projection lines: the current plan (generator-tagged conversions stripped, manual conversions kept) vs the proposed plan (current + new schedule as synthetic events). **Real (year-0) dollars**, matching the wizard's scoring frame so the optimizer's "improvement" claim aligns visually with the chart.
 
 ### Impact Preview unit invariant
 
@@ -624,6 +624,32 @@ The selector runs two deterministic projections (one per candidate, via the inte
 ### Legacy `taxStrategy` migration
 
 Scenarios saved before this rework carried `UserData.taxStrategy.cachedVector.perYearDecisions`. On load, `migrateLegacyTaxStrategy` in `src/context/RetirementContext.tsx` materializes the non-zero decisions as tagged `roth_conversion` events (provenance: the strategy that produced them) and strips the `taxStrategy` field. A one-time toast notifies the user. The `UserData.taxStrategy` type field remains for the legacy parse path but is otherwise unused by the engine.
+
+---
+
+## Social Security claiming-age wizard
+
+**Tools → Social Security.** Finds the claiming age (62–70) that maximizes the plan's real terminal value, supplying the actuarial link the engine itself doesn't model (an SS event's `amount` and `startAge` are otherwise independent — the engine pays whatever amount you entered, whenever you claim).
+
+### Actuarial model (`src/services/socialSecurity.ts`, pure, no engine dependency)
+
+- **Full Retirement Age (FRA)** from birth year per the SSA table (`computeFraMonths`): 66 for 1943–1954, +2 months/year through 1959, 67 for 1960+. Birth year is derived as `referenceYear − ownerAge`. Computed in **months** so fractional FRAs (e.g. 66y 8m for 1958) are exact.
+- **Benefit multiplier** (`benefitMultiplier`): early claiming reduces the benefit by 5/9 of 1% per month for the first 36 months before FRA, then 5/12 of 1% per month beyond; delayed claiming adds 2/3 of 1% per month (8%/yr) from FRA to age 70 (capped at 70). Anchors: FRA 67 → 62 = 70%, 70 = 124%; FRA 66 → 62 = 75%, 70 = 132%.
+- **PIA** (Primary Insurance Amount = benefit at FRA) is reconstructed from the single benefit figure the user enters: `piaFromBenefit(benefit, fraMonths, enteredAgeMonths)` inverts the multiplier. `benefitAtAge(pia, fraMonths, claimAge)` then gives the actuarially-correct benefit at each candidate age. The wizard works entirely in **today's dollars** (`ssAmountBasis: 'today'`), matching how the SSA statement quotes the figure.
+
+### Sweep (`src/services/socialSecurityOptimizer.ts`)
+
+`optimizeClaimingAge` replaces the selected owner's SS event with `buildClaimingEvent(...)` at each claim age in `[max(62, ⌈ownerAge⌉) … 70]`, runs `runDeterministicProjection` (the same single-path engine as the Projected chart line), and records each age's real terminal value. Per-age deltas in the table are measured against the candidate at the current claim age (so that row reads exactly $0), not a separate baseline run. `buildClaimingEvent` is the single source of truth shared with the dialog's Apply, so candidate generation and the applied event never drift; it always emits `ssAmountBasis: 'today'`, inherits COLA from the existing SS event, and takes the **2034 trust-fund haircut** (`ssHaircutEnabled`/`ssHaircutPercent`) from explicit options — a per-event field the wizard exposes as a checkbox + percent so the user can sweep with and without it (the value falls back to the existing event, then to on/23%). Spending order is auto-selected per projection (not pinned), exactly as the live chart does it. ~9 deterministic projections (≈ tens of ms), so the dialog computes synchronously in a `useMemo` off debounced inputs — no worker, no spinner. When the owner already has a saved SS entry, one extra projection of the scenario *as saved* (`enteredPlanPath`) provides a stable "Your saved plan" reference line on the comparison chart (it uses the saved event's own haircut, so it stays put as the wizard's haircut toggle moves the candidates).
+
+`findCrossoverAge(later, earlier, planCurrentAge)` returns the breakeven age — where the delayed-claim portfolio path overtakes the earlier-claim path (the classic SS crossover expressed against the portfolio).
+
+### Scope, edge cases, and provenance
+
+- **Per-owner, not joint.** With MFJ + spouse age set, the wizard optimizes one person at a time; the other's SS is held fixed. Second-order tax coupling between the two is not optimized (documented in-UI). An owner already claiming (existing `startAge ≤ ownerAge`) or past 70 is locked out, with the wizard pointing to the other owner.
+- **Own-benefit only.** Spousal (50%) and survivor benefits are not modeled (the per-owner machinery + `buildClaimingEvent` make them a clean future extension). Objective is fixed to real terminal value (a configurable objective is a future extension mirroring `scoreProjection`).
+- **Apply** writes the chosen age as a normal `social_security` event (replacing the owner's prior one), tagged `meta.generatedBy = 'ss_optimizer'`. The tag is informational provenance only — there is no re-run-replace or detach-on-edit machinery (one SS event per owner). Replacing a manually-entered SS event prompts a confirm first.
+
+The wizard presents everything in **today's (year-0) dollars** — it does not follow the app-wide Today's $/Future $ toggle (real terminal wealth is the optimizer's scoring frame and the SSA benefit input is a today's-dollar figure; a saved `'future'`-basis benefit is deflated to today's dollars before PIA reconstruction). The dialog's lead visual is [PlanComparisonChart.tsx](src/dialogs/PlanComparisonChart.tsx) (current-vs-selected lines, pinned to real here, shared with the Roth wizard, plus the optional "Your saved plan" reference line). Below it, an always-visible per-age table carries the longevity-vs-check-size tradeoff numerically — each claiming age's annual benefit, real plan final value, and Δ vs the current age, with ★ (recommended) and (current) markers; clicking a row drives the chart's selected line and the Apply target.
 
 ---
 

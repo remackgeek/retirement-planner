@@ -8,6 +8,7 @@ import { RetirementContext } from '../../context/RetirementContext';
 import ModelingDialog from '../../dialogs/ModelingDialog';
 import CashBucketDialog from '../../dialogs/CashBucketDialog';
 import TaxAndIrsDialog from '../../dialogs/TaxAndIrsDialog';
+import SocialSecurityWizardDialog from '../../dialogs/SocialSecurityWizardDialog';
 import ExamplePickerDialog from '../../dialogs/ExamplePickerDialog';
 import AboutDialog from '../../dialogs/AboutDialog';
 import MarkdownViewerSidebar from '../../dialogs/MarkdownViewerSidebar';
@@ -94,7 +95,9 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
 
   const menuRef = useRef<Menu>(null);
   const reportsMenuRef = useRef<Menu>(null);
+  const toolsMenuRef = useRef<Menu>(null);
   const helpMenuRef = useRef<Menu>(null);
+  const [ssWizardVisible, setSsWizardVisible] = useState(false);
   const [modelingVisible, setModelingVisible] = useState(false);
   const [cashBucketVisible, setCashBucketVisible] = useState(false);
   const [taxIrsVisible, setTaxIrsVisible] = useState(false);
@@ -135,6 +138,15 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
       label: 'Tax & IRS',
       icon: 'pi pi-percentage',
       command: () => setTaxIrsVisible(true),
+      disabled: !activeScenario,
+    },
+  ];
+
+  const toolsMenuItems: MenuItem[] = [
+    {
+      label: 'Social Security',
+      icon: 'pi pi-shield',
+      command: () => setSsWizardVisible(true),
       disabled: !activeScenario,
     },
   ];
@@ -188,6 +200,16 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
             onClick={(e) => reportsMenuRef.current?.toggle(e)}
             disabled={!activeScenario}
           />
+          <Menu model={toolsMenuItems} popup ref={toolsMenuRef} />
+          <Button
+            label="Tools"
+            icon="pi pi-chevron-down"
+            iconPos="right"
+            className="p-button-text p-button-sm"
+            style={{ padding: '0.15rem 0.5rem' }}
+            onClick={(e) => toolsMenuRef.current?.toggle(e)}
+            disabled={!activeScenario}
+          />
           <Menu model={menuItems} popup ref={menuRef} />
           <Button
             label="Settings"
@@ -229,6 +251,14 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
         <TaxAndIrsDialog
           visible={taxIrsVisible}
           onHide={() => setTaxIrsVisible(false)}
+          scenario={activeScenario}
+          onSave={handleSave}
+        />
+      )}
+      {activeScenario && (
+        <SocialSecurityWizardDialog
+          visible={ssWizardVisible}
+          onHide={() => setSsWizardVisible(false)}
           scenario={activeScenario}
           onSave={handleSave}
         />

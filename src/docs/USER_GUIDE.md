@@ -207,6 +207,30 @@ When you're happy, click **Apply** — every non-zero year becomes a real Roth C
 
 ---
 
+## Tools
+
+The **Tools** menu in the top bar holds focused planning helpers.
+
+### Social Security — best time to claim
+
+When you start Social Security is one of the highest-stakes retirement decisions: claiming early means smaller checks for life, while waiting (up to age 70) earns delayed-retirement credits that permanently raise them. The **Tools → Social Security** wizard finds the claiming age that maximizes your plan's final value.
+
+**What to enter.** Pull one number off your SSA statement (ssa.gov/myaccount): your **estimated monthly benefit at full retirement age**. Enter it on the "Your estimated benefit" line — pick "Monthly" or "Annual" to match, and leave the "at" age selector on *Full retirement age* (you can instead pick 62 or 70 if that's the figure your statement shows). The wizard works in today's dollars — exactly how the SSA statement quotes it. If you already entered a Social Security benefit, the wizard pre-fills from it, so a recommendation appears immediately with nothing to type.
+
+From that one figure the wizard reconstructs your full benefit formula and computes the actuarially-correct check at every claiming age from 62 to 70.
+
+**What you get.** A plain headline — e.g. *"Claim at 70 → +$214K plan value (today's $) vs your current 67"* — a current-vs-proposed projection chart (with your saved plan as a third reference line), the breakeven age (when delaying pulls ahead), and a per-age table showing each claiming age's annual benefit, plan final value, and difference. Click any row to compare that age on the chart and choose it for Apply — not just the recommended one (marked ★). Everything in the wizard is shown in **today's (year-0) dollars**, regardless of the main chart's Today's $/Future $ setting — that's the right frame for comparing claiming ages across decades.
+
+**Important caveat.** The "best" age assumes you live to your plan's life expectancy. Claiming later is a bet on longevity — if your life expectancy is short, earlier often wins. Adjust life expectancy in the scenario and watch the recommendation move.
+
+**Couples.** With Married-filing-jointly and a spouse age set, an *Optimizing for* selector lets you tune each person separately; the other spouse's benefit is held fixed. A spouse who is already receiving Social Security (or is past 70) is locked — there's no claiming decision left to make — and the wizard points you to the other person.
+
+**Scope.** This models each person's own retirement benefit (early/delayed adjustment + an optional 2034 trust-fund reduction, toggled right in the wizard so you can compare claiming ages with and without it). Spousal (50%) and survivor benefits aren't modeled yet.
+
+When you click **Apply**, the chosen claiming age becomes a regular Social Security income event (replacing the previous one for that person), visible on the chart, in the Income panel, and in exports.
+
+---
+
 ## Spending Goals
 
 Spending goals are everything flowing **out** of your portfolio. Categories include living expenses, healthcare, housing, travel, education, and several more. Each goal has a start age, optional end age, and the option to inflate over time.

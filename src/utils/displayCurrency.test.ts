@@ -48,7 +48,8 @@ describe('round-trip invariants', () => {
 });
 
 describe('regression guards', () => {
-  // **Why these exist.** RothConversionComparisonChart originally had a custom
+  // **Why these exist.** PlanComparisonChart (originally RothConversionComparisonChart)
+  // had a custom
   // `deflate` helper that divided already-real path values by inflation again —
   // producing "real-real" units (double-deflated). The chart line ended at
   // ~$6M while the actual real terminal was ~$13M, mismatching the main chart
