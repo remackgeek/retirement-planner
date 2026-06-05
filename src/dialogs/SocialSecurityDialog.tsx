@@ -242,11 +242,6 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
     onHide();
   };
 
-  const amountBasisOptions = [
-    { label: "Today's Dollars", value: 'today' },
-    { label: 'Adjusted for Future Inflation', value: 'future' },
-  ];
-
   const periodOptions = [
     { label: 'Monthly', value: 'monthly' },
     { label: 'Annual', value: 'annual' },
@@ -347,20 +342,6 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
               onChange={(e) => handlePeriodChange(e.value)}
             />
           </AmountRow>
-        </InputGroup>
-
-        <InputGroup>
-          <label>Amount is in</label>
-          <Dropdown
-            value={formData.ssAmountBasis}
-            options={amountBasisOptions}
-            onChange={(e) => setFormData({ ...formData, ssAmountBasis: e.value })}
-          />
-          <HelpText>
-            {formData.ssAmountBasis === 'future'
-              ? 'Projected nominal amount at claiming age — COLA applied after claiming'
-              : 'Amount from your SSA statement — will be adjusted for inflation'}
-          </HelpText>
         </InputGroup>
 
         <InputGroup>
