@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RetirementProvider, RetirementContext, migrateLegacyTaxStrategy } from './RetirementContext';
 import { confirmDialog } from 'primereact/confirmdialog';
 import type { Scenario } from '../types/Scenario';
+import { CURRENT_SCHEMA_VERSION } from '../types/Scenario';
 import { openDB } from 'idb';
 
 vi.mock('idb', () => ({
@@ -249,6 +250,55 @@ describe('RetirementContext Import Tests', () => {
       );
       expect(vi.mocked(confirmDialog)).toHaveBeenLastCalledWith(
         expect.objectContaining({ message: 'Scenario imported as a new copy.' })
+      );
+    });
+  });
+
+  it('stamps schemaVersion on an imported scenario that lacks it', async () => {
+    // makeScenarioJson() emits no schemaVersion (a legacy / hand-written file).
+    const text = makeScenarioJson();
+    vi.mocked(crypto.randomUUID).mockReturnValue('123e4567-e89b-12d3-a456-426614174000');
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    const input = await waitFor(() => {
+      const el = inputSpy.getInput();
+      if (!el) throw new Error('no input captured');
+      return el;
+    });
+
+    await triggerFileSelection(input, makeFile(text));
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        'scenarios',
+        expect.objectContaining({ schemaVersion: CURRENT_SCHEMA_VERSION }),
+        '123e4567-e89b-12d3-a456-426614174000'
+      );
+    });
+  });
+
+  it('stamps schemaVersion on a legacy record during initDB load', async () => {
+    // A record already in IndexedDB with no schemaVersion must be re-persisted
+    // with the current stamp on load (silent — no migration toast for this).
+    const legacy = { id: 'legacy-id', name: 'Legacy', currentAge: 50 } as Scenario;
+    mockGetAll.mockResolvedValue([legacy]);
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        'scenarios',
+        expect.objectContaining({ id: 'legacy-id', schemaVersion: CURRENT_SCHEMA_VERSION }),
+        'legacy-id'
       );
     });
   });

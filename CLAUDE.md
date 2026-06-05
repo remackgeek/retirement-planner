@@ -497,6 +497,35 @@ Two distinct migration patterns, do not confuse them:
 
 For all content-level changes — adding `meta` to `IncomeEvent`, splitting a goal type, adding a portfolioAssumptions field — pattern 1 is correct. Don't bump `DB_VERSION` unnecessarily.
 
+**Content-schema version stamp (`schemaVersion`).** Every persisted/exported `Scenario`
+carries an optional `schemaVersion?: number` (in [src/types/Scenario.ts](src/types/Scenario.ts)),
+stamped to the exported `CURRENT_SCHEMA_VERSION` constant (currently `1`) on **every write** —
+`addScenario`, `updateScenario`, `exportScenario`, and the `initDB` load loop. The load-loop
+stamp is **silent**: it persists via `db.put` but must NOT fire the "Scenarios updated" toast,
+so it's gated by a `needsPersist` flag kept separate from `migratedThisScenario` (only the
+pattern-1 content migrations increment the toast counter). `undefined` means a pre-versioning
+record/file ("legacy"). This is **distinct from `DB_VERSION`** — that versions the IndexedDB
+*structure*; this versions the *content* shape inside a Scenario.
+
+**The value is stamped but NOT branched on yet.** The pattern-1 inference migrations above
+(which detect old shape by field presence/type) still do all transforms. `schemaVersion: 1`
+asserts "this is the current Scenario shape, post all existing inference migrations." Do not
+add logic that reads `schemaVersion` to decide behavior until the roadmap below is taken up.
+
+**Release-readiness roadmap.** The app is in active dev today (see "No backward compatibility
+required" below). The version stamp was added *early and deliberately* because it's the one
+thing that can't be retrofitted — you can't version files that were already exported
+unversioned. When released-mode backward compat is actually needed:
+- Convert the pattern-1 inference migrations into an **ordered registry** keyed off
+  `schemaVersion` (`while (v < CURRENT_SCHEMA_VERSION) migrators[v++](scenario)`), bumping
+  `CURRENT_SCHEMA_VERSION` once per content change.
+- Add a **forward-compat guard**: on import, detect `schemaVersion > CURRENT_SCHEMA_VERSION`
+  and warn ("this file is from a newer version of the app") instead of silently loading with
+  wrong defaults.
+- Fold the **import-only `portfolioAssumptions` normalization** (currently inline in
+  `importScenario` only, not the `initDB` load path — [RetirementContext.tsx](src/context/RetirementContext.tsx))
+  into the shared migration pipeline so load and import stop diverging.
+
 **Deliberate non-goal: multi-year optimizer.** A full optimizer (DP / RL /
 Bellman over the lifetime tax-and-withdrawal joint decision) is a research
 project, not production code. Production planners (ProjectionLab,
@@ -575,7 +604,10 @@ routes to the correct per-type dialog. Simple goal types without unique fields c
 **No backward compatibility required.** This is active development — when fields, types,
 or data structures are renamed or removed, just change them cleanly. Do not leave behind
 deprecated aliases, re-exports, compatibility shims, or migration code for old field names.
-Old data in IndexedDB can be wiped; users will re-enter it.
+Old data in IndexedDB can be wiped; users will re-enter it. (One forward-looking exception:
+a `schemaVersion` stamp is already written on every scenario to make the eventual switch to
+real backward compat cheap — see "IndexedDB schema migrations" above. It is **not** branched
+on yet, so the "wipe freely" stance still holds for now.)
 
 **Modeling parameters belong on the scenario, not in global settings.** Any knob that
 affects simulation behavior — returns, volatility, distribution choice, withdrawal

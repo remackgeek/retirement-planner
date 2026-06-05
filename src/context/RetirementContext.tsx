@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect, type ReactNode } from 'react';
 import type { Scenario } from '../types/Scenario';
+import { CURRENT_SCHEMA_VERSION } from '../types/Scenario';
 import type { IncomeEvent, IncomeEventGeneratedBy } from '../types/IncomeEvent';
 import { openDB } from 'idb';
 import { confirmDialog } from 'primereact/confirmdialog';
@@ -185,7 +186,12 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       const finalScenarios: Scenario[] = [];
       for (const s of savedScenarios) {
         let working = s;
+        // `migratedThisScenario` gates the user-facing "Scenarios updated" toast
+        // — it must reflect only the content migrations below. `needsPersist`
+        // additionally covers the silent schemaVersion stamp, which should write
+        // back to IndexedDB but never trigger a toast.
         let migratedThisScenario = false;
+        let needsPersist = false;
 
         // Content migration 1: legacy taxStrategy field → first-class events.
         if ((working as unknown as { taxStrategy?: unknown }).taxStrategy) {
@@ -216,8 +222,20 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           migratedThisScenario = true;
         }
 
-        if (migratedThisScenario) {
+        // Stamp the content-schema version. The current shape IS version 1, so a
+        // missing/stale stamp just gets set and persisted once — silently (no
+        // toast). Idempotent thereafter.
+        if (working.schemaVersion !== CURRENT_SCHEMA_VERSION) {
+          working = { ...working, schemaVersion: CURRENT_SCHEMA_VERSION };
+          needsPersist = true;
+        }
+
+        if (migratedThisScenario || needsPersist) {
           await db.put(storeName, working, working.id);
+        }
+        // Only content migrations count toward the "Scenarios updated" toast;
+        // the silent schemaVersion stamp does not.
+        if (migratedThisScenario) {
           migratedCount += 1;
         }
         finalScenarios.push(working);
@@ -265,20 +283,22 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const addScenario = async (data: Scenario) => {
+    const stamped: Scenario = { ...data, schemaVersion: CURRENT_SCHEMA_VERSION };
     const db = await openDB(dbName, DB_VERSION);
-    await db.put(storeName, data, data.id);
-    setScenarios([...scenarios, data]);
-    setActiveScenarioState(data);
+    await db.put(storeName, stamped, stamped.id);
+    setScenarios([...scenarios, stamped]);
+    setActiveScenarioState(stamped);
   };
 
   const updateScenario = async (data: Scenario) => {
+    const stamped: Scenario = { ...data, schemaVersion: CURRENT_SCHEMA_VERSION };
     const db = await openDB(dbName, DB_VERSION);
-    await db.put(storeName, data, data.id);
+    await db.put(storeName, stamped, stamped.id);
     setScenarios(
-      scenarios.map((scenario) => (scenario.id === data.id ? data : scenario))
+      scenarios.map((scenario) => (scenario.id === stamped.id ? stamped : scenario))
     );
-    if (activeScenario?.id === data.id) {
-      setActiveScenarioState(data);
+    if (activeScenario?.id === stamped.id) {
+      setActiveScenarioState(stamped);
     }
   };
 
@@ -297,7 +317,11 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   const exportScenario = async (id: string) => {
     const scenario = scenarios.find((s) => s.id === id);
     if (!scenario) return;
-    const dataStr = JSON.stringify(scenario, null, 2);
+    const dataStr = JSON.stringify(
+      { ...scenario, schemaVersion: CURRENT_SCHEMA_VERSION },
+      null,
+      2
+    );
     const suggestedName = `${scenario.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
 
     if (typeof window.showSaveFilePicker === 'function') {
