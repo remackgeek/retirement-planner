@@ -17,8 +17,10 @@ import chartBlackSwanShadingPlugin from '../../plugins/chartBlackSwanShading';
 import chartCrosshairPlugin from '../../plugins/chartCrosshair';
 import chartPercentileBandPlugin from '../../plugins/chartPercentileBand';
 import chartMinYSpreadPlugin from '../../plugins/chartMinYSpread';
+import chartMilestonesPlugin from '../../plugins/chartMilestones';
 import {
   type AnnualCashFlowBreakdown,
+  getDeathModel,
 } from '../../services/SimulationService';
 import React, { useState, useMemo, useEffect, useRef, useContext, useCallback } from 'react';
 import styled from 'styled-components';
@@ -50,7 +52,8 @@ ChartJS.register(
   chartBlackSwanShadingPlugin,
   chartCrosshairPlugin,
   chartPercentileBandPlugin,
-  chartMinYSpreadPlugin
+  chartMinYSpreadPlugin,
+  chartMilestonesPlugin
 );
 
 type ViewMode = 'median' | 'nominal';
@@ -445,6 +448,7 @@ const Projections = ({
   // Session-only toggle: shaded 10th–90th percentile band on the chart.
   // Defaults on. Not on UserData — this is a view preference, not a modeling knob.
   const [showBand, setShowBand] = useState(true);
+  const [ageAxisMode, setAgeAxisMode] = useState<'self' | 'spouse'>('self');
 
   // Different return models expose a different primary path:
   //  - parametric:           deterministic nominal (full Monte Carlo + parametric mean)
@@ -512,10 +516,35 @@ const Projections = ({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // Reset the x-axis age frame to "self" when switching scenarios so a 'spouse'
+  // choice doesn't silently carry over into a different (possibly spouse-less) plan.
+  // Keyed on scenario id, so editing fields within the active scenario won't reset it.
+  useEffect(() => { setAgeAxisMode('self'); }, [userData?.id]);
+
+  // X-axis age frame. Default 'self' (your age), continuing to count past your own
+  // death when the spouse outlives you (matches "your age, full range"). The toggle
+  // only appears when a spouse age is set.
+  const hasSpouse = userData.spouseAge != null;
   const labels = useMemo(
-    () => years.map((_: number, index: number) => `${userData.currentAge + index} (${years[index]})`),
-    [years, userData.currentAge]
+    () => years.map((_: number, index: number) => {
+      const selfAge = userData.currentAge + index;
+      const spouseAge = userData.spouseAge != null ? userData.spouseAge + index : null;
+      const shown = ageAxisMode === 'spouse' && spouseAge != null ? spouseAge : selfAge;
+      return `${shown} (${years[index]})`;
+    }),
+    [years, userData.currentAge, userData.spouseAge, ageAxisMode]
   );
+
+  // Widow's-penalty milestone: the calendar year filing flips to single (year AFTER
+  // the first death). Derived from the same engine death model so it can't drift.
+  const milestoneMarkers = useMemo(() => {
+    const dm = getDeathModel(userData);
+    if (!dm.active || !Number.isFinite(dm.firstDeathOffset)) return [];
+    const transitionYear = userData.referenceYear + dm.firstDeathOffset + 1;
+    // Only show it if the transition falls within the displayed horizon.
+    if (transitionYear > years[years.length - 1]) return [];
+    return [{ year: transitionYear, label: 'Now filing Single' }];
+  }, [userData, years]);
 
   const chartData = useMemo(() => {
     const toDisplayPath = (path: number[], infArr: number[]) =>
@@ -661,6 +690,10 @@ const Projections = ({
         events: userData.portfolioAssumptions?.blackSwanEvents ?? [],
         years,
       },
+      milestones: {
+        markers: milestoneMarkers,
+        years,
+      },
       crosshair: {
         activeIndex: hoveredIndex,
       },
@@ -694,7 +727,7 @@ const Projections = ({
         },
       },
     },
-  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years, hoveredIndex, bandActive, percentileBand, nominalInflation, displayCurrency]);
+  }), [isMobile, htmlAnnotations, userData.portfolioAssumptions?.blackSwanEvents, years, hoveredIndex, bandActive, percentileBand, nominalInflation, displayCurrency, milestoneMarkers]);
 
 
   const snapshotProb = whatIfSnapshotResults?.probability;
@@ -1227,6 +1260,24 @@ const Projections = ({
           </span>
         )}
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: spacing.md }}>
+          {hasSpouse && (
+            <>
+              <PrimeTooltip target=".age-axis-toggle-btn" position="bottom" showDelay={150}>
+                <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                  Switch the x-axis age labels between your age and your spouse's age.
+                  The calendar years are unchanged.
+                </div>
+              </PrimeTooltip>
+              <BandToggle
+                className="age-axis-toggle-btn"
+                $active={ageAxisMode === 'spouse'}
+                onClick={() => setAgeAxisMode(m => (m === 'self' ? 'spouse' : 'self'))}
+              >
+                <i className="pi pi-user" />
+                {ageAxisMode === 'spouse' ? 'Spouse age' : 'Your age'}
+              </BandToggle>
+            </>
+          )}
           {percentileBand && !whatIfActive && (
             <>
               <PrimeTooltip target=".band-toggle-btn" position="bottom" showDelay={150}>

@@ -1,0 +1,83 @@
+{
+  "_description": "Widow's penalty: MFJ couple where the spouse dies before self. After the first death the survivor files single and keeps only the LARGER Social Security benefit (max, not sum). Isolates the survivor-SS collapse.",
+  "_rationale": "Self 65→90, spouse 65→72 (dies at offset 7, so survivor mode begins at year index 8). Self SS 40k, spouse SS 25k, both with the 2034 haircut OFF and fixed COLA so amounts are constant. While BOTH are alive, household SS = 40k + 25k = 65k. After the spouse dies, the survivor collects only the larger benefit = max(40k, 25k) = 40k. Roth-only portfolio (1M) so there are no RMDs or Traditional withdrawals to complicate the income; Florida + IRMAA/NIIT off keep tax out of the way. Death model: active, survivor = self, horizon = 26 years (self 65→90).",
+  "_seed": 24680,
+  "name": "Widow Penalty — SS Collapse",
+  "currentAge": 65,
+  "lifeExpectancy": 90,
+  "spouseAge": 65,
+  "spouseLifeExpectancy": 72,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 50000,
+      "startAge": 65,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "ss-self",
+      "type": "social_security",
+      "owner": "self",
+      "name": "Social Security (Self)",
+      "amount": 40000,
+      "startAge": 65,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "ssHaircutEnabled": false,
+      "amountPeriod": "annual"
+    },
+    {
+      "id": "ss-spouse",
+      "type": "social_security",
+      "owner": "spouse",
+      "name": "Social Security (Spouse)",
+      "amount": 25000,
+      "startAge": 65,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "ssHaircutEnabled": false,
+      "amountPeriod": "annual"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "mfj",
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "accounts": [
+    {
+      "id": "roth-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 1000000,
+      "owner": "self",
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

@@ -1,6 +1,6 @@
 import { Chart } from 'chart.js';
 import type { Plugin, ChartType } from 'chart.js';
-import { colors, fontSize } from '../styles/theme';
+import { colors } from '../styles/theme';
 
 // Extend Chart.js types to include our custom plugin
 declare module 'chart.js' {
@@ -72,7 +72,9 @@ const chartBlackSwanShadingPlugin: Plugin = {
       // Compact label centered above the band: stock% on top, bond% below.
       const stockLabel = formatMultiplierPct(ev.stockMultiplier);
       const bondLabel = formatMultiplierPct(ev.bondMultiplier);
-      ctx.font = `${fontSize.xs} sans-serif`;
+      // Canvas font must be px — `fontSize.xs` is a CSS `rem` token the canvas
+      // API can't parse (it silently falls back to the default 10px).
+      ctx.font = '11px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillStyle = colors.blackSwanStockLabel;

@@ -43,7 +43,7 @@ If you'd rather kick the tires before entering your own data, the empty sidebar 
 3. Add your **accounts** with their current balances. Group similar accounts if you want; YARP doesn't need every individual line.
 4. Add your **income events** — Social Security, any pension, current paycheck contributions if you're still working.
 5. Add your **spending goals** — at minimum, your annual living expenses. Add big one-time items (a new roof, a wedding gift) separately.
-6. Set your **tax** info: filing status and state.
+6. Set your **tax** info: filing status and state. If you file **Married Filing Jointly**, you can optionally enter a **Spouse Life Expectancy** — this turns on survivor ("widow's penalty") modeling, where the survivor files as single after the first death (see Scenarios below).
 7. The chart updates automatically. There is no "Run" button.
 
 Once your baseline looks right, **clone it** to start exploring "what if?" variations.
@@ -294,6 +294,8 @@ Hover the **Chance of Success** percentage to see Monte Carlo summary stats that
 The **Yearly Data** panel below the chart follows the same primary line as the chart — the Projected path, or the Median run in Historical: Rolling / Bootstrap modes (which have no projected baseline). Use it to inspect that path year by year.
 
 If you've added Black Swan stress events (specific years where YARP forces a market crash), they'll show up as shaded vertical bands on the chart.
+
+The x-axis is labeled with **your** age (and the calendar year). If you've set a Spouse Life Expectancy, a **Your age / Spouse age** toggle appears on the legend row to relabel the axis with your spouse's age instead — handy when your spouse is a different age. A dashed **"Now filing Single"** marker appears in the year the surviving spouse's filing status changes (see below).
 
 ---
 

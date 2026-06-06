@@ -673,6 +673,19 @@ The simulation runs from your current age through your `lifeExpectancy` — exac
 
 This is a deliberate choice. Stochastic mortality would inflate success rates artificially — runs that "succeed" by ending early via simulated death are not actually plans that worked.
 
+### Survivor "widow's penalty" (optional, for couples)
+
+For married-filing-jointly scenarios you can set a **Spouse Life Expectancy** (the spouse's death age) alongside your own. When set, the model captures the *survivor penalty* — the often-overlooked reason Roth conversions pay off for couples:
+
+- The projection runs to the **later** of the two deaths (it no longer stops at your own life expectancy when your spouse outlives you).
+- At the **first** death, the survivor's filing status flips **Married Filing Jointly → Single** the year after the death. That roughly **halves the standard deduction**, **compresses the tax brackets**, makes **more of Social Security taxable**, and pushes **IRMAA Medicare surcharge tiers** to lower income — all while the combined Required Minimum Distributions keep coming.
+- The survivor keeps only the **larger** of the two Social Security benefits (the smaller one stops).
+- All Traditional balances **consolidate** to the survivor; the RMD is computed on the combined balance at the survivor's age.
+
+Because pre-converting to Roth while *both* spouses are alive (at the wider joint brackets) avoids taxing those dollars later in the survivor's compressed single brackets, modeling this typically **increases the value the Roth Conversion optimizer reports**. Leave Spouse Life Expectancy blank to skip the feature entirely (results are then identical to before).
+
+**Modeled simplifications:** no 2-year "qualifying surviving spouse" grace (we switch to single immediately the year after death); household spending is not reduced for a single survivor; and heir/estate value under the SECURE Act 10-year rule is not scored.
+
 ---
 
 ## Defaults Quick Reference

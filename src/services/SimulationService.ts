@@ -113,6 +113,69 @@ export function getEffectiveStateName(userData: UserData, year: number): string 
   return effectiveState;
 }
 
+// ---------------- Widow's-penalty death model ----------------
+//
+// Models the survivor tax transition from explicit per-person death ages:
+// self death age = `lifeExpectancy`, spouse death age = `spouseLifeExpectancy`.
+// At the FIRST death the survivor flips MFJ→single for the remaining years
+// (compressed brackets, ~half standard deduction, more SS taxable, lower IRMAA
+// tiers), keeps the LARGER of the two Social Security benefits, and consolidates
+// all Traditional balances (combined RMD at the survivor's age). The projection
+// runs to the LATER of the two deaths.
+//
+// Convention: filing is MFJ THROUGH the year of the first death (IRS allows joint
+// filing in the year of death — the cheapest conversion window), then single every
+// year after. So survivor mode is `yearOffset > firstDeathOffset`.
+//
+// Inactive (not MFJ, no spouseAge, or no spouseLifeExpectancy): `firstDeathOffset`
+// is Infinity and `horizonYears` equals the self-only horizon, so every downstream
+// array/loop is bit-identical to pre-feature behavior.
+export interface DeathModel {
+  active: boolean;
+  selfDeathOffset: number;
+  spouseDeathOffset: number;
+  /** Year offset (0-based) of the first death. Filing flips the year AFTER. */
+  firstDeathOffset: number;
+  survivor: 'self' | 'spouse';
+  /** Total projection years = max(self, spouse) death offset + 1. */
+  horizonYears: number;
+}
+
+export function getDeathModel(userData: UserData): DeathModel {
+  const selfDeathOffset = userData.lifeExpectancy - userData.currentAge;
+  const spouseLE = userData.spouseLifeExpectancy;
+  const active =
+    userData.filingStatus === 'mfj' &&
+    userData.spouseAge !== null &&
+    spouseLE != null &&
+    spouseLE >= userData.spouseAge;
+  if (!active || userData.spouseAge === null || spouseLE == null) {
+    return {
+      active: false,
+      selfDeathOffset,
+      spouseDeathOffset: selfDeathOffset,
+      firstDeathOffset: Infinity,
+      survivor: 'self',
+      horizonYears: selfDeathOffset + 1,
+    };
+  }
+  const spouseDeathOffset = spouseLE - userData.spouseAge;
+  const firstDeathOffset = Math.min(selfDeathOffset, spouseDeathOffset);
+  // Ties resolve to 'self' as survivor (consistent with the rest of the engine
+  // treating self as the default owner); with equal death offsets there are no
+  // survivor years anyway.
+  const survivor: 'self' | 'spouse' =
+    selfDeathOffset >= spouseDeathOffset ? 'self' : 'spouse';
+  const horizonYears = Math.max(selfDeathOffset, spouseDeathOffset) + 1;
+  return { active: true, selfDeathOffset, spouseDeathOffset, firstDeathOffset, survivor, horizonYears };
+}
+
+// Single source of truth for the projection length. = max(self, spouse) death
+// offset + 1 when the death model is active; self horizon otherwise.
+export function projectionHorizonYears(userData: UserData): number {
+  return getDeathModel(userData).horizonYears;
+}
+
 // ---------------- Account index (precompute) ----------------
 
 // Precomputed account lookup tables — hoisted out of the per-year-per-run
@@ -259,16 +322,33 @@ function addToAccounts(
 function eventActiveInYear(
   userData: UserData,
   event: UserData['incomeEvents'][number],
-  year: number
+  year: number,
+  // The scenario's death model. Pass it in to avoid recomputing per event-year
+  // (callers iterate many events per year); falls back to computing it for
+  // standalone callers.
+  deathModel?: DeathModel,
 ): boolean {
   const ownerAge =
     event.owner === 'spouse' && userData.spouseAge !== null
       ? userData.spouseAge
       : userData.currentAge;
   const startYear = userData.referenceYear + (event.startAge - ownerAge);
+  const dm = deathModel ?? getDeathModel(userData);
+  // Ongoing (no endAge) events run to the full projection horizon (which extends
+  // to the survivor's death when the spouse outlives self). Legacy/inactive:
+  // horizonYears-1 = self death offset, so this is bit-identical to the old
+  // `lifeExpectancy + referenceYear - currentAge`.
   const endYear = event.endAge
     ? userData.referenceYear + (event.endAge - ownerAge)
-    : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
+    : userData.referenceYear + dm.horizonYears - 1;
+  // Widow's penalty: non-SS income owned by a deceased person stops after their
+  // death year. Social Security is handled specially (survivor keeps the larger
+  // benefit in `accumulateIncome`) and is intentionally NOT cut here.
+  if (dm.active && event.type !== 'social_security') {
+    const owner: 'self' | 'spouse' = event.owner ?? 'self';
+    const ownerDeathOffset = owner === 'self' ? dm.selfDeathOffset : dm.spouseDeathOffset;
+    if (year > userData.referenceYear + ownerDeathOffset) return false;
+  }
   if (event.isOneTime) return year === startYear;
   return year >= startYear && year <= endYear;
 }
@@ -326,7 +406,12 @@ function applyCashFlow(
   // UI. The Map sinks are still allocated (cheap, needed by the rebalancing
   // helpers' optional-sink contract) — only the rows-array construction and
   // the breakdown.audit.accountFlows assignment are skipped.
-  includeAudit: boolean = true
+  includeAudit: boolean = true,
+  // Widow's-penalty survivor mode: the survivor owns ALL Traditional and ALL Roth,
+  // so RMD/conversion pulls and the conversion deposit ignore the per-owner `owner`
+  // filter (rmdSpouse/convSpouse are already 0 in this mode — see core). Default
+  // false preserves the per-owner IRS routing while both spouses are alive.
+  consolidated: boolean = false,
 ): void {
   const withdrawalSink = new Map<string, number>();
   const depositSink = new Map<string, number>();
@@ -362,27 +447,31 @@ function applyCashFlow(
   const rmdSelf = breakdown.audit?.rmdSelf ?? 0;
   const rmdSpouse = breakdown.audit?.rmdSpouse ?? 0;
   const tradAccounts = accountIndex.byType.traditional;
+  // In survivor mode the "self" pool is ALL Traditional (survivor inherited the
+  // deceased's accounts); rmdSpouse/convSpouse are 0 so the spouse passes no-op.
+  const selfTradPool = consolidated
+    ? tradAccounts
+    : tradAccounts.filter(a => (a.owner ?? 'self') === 'self');
+  const spouseTradPool = consolidated
+    ? []
+    : tradAccounts.filter(a => a.owner === 'spouse');
   if (rmdSelf > 0) {
-    // Default ownership is 'self' when the field is absent (matches the rest of the engine).
-    const selfTrad = tradAccounts.filter(a => (a.owner ?? 'self') === 'self');
-    subtractFromAccounts(selfTrad, balances, rmdSelf, rmdSink);
+    subtractFromAccounts(selfTradPool, balances, rmdSelf, rmdSink);
   }
   if (rmdSpouse > 0) {
-    const spouseTrad = tradAccounts.filter(a => a.owner === 'spouse');
-    subtractFromAccounts(spouseTrad, balances, rmdSpouse, rmdSink);
+    subtractFromAccounts(spouseTradPool, balances, rmdSpouse, rmdSink);
   }
   // Pass 3a — Self conversion pulls from Self-owned Trad only (IRS rule:
   // a conversion moves Self's Trad to Self's Roth; Spouse's Trad cannot fund it).
+  // In survivor mode the self pool is all Trad.
   const convSelf = breakdown.rothConversionGrossSelf;
   if (convSelf > 0) {
-    const selfTrad = tradAccounts.filter(a => (a.owner ?? 'self') === 'self');
-    subtractFromAccounts(selfTrad, balances, convSelf, withdrawalSink);
+    subtractFromAccounts(selfTradPool, balances, convSelf, withdrawalSink);
   }
   // Pass 3b — Spouse conversion pulls from Spouse-owned Trad only.
   const convSpouse = breakdown.rothConversionGrossSpouse;
   if (convSpouse > 0) {
-    const spouseTrad = tradAccounts.filter(a => a.owner === 'spouse');
-    subtractFromAccounts(spouseTrad, balances, convSpouse, withdrawalSink);
+    subtractFromAccounts(spouseTradPool, balances, convSpouse, withdrawalSink);
   }
   // Pass 3c — discretionary spending pull (the leftover non-RMD non-conversion
   // portion). No household-level IRS constraint, so pro-rata across ALL Trad.
@@ -408,8 +497,10 @@ function applyCashFlow(
   // whenever a per-owner conversion event exists.
   if (breakdown.rothConversionGross > 0) {
     const rothAccounts = accountIndex.byType.roth;
-    const selfRoth   = rothAccounts.filter(a => (a.owner ?? 'self') === 'self');
-    const spouseRoth = rothAccounts.filter(a => a.owner === 'spouse');
+    // Survivor mode: the survivor owns all Roth; deposit the (consolidated, all-self)
+    // conversion across every Roth account. depositSpouse is 0 in this mode.
+    const selfRoth   = consolidated ? rothAccounts : rothAccounts.filter(a => (a.owner ?? 'self') === 'self');
+    const spouseRoth = consolidated ? [] : rothAccounts.filter(a => a.owner === 'spouse');
     const depositSelf   = Math.max(0, breakdown.rothConversionGrossSelf   - breakdown.rothConversionTaxWithheldSelf);
     const depositSpouse = Math.max(0, breakdown.rothConversionGrossSpouse - breakdown.rothConversionTaxWithheldSpouse);
     if (depositSelf > 0)   addToAccounts(selfRoth,   balances, depositSelf,   depositSink, rothConvDepositSink);
@@ -982,10 +1073,16 @@ function inflateAmount(
 function accumulateIncome(
   userData: UserData,
   year: number,
-  inflationRate: number
+  inflationRate: number,
+  // Widow's-penalty survivor year (year > first-death offset). When true, the
+  // household collects only the LARGER of the two Social Security benefits
+  // (survivor benefit rule). Default false = sum both (pre-death / no model).
+  survivorMode: boolean = false,
 ): AccumulatedIncome {
   let afterTaxIncome = 0;
   let ssGross = 0;
+  let ssGrossSelf = 0;
+  let ssGrossSpouse = 0;
   let otherTaxableGross = 0;
   let conversionGross = 0;
   let conversionGrossSelf = 0;
@@ -998,17 +1095,22 @@ function accumulateIncome(
   const contributions: ContributionDeposit[] = [];
   const eventBreakdowns: EventIncomeRecord[] = [];
 
+  // Compute the death model once and thread it through every per-event activity
+  // check (avoids recomputing it N events × Y years across the optimizer's many
+  // deterministic projections).
+  const deathModel = getDeathModel(userData);
+
   // Pre-pass: build wage-amount lookup keyed by event id so contributions linked to
   // a wage event can compute employer-match base off the inflated wage amount.
   const wageAmountById = new Map<string, number>();
   userData.incomeEvents.forEach((event) => {
     if (event.type !== 'wage_income') return;
-    if (!eventActiveInYear(userData, event, year)) return;
+    if (!eventActiveInYear(userData, event, year, deathModel)) return;
     wageAmountById.set(event.id, inflateAmount(userData, event, year, inflationRate));
   });
 
   userData.incomeEvents.forEach((event) => {
-    if (!eventActiveInYear(userData, event, year)) return;
+    if (!eventActiveInYear(userData, event, year, deathModel)) return;
 
     const amount = inflateAmount(userData, event, year, inflationRate);
 
@@ -1116,6 +1218,8 @@ function accumulateIncome(
       });
     } else if (event.type === 'social_security') {
       ssGross += effectiveAmount;
+      if ((event.owner ?? 'self') === 'self') ssGrossSelf += effectiveAmount;
+      else ssGrossSpouse += effectiveAmount;
       eventBreakdowns.push({
         eventId: event.id,
         eventName: event.name ?? 'Social Security',
@@ -1136,6 +1240,21 @@ function accumulateIncome(
       });
     }
   });
+
+  // Widow's penalty: in survivor years the household collects only ONE Social
+  // Security benefit — the larger of the two (the survivor keeps their own if it
+  // was larger, or steps up to the deceased's). Collapse ssGross to the max and
+  // prune the smaller owner's SS attribution rows so the audit reconciles.
+  if (survivorMode && (ssGrossSelf > 0 || ssGrossSpouse > 0)) {
+    const keepOwner: 'self' | 'spouse' = ssGrossSelf >= ssGrossSpouse ? 'self' : 'spouse';
+    ssGross = Math.max(ssGrossSelf, ssGrossSpouse);
+    for (let k = eventBreakdowns.length - 1; k >= 0; k--) {
+      const r = eventBreakdowns[k];
+      if (r.classification === 'social_security' && (r.owner ?? 'self') !== keepOwner) {
+        eventBreakdowns.splice(k, 1);
+      }
+    }
+  }
 
   // Enforce IRS contribution caps per (owner, kind). Excess is removed from the deposit
   // instructions and refunded to the owner as spendable cash (added to afterTaxIncome).
@@ -1275,12 +1394,16 @@ function accumulateSpending(
   let baseSpendingNet = 0;
   let otherSpendingGoalsNet = 0;
 
+  // Ongoing (no endAge) goals run to the full projection horizon (extends to the
+  // survivor's death when the spouse outlives self — the survivor still spends).
+  // Legacy/inactive: horizonYears-1 = self death offset, so bit-identical.
+  const lastYear = userData.referenceYear + projectionHorizonYears(userData) - 1;
   userData.spendingGoals.forEach((goal) => {
     const startYear =
       userData.referenceYear + (goal.startAge - userData.currentAge);
     const endYear = goal.endAge
       ? userData.referenceYear + (goal.endAge - userData.currentAge)
-      : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
+      : lastYear;
 
     let shouldInclude = false;
     if (goal.isOneTime) {
@@ -1504,6 +1627,14 @@ export function computeMarginalStackAttribution(args: {
   return attributions;
 }
 
+// Public single-year thin wrapper around `calculateAnnualCashFlowCore`. Used by
+// tests and standalone callers that compute one year in isolation.
+//
+// NOTE: this wrapper does NOT apply the widow's-penalty death model — it always
+// uses `userData.filingStatus` and per-owner (non-consolidated) Traditional/Roth.
+// The per-year filing flip, survivor-SS collapse, and Traditional consolidation
+// live in the `buildPrecomputes` → `simulateOneRun` path. For death-aware results
+// go through `runSimulation` / `runDeterministicProjection`, not this wrapper.
 export function calculateAnnualCashFlow(
   userData: UserData,
   year: number,
@@ -1587,18 +1718,21 @@ export function computeBracketHeadroomForTrad(
   inflationRate: number,
   age: number,
   spouseAge: number | null,
+  // Effective filing status for the year (post-death survivor flips to 'single').
+  // Defaults to the scenario's static filing status for single-year callers.
+  filingStatus: FilingStatus = userData.filingStatus,
 ): number {
   const ordForSS = income.otherTaxableGross + income.conversionGross;
   const ssTaxable = income.ssGross > 0
-    ? calculateSSTaxableAmount(income.ssGross, ordForSS, userData.filingStatus)
+    ? calculateSSTaxableAmount(income.ssGross, ordForSS, filingStatus)
     : 0;
   const baselineOrdGross = ordForSS + ssTaxable;
-  const stdDed = getStandardDeduction(userData.filingStatus, year, inflationRate);
-  const numQualifying = getNumQualifyingSeniors(userData.filingStatus, age, spouseAge);
-  const seniorExtra = getUsualSeniorExtra(userData.filingStatus, year, numQualifying, inflationRate);
+  const stdDed = getStandardDeduction(filingStatus, year, inflationRate);
+  const numQualifying = getNumQualifyingSeniors(filingStatus, age, spouseAge);
+  const seniorExtra = getUsualSeniorExtra(filingStatus, year, numQualifying, inflationRate);
   const totalDed = stdDed + seniorExtra;
   // bracketIndex 1 = top of 12% bracket (above 10% bracket, below 22%)
-  const topOf12 = getBracketCeilingTaxableIncome(userData.filingStatus, 1, year, inflationRate);
+  const topOf12 = getBracketCeilingTaxableIncome(filingStatus, 1, year, inflationRate);
   if (!isFinite(topOf12)) return 0;
   const baselineTaxable = Math.max(0, baselineOrdGross - totalDed);
   // No IRMAA/NIIT cliff clamp here on purpose: the 12% bracket fills to roughly
@@ -1651,8 +1785,25 @@ function calculateAnnualCashFlowCore(
   // income proxy (taxable-MMF/HYSA interest is investment income per IRC §1411).
   // Caller passes 0 when no cash accounts exist (the only case for back-compat).
   cashInterest: number = 0,
+  // Effective filing status for THIS year. Post-death survivor years pass 'single'
+  // (the widow's penalty). Defaults to the scenario's static status for callers
+  // without a per-year death model (the public wrapper, tests).
+  filingStatus: FilingStatus = userData.filingStatus,
+  // Survivor mode (post first death): all Traditional is one pool and all Roth
+  // is one pool. Conversions/RMD ignore the per-owner `owner` filter — the
+  // survivor owns everything. `beginningTradBalances` is passed as
+  // { self: combined, spouse: 0 } by the caller in this mode.
+  consolidated: boolean = false,
 ): AnnualCashFlowBreakdown {
-  const { ssGross, afterTaxIncome, conversionGross, conversionGrossSelf, conversionGrossSpouse } = income;
+  const { ssGross, afterTaxIncome, conversionGross } = income;
+  // In survivor mode the survivor owns everything, so fold both owners' requested
+  // conversion into a single 'self' pool (sourced from all Trad, deposited to all
+  // Roth via applyCashFlow's consolidated branch). Pre-death keeps the per-owner
+  // split for IRS-correct same-owner Trad→Roth routing.
+  const conversionGrossSelf = consolidated
+    ? income.conversionGrossSelf + income.conversionGrossSpouse
+    : income.conversionGrossSelf;
+  const conversionGrossSpouse = consolidated ? 0 : income.conversionGrossSpouse;
   // Cash interest is ordinary income (accrual basis, taxed in the year credited).
   // Fold into otherTaxableGross so the entire tax pipeline (federal/state ordinary,
   // SS taxability via provisional income, IRMAA MAGI, NIIT MAGI) treats it
@@ -1743,7 +1894,7 @@ function calculateAnnualCashFlowCore(
   const irmaaEnabled = userData.enableIRMAA !== false;
   const niitEnabled = userData.enableNIIT !== false;
   const irmaaSurcharge = irmaaEnabled
-    ? calculateIRMAA(priorMagi ?? 0, userData.filingStatus, year, inflationRate ?? 0, age, spouseAge)
+    ? calculateIRMAA(priorMagi ?? 0, filingStatus, year, inflationRate ?? 0, age, spouseAge)
     : 0;
 
   // Spending waterfall: RMD-up-to-spending → Taxable → Trad-above-RMD → Roth.
@@ -1815,10 +1966,10 @@ function calculateAnnualCashFlowCore(
     stateRes: StateTaxResult;
   } {
     const ord = otherTaxableGross + tradVal;
-    const ssTax = calculateSSTaxableAmount(ssGross, ord, userData.filingStatus);
+    const ssTax = calculateSSTaxableAmount(ssGross, ord, filingStatus);
     const comb = ord + ssTax;
     const fed = comb > 0
-      ? comb - calculateNetFromGross(comb, userData.filingStatus, age, year, spouseAge, inflationRate)
+      ? comb - calculateNetFromGross(comb, filingStatus, age, year, spouseAge, inflationRate)
       : 0;
     const sres = computeStateTax(stateProfile, {
       ordinaryGross: income.otherTaxableGross,
@@ -1828,7 +1979,7 @@ function calculateAnnualCashFlowCore(
       ltcgFromBrokerage: ltcgVal,
       age,
       spouseAge,
-      filingStatus: userData.filingStatus,
+      filingStatus,
       year,
       inflationRate: inflationRate ?? 0,
       disableStateRetirementExclusion: userData.disableStateRetirementExclusion,
@@ -1916,14 +2067,14 @@ function calculateAnnualCashFlowCore(
     // Full tax recomputation with final pulls (captures LTCG/NIIT on the extra
     // Taxable pull used to pay conversion tax).
     const ordinaryGross = otherTaxableGross + fromTrad;
-    ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, userData.filingStatus);
+    ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, filingStatus);
     const combinedTaxable = ordinaryGross + ssTaxableAmount;
 
     let federalOrdinaryTaxIter = 0;
     if (combinedTaxable > 0) {
       const fedNet = calculateNetFromGross(
         combinedTaxable,
-        userData.filingStatus,
+        filingStatus,
         age,
         year,
         spouseAge,
@@ -1939,7 +2090,7 @@ function calculateAnnualCashFlowCore(
       ltcgFromBrokerage: fromBrokerage,
       age,
       spouseAge,
-      filingStatus: userData.filingStatus,
+      filingStatus,
       year,
       inflationRate: inflationRate ?? 0,
       disableStateRetirementExclusion: userData.disableStateRetirementExclusion,
@@ -1955,10 +2106,10 @@ function calculateAnnualCashFlowCore(
       // the pre-deduction gross — getFederalTaxableIncome applies the same
       // deduction stack the ordinary-tax path uses).
       const ordinaryTaxable = getFederalTaxableIncome(
-        combinedTaxable, userData.filingStatus, age, year, spouseAge, inflationRate,
+        combinedTaxable, filingStatus, age, year, spouseAge, inflationRate,
       );
       federalCapGainsTax = computeFederalLTCGTax(
-        ordinaryTaxable, fromBrokerage, userData.filingStatus, year, inflationRate,
+        ordinaryTaxable, fromBrokerage, filingStatus, year, inflationRate,
       );
     } else {
       federalCapGainsTax = fromBrokerage * ltcgRate;
@@ -1971,7 +2122,7 @@ function calculateAnnualCashFlowCore(
       // the NIIT threshold are under-taxed. The interest is also in `ordinaryGross`
       // (it's ordinary income for federal tax purposes), but its inclusion in the
       // NIIT *base* is separate from the ordinary-income inclusion.
-      niitTax = calculateNIIT(magi, fromBrokerage + cashInterest, userData.filingStatus);
+      niitTax = calculateNIIT(magi, fromBrokerage + cashInterest, filingStatus);
     } else {
       niitTax = 0;
     }
@@ -2041,16 +2192,16 @@ function calculateAnnualCashFlowCore(
     const combinedTaxableFinal = ordinaryGrossFinal + ssTaxableAmount;
     const detailedTax = combinedTaxableFinal > 0
       ? calculateNetFromGrossDetailed(
-          combinedTaxableFinal, userData.filingStatus, age, year, spouseAge, inflationRate,
+          combinedTaxableFinal, filingStatus, age, year, spouseAge, inflationRate,
         )
       : null;
-    const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal, userData.filingStatus);
+    const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal, filingStatus);
     const irmaaDetail = irmaaEnabled
-      ? calculateIRMAADetailed(priorMagi ?? 0, userData.filingStatus, year, inflationRate ?? 0, age, spouseAge)
+      ? calculateIRMAADetailed(priorMagi ?? 0, filingStatus, year, inflationRate ?? 0, age, spouseAge)
       : null;
     const niitMagiFinal = ordinaryGrossFinal + ssTaxableAmount + fromBrokerage;
     const niitDetail = niitEnabled
-      ? calculateNIITDetailed(niitMagiFinal, fromBrokerage + cashInterest, userData.filingStatus)
+      ? calculateNIITDetailed(niitMagiFinal, fromBrokerage + cashInterest, filingStatus)
       : null;
     // Marginal-stack attribution: each event's tax contribution is computed
     // federally only here (state tax is allocated post-hoc proportional to each
@@ -2070,7 +2221,7 @@ function calculateAnnualCashFlowCore(
       rothConversionTotal: rothConversion,
       rothConversionTotalSelf:   rothConversionSelf,
       rothConversionTotalSpouse: rothConversionSpouse,
-      filingStatus: userData.filingStatus,
+      filingStatus,
       stateEffectiveRate: stateEffectiveRateOnFederalTaxable,
       age,
       taxYear: year,
@@ -2232,8 +2383,21 @@ interface Precomputes {
   stateResolvedKeyByYear: string[];
   /** Per-state profile resolved for each year (follows successor profiles for SC, WV). */
   stateProfileByYear: StateTaxProfile[];
+  /** EFFECTIVE primary age per year. Pre-death = self age. Post-first-death =
+   *  the survivor's age (used for RMD divisor, Medicare-65 IRMAA, senior bonus).
+   *  Note: the chart's x-axis labels use `currentAge + index` independently, so
+   *  this collapse doesn't affect the displayed age frame. */
   ageByYear: number[];
+  /** EFFECTIVE spouse age per year. Collapses to `null` after the first death so
+   *  IRMAA enrollee count and the senior-bonus count reflect a single survivor. */
   spouseAgeByYear: Array<number | null>;
+  /** Effective filing status per year. Flips MFJ→'single' the year AFTER the
+   *  first death (widow's penalty). Equals the static status when no death model. */
+  filingStatusByYear: FilingStatus[];
+  /** True for survivor years (year offset > first-death offset). Drives the
+   *  Traditional/Roth consolidation in the core + applyCashFlow. All false when
+   *  the death model is inactive. */
+  survivorModeByYear: boolean[];
   incomeByYear: AccumulatedIncome[];
   spendingByYear: Array<{
     baseSpendingNet: number;
@@ -2361,16 +2525,21 @@ function simulateOneRun(
     const yearStateResolvedKey = precomputes.stateResolvedKeyByYear[i];
     const yearAge = precomputes.ageByYear[i];
     const yearSpouseAge = precomputes.spouseAgeByYear[i];
+    const yearFilingStatus = precomputes.filingStatusByYear[i];
+    const yearSurvivorMode = precomputes.survivorModeByYear[i];
 
     const startBalance = sumBalances(balances);
     path.push(startBalance / cumulativeInflation);
     inflation.push(cumulativeInflation);
 
     // IRS rule: RMD uses Dec 31 of prior year (beginning-of-year) balance, split by owner.
-    const beginningTradBalances = {
-      self: sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self'),
-      spouse: sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'spouse'),
-    };
+    // In survivor mode the survivor inherited the deceased's Traditional, so the
+    // whole balance is one pool (combined RMD at the survivor's age, spouse=0).
+    const selfTradBoy = sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self');
+    const spouseTradBoy = sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'spouse');
+    const beginningTradBalances = yearSurvivorMode
+      ? { self: selfTradBoy + spouseTradBoy, spouse: 0 }
+      : { self: selfTradBoy, spouse: spouseTradBoy };
 
     // 1. Growth: draw base factors, apply black-swan overlay, blend by allocation.
     //    Cash accounts BYPASS the stochastic shock + black-swan overlay entirely
@@ -2411,6 +2580,7 @@ function simulateOneRun(
     const effectiveCashFlow = calculateAnnualCashFlowCore(
       userData, year, yearIncome, yearSpending, yearStateProfile, yearStateResolvedKey, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi,
       spendingOrder, precomputes.bracketHeadroomForTradByYear[i], includeAudit, cashInterest,
+      yearFilingStatus, yearSurvivorMode,
     );
     breakdowns.push(effectiveCashFlow);
 
@@ -2419,7 +2589,7 @@ function simulateOneRun(
       failed = true;
     }
 
-    applyCashFlow(accountIndex, effectiveCashFlow, yearIncome.contributions, balances, includeAudit);
+    applyCashFlow(accountIndex, effectiveCashFlow, yearIncome.contributions, balances, includeAudit, yearSurvivorMode);
     // Clamp against float drift BEFORE the post-convergence step so its sweep
     // and refill arithmetic operate on clean non-negative balances. Without
     // this clamp here, a sub-cent negative Taxable balance from
@@ -2576,7 +2746,7 @@ export function getEffectiveNumRuns(userData: UserData): number {
   if (model === 'historical_single') return 1;
   if (model === 'historical_rolling') {
     const wrap = pa.historicalWrapEnabled ?? false;
-    const horizon = userData.lifeExpectancy - userData.currentAge + 1;
+    const horizon = projectionHorizonYears(userData);
     return wrap ? HISTORICAL_YEARS : Math.max(1, HISTORICAL_YEARS - horizon + 1);
   }
   // parametric, historical_bootstrap
@@ -2604,13 +2774,16 @@ export function buildPrecomputes(
   }
 ): Precomputes {
   const currentYear = userData.referenceYear;
-  const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
+  const deathModel = getDeathModel(userData);
+  const totalYears = deathModel.horizonYears;
   const inflationRate = userData.inflationRate;
 
   const stateResolvedKeyByYear: string[] = new Array(totalYears);
   const stateProfileByYear: StateTaxProfile[] = new Array(totalYears);
   const ageByYear: number[] = new Array(totalYears);
   const spouseAgeByYear: Array<number | null> = new Array(totalYears);
+  const filingStatusByYear: FilingStatus[] = new Array(totalYears);
+  const survivorModeByYear: boolean[] = new Array(totalYears);
   const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
   const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
   const bracketHeadroomForTradByYear: number[] = new Array(totalYears);
@@ -2622,12 +2795,25 @@ export function buildPrecomputes(
     const resolved = getStateTaxProfile(sn, year);
     stateResolvedKeyByYear[i] = resolved.resolvedKey;
     stateProfileByYear[i] = resolved.profile;
-    ageByYear[i] = userData.currentAge + i;
-    spouseAgeByYear[i] = userData.spouseAge !== null ? userData.spouseAge + i : null;
-    incomeByYear[i] = accumulateIncome(userData, year, inflationRate);
+    // Widow's penalty: survivor years are strictly AFTER the first-death offset
+    // (MFJ holds through the death year). Collapse ages/filing to the survivor.
+    const survivorMode = deathModel.active && i > deathModel.firstDeathOffset;
+    survivorModeByYear[i] = survivorMode;
+    const selfAge = userData.currentAge + i;
+    const spouseAgeRaw = userData.spouseAge !== null ? userData.spouseAge + i : null;
+    if (survivorMode) {
+      ageByYear[i] = deathModel.survivor === 'self' ? selfAge : (spouseAgeRaw ?? selfAge);
+      spouseAgeByYear[i] = null;
+      filingStatusByYear[i] = 'single';
+    } else {
+      ageByYear[i] = selfAge;
+      spouseAgeByYear[i] = spouseAgeRaw;
+      filingStatusByYear[i] = userData.filingStatus;
+    }
+    incomeByYear[i] = accumulateIncome(userData, year, inflationRate, survivorMode);
     spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
     bracketHeadroomForTradByYear[i] = resolvedSpendingOrder === 'bracket_aware'
-      ? computeBracketHeadroomForTrad(userData, incomeByYear[i], year, inflationRate, ageByYear[i], spouseAgeByYear[i])
+      ? computeBracketHeadroomForTrad(userData, incomeByYear[i], year, inflationRate, ageByYear[i], spouseAgeByYear[i], filingStatusByYear[i])
       : 0;
   }
 
@@ -2652,7 +2838,8 @@ export function buildPrecomputes(
   }
 
   return {
-    stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
+    stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear,
+    filingStatusByYear, survivorModeByYear, incomeByYear, spendingByYear,
     bracketHeadroomForTradByYear, spendingOrder: resolvedSpendingOrder,
     deterministicBaselineByYear,
   };
@@ -2776,7 +2963,7 @@ export function runSimulation(
   clearTaxCalculationCache();
   const userData = prepareUserData(rawUserData);
   const currentYear = userData.referenceYear;
-  const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
+  const totalYears = projectionHorizonYears(userData);
 
   const precomputes = buildPrecomputes(userData);
   const numRuns = getEffectiveNumRuns(userData);
@@ -2866,7 +3053,7 @@ export function runDeterministicProjection(
 } {
   clearTaxCalculationCache();
   const userData = prepareUserData(rawUserData);
-  const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
+  const totalYears = projectionHorizonYears(userData);
   const precomputes = buildPrecomputes(userData, options);
   const accountIndex = buildAccountIndex(userData);
   const blackSwanLookup = buildBlackSwanLookup(userData);

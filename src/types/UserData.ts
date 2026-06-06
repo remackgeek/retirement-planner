@@ -29,6 +29,16 @@ export interface UserData {
   // Tax configuration
   filingStatus: 'single' | 'mfs' | 'mfj' | 'hoh';
   spouseAge: number | null;
+  // Spouse's life expectancy (death age). Only meaningful when filingStatus === 'mfj'
+  // and spouseAge !== null. When set, the engine models the "widow's penalty": at the
+  // first spouse's death the survivor's filing status flips MFJ→single for the remaining
+  // years (compressed brackets, ~half standard deduction, more SS taxable, lower IRMAA
+  // tiers), the survivor keeps the larger of the two Social Security benefits, and all
+  // Traditional balances consolidate to the survivor (combined RMD at the survivor's age).
+  // The projection runs to the later of the two deaths. When undefined/null (or not MFJ /
+  // no spouseAge), no death is modeled and results are bit-identical to before this field.
+  // See CLAUDE.md "Survivor / widow's penalty" and MODEL_DETAILS.md.
+  spouseLifeExpectancy?: number | null;
   stateTimeline: StateResidency[];
   longTermCapGainsRate: number; // flat rate applied to taxable-brokerage withdrawals
   enableIRMAA?: boolean;        // Medicare IRMAA premium surcharges (default true)

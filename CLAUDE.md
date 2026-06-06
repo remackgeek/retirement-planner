@@ -185,8 +185,10 @@ projections, and good tax awareness without overwhelming the user.
   balance. That's the same single-path engine that drives the "Deterministic"
   chart line, so the figure reflects the RMD-first withdrawal waterfall,
   conversion-tax sourcing, IRMAA (2-year lookback), NIIT (3.8%), and state
-  tax on LTCG. Still excluded everywhere: ACA premium tax credit cliffs,
-  surviving-spouse bracket shifts, and capital-gains-bracket stacking).
+  tax on LTCG. It ALSO reflects the survivor "widow's penalty" when the
+  scenario sets `spouseLifeExpectancy` (MFJ→single at first death — see
+  "Survivor / widow's penalty" below). Still excluded everywhere: ACA premium
+  tax credit cliffs).
   New conversion events default to `colaType: 'inflation_adjusted'` so the
   entered amount is a real-dollar target across the conversion window. Inline
   warning hints fire when the configured amount is large relative to spending,
@@ -255,6 +257,39 @@ projections, and good tax awareness without overwhelming the user.
   per-state profile via `getStateTaxProfile(stateName, year)`. The selectable state list
   is sourced from `SELECTABLE_STATES` (includes `"New York City"` as a pseudo-state with
   NYC local tax). Per-year precomputes hold both `stateNameByYear` and `stateProfileByYear`.
+- **Survivor / widow's penalty** — opt-in via `UserData.spouseLifeExpectancy` (spouse's
+  death age). Active only when `filingStatus === 'mfj'` && `spouseAge !== null` &&
+  `spouseLifeExpectancy != null`. The single source of truth is `getDeathModel(userData)`
+  in [src/services/SimulationService.ts](src/services/SimulationService.ts), which returns
+  `{ active, selfDeathOffset, spouseDeathOffset, firstDeathOffset, survivor, horizonYears }`.
+  `projectionHorizonYears(userData)` wraps it and is the **single horizon source** — the
+  projection now runs to `max(self, spouse) death + 1` (extends past self's death when the
+  spouse outlives self). At the **first** death:
+  - **Filing flips MFJ → single** the year AFTER the death (MFJ holds through the year of
+    death — the IRS rule and the cheapest conversion window). Per-year filing lives in
+    `Precomputes.filingStatusByYear`; the hot loop passes it as the `filingStatus` param to
+    `calculateAnnualCashFlowCore` (which no longer reads `userData.filingStatus` — that field
+    is the default for single-year callers only). `computeBracketHeadroomForTrad` takes the
+    same per-year status.
+  - **Ages collapse to the survivor.** `Precomputes.ageByYear` becomes the survivor's age and
+    `spouseAgeByYear` becomes `null` post-death, so RMD divisor, Medicare-65 IRMAA enrollee
+    count, and the senior bonus all reflect a single survivor. (The chart x-axis labels age
+    independently as `currentAge + index`, so this collapse doesn't change the displayed age
+    frame — see "Chart x-axis" below.)
+  - **Social Security: survivor keeps the LARGER of the two benefits** (max, not sum).
+    Handled in `accumulateIncome` via a `survivorMode` flag (`Precomputes.survivorModeByYear`).
+  - **Traditional consolidates** to the survivor: combined RMD at the survivor's age, and
+    RMD/conversion pulls + the Roth conversion deposit ignore the per-owner `owner` filter
+    (the `consolidated` flag threaded into `calculateAnnualCashFlowCore` and `applyCashFlow`;
+    the caller passes `beginningTradBalances = { self: combined, spouse: 0 }`).
+  - **Non-SS income owned by the deceased** (pension/wage with no `endAge`) terminates at the
+    owner's death (`eventActiveInYear`); SS is exempt from that cut (handled by the max rule).
+  **Backward-compatible:** when inactive, `firstDeathOffset = Infinity`, `horizonYears` =
+  self horizon, and every per-year array equals the pre-feature value bit-for-bit (the full
+  test suite confirms existing scenarios are unchanged). **Documented simplifications:** no
+  2-year qualifying-surviving-spouse grace; survivor household spending is not reduced; the
+  closed-form `estimateConversionImpact` preview ignores the penalty (the twice-run
+  `netPlanValueImpact` and the optimizer use the real engine and DO reflect it).
 
 ## Intents and funding sources
 
@@ -557,13 +592,10 @@ one that matches their situation. We follow that pattern.
 - Liquid-cash bucket internal refactor (cleaner accounting that subsumes
   the RMD-first branch and the bracket-aware branch into one principled
   per-year cash-flow model).
-- **Survivor-as-single-filer brackets after first death.** Cited by Kitces, Pfau,
-  Bogleheads as the single highest-value missing input in self-serve Roth
-  planners: MFJ → single brackets cuts the standard deduction nearly in half
-  and collapses bracket widths, materially changing the conversion math for
-  high-Trad couples. Out of scope for the current rebuild; would require
-  filing-status switching mid-projection in the tax engine. Next-most-valuable
-  improvement.
+- **Survivor-as-single-filer brackets after first death — ✓ implemented.** See
+  "Survivor / widow's penalty" below. Remaining sub-items not yet modeled: the
+  2-year qualifying-surviving-spouse grace (we flip to single the year after the
+  first death), survivor spending reduction, and heir/estate (SECURE 10-yr) value.
 
 ## In-App Documentation
 
@@ -942,6 +974,9 @@ Current plugins:
 - `chartBlackSwanShading` — draws vertical shaded bands for portfolio stress events
 - `chartCrosshair` — draws a dashed vertical line at the hovered year index
 - `chartPercentileBand` — fills the 10th–90th percentile region beneath the projected line (year-by-year envelope; toggled via the session-only `showBand` flag in `Projections`). Also installs an `afterDataLimits` hook that extends the y-axis to include the band's full lower edge and the upper edge up to `Y_CAP_MULT × max(line)` (constant `2.0`) — keeps the projected line visually prominent when the band has heavy upside tails.
+- `chartMilestones` — draws a thin dashed vertical line + a small top pill label at a milestone calendar year. Currently used for the survivor "widow's penalty" filing-status transition (pill: "Now filing Single"), with the year derived from `getDeathModel(userData)` in `Chart.tsx` (no persisted field). Lighter than `chartBlackSwanShading` (a line, not a full-height band) so it reads as a neutral plan event.
+
+**Chart x-axis age frame.** Labels are `${currentAge + index} (${year})` — i.e. **your** age, which naturally keeps counting past your own death when the spouse outlives you (matches the "your age, full range" decision). When `spouseAge` is set, a session-only Self/Spouse toggle in the legend row (`ageAxisMode` state) relabels the points as the spouse's age. The calendar years and the engine horizon are unchanged by the toggle.
 
 ### Top bar: Settings menu
 
