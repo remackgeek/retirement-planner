@@ -291,7 +291,7 @@ Hover the **Chance of Success** percentage to see Monte Carlo summary stats that
 - **Median depletion** — the age at which your portfolio runs out in the median run (`never` when more than half of runs survive)
 - **Worst-decile depletion** — the age at which the bottom 10% of runs deplete (`never` when more than 90% survive)
 
-The **Yearly Data** panel below the chart has its own Median / Projected / Downside view selector — use it to inspect what a representative bad run (Downside) or a typical run (Median) looks like year by year. The chart itself stays focused on the Projected line plus the Likely range.
+The **Yearly Data** panel below the chart follows the same primary line as the chart — the Projected path, or the Median run in Historical: Rolling / Bootstrap modes (which have no projected baseline). Use it to inspect that path year by year.
 
 If you've added Black Swan stress events (specific years where YARP forces a market crash), they'll show up as shaded vertical bands on the chart.
 
@@ -337,7 +337,7 @@ This is the most useful feature for actually making decisions: rather than askin
 
 Click **What If?** above the chart to enter an experimental mode. A snapshot of your scenario is held in memory; the chart shows the original as a solid gray line and your live edits as a dashed amber **Draft** line. Edit accounts, income events, or spending goals normally — only the dashed line moves.
 
-In What If mode both lines always render the **Projected** baseline so the two paths start identical when no edits have been made. The data table's Median / Projected / Downside view selector still lets you inspect representative runs in the year-by-year detail — but it no longer changes what the chart plots.
+In What If mode both lines always render the **Projected** baseline so the two paths start identical when no edits have been made.
 
 Three exit actions:
 - **Discard** — restore the scenario to its original state.

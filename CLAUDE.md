@@ -641,7 +641,8 @@ import { spacing, colors, fontSize, border } from '../styles/theme';
   Groups: surfaces (`bgLight`, `bgMedium`, `bgHover`), borders (`border`, `borderLight`,
   `borderMedium`), text (`textPrimary`, `textSecondary`, `textMuted`), actions (`primary`,
   `danger`), accents (`income`/`spending` with `Bg` variants), chart lines
-  (`chartMedian`, `chartNominal`, `chartDownside`), shadows/overlays (`shadowLight`,
+  (`chartMedian`, `chartNominal`), black-swan shading (`blackSwanShade`,
+  `blackSwanStockLabel`), shadows/overlays (`shadowLight`,
   `shadowMedium`, `overlayLight`), sidebar (`activeRow`, `chipBg`).
   **Two-tier rule:** when adding a color, first add the hex to the private `palette`
   object (named by hue + shade, e.g. `blue600`), then add a semantic alias in `colors`
@@ -807,18 +808,20 @@ are drawn independently. Each shock is an N(0,1) draw when `returnDistribution =
 'lognormal'` or a standardized Student's t draw (unit variance, `df` degrees of
 freedom) when `returnDistribution === 'student_t'` — the same Cholesky construction
 applies either way. Annual rebalancing to target allocation is assumed. The median
-and downside paths are the single simulation runs whose final balance is closest to the
-50th/10th percentile of all final balances — coherent per-year paths with actual return
-factors, not year-by-year envelopes.
+path is the single simulation run whose final balance is closest to the
+50th percentile of all final balances — a coherent per-year path with actual return
+factors, not a year-by-year envelope.
 
-**Per-path breakdowns:** `runSimulation()` returns `medianBreakdowns` and `downsideBreakdowns`
+**Per-path breakdowns:** `runSimulation()` returns `medianBreakdowns`
 (`AnnualCashFlowBreakdown[]`) alongside the path arrays. These are computed during the
-simulation loop (not post-hoc) and capture the effective per-year cash flow for each
-representative run — including portfolio depletion effects (when balance hits $0,
+simulation loop (not post-hoc) and capture the effective per-year cash flow for the
+median representative run — including portfolio depletion effects (when balance hits $0,
 `portfolioWithdrawal` is capped at the available balance and a spending shortfall is shown).
 The deterministic (Nominal) path uses `nominalBreakdowns` returned by `runSimulation()`
-alongside the nominal path array. The yearly data detail rows show the breakdown for
-whichever view is selected.
+alongside the nominal path array. The yearly data detail rows show the breakdown for the
+chart's primary path (Projected, or Median in the historical rolling/bootstrap modes that
+have no deterministic baseline). There is no separate Downside representative run — the
+chart's shaded percentile band conveys the downside envelope instead.
 
 **Percentile band + MC stats:** `runSimulation()` also returns `percentileBand:
 { p10: number[]; p90: number[] } | null` (year-by-year envelope, computed
@@ -846,9 +849,9 @@ the run loop across a pool of workers sized to `clamp(hardwareConcurrency - 1, 2
 The protocol is two-pass: workers execute their slice via `runShard` and return
 lightweight summary arrays (scores, failedFlags/Years, year-major `pathColumns`) as
 zero-copy `Transferable` Float64Arrays; the main thread merges across shards to
-compute the global percentile band + `mcStats` + representative-run picks, then
-requests `replay` from the owning shard(s) for the median/downside runs (which
-get full `AnnualCashFlowBreakdown` audit data via `replayRunWithAudit`). The
+compute the global percentile band + `mcStats` + the median representative-run pick, then
+requests `replay` from the owning shard for the median run (which
+gets full `AnnualCashFlowBreakdown` audit data via `replayRunWithAudit`). The
 deterministic nominal projection runs on the main thread (~5ms). Cancellation
 is supersession-via-terminate-and-respawn: a new `run()` while one is in flight
 kills the pool and rejects the prior Promise with `SupersededError` (the 250ms
@@ -886,8 +889,8 @@ Future direction:
   (real vs nominal balance). Future: propagate per-run cumulative inflation to cash flow
   adjustments (income/spending), which requires rethinking whether users enter amounts in
   today's dollars vs nominal future dollars throughout the UI.
-- **Median/downside path construction**: currently uses the single run whose final balance
-  is closest to the 50th/10th percentile. An alternative is year-by-year percentile envelopes
+- **Median path construction**: currently uses the single run whose final balance
+  is closest to the 50th percentile. An alternative is year-by-year percentile envelopes
   (smoother chart lines, but synthetic paths with no coherent per-year actuals). The
   representative-run approach was chosen to enable exact stock/bond attribution in detail rows.
 - **Cross-flow priority** (compare/What If supersede primary): all three flows
@@ -977,13 +980,14 @@ Modeling, Cash Bucket, Tax & IRS, and Export CSV are disabled when there is no a
   `Likely range` (not "10th–90th percentile"), `Future $` (not Nominal $).
   The underlying `DisplayCurrency` type and `view` mode strings remain
   `'nominal'` / `'real'` — UI rename only.
-- **What If mode**: chart locks to the primary (Projected / Median) line — Original (gray solid) vs Draft (amber dashed) — regardless of `view`. Band is hidden in What If. This makes Draft and Original coincide at entry because the deterministic projection is reproducible. `Content.tsx` still calls `runSimulation(whatIfSnapshot)` redundantly when entering What If (the deterministic projection makes the redundant run user-invisible, just wasteful). Intentionally deferred — don't "fix" by reusing `results` without revisiting the locking decision.
-- **Table view selection**: the Median / Projected / Downside radio lives
-  in the yearly data table header (only when the table is expanded). It drives
-  the table's portfolio column, income/spending/tax detail rows, and CSV export
-  — but does NOT change what the chart renders. Depleted years on
-  downside/median paths still show a shortfall indicator in the detail row.
-- **CSV export**: download button in yearly data header exports all three portfolio paths
+- **What If mode**: chart locks to the primary (Projected / Median) line — Original (gray solid) vs Draft (amber dashed). Band is hidden in What If. This makes Draft and Original coincide at entry because the deterministic projection is reproducible. `Content.tsx` still calls `runSimulation(whatIfSnapshot)` redundantly when entering What If (the deterministic projection makes the redundant run user-invisible, just wasteful). Intentionally deferred — don't "fix" by reusing `results` without revisiting the locking decision.
+- **Yearly data table**: there is no table-view switcher. The table renders the
+  chart's primary path (`chartPrimaryMode` in `Chart.tsx`) — the Projected
+  (deterministic) path, or the Median MC run in `historical_rolling` /
+  `historical_bootstrap` (which have no deterministic baseline). Its portfolio
+  column, income/spending/tax detail rows, and CSV export all follow that one
+  path. Depleted years still show a shortfall indicator in the detail row.
+- **CSV export**: download button in yearly data header exports the Projected and Median portfolio paths
   plus the band p10/p90 columns and the full income/spending/tax breakdown per year as a `.csv` file
 - **Scenario comparison**: "Compare with ▾" button in the chart heading (right-aligned via
   `margin-left: auto`) opens a PrimeReact `Menu` popup listing other scenarios. Selecting

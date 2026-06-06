@@ -819,7 +819,7 @@ export interface IncomeEventTaxAttribution {
 }
 
 // IRS-audit-level intermediates surfaced for the Tax Audit detail view. Always
-// populated for every representative breakdown (median / projected / downside);
+// populated for every representative breakdown (median / projected);
 // also computed inside the MC hot loop for all runs, but only the
 // representative-run audit data is actually rendered.
 export interface AnnualAuditBreakdown {
@@ -2326,7 +2326,7 @@ function simulateOneRun(
   random: () => number,
   blackSwanLookup: Map<number, { stockMultiplier: number; bondMultiplier: number }>,
   // false for the 4997 stat-only MC runs; true for representative paths
-  // (median/downside/nominal) so the Tax Audit UI gets full per-year detail.
+  // (median/nominal) so the Tax Audit UI gets full per-year detail.
   includeAudit: boolean = true
 ): SimRun {
   const currentYear = userData.referenceYear;
@@ -2484,8 +2484,8 @@ export interface McStats {
 // stat-only run captured per-year stockFactors/bondFactors and cumulative
 // inflation; we feed those back through simulateOneRun via a deterministic
 // replay generator so the resulting path is bit-identical to the original
-// but now includes AnnualAuditBreakdown per year. Cost: ~3 extra runs total
-// (median, downside, nominal) — overhead vs the 4997 audit-stripped runs is
+// but now includes AnnualAuditBreakdown per year. Cost: ~2 extra runs total
+// (median, nominal) — overhead vs the 4997 audit-stripped runs is
 // negligible, while the savings from skipping audit on those 4997 is the
 // dominant performance win.
 export function replayRunWithAudit(
@@ -2533,11 +2533,6 @@ export interface SimulationResult {
   medianBondFactors: number[];
   medianBreakdowns: AnnualCashFlowBreakdown[];
   medianInflation: number[];
-  downside: number[];
-  downsideStockFactors: number[];
-  downsideBondFactors: number[];
-  downsideBreakdowns: AnnualCashFlowBreakdown[];
-  downsideInflation: number[];
   nominal: number[];
   nominalBreakdowns: AnnualCashFlowBreakdown[];
   nominalInflation: number[];
@@ -2709,11 +2704,11 @@ export function runShard(
   return out;
 }
 
-// Pick the median (50th percentile) and downside (10th percentile) representative
-// runs by score: failed runs sort by earliest `failedYear`; survivors by final balance.
-// The score formula (`failed ? failedYear : totalYears + finalBalance`) ensures failed
-// runs always sort before any survivor.
-export function pickRepresentatives(allRuns: SimRun[]): { medianRun: SimRun; downsideRun: SimRun } {
+// Pick the median (50th percentile) representative run by score: failed runs sort
+// by earliest `failedYear`; survivors by final balance. The score formula
+// (`failed ? failedYear : totalYears + finalBalance`) ensures failed runs always
+// sort before any survivor.
+export function pickRepresentatives(allRuns: SimRun[]): { medianRun: SimRun } {
   const totalYears = allRuns[0].path.length;
   const sorted = [...allRuns].sort((a, b) => {
     const scoreA = a.failed ? a.failedYear : totalYears + a.path[totalYears - 1];
@@ -2723,7 +2718,6 @@ export function pickRepresentatives(allRuns: SimRun[]): { medianRun: SimRun; dow
   const numRuns = allRuns.length;
   return {
     medianRun: sorted[Math.floor(numRuns * 0.5)],
-    downsideRun: sorted[Math.floor(numRuns * 0.1)],
   };
 }
 
@@ -2811,9 +2805,8 @@ export function runSimulation(
 
   // Replay representative runs with audit. Replay is data-replay (uses recorded
   // factors on the SimRun), not RNG-replay — so it does not advance `random`.
-  const { medianRun: medianSeed, downsideRun: downsideSeed } = pickRepresentatives(allRuns);
+  const { medianRun: medianSeed } = pickRepresentatives(allRuns);
   const medianRun = replayRunWithAudit(medianSeed, userData, precomputes, accountIndex, blackSwanLookup);
-  const downsideRun = replayRunWithAudit(downsideSeed, userData, precomputes, accountIndex, blackSwanLookup);
 
   const { percentileBand, mcStats } = computePercentileBandAndStats(allRuns, totalYears, userData.currentAge);
 
@@ -2836,11 +2829,6 @@ export function runSimulation(
     medianBondFactors: medianRun.bondFactors,
     medianBreakdowns: medianRun.breakdowns,
     medianInflation: medianRun.inflation,
-    downside: downsideRun.path,
-    downsideStockFactors: downsideRun.stockFactors,
-    downsideBondFactors: downsideRun.bondFactors,
-    downsideBreakdowns: downsideRun.breakdowns,
-    downsideInflation: downsideRun.inflation,
     nominal: nominalRun.path,
     nominalBreakdowns: nominalRun.breakdowns,
     nominalInflation: nominalRun.inflation,
@@ -2896,8 +2884,8 @@ export function runDeterministicProjection(
 // chart already null-guards both. `cachedProbability` is plumbed in from the
 // caller (Scenario.lastSuccessProbability) so the engine itself stays
 // independent of that sidebar-only display value.
-// Median/downside fields mirror the deterministic line; the View selector
-// stays functional but flips to the real MC paths once runSimulation finishes.
+// Median fields mirror the deterministic line; the table flips to the real MC
+// path once runSimulation finishes.
 export function runFastPreview(rawUserData: UserData, cachedProbability?: number): SimulationResult {
   const det = runDeterministicProjection(rawUserData);
   return {
@@ -2910,11 +2898,6 @@ export function runFastPreview(rawUserData: UserData, cachedProbability?: number
     medianInflation: det.inflation,
     medianStockFactors: [],
     medianBondFactors: [],
-    downside: det.path,
-    downsideBreakdowns: det.breakdowns,
-    downsideInflation: det.inflation,
-    downsideStockFactors: [],
-    downsideBondFactors: [],
     years: det.years,
     percentileBand: null,
     mcStats: null,

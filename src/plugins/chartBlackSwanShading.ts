@@ -75,7 +75,7 @@ const chartBlackSwanShadingPlugin: Plugin = {
       ctx.font = `${fontSize.xs} sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = colors.chartDownside;
+      ctx.fillStyle = colors.blackSwanStockLabel;
       ctx.fillText(stockLabel, center, top + 2);
       ctx.fillStyle = colors.textSecondary;
       ctx.fillText(bondLabel, center, top + 14);

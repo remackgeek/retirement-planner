@@ -53,18 +53,16 @@ ChartJS.register(
   chartMinYSpreadPlugin
 );
 
-type ViewMode = 'median' | 'nominal' | 'downside';
+type ViewMode = 'median' | 'nominal';
 
 const VIEW_COLORS: Record<ViewMode, string> = {
   median: colors.chartMedian,
   nominal: colors.chartNominal,
-  downside: colors.chartDownside,
 };
 
 const VIEW_LABELS: Record<ViewMode, string> = {
   median: 'Median',
   nominal: 'Projected',
-  downside: 'Downside',
 };
 
 // --- Styled components ---
@@ -208,24 +206,6 @@ const LegendRow = styled.div`
   flex-wrap: wrap;
 `;
 
-const LegendButton = styled.button<{ $active: boolean; $color: string }>`
-  display: inline-flex;
-  align-items: center;
-  gap: ${spacing.xs};
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 2px ${spacing.sm};
-  border-radius: ${border.radius};
-  font-size: ${fontSize.sm};
-  font-family: inherit;
-  font-weight: ${props => props.$active ? '700' : 'normal'};
-  color: ${props => props.$active ? props.$color : colors.textSecondary};
-  text-decoration: ${props => props.$active ? 'underline' : 'none'};
-  text-underline-offset: 2px;
-  &:hover { background: ${colors.bgHover}; }
-`;
-
 const LegendSwatch = styled.span<{ $color: string; $dashed?: boolean }>`
   display: inline-block;
   width: 18px;
@@ -271,15 +251,13 @@ function exportCsv(
   years: number[],
   nominal: number[],
   median: number[],
-  downside: number[],
   nominalInflation: number[],
   medianInflation: number[],
-  downsideInflation: number[],
   breakdownInflation: number[],
   annualBreakdowns: AnnualCashFlowBreakdown[],
   currentAge: number,
   displayCurrency: DisplayCurrency,
-  options: { nominalHidden: boolean; medianDownsideHidden: boolean },
+  options: { nominalHidden: boolean; medianHidden: boolean },
   band: { p10: number[]; p90: number[] } | null,
 ) {
   const modeLabel = displayCurrency === 'real' ? "today's dollars" : 'nominal dollars';
@@ -287,7 +265,7 @@ function exportCsv(
   const comment = `# scenario: ${scenarioName} | exported: ${timestamp} | values in ${modeLabel}`;
   const pathHeaders: string[] = [];
   if (!options.nominalHidden) pathHeaders.push('Projected Portfolio ($)');
-  if (!options.medianDownsideHidden) pathHeaders.push('Median Portfolio ($)', 'Downside Portfolio ($)');
+  if (!options.medianHidden) pathHeaders.push('Median Portfolio ($)');
   if (band) pathHeaders.push('Band p10 ($)', 'Band p90 ($)');
   // Scalar audit columns are appended after the core columns. Per-event tax
   // attribution and per-account flows are NOT exported — they don't fit a flat
@@ -321,9 +299,8 @@ function exportCsv(
     if (!options.nominalHidden) {
       pathCells.push(Math.round(pathToDisplay(nominal[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)));
     }
-    if (!options.medianDownsideHidden) {
+    if (!options.medianHidden) {
       pathCells.push(Math.round(pathToDisplay(median[i] ?? 0, medianInflation[i] ?? 1, displayCurrency)));
-      pathCells.push(Math.round(pathToDisplay(downside[i] ?? 0, downsideInflation[i] ?? 1, displayCurrency)));
     }
     if (band) {
       // Band values displayed using the deterministic inflation deflator —
@@ -445,10 +422,9 @@ const Projections = ({
   const [cloneDialogVisible, setCloneDialogVisible] = useState(false);
   if (!results) return null;
   const {
-    probability, median, downside, nominal, nominalBreakdowns, years,
+    probability, median, nominal, nominalBreakdowns, years,
     medianStockFactors, medianBondFactors, medianBreakdowns,
-    downsideStockFactors, downsideBondFactors, downsideBreakdowns,
-    medianInflation, downsideInflation, nominalInflation,
+    medianInflation, nominalInflation,
     percentileBand, mcStats, isPreview,
   } = results;
   // During fast preview we have a stable (cached) probability to show while the
@@ -465,54 +441,46 @@ const Projections = ({
     .map(s => ({ label: s.name, command: () => onSetCompare(s.id) }));
 
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const [view, setView] = useState<ViewMode>('nominal');
   const [showData, setShowData] = useState(false);
   // Session-only toggle: shaded 10th–90th percentile band on the chart.
   // Defaults on. Not on UserData — this is a view preference, not a modeling knob.
   const [showBand, setShowBand] = useState(true);
 
-  // Different return models expose different views:
-  //  - parametric:           median + nominal + downside (full Monte Carlo + parametric mean)
-  //  - historical_single:    nominal only (one deterministic slice; median/downside collapse)
-  //  - historical_rolling:   median + downside (no canonical deterministic baseline)
-  //  - historical_bootstrap: median + downside (same)
+  // Different return models expose a different primary path:
+  //  - parametric:           deterministic nominal (full Monte Carlo + parametric mean)
+  //  - historical_single:    nominal (one deterministic slice; median collapses onto it)
+  //  - historical_rolling:   median (no canonical deterministic baseline)
+  //  - historical_bootstrap: median (same)
   // Nominal in historical_single is the slice itself (see createNominalGenerator).
   const returnModel = userData?.portfolioAssumptions?.returnModel ?? 'parametric';
   const nominalHidden = returnModel === 'historical_rolling' || returnModel === 'historical_bootstrap';
-  const medianDownsideHidden = returnModel === 'historical_single';
-  useEffect(() => {
-    if (nominalHidden && view === 'nominal') setView('median');
-    if (medianDownsideHidden && view !== 'nominal') setView('nominal');
-  }, [nominalHidden, medianDownsideHidden, view]);
-  const visibleViewModes: ViewMode[] = medianDownsideHidden
-    ? ['nominal']
-    : nominalHidden
-      ? ['median', 'downside']
-      : ['median', 'nominal', 'downside'];
+  const medianHidden = returnModel === 'historical_single';
 
-  // The chart's primary line is the deterministic projection when available,
-  // falling back to the median path in modes that don't compute a deterministic
-  // baseline (historical_rolling, historical_bootstrap). Independent of `view`,
-  // which now drives the data table only.
+  // The chart's primary line — and the data table's single path — is the
+  // deterministic projection when available, falling back to the median path in
+  // modes that don't compute a deterministic baseline (historical_rolling,
+  // historical_bootstrap).
   const chartPrimaryMode: ViewMode = nominalHidden ? 'median' : 'nominal';
   const chartPrimaryPath: number[] = chartPrimaryMode === 'median' ? median : nominal;
   const chartPrimaryInflation: number[] = chartPrimaryMode === 'median' ? medianInflation : nominalInflation;
   const bandActive = showBand && !!percentileBand && !whatIfActive;
 
   const buildExportFn = useCallback(() => {
-    const bdInflation = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
-    const bdBreakdowns = view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns;
+    // The table (and CSV detail columns) follow the chart's primary path:
+    // nominal when a deterministic baseline exists, else median.
+    const bdInflation = chartPrimaryMode === 'median' ? medianInflation : nominalInflation;
+    const bdBreakdowns = chartPrimaryMode === 'median' ? medianBreakdowns : nominalBreakdowns;
     exportCsv(
       userData.name ?? 'scenario',
-      years, nominal, median, downside,
-      nominalInflation, medianInflation, downsideInflation,
+      years, nominal, median,
+      nominalInflation, medianInflation,
       bdInflation, bdBreakdowns,
       userData.currentAge,
       displayCurrency,
-      { nominalHidden, medianDownsideHidden },
+      { nominalHidden, medianHidden },
       percentileBand,
     );
-  }, [view, userData, years, nominal, median, downside, medianInflation, nominalInflation, downsideInflation, medianBreakdowns, nominalBreakdowns, downsideBreakdowns, displayCurrency, nominalHidden, medianDownsideHidden, percentileBand]);
+  }, [chartPrimaryMode, userData, years, nominal, median, medianInflation, nominalInflation, medianBreakdowns, nominalBreakdowns, displayCurrency, nominalHidden, medianHidden, percentileBand]);
 
   useEffect(() => {
     onRegisterExport?.(buildExportFn);
@@ -553,9 +521,7 @@ const Projections = ({
     const toDisplayPath = (path: number[], infArr: number[]) =>
       path.map((v, i) => pathToDisplay(v, infArr[i] ?? 1, displayCurrency));
     // Only called for the compare overlay (dashed). Solid datasets are pushed
-    // inline below. Border width is constant — it used to track `view`, but
-    // `view` no longer drives the chart, so coupling line thickness to the
-    // data-table selector would be surprising.
+    // inline below. Border width is constant.
     const makeDataset = (label: string, mode: ViewMode, data: number[], dashed = false, dashColor?: string) => {
       const color = dashed
         ? (dashColor ?? VIEW_COLORS[mode] + '80')
@@ -603,8 +569,7 @@ const Projections = ({
     } else {
       // Chart shows only the primary line (Deterministic when available, else Median).
       // The shaded 10–90 band rendered by chartPercentileBandPlugin replaces the
-      // separate Median and Downside lines. The data table still exposes all three
-      // views via its own selector.
+      // separate Median and Downside lines. The data table follows this same path.
       datasets.push({
         label: VIEW_LABELS[chartPrimaryMode],
         data: toDisplayPath(chartPrimaryPath, chartPrimaryInflation),
@@ -623,7 +588,7 @@ const Projections = ({
       }
     }
     return { labels, datasets };
-  }, [labels, median, nominal, downside, medianInflation, nominalInflation, downsideInflation, displayCurrency, nominalHidden, medianDownsideHidden, compareResults, compareScenario, whatIfActive, whatIfSnapshotResults, chartPrimaryMode, chartPrimaryPath, chartPrimaryInflation]);
+  }, [labels, median, nominal, medianInflation, nominalInflation, displayCurrency, nominalHidden, medianHidden, compareResults, compareScenario, whatIfActive, whatIfSnapshotResults, chartPrimaryMode, chartPrimaryPath, chartPrimaryInflation]);
 
   // Group income events / spending goals by their start year once, then iterate
   // years to build the annotation list. Avoids N × M filter passes per render.
@@ -1012,8 +977,8 @@ const Projections = ({
           const medVal = pathToDisplay(median[hoveredIndex] ?? 0, getF(medianInflation), displayCurrency);
 
           // For the hover popup, all values reflect the chart's primary line
-          // (Deterministic when available, else Median) — not the view selector,
-          // which only drives the data table.
+          // (Deterministic when available, else Median) — the same path the
+          // data table shows.
           const primaryBd = (chartPrimaryMode === 'nominal' ? nominalBreakdowns : medianBreakdowns)[hoveredIndex];
           const primaryF = getF(chartPrimaryInflation);
           const primaryNet = toDisplay(primaryBd.netCashFlow, primaryF, displayCurrency);
@@ -1289,7 +1254,7 @@ const Projections = ({
             <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
               {showData
                 ? 'Hide the year-by-year data table.'
-                : 'Show the year-by-year data table — balance, income, spending, taxes, and withdrawals for each year. Switch between Median / Projected / Downside views and export to CSV.'}
+                : 'Show the year-by-year data table — balance, income, spending, taxes, and withdrawals for each year, and export to CSV.'}
             </div>
           </PrimeTooltip>
           <DataToggle
@@ -1304,25 +1269,6 @@ const Projections = ({
       </LegendRow>
       {showData && (
         <div style={{ marginTop: spacing.xs }}>
-          {visibleViewModes.length > 1 && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: spacing.xs,
-              padding: `${spacing.xs} 0`, fontSize: fontSize.xs, color: colors.textSecondary,
-            }}>
-              <span style={{ marginRight: spacing.xs }}>Table view:</span>
-              {visibleViewModes.map(mode => (
-                <LegendButton
-                  key={mode}
-                  $active={view === mode}
-                  $color={VIEW_COLORS[mode]}
-                  onClick={() => setView(mode)}
-                >
-                  <LegendSwatch $color={VIEW_COLORS[mode]} />
-                  {VIEW_LABELS[mode]}
-                </LegendButton>
-              ))}
-            </div>
-          )}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -1355,9 +1301,11 @@ const Projections = ({
               <tbody>
                 {years.map((year: number, index: number) => {
                   const age = userData.currentAge + index;
-                  const breakdown = (view === 'median' ? medianBreakdowns : view === 'nominal' ? nominalBreakdowns : downsideBreakdowns)[index];
-                  const selectedPath = view === 'median' ? median : view === 'nominal' ? nominal : downside;
-                  const selectedInflation: number[] = view === 'median' ? medianInflation : view === 'nominal' ? nominalInflation : downsideInflation;
+                  // The table follows the chart's primary path: nominal when a
+                  // deterministic baseline exists, else the median MC run.
+                  const breakdown = (chartPrimaryMode === 'median' ? medianBreakdowns : nominalBreakdowns)[index];
+                  const selectedPath = chartPrimaryMode === 'median' ? median : nominal;
+                  const selectedInflation: number[] = chartPrimaryMode === 'median' ? medianInflation : nominalInflation;
 
                   // Inflation factor for the selected path at this year. Drives both
                   // portfolio (real → display) and breakdown (nominal → display) conversion.
@@ -1470,15 +1418,12 @@ const Projections = ({
 
                       let stockFactor: number;
                       let bondFactor: number;
-                      if (view === 'nominal') {
-                        stockFactor = 1 + stockReturn;
-                        bondFactor = 1 + bondReturn;
-                      } else if (view === 'median') {
+                      if (chartPrimaryMode === 'median') {
                         stockFactor = medianStockFactors?.[index] ?? (1 + stockReturn);
                         bondFactor = medianBondFactors?.[index] ?? (1 + bondReturn);
                       } else {
-                        stockFactor = downsideStockFactors?.[index] ?? (1 + stockReturn);
-                        bondFactor = downsideBondFactors?.[index] ?? (1 + bondReturn);
+                        stockFactor = 1 + stockReturn;
+                        bondFactor = 1 + bondReturn;
                       }
 
                       // Growth computed on displayed start balance — works for both modes since

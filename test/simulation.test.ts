@@ -63,7 +63,6 @@ describe('Scenario simulations', () => {
         const expectedYears = scenario.lifeExpectancy - scenario.currentAge + 1;
         expect(result.years).toHaveLength(expectedYears);
         expect(result.median).toHaveLength(expectedYears);
-        expect(result.downside).toHaveLength(expectedYears);
         expect(result.nominal).toHaveLength(expectedYears);
         expect(result.probability).toBeGreaterThanOrEqual(0);
         expect(result.probability).toBeLessThanOrEqual(100);

@@ -14,9 +14,9 @@ In the browser, MC runs in parallel across a Web Worker pool sized to your machi
 
 A run is **successful** if portfolio balance never reaches $0 before life expectancy. The reported success probability is the fraction of successful runs.
 
-### Representative Paths
+### Representative Path
 
-YARP selects the **single simulation run** whose final balance is closest to the 50th percentile (Median) or 10th percentile (Downside) of all final balances. These representative runs power the **yearly data table** breakdowns — the same year's stock and bond return factors drive every line of that run's detail, so income, spending, taxes, withdrawals, and balance evolve consistently from a real return sequence.
+YARP selects the **single simulation run** whose final balance is closest to the 50th percentile (Median) of all final balances. This representative run powers the **yearly data table** breakdowns in Historical: Rolling / Bootstrap modes (which have no deterministic baseline) — the same year's stock and bond return factors drive every line of that run's detail, so income, spending, taxes, withdrawals, and balance evolve consistently from a real return sequence. In all other modes the table shows the deterministic **Projected** path.
 
 ### Percentile Band (chart shading)
 
@@ -344,7 +344,7 @@ A flat **3.8%** tax applied to the lesser of (a) net investment income or (b) MA
 
 ### Tax Audit Fields
 
-Every `AnnualCashFlowBreakdown` carries an `audit` sub-object capturing the intermediate values that the tax model computes and would otherwise discard. These power the **Tax Audit** and **Income Detail** tabs in the yearly data view, and ship as extra columns in the CSV export. Each representative path (median, projected, downside) has its own audit data driven by that path's actual flows.
+Every `AnnualCashFlowBreakdown` carries an `audit` sub-object capturing the intermediate values that the tax model computes and would otherwise discard. These power the **Tax Audit** and **Income Detail** tabs in the yearly data view, and ship as extra columns in the CSV export. Each representative path (median, projected) has its own audit data driven by that path's actual flows.
 
 - **Ordinary income tax** — `agi` (= otherTaxableGross + Traditional withdrawal + SS taxable portion), `standardDeduction`, `seniorAddOn`, `obbbReduction`, `totalDeductions`, `taxableIncome`, `federalBracketIndex` (0=10% rate through 6=37% rate), `federalMarginalRate`, `federalOrdinaryTax`, `stateOrdinaryTax`, and `federalBrackets[]` (per-bracket dollars-in-bracket and tax-in-bracket for the year's inflation-indexed thresholds).
 - **Social Security taxability** — `ssProvisionalIncome` (= otherTaxableGross + ½ × ssGross), the frozen IRS `ssProvisionalThreshold1`/`Threshold2`, and the `ssZone` hit (`none` / `50%` / `85%` / `mfs-flat`).
@@ -468,7 +468,7 @@ The component's dev-mode warning fires if the global drift OR the worst per-buck
 
 #### Performance & invariants
 
-Audit data is computed for **every** breakdown — all 5000 Monte Carlo runs × ~30 years, plus the deterministic projection — not just the representative paths. The per-breakdown cost is roughly one `calculateNetFromGrossDetailed` call plus ~5–10 extra `calculateNetFromGross` calls for the marginal stack; in profiling this added under 2s to a typical 5000-run simulation. Don't move audit computation into a representative-runs-only post-pass without also making the deterministic projection populate it — both the chart's Yearly Data table and the CSV export depend on `audit` being present on every breakdown they touch.
+Audit data is computed only for the breakdowns the UI actually renders: the representative **Median** run (recomputed via `replayRunWithAudit`) and the deterministic **Projected** projection. The ~5000 stat-only Monte Carlo runs execute with `includeAudit=false` (`runShard` → `simulateOneRun(..., false)`), which skips the per-breakdown audit work — the dominant performance win, since the audit cost is roughly one `calculateNetFromGrossDetailed` call plus ~5–10 extra `calculateNetFromGross` calls for the marginal stack. Replaying just the representative run afterward keeps that cost to ~2 extra runs total. Don't move the deterministic projection off the audited path: both the chart's Yearly Data table and the CSV export depend on `audit` being present on every breakdown of whichever path they render (Projected, or Median in the historical rolling/bootstrap modes that have no deterministic baseline).
 
 `audit.accountFlows` is the one exception: it's populated by `applyCashFlow` (not by the core cash-flow calc) because it depends on the actual pro-rata distribution over current account balances, which is only known after the withdrawal sinks run. Callers of `calculateAnnualCashFlow` (the public wrapper) that don't subsequently invoke `applyCashFlow` will see `accountFlows` as `undefined`; tests that need it should drive `runSimulation()` instead.
 

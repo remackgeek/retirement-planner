@@ -3,9 +3,9 @@
 // Architecture: a pool of N workers (N = clamp(hardwareConcurrency - 1, 2, 8)).
 // Each `run()` shards the MC runs across the pool, awaits all shard summaries,
 // merges them into a global percentile band + mcStats, identifies the median
-// and downside representative runs by global score sort, requests replay of
-// those two runs from their owning shards, computes the deterministic nominal
-// projection on the main thread, and assembles the final SimulationResult.
+// representative run by global score sort, requests replay of that run from its
+// owning shard, computes the deterministic nominal projection on the main
+// thread, and assembles the final SimulationResult.
 //
 // Cancellation: supersession-via-terminate-and-respawn. When a new run arrives
 // while one is in flight, every worker is terminated and respawned, and the
@@ -201,14 +201,13 @@ class SimulationClient {
     for (let i = 0; i < totalRuns; i++) if (!failedFlags[i]) successCount++;
     const probability = Math.round((successCount / totalRuns) * 100);
 
-    // Sort global indices by score to find p50 / p10 reps.
+    // Sort global indices by score to find the p50 rep.
     const order = new Int32Array(totalRuns);
     for (let i = 0; i < totalRuns; i++) order[i] = i;
     // JavaScript Array sort is stable since 2019. Convert for sort comparator.
     const orderArr = Array.from(order);
     orderArr.sort((a, b) => scores[a] - scores[b]);
     const medianGlobalIdx = orderArr[Math.floor(totalRuns * 0.5)];
-    const downsideGlobalIdx = orderArr[Math.floor(totalRuns * 0.1)];
 
     // Map global indices back to (shardIndex, localRunIndex).
     const locate = (globalIdx: number): { shardIndex: number; localRunIndex: number } => {
@@ -223,7 +222,6 @@ class SimulationClient {
       throw new Error(`globalIdx ${globalIdx} out of range`);
     };
     const medianLoc = locate(medianGlobalIdx);
-    const downsideLoc = locate(downsideGlobalIdx);
 
     // Percentile band: per year, concatenate the year-slice across shards and sort.
     let percentileBand: SimulationResult['percentileBand'] = null;
@@ -275,7 +273,7 @@ class SimulationClient {
       };
     }
 
-    // Pass 2: request replay from the owning shards. Batch if both reps in same shard.
+    // Pass 2: request replay of the median rep from its owning shard.
     const replayRequests = new Map<number, number[]>();
     const addReq = (loc: { shardIndex: number; localRunIndex: number }) => {
       const list = replayRequests.get(loc.shardIndex) ?? [];
@@ -283,7 +281,6 @@ class SimulationClient {
       replayRequests.set(loc.shardIndex, list);
     };
     addReq(medianLoc);
-    addReq(downsideLoc);
 
     const replayResults = await Promise.all(
       Array.from(replayRequests.entries()).map(async ([shardIndex, indices]) => {
@@ -302,7 +299,6 @@ class SimulationClient {
       return r;
     };
     const medianRun = findReplayed(medianLoc.shardIndex, medianLoc.localRunIndex);
-    const downsideRun = findReplayed(downsideLoc.shardIndex, downsideLoc.localRunIndex);
 
     // Deterministic nominal on main thread.
     const det = runDeterministicProjection(pending.userData);
@@ -315,11 +311,6 @@ class SimulationClient {
       medianBondFactors: medianRun.bondFactors,
       medianBreakdowns: medianRun.breakdowns,
       medianInflation: medianRun.inflation,
-      downside: downsideRun.path,
-      downsideStockFactors: downsideRun.stockFactors,
-      downsideBondFactors: downsideRun.bondFactors,
-      downsideBreakdowns: downsideRun.breakdowns,
-      downsideInflation: downsideRun.inflation,
       nominal: det.path,
       nominalBreakdowns: det.breakdowns,
       nominalInflation: det.inflation,

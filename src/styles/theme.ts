@@ -139,10 +139,11 @@ export const colors = {
   // Chart view lines
   chartMedian:   palette.green500,
   chartNominal:  palette.gray400,
-  chartDownside: palette.sienna500,
 
-  // Black swan event shading (semi-transparent vertical band)
+  // Black swan event shading (semi-transparent vertical band) + the stock-%
+  // multiplier label drawn above each band.
   blackSwanShade: palette.red500Alpha08,
+  blackSwanStockLabel: palette.sienna500,
 
   // Monte Carlo 10th–90th percentile band (filled region under projected line)
   chartBand: palette.gray400Alpha12,

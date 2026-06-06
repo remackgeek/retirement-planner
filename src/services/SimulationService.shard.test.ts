@@ -132,7 +132,7 @@ describe('runShard', () => {
 // ----- pickRepresentatives -----
 
 describe('pickRepresentatives', () => {
-  it('selects p50 and p10 by final-balance score among survivors', () => {
+  it('selects the p50 run by final-balance score among survivors', () => {
     // Hand-built SimRun-shaped objects. Score formula:
     //   failed ? failedYear : totalYears + finalBalance.
     // With totalYears=3 and all survivors, scores are 3 + finalBalance,
@@ -146,15 +146,14 @@ describe('pickRepresentatives', () => {
       mk(100), mk(200), mk(300), mk(400), mk(500),
       mk(600), mk(700), mk(800), mk(900), mk(1000),
     ];
-    // 10 runs: p50Idx = 5, p10Idx = 1. Sorted ascending by final: 100..1000.
-    // The run at index 5 has final=600, the run at index 1 has final=200.
+    // 10 runs: p50Idx = 5. Sorted ascending by final: 100..1000.
+    // The run at index 5 has final=600.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { medianRun, downsideRun } = pickRepresentatives(runs as any);
+    const { medianRun } = pickRepresentatives(runs as any);
     expect(medianRun.path[2]).toBe(600);
-    expect(downsideRun.path[2]).toBe(200);
   });
 
-  it('failed runs sort before survivors (earliest-failed first)', () => {
+  it('failed runs sort before survivors (shifting the p50 pick)', () => {
     const mkFail = (failedYear: number) => ({
       path: [0, 0, 0],
       stockFactors: [], bondFactors: [], breakdowns: [], inflation: [],
@@ -172,11 +171,12 @@ describe('pickRepresentatives', () => {
       mkSurvive(500), mkSurvive(600), mkSurvive(700), mkSurvive(800),
     ];
     // Sorted: failedYear 0 (score 0) < failedYear 1 (score 1) < survivor finals (score 3+100, ...).
-    // p10Idx = 1 → the second failure.
+    // The two failures occupy indices 0–1, so p50Idx = 5 lands on the 4th
+    // survivor (final=400) — only true if failures sort ahead of survivors.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { downsideRun } = pickRepresentatives(runs as any);
-    expect(downsideRun.failed).toBe(true);
-    expect(downsideRun.failedYear).toBe(1);
+    const { medianRun } = pickRepresentatives(runs as any);
+    expect(medianRun.failed).toBe(false);
+    expect(medianRun.path[2]).toBe(400);
   });
 });
 
