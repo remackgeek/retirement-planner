@@ -7,35 +7,33 @@
 
 ---
 
-## What YARP Is For
+## Table of Contents
 
-YARP is a **planning tool, not financial advice** — not a substitute for a financial advisor, tax professional, or estate attorney. It sits between simple calculators and full financial-planning platforms, and it's good for answering questions like:
-
-- Can I retire at 62 instead of 65?
-- What happens if the market drops 30% the year after I retire?
-- Should I move to a no-income-tax state?
-- Should I convert some of my Traditional IRA to Roth in my 60s?
-- How much can I safely spend each year?
-
-Use it to **explore the shape of your retirement** — what decisions matter most, where your plan is fragile, how sensitive things are to assumptions. Projections are estimates; real outcomes will differ, sometimes substantially.
-
-It's **not** the right tool for: estate planning, long-term care projections, insurance products, real estate transactions, or tax-loss harvesting strategies. For those, see a professional.
-
----
-
-## Your Data Stays With You
-
-YARP runs entirely in your web browser. **No account to create, no server, no upload of your financial data.** Everything you enter stays on your device.
-
-- **Privacy by design.** No tracking, no analytics, no selling anything.
-- The flip side: if you clear your browser, switch computers, or use a different browser, your scenarios won't be there. **Back them up periodically** — see the *Backing Up Your Data* section near the end.
-- **Private/incognito windows can't save.** Some browsers block local storage in private mode. If yours does, YARP shows a banner and you can still use it for the session — but nothing will be saved when you close the tab. Use a normal window (or export your scenario) to keep your work.
+- [Getting Started](#getting-started)
+- [What YARP Is For](#what-yarp-is-for)
+- [Scenarios](#scenarios)
+- [Accounts](#accounts)
+- [Income Events](#income-events)
+- [Tools](#tools)
+- [Spending Goals](#spending-goals)
+- [Taxes](#taxes)
+- [Reading the Chart](#reading-the-chart)
+- [Year-by-Year Detail](#year-by-year-detail)
+- [Today's $ vs Future $](#todays--vs-future-)
+- [Comparing Scenarios](#comparing-scenarios)
+- [What If? Mode](#what-if-mode)
+- [Reports](#reports)
+- [Settings](#settings)
+- [Tips for Honest Planning](#tips-for-honest-planning)
+- [Your Data Stays With You](#your-data-stays-with-you)
+- [Backing Up Your Data](#backing-up-your-data)
+- [Where to Go From Here](#where-to-go-from-here)
 
 ---
 
 ## Getting Started
 
-The first thing to do is create a baseline scenario that reflects your current plan. Don't try to optimize on the first pass — just get a realistic picture in.
+Everything runs in your browser — no account, no upload of your financial data (see *[Your Data Stays With You](#your-data-stays-with-you)* near the end). The first thing to do is create a baseline scenario that reflects your current plan. Don't try to optimize on the first pass — just get a realistic picture in.
 
 If you'd rather kick the tires before entering your own data, the empty sidebar offers three pre-populated example scenarios under **or try an example** (Near retirement, Retired early, Mid-career). The same options live under **Tools → Load example…** once you have scenarios of your own. Loading an example appends a new scenario and makes it active — you can edit, rename, or delete it freely.
 
@@ -51,14 +49,26 @@ Once your baseline looks right, **clone it** to start exploring "what if?" varia
 
 ---
 
+## What YARP Is For
+
+YARP is a **planning tool, not financial advice** — not a substitute for a financial advisor, tax professional, or estate attorney. It sits between simple calculators and full financial-planning platforms, and it's good for answering questions like:
+
+- Can I retire at 62 instead of 65?
+- What happens if the market drops 30% the year after I retire?
+- Should I convert some of my Traditional IRA to Roth in my 60s?
+
+Use it to **explore the shape of your retirement** — what decisions matter most, where your plan is fragile, how sensitive things are to assumptions. Projections are estimates; real outcomes will differ, sometimes substantially.
+
+It's **not** the right tool for: estate planning, long-term care projections, insurance products, real estate transactions, or tax-loss harvesting strategies. For those, see a professional.
+
+---
+
 ## Scenarios
 
 A scenario is a complete snapshot of your plan. Most people end up with several:
 
 - A baseline reflecting your current plan
 - "What if I retired 2 years earlier?"
-- "What if I spent $1,000/month more?"
-- "What if I moved to Florida?"
 - "What if I did Roth conversions in my 60s?"
 
 You can compare any two scenarios on the chart side-by-side (see *Comparing Scenarios* below).
@@ -178,7 +188,7 @@ A Roth conversion moves money from your Traditional accounts into your Roth acco
 - **You have to take your RMD first** if you're 73 or older — the IRS doesn't let RMDs be converted.
 - **Conversions are per-owner** — if you mark a conversion as Self, it pulls only from your Self-owned Traditional accounts and lands only in your Self-owned Roth; same for Spouse. The engine will not cross-mix the two spouses' retirement accounts. If you have plenty in Spouse's Trad but only a little in Self's, marking the conversion as Self will cap it at the Self-Trad balance.
 
-The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation. **YARP automatically picks the better of two spending strategies for your specific scenario** — "brokerage-first" (pull Brokerage before Traditional; conservative) vs "bracket-aware" (pull Traditional up to the 12% federal bracket first, preserving Brokerage for high-tax years). The engine runs both quickly at sim setup and uses whichever wins on your portfolio's projected real terminal balance. You don't choose; the engine does. (Previously this was gated on whether you had any conversions scheduled, which led to surprise jumps when adding even a tiny conversion. Now it's symmetric — the engine just does its best regardless.)
+The classic strategy is to convert in the low-income years between retirement and age 73, filling up the lower tax brackets to reduce your future RMDs. YARP lets you model exactly how much that strategy is worth in your situation. **YARP automatically picks the better of two spending strategies for your specific scenario** — "brokerage-first" (pull Brokerage before Traditional; conservative) vs "bracket-aware" (pull Traditional up to the 12% federal bracket first, preserving Brokerage for high-tax years). The engine runs both quickly at sim setup and uses whichever wins on your portfolio's projected real terminal balance. You don't choose; the engine does.
 
 The Roth Conversion dialog shows an **Impact Preview** with a deterministic estimate of first-year tax, total tax over the conversion window, RMD reduction at 73, and projected tax-free Roth at life expectancy. The **Net impact on plan value** row signs the trade-off in dollar terms (green when the conversion pays off, red when it costs more than it saves). That row runs the full deterministic simulation twice — once with the conversion, once without — and diffs the end-of-plan balance, so it reflects everything the Projected chart line does: the RMD withdrawal waterfall, IRMAA surcharges, NIIT, state tax on LTCG, and how conversion tax is sourced from your accounts. Multi-year conversions default to **inflation-adjusted**, so the amount you enter is a real-dollar target — turn that off if you mean a fixed nominal schedule. If you configure a conversion that is unusually large relative to your spending, crosses two or more federal brackets in a single year, or would convert most of your Traditional balance, the dialog shows an inline hint — these are advisory only and never block saving.
 
@@ -189,7 +199,7 @@ Hand-tuning a conversion schedule year by year is fiddly. Open **Tools → Roth 
 - **Plan window** — through what age should YARP consider conversions? Default is **through age 80**. Practitioner consensus: past 80, conversion is rarely worth it for owner-lifetime tax arbitrage (the math turns into estate planning, which YARP doesn't model). Drop to 73 or 75 if you want to limit the window to pre-RMD; bump to 85 or 90 if you have a specific heir-rate reason. Years past the cap emit no conversions.
 - **Cap under IRMAA / NIIT cliffs** — on by default. A large conversion can push your MAGI into a higher Medicare IRMAA tier (two years later) or trip the 3.8% NIIT surcharge. With this on, generated conversions are capped so MAGI stays under the next tier and the NIIT threshold. Only ever lowers a conversion; uncheck if you want to override the cliffs.
 
-Then click **Generate plan**. YARP runs coordinate-descent optimization on the per-year conversion vector. Internally it warm-starts from a quick grid search across four candidate bracket targets ("none", 12%, 22%, 24%) and then probes finer per-year amounts that the bracket grid can't see — but you don't have to choose between the two; YARP just does the best job it can. Takes ~3–5 seconds. Reports improvement **vs your current setup** — not vs the optimizer's internal seed — so the number you see is the honest answer to "is this worth doing?" If the optimizer can't beat your status quo, it says so.
+Then click **Generate plan**. YARP optimizes the per-year conversion amounts for you (takes ~3–5 seconds) and reports improvement **vs your current setup** — not vs any internal seed — so the number you see is the honest answer to "is this worth doing?" If the optimizer can't beat your status quo, it says so.
 
 After Generate plan completes, the dialog shows:
 - The **proposed schedule table** (Year / Age / Conversion).
@@ -314,7 +324,13 @@ When you expand a year, the detail panel has four tabs:
 - **Summary** — the high-level income / spending / tax / cash-flow numbers, plus portfolio withdrawal breakdown and RMD/Roth-conversion notes. Use this for an at-a-glance read.
 - **Tax Audit** — IRS-level intermediates so you can verify the model's arithmetic. Shows AGI, the full federal bracket table with the dollars and tax landing in each rate, your standard deduction broken into the base + senior add-on + temporary OBBB bonus, the Social Security provisional-income calc with which 50%/85% zone you hit, the IRMAA lookback MAGI with the exact tier and per-enrollee surcharge, the NIIT MAGI excess and 3.8% base, and per-owner RMD with the IRS Uniform Lifetime Table divisor and beginning-of-year Traditional balance.
 - **Income Detail** — per-income-event ordinary tax attribution using marginal stacking (events are layered in IRS order so each event's tax is its incremental delta on top of the prior stack — pre-tax contributions appear as negative reductions). Also shows per-account flows: which account each dollar of withdrawal came from and which account received each deposit (Roth conversion, RMD excess, retirement contribution, surplus reinvestment).
-- **Cash Flow** — a Sankey diagram of the year's flows, organized into five columns so the tax story is legible at a glance. The leftmost **Detailed Sources** column shows individual income events by name (each pension, rental, wage event, Social Security event by recipient, Roth conversion event), per-account withdrawals when multiple Brokerage / Cash / Roth accounts contribute, and per-Traditional-account RMD attribution (Self's RMD pulls only from Self-owned Trad; Spouse's only from Spouse-owned). Each detail node feeds an **Aggregated Source** in the next column. For Social Security, each event splits in two — its taxable share flows into "Social Security (Taxable)" and its tax-free share into "Social Security (Tax-Free)" using the year's overall taxability ratio. Three **tax-treatment buckets** sit in the middle: **Ordinary Income** (Social Security taxable, wages, RMD, Traditional withdrawals, Cash Interest, Roth conversion gross), **Capital Gains** (Brokerage account withdrawals only), and **Tax-Exempt** (Roth withdrawals, Cash principal, after-tax income, employer match). Each bucket pays its own taxes directly: Ordinary → Federal Ordinary + State Ordinary + IRMAA; Capital Gains → Federal LTCG + State LTCG + NIIT; Tax-Exempt → no tax. The remainder from each bucket flows into a single **After-Tax Cash** pool, which funds Living Expenses, Other Goals, account contributions, surplus to Brokerage, and the Roth Deposit from any conversion. The conversion pass-through is visible as a chain: Roth Conversion event → Roth Conversion (gross) → Ordinary Income → Roth Deposit. Hover any node or link for the precise dollar figure and share of the year; bucket hovers also show the inflow/outflow split. Inflows always equal outflows globally, within each bucket, and within each multi-detail aggregator — the diagram is conservation-checked, so if anything looks off it's showing you a real number. Inter-account cash-bucket refill or sweep activity, if any, appears as a separate row below the diagram (balance-sheet moves that don't pass through the buckets). If the portfolio depleted in a year, a red banner notes how much spending went unmet and the spending edges shrink to the funded amount.
+- **Cash Flow** — a Sankey diagram of the year's flows, organized into five columns so the tax story is legible at a glance.
+
+  The leftmost **Detailed Sources** column shows individual income events by name (each pension, rental, wage event, Social Security event by recipient, Roth conversion event), per-account withdrawals when multiple Brokerage / Cash / Roth accounts contribute, and per-Traditional-account RMD attribution (Self's RMD pulls only from Self-owned Trad; Spouse's only from Spouse-owned). Each detail node feeds an **Aggregated Source** in the next column. For Social Security, each event splits in two — its taxable share flows into "Social Security (Taxable)" and its tax-free share into "Social Security (Tax-Free)" using the year's overall taxability ratio.
+
+  Three **tax-treatment buckets** sit in the middle: **Ordinary Income** (Social Security taxable, wages, RMD, Traditional withdrawals, Cash Interest, Roth conversion gross), **Capital Gains** (Brokerage account withdrawals only), and **Tax-Exempt** (Roth withdrawals, Cash principal, after-tax income, employer match). Each bucket pays its own taxes directly: Ordinary → Federal Ordinary + State Ordinary + IRMAA; Capital Gains → Federal LTCG + State LTCG + NIIT; Tax-Exempt → no tax. The remainder from each bucket flows into a single **After-Tax Cash** pool, which funds Living Expenses, Other Goals, account contributions, surplus to Brokerage, and the Roth Deposit from any conversion. The conversion pass-through is visible as a chain: Roth Conversion event → Roth Conversion (gross) → Ordinary Income → Roth Deposit.
+
+  Hover any node or link for the precise dollar figure and share of the year; bucket hovers also show the inflow/outflow split. Inflows always equal outflows globally, within each bucket, and within each multi-detail aggregator — the diagram is conservation-checked, so if anything looks off it's showing you a real number. Inter-account cash-bucket refill or sweep activity, if any, appears as a separate row below the diagram (balance-sheet moves that don't pass through the buckets). If the portfolio depleted in a year, a red banner notes how much spending went unmet and the spending edges shrink to the funded amount.
 
 You can **export the whole table to CSV** using the button in the header — useful for sharing with an advisor or sanity-checking against another tool. The CSV includes scalar audit columns (AGI, deductions, bracket index, marginal rate, federal vs state split, SS zone, IRMAA tier, NIIT components, per-owner RMD). Per-event and per-account tables are in-app only — they don't fit a flat CSV cleanly.
 
@@ -403,6 +419,16 @@ For deeper detail on any of these settings — including the math, distributions
 - **Try Historical: Rolling Start.** If your plan only succeeds in 70% of actual historical sequences, the parametric Monte Carlo number is overstating safety.
 - **Spending matters more than returns.** Getting your spending estimate right within ±10% usually matters more than the exact return assumption.
 - **Revisit your plan yearly** as your situation changes.
+
+---
+
+## Your Data Stays With You
+
+YARP runs entirely in your web browser. **No account to create, no server, no upload of your financial data.** Everything you enter stays on your device.
+
+- **Privacy by design.** No tracking, no analytics, no selling anything.
+- The flip side: if you clear your browser, switch computers, or use a different browser, your scenarios won't be there. **Back them up periodically** — see *Backing Up Your Data* below.
+- **Private/incognito windows can't save.** Some browsers block local storage in private mode. If yours does, YARP shows a banner and you can still use it for the session — but nothing will be saved when you close the tab. Use a normal window (or export your scenario) to keep your work.
 
 ---
 
