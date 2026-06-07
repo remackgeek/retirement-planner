@@ -3,10 +3,26 @@ import type { Scenario } from '../types/Scenario';
 import { CURRENT_SCHEMA_VERSION } from '../types/Scenario';
 import { openDB } from 'idb';
 import { confirmDialog } from 'primereact/confirmdialog';
+import { Button } from 'primereact/button';
 import {
   runMigrationPipeline,
   validateImportedScenario,
 } from '../utils/scenarioMigration';
+
+/**
+ * Single-button acknowledgement dialog. PrimeReact's `confirmDialog` always
+ * renders both an accept and a reject button; `reject: undefined` only drops the
+ * callback, leaving a stray "No" button. A custom `footer` template replaces the
+ * default two-button footer with one OK button.
+ */
+function infoDialog(message: string, header: string, icon: string) {
+  confirmDialog({
+    message,
+    header,
+    icon,
+    footer: (options) => <Button label="OK" onClick={options.accept} autoFocus />,
+  });
+}
 
 declare global {
   interface FileSystemFileHandle {
@@ -169,13 +185,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
             `No data was lost — only the type label changed.`
           );
         }
-        confirmDialog({
-          message: parts.join(' '),
-          header: 'Scenarios updated',
-          icon: 'pi pi-info-circle',
-          acceptLabel: 'OK',
-          reject: undefined,
-        });
+        infoDialog(parts.join(' '), 'Scenarios updated', 'pi pi-info-circle');
       }
      } catch (err) {
        // IndexedDB unavailable (private/incognito, blocked, quota). Render the
@@ -300,48 +310,24 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
             accept: async () => {
               await updateScenario(importedData);
               setActiveScenarioState(importedData);
-              confirmDialog({
-                message: `Scenario imported successfully!${migrationNote}`,
-                header: 'Success',
-                icon: 'pi pi-check',
-                acceptLabel: 'OK',
-                reject: undefined,
-              });
+              infoDialog(`Scenario imported successfully!${migrationNote}`, 'Success', 'pi pi-check');
             },
             reject: async () => {
               const copy = { ...importedData, id: crypto.randomUUID() };
               await addScenario(copy);
               setActiveScenarioState(copy);
-              confirmDialog({
-                message: `Scenario imported as a new copy.${migrationNote}`,
-                header: 'Success',
-                icon: 'pi pi-check',
-                acceptLabel: 'OK',
-                reject: undefined,
-              });
+              infoDialog(`Scenario imported as a new copy.${migrationNote}`, 'Success', 'pi pi-check');
             },
           });
         } else {
           await addScenario(importedData);
           setActiveScenarioState(importedData);
-          confirmDialog({
-            message: `Scenario imported successfully!${migrationNote}`,
-            header: 'Success',
-            icon: 'pi pi-check',
-            acceptLabel: 'OK',
-            reject: undefined,
-          });
+          infoDialog(`Scenario imported successfully!${migrationNote}`, 'Success', 'pi pi-check');
         }
       } catch (error: unknown) {
         console.error('Import failed:', error);
         const errorMessage = error instanceof Error ? error.message : 'Invalid file.';
-        confirmDialog({
-          message: `Import failed: ${errorMessage}`,
-          header: 'Error',
-          icon: 'pi pi-exclamation-triangle',
-          acceptLabel: 'OK',
-          reject: undefined,
-        });
+        infoDialog(`Import failed: ${errorMessage}`, 'Error', 'pi pi-exclamation-triangle');
       }
     };
     input.click();
