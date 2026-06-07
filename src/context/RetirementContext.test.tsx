@@ -1,7 +1,8 @@
 import React from 'react';
 import { render, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { RetirementProvider, RetirementContext, migrateLegacyTaxStrategy } from './RetirementContext';
+import { RetirementProvider, RetirementContext } from './RetirementContext';
+import { migrateLegacyTaxStrategy } from '../utils/scenarioMigration';
 import { confirmDialog } from 'primereact/confirmdialog';
 import type { Scenario } from '../types/Scenario';
 import { CURRENT_SCHEMA_VERSION } from '../types/Scenario';
@@ -301,6 +302,90 @@ describe('RetirementContext Import Tests', () => {
         'legacy-id'
       );
     });
+  });
+
+  it('normalizes an under-specified legacy record silently on load (no toast)', async () => {
+    // Old record missing portfolioAssumptions defaults. The load path now runs
+    // the same normalization the import path always did — and persists it
+    // WITHOUT firing the "Scenarios updated" migration toast.
+    const legacy = {
+      id: 'norm-id',
+      name: 'Needs normalize',
+      currentAge: 50,
+      portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.03, bondStdDev: 0.05 },
+    } as unknown as Scenario;
+    mockGetAll.mockResolvedValue([legacy]);
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        'scenarios',
+        expect.objectContaining({
+          id: 'norm-id',
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+          longTermCapGainsRate: 0.15,
+          portfolioAssumptions: expect.objectContaining({ returnDistribution: 'lognormal', returnModel: 'parametric' }),
+        }),
+        'norm-id'
+      );
+    });
+    // No content migration happened → no "Scenarios updated" toast.
+    expect(vi.mocked(confirmDialog)).not.toHaveBeenCalledWith(
+      expect.objectContaining({ header: 'Scenarios updated' })
+    );
+  });
+
+  it('leaves a newer-schema record untouched on load (forward-compat guard)', async () => {
+    const future = {
+      id: 'future-id',
+      name: 'From the future',
+      currentAge: 50,
+      schemaVersion: CURRENT_SCHEMA_VERSION + 5,
+    } as Scenario;
+    mockGetAll.mockResolvedValue([future]);
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    // Give the load loop a tick to settle, then assert it never re-persisted.
+    await waitFor(() => expect(mockGetAll).toHaveBeenCalled());
+    expect(mockPut).not.toHaveBeenCalledWith('scenarios', expect.anything(), 'future-id');
+  });
+
+  it('rejects importing a file from a newer app version', async () => {
+    const text = makeScenarioJson({ schemaVersion: CURRENT_SCHEMA_VERSION + 1 });
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    const input = await waitFor(() => {
+      const el = inputSpy.getInput();
+      if (!el) throw new Error('no input captured');
+      return el;
+    });
+
+    await triggerFileSelection(input, makeFile(text));
+
+    await waitFor(() => {
+      expect(vi.mocked(confirmDialog)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          header: 'Error',
+          message: expect.stringContaining('newer version of YARP'),
+        })
+      );
+    });
+    expect(mockPut).not.toHaveBeenCalled();
   });
 
   describe('migrateLegacyTaxStrategy', () => {

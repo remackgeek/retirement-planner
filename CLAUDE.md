@@ -525,13 +525,13 @@ export interface IncomeEventMeta {
 
 **No runtime override.** The engine has no `resolveTaxStrategy` layer — `prepareUserData` flows raw `UserData` through the synthetic-account ensures and into the MC loop unchanged. The `spendingWithdrawalOrder` field on `UserData` was removed in Revision 2; `selectBestSpendingOrder` in [SimulationService.ts](src/services/SimulationService.ts) auto-picks the better of `'brokerage_first'` and `'bracket_aware'` per scenario by running two deterministic projections and comparing real terminal balances. No user override at all (UI or JSON) — a test-only `_forceSpendingOrder` internal hook lets unit tests isolate a specific policy without exposing it as data.
 
-**Legacy `taxStrategy` migration.** Scenarios saved before this rework carried `taxStrategy.cachedVector.perYearDecisions`. On load, [RetirementContext.tsx](src/context/RetirementContext.tsx) materializes the non-zero entries as tagged `roth_conversion` events (`meta.generatedBy = <strategy name>`), strips the dead field, persists back to IndexedDB, and shows a one-time toast. The `UserData.taxStrategy` type field still exists for the legacy parse path but is otherwise unused.
+**Legacy `taxStrategy` migration.** Scenarios saved before this rework carried `taxStrategy.cachedVector.perYearDecisions`. On load, `migrateLegacyTaxStrategy` in [scenarioMigration.ts](src/utils/scenarioMigration.ts) (run via the shared `runMigrationPipeline` from both the `initDB` load loop and `importScenario` in [RetirementContext.tsx](src/context/RetirementContext.tsx)) materializes the non-zero entries as tagged `roth_conversion` events (`meta.generatedBy = <strategy name>`), strips the dead field, persists back to IndexedDB, and shows a one-time toast. The `UserData.taxStrategy` type field still exists for the legacy parse path but is otherwise unused.
 
 ### IndexedDB schema migrations
 
 Two distinct migration patterns, do not confuse them:
 
-1. **Content-level (inside a stored Scenario): in-band on load.** When a field changes shape inside a `Scenario` object — added, renamed, removed, or restructured — write a `migrate<X>` helper that takes a `Scenario` and returns a `{ scenario, ... }` tuple, and call it from the `initDB` load loop in [RetirementContext.tsx](src/context/RetirementContext.tsx). Persist the migrated scenario back via `db.put` so subsequent loads skip the work. `migrateLegacyTaxStrategy` is the reference implementation. The `DB_VERSION` constant stays the same — only the scenario content evolves.
+1. **Content-level (inside a stored Scenario): in-band via the shared pipeline.** When a field changes shape inside a `Scenario` object — added, renamed, removed, or restructured — write a `migrate<X>` helper that takes a `Scenario` and returns a `{ scenario, ... }` tuple in [src/utils/scenarioMigration.ts](src/utils/scenarioMigration.ts), and wire it into `runMigrationPipeline` there. That single pipeline (normalize defaults → versioned migrators → inference migrations → schemaVersion stamp) is called by **both** the `initDB` load loop and `importScenario` in [RetirementContext.tsx](src/context/RetirementContext.tsx), so the two paths can no longer diverge. The load loop persists the migrated scenario back via `db.put` so subsequent loads skip the work. `migrateLegacyTaxStrategy` is the reference implementation. The `DB_VERSION` constant stays the same — only the scenario content evolves.
 
 2. **Structural (the IndexedDB schema itself): bump `DB_VERSION`.** When the change is at the database layer — a new object store, a new index, a renamed key scheme — increment the `DB_VERSION` constant in [RetirementContext.tsx](src/context/RetirementContext.tsx) and add a branch to the `upgrade(db, oldVersion, newVersion, tx)` callback. The `upgrade` handler must be idempotent: users whose DB is already at the new version skip it; users at older versions step through each branch in order. The current version is 1 with a single `scenarios` object store.
 
@@ -547,24 +547,34 @@ pattern-1 content migrations increment the toast counter). `undefined` means a p
 record/file ("legacy"). This is **distinct from `DB_VERSION`** — that versions the IndexedDB
 *structure*; this versions the *content* shape inside a Scenario.
 
-**The value is stamped but NOT branched on yet.** The pattern-1 inference migrations above
-(which detect old shape by field presence/type) still do all transforms. `schemaVersion: 1`
-asserts "this is the current Scenario shape, post all existing inference migrations." Do not
-add logic that reads `schemaVersion` to decide behavior until the roadmap below is taken up.
+**The value is stamped but the inference migrations still do all the actual transforms.**
+The shape-inference migrations (which detect old shape by field presence/type) plus
+`normalizeScenario` cover all v0→v1 work today. `schemaVersion: 1` asserts "this is the
+current Scenario shape, post all existing inference migrations." The **ordered-registry
+skeleton** (`MIGRATORS` + `applyVersionedMigrators` in
+[src/utils/scenarioMigration.ts](src/utils/scenarioMigration.ts)) is wired into the pipeline
+but currently empty — it's the home for the *next* content change. Do not read `schemaVersion`
+to branch behavior elsewhere; the registry is the one sanctioned place that does.
 
-**Release-readiness roadmap.** The app is in active dev today (see "No backward compatibility
-required" below). The version stamp was added *early and deliberately* because it's the one
-thing that can't be retrofitted — you can't version files that were already exported
-unversioned. When released-mode backward compat is actually needed:
-- Convert the pattern-1 inference migrations into an **ordered registry** keyed off
-  `schemaVersion` (`while (v < CURRENT_SCHEMA_VERSION) migrators[v++](scenario)`), bumping
-  `CURRENT_SCHEMA_VERSION` once per content change.
-- Add a **forward-compat guard**: on import, detect `schemaVersion > CURRENT_SCHEMA_VERSION`
-  and warn ("this file is from a newer version of the app") instead of silently loading with
-  wrong defaults.
-- Fold the **import-only `portfolioAssumptions` normalization** (currently inline in
-  `importScenario` only, not the `initDB` load path — [RetirementContext.tsx](src/context/RetirementContext.tsx))
-  into the shared migration pipeline so load and import stop diverging.
+**Release-readiness (mostly done — released-mode rules now apply).** An external user now has
+real data, so the data-stability rules below are live (see "Released-mode data stability" in
+Conventions). The version stamp was added *early and deliberately* because it's the one thing
+that can't be retrofitted — you can't version files that were already exported unversioned.
+Status of the three roadmap items:
+- ✓ **Load/import convergence** — both paths run the single `runMigrationPipeline`
+  ([scenarioMigration.ts](src/utils/scenarioMigration.ts)); the formerly import-only
+  `portfolioAssumptions` normalization now lives in `normalizeScenario` and runs on load too.
+- ✓ **Forward-compat guard** — `validateImportedScenario` rejects an imported file whose
+  `schemaVersion > CURRENT_SCHEMA_VERSION` with a clear "newer version of YARP" error; the
+  `initDB` load loop skips (and never re-persists) a newer-stamped record so an app downgrade
+  can't corrupt it.
+- ✓ **Deep import validation** — `validateImportedScenario` checks `accounts` / `incomeEvents`
+  / `spendingGoals` array elements and the required `portfolioAssumptions` numbers
+  (`stockStdDev`/`bondStdDev`, historical-mode requirements), so a malformed file fails loudly
+  at import instead of NaN-ing at the first MC tick.
+- ◻ **Remaining for a future content change:** convert to the ordered registry by populating
+  `MIGRATORS[v]` and bumping `CURRENT_SCHEMA_VERSION` once per content change (the
+  `while (v < CURRENT_SCHEMA_VERSION && MIGRATORS[v]) ...` loop already chains them).
 
 **Deliberate non-goal: multi-year optimizer.** A full optimizer (DP / RL /
 Bellman over the lifetime tax-and-withdrawal joint decision) is a research
@@ -638,13 +648,22 @@ picker (`SpendingGoalTypeSelectionDialog`) remains the entry point; `SpendingGoa
 routes to the correct per-type dialog. Simple goal types without unique fields can share
 `SpendingGoalDialog`, but create dedicated dialogs where it meaningfully improves UX.
 
-**No backward compatibility required.** This is active development — when fields, types,
-or data structures are renamed or removed, just change them cleanly. Do not leave behind
-deprecated aliases, re-exports, compatibility shims, or migration code for old field names.
-Old data in IndexedDB can be wiped; users will re-enter it. (One forward-looking exception:
-a `schemaVersion` stamp is already written on every scenario to make the eventual switch to
-real backward compat cheap — see "IndexedDB schema migrations" above. It is **not** branched
-on yet, so the "wipe freely" stance still holds for now.)
+**Released-mode data stability (the app now has external users).** Real user data exists in
+the wild — in IndexedDB and in exported `.json` files — so it must survive future builds.
+**Do not wipe the `scenarios` store or assume users will re-enter data.** When you rename,
+remove, or restructure a field inside a `Scenario`:
+- Add a content migration so old records/files load correctly — wire it into
+  `runMigrationPipeline` in [src/utils/scenarioMigration.ts](src/utils/scenarioMigration.ts)
+  (the shared load+import pipeline). Prefer the inference style for the current pass, or
+  populate `MIGRATORS[v]` and bump `CURRENT_SCHEMA_VERSION` for a registry-tracked change.
+- Keep migrations **idempotent** (re-running on already-migrated data is a no-op) and
+  **non-throwing** on load (a slightly-off record must not brick the app — only the *import*
+  path throws, to reject foreign/corrupt files).
+- Code-level cleanliness still applies to the *live* shape: you may delete dead types and
+  avoid re-export shims, as long as the migration converts old data to the new shape first.
+This replaces the earlier "wipe IndexedDB freely / no backward compatibility" stance, which
+was valid only in pre-release dev. The `schemaVersion` stamp (see "IndexedDB schema
+migrations" above) is the mechanism that makes this cheap.
 
 **Modeling parameters belong on the scenario, not in global settings.** Any knob that
 affects simulation behavior — returns, volatility, distribution choice, withdrawal

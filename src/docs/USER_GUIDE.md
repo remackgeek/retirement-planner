@@ -400,7 +400,7 @@ For deeper detail on any of these settings — including the math, distributions
 
 Because everything stays in your browser, you should save copies of your scenarios outside the browser. Each scenario has an **Export** button that downloads a small file — save it somewhere durable (cloud storage, a USB drive, a folder you back up).
 
-To restore or move to a new device, click **Import** and select the file. You can also share scenarios with an advisor or family member this way — just send them the file.
+To restore or move to a new device, click **Import** and select the file. You can also share scenarios with an advisor or family member this way — just send them the file. Imported files are validated before they load: a corrupted or incomplete file, or one exported by a *newer* version of the app than you're running, is rejected with a clear message rather than loading with bad data.
 
 ---
 
