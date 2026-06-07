@@ -6,8 +6,8 @@
     { "index": 0, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Full conversion executes year 1" },
     { "index": 0, "field": "withdrawalFromTraditional", "min": 60000, "max": 75000, "_note": "Trad pull = conv $50k + spending Trad pull within 12% headroom ($10-25k)" },
     { "index": 0, "field": "rothConversionTaxWithheld", "value": 0, "tolerance": 0.01, "_note": "Taxable funds conv tax; no withholding" },
-    { "index": 0, "field": "rothConversionTaxFromTaxable", "min": 3000, "max": 7000, "_note": "Conv ordinary tax sourced from Taxable" },
-    { "index": 0, "field": "withdrawalFromTaxable", "min": 30000, "max": 60000, "_note": "Spending overflow + conv tax + LTCG cascade from Taxable" },
+    { "index": 0, "field": "rothConversionTaxFromBrokerage", "min": 3000, "max": 7000, "_note": "Conv ordinary tax sourced from Taxable" },
+    { "index": 0, "field": "withdrawalFromBrokerage", "min": 30000, "max": 60000, "_note": "Spending overflow + conv tax + LTCG cascade from Taxable" },
     { "index": 2, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Year 3 (age 62) still in conv window" },
     { "index": 3, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "Year 4 (age 63) past endAge — no conv" }
   ]

@@ -6,7 +6,11 @@ import type { MenuItem } from 'primereact/menuitem';
 import { spacing, colors, fontSize, mediaQuery } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
 import ModelingDialog from '../../dialogs/ModelingDialog';
+import CashBucketDialog from '../../dialogs/CashBucketDialog';
 import TaxAndIrsDialog from '../../dialogs/TaxAndIrsDialog';
+import SocialSecurityWizardDialog from '../../dialogs/SocialSecurityWizardDialog';
+import RothConversionDialog from '../../dialogs/RothConversionDialog';
+import { applyGeneratedConversions } from '../../utils/applyGeneratedConversions';
 import ExamplePickerDialog from '../../dialogs/ExamplePickerDialog';
 import AboutDialog from '../../dialogs/AboutDialog';
 import MarkdownViewerSidebar from '../../dialogs/MarkdownViewerSidebar';
@@ -84,24 +88,64 @@ const HeaderRight = styled.div`
 interface AppHeaderProps {
   onMenuToggle: () => void;
   onExportCsv?: () => void;
+  userGuideVisible: boolean;
+  onUserGuideVisibleChange: (v: boolean) => void;
 }
 
-const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
+const AppHeader: React.FC<AppHeaderProps> = ({
+  onMenuToggle,
+  onExportCsv,
+  userGuideVisible,
+  onUserGuideVisibleChange,
+}) => {
   const context = useContext(RetirementContext);
   const scenarioName = context?.activeScenario?.name;
   const activeScenario = context?.activeScenario ?? null;
 
   const menuRef = useRef<Menu>(null);
   const reportsMenuRef = useRef<Menu>(null);
+  const toolsMenuRef = useRef<Menu>(null);
   const helpMenuRef = useRef<Menu>(null);
+  const [ssWizardVisible, setSsWizardVisible] = useState(false);
+  const [rothWizardVisible, setRothWizardVisible] = useState(false);
   const [modelingVisible, setModelingVisible] = useState(false);
+  const [cashBucketVisible, setCashBucketVisible] = useState(false);
   const [taxIrsVisible, setTaxIrsVisible] = useState(false);
+  // Gate the Cash Bucket menu item: visible only when ≥1 cash account exists OR
+  // the policy has been previously configured (so the user can still re-open it
+  // to edit even after the cash account is removed). Progressive disclosure:
+  // casual users never see this item.
+  const hasCashContext = !!activeScenario && (
+    activeScenario.accounts.some((a) => a.type === 'cash')
+    || !!activeScenario.cashBucketPolicy
+  );
   const [examplePickerVisible, setExamplePickerVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
-  const [userGuideVisible, setUserGuideVisible] = useState(false);
   const [modelDetailsVisible, setModelDetailsVisible] = useState(false);
 
   const menuItems: MenuItem[] = [
+    {
+      label: 'Modeling',
+      icon: 'pi pi-chart-line',
+      command: () => setModelingVisible(true),
+      disabled: !activeScenario,
+    },
+    ...(hasCashContext
+      ? [{
+          label: 'Cash Bucket',
+          icon: 'pi pi-wallet',
+          command: () => setCashBucketVisible(true),
+        }]
+      : []),
+    {
+      label: 'Tax & IRS',
+      icon: 'pi pi-percentage',
+      command: () => setTaxIrsVisible(true),
+      disabled: !activeScenario,
+    },
+  ];
+
+  const toolsMenuItems: MenuItem[] = [
     {
       label: 'Load example…',
       icon: 'pi pi-bolt',
@@ -109,15 +153,15 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
     },
     { separator: true },
     {
-      label: 'Modeling',
-      icon: 'pi pi-chart-line',
-      command: () => setModelingVisible(true),
+      label: 'Social Security',
+      icon: 'pi pi-shield',
+      command: () => setSsWizardVisible(true),
       disabled: !activeScenario,
     },
     {
-      label: 'Tax & IRS',
-      icon: 'pi pi-percentage',
-      command: () => setTaxIrsVisible(true),
+      label: 'Roth Conversions',
+      icon: 'pi pi-sync',
+      command: () => setRothWizardVisible(true),
       disabled: !activeScenario,
     },
   ];
@@ -132,7 +176,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   ];
 
   const helpMenuItems: MenuItem[] = [
-    { label: 'User Guide',    icon: 'pi pi-book',       command: () => setUserGuideVisible(true) },
+    { label: 'User Guide',    icon: 'pi pi-book',       command: () => onUserGuideVisibleChange(true) },
     { label: 'Model Details', icon: 'pi pi-sliders-h',  command: () => setModelDetailsVisible(true) },
     { separator: true },
     { label: 'About YARP',   icon: 'pi pi-info-circle', command: () => setAboutVisible(true) },
@@ -171,6 +215,15 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
             onClick={(e) => reportsMenuRef.current?.toggle(e)}
             disabled={!activeScenario}
           />
+          <Menu model={toolsMenuItems} popup ref={toolsMenuRef} />
+          <Button
+            label="Tools"
+            icon="pi pi-chevron-down"
+            iconPos="right"
+            className="p-button-text p-button-sm"
+            style={{ padding: '0.15rem 0.5rem' }}
+            onClick={(e) => toolsMenuRef.current?.toggle(e)}
+          />
           <Menu model={menuItems} popup ref={menuRef} />
           <Button
             label="Settings"
@@ -201,11 +254,43 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
         />
       )}
       {activeScenario && (
+        <CashBucketDialog
+          visible={cashBucketVisible}
+          onHide={() => setCashBucketVisible(false)}
+          scenario={activeScenario}
+          onSave={handleSave}
+        />
+      )}
+      {activeScenario && (
         <TaxAndIrsDialog
           visible={taxIrsVisible}
           onHide={() => setTaxIrsVisible(false)}
           scenario={activeScenario}
           onSave={handleSave}
+        />
+      )}
+      {activeScenario && (
+        <SocialSecurityWizardDialog
+          visible={ssWizardVisible}
+          onHide={() => setSsWizardVisible(false)}
+          scenario={activeScenario}
+          onSave={handleSave}
+        />
+      )}
+      {activeScenario && (
+        <RothConversionDialog
+          visible={rothWizardVisible}
+          onHide={() => setRothWizardVisible(false)}
+          userData={activeScenario}
+          existingEvents={activeScenario.incomeEvents}
+          onApplyBatch={(batch) => {
+            handleSave(applyGeneratedConversions(activeScenario, batch));
+            setRothWizardVisible(false);
+          }}
+          onSave={(event) => handleSave({
+            ...activeScenario,
+            incomeEvents: [...activeScenario.incomeEvents, { ...event, id: crypto.randomUUID() }],
+          })}
         />
       )}
       <ExamplePickerDialog
@@ -221,7 +306,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
         icon="pi pi-book"
         content={userGuideContent}
         visible={userGuideVisible}
-        onHide={() => setUserGuideVisible(false)}
+        onHide={() => onUserGuideVisibleChange(false)}
         showLogo
       />
       <MarkdownViewerSidebar

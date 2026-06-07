@@ -8,7 +8,7 @@ import { Dialog } from 'primereact/dialog';
 import { Checkbox } from 'primereact/checkbox';
 import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import type { Scenario } from '../types/Scenario';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import { SELECTABLE_STATES, getStateTaxProfile } from '../data/stateTaxProfiles';
 
 const SectionGrid = styled.div`
@@ -159,6 +159,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         ...tempData,
         filingStatus: value,
         spouseAge: null,
+        spouseLifeExpectancy: null,
         incomeEvents: tempData.incomeEvents.filter((e) => e.owner !== 'spouse'),
       });
     } else {
@@ -168,13 +169,23 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
 
   const isMfj = tempData.filingStatus === 'mfj';
 
+  // Spouse Life Expectancy is optional, but if provided it must exceed the spouse's
+  // current age (otherwise the widow's-penalty model silently treats it as "off").
+  // Surface that as a validation error rather than letting it pass unnoticed.
+  const spouseLEInvalid =
+    isMfj &&
+    tempData.spouseAge !== null &&
+    tempData.spouseLifeExpectancy != null &&
+    (tempData.spouseLifeExpectancy <= tempData.spouseAge || tempData.spouseLifeExpectancy > 120);
+
   const isValid =
     tempData.name.trim().length > 0 &&
     tempData.currentAge >= 18 &&
     tempData.currentAge <= 100 &&
     tempData.lifeExpectancy > tempData.currentAge &&
     tempData.lifeExpectancy <= 120 &&
-    (!isMfj || (tempData.spouseAge !== null && tempData.spouseAge >= 18 && tempData.spouseAge <= 100));
+    (!isMfj || (tempData.spouseAge !== null && tempData.spouseAge >= 18 && tempData.spouseAge <= 100)) &&
+    !spouseLEInvalid;
 
   const handleSave = () => {
     if (!isValid) return;
@@ -217,7 +228,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
         </>
       }
       visible={visible}
-      style={{ width: '40rem' }}
+      style={dialogWidth('40rem')}
       onHide={onHide}
       footer={dialogFooter}
     >
@@ -274,6 +285,26 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
               keyfilter='pint'
               className={tempData.spouseAge === null ? 'p-invalid' : ''}
             />
+          </FieldGroup>
+        )}
+
+        {isMfj && tempData.spouseAge !== null && (
+          <FieldGroup>
+            <label>Spouse Life Expectancy</label>
+            <InputNumber
+              value={tempData.spouseLifeExpectancy ?? null}
+              onValueChange={(e) => handleChange('spouseLifeExpectancy', e.value ?? null)}
+              mode='decimal'
+              min={(tempData.spouseAge || 18) + 1}
+              max={120}
+              placeholder='Optional'
+              className={spouseLEInvalid ? 'p-invalid' : ''}
+            />
+            <div style={{ fontSize: fontSize.xs, color: spouseLEInvalid ? colors.danger : colors.textMuted, lineHeight: 1.4 }}>
+              {spouseLEInvalid
+                ? `Must be greater than the spouse's age (${tempData.spouseAge}) and at most 120.`
+                : `Optional. When set, models the survivor "widow's penalty": at the first death the survivor files as single (compressed brackets, lower IRMAA tiers) and keeps the larger Social Security benefit. Leave blank to skip.`}
+            </div>
           </FieldGroup>
         )}
 
@@ -422,6 +453,7 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
           </PrimeTooltip>
         </div>
       )}
+
     </Dialog>
   );
 };

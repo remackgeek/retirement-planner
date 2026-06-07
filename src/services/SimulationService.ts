@@ -1,4 +1,10 @@
-import type { UserData } from '../types/UserData';
+import type { UserData, CashBucketPolicy } from '../types/UserData';
+// Spending-source order is auto-selected per scenario via
+// `selectBestSpendingOrder`. The legacy `taxStrategy` field on UserData is
+// no longer consulted by the engine — it is stripped on scenario load by
+// `migrateLegacyTaxStrategy` in RetirementContext. The legacy
+// `spendingWithdrawalOrder` field is similarly stripped by
+// `stripDeprecatedSpendingWithdrawalOrder`.
 import type { Account, AccountType, AccountKind } from '../types/Account';
 import {
   calculateNetFromGross,
@@ -10,6 +16,8 @@ import {
   getNumQualifyingSeniors,
   getStandardDeduction,
   getUsualSeniorExtra,
+  computeFederalLTCGTax,
+  getFederalTaxableIncome,
   type FederalBracketDetail,
   type FilingStatus,
   type SsZone,
@@ -56,6 +64,24 @@ export function calculateRMD(tradBalance: number, age: number): number {
   return tradBalance / divisor;
 }
 
+/**
+ * Surface a CashBucketPolicy's fixed dollar thresholds under the internal
+ * `minCash/targetCash/maxCash` names. The policy fields are already nominal
+ * dollar amounts (they do not inflate), so this is a thin alias rather than a
+ * conversion. Single source of truth used by BOTH the in-loop spending
+ * waterfall (clamps Cash pulls at `minCash`) and the post-convergence step
+ * (sweep above `maxCash`, refill toward `targetCash`).
+ */
+export function cashBucketBounds(
+  policy: { minAmount: number; targetAmount: number; maxAmount: number },
+): { minCash: number; targetCash: number; maxCash: number } {
+  return {
+    minCash: policy.minAmount,
+    targetCash: policy.targetAmount,
+    maxCash: policy.maxAmount,
+  };
+}
+
 // Resolve the active state name for a given calendar year by walking the
 // scenario's stateTimeline. Used by the tax-audit detail rendering to label
 // which state's rate applied this year (the federal/state ordinary-tax split
@@ -63,6 +89,16 @@ export function calculateRMD(tradBalance: number, age: number): number {
 // gross").
 export function getEffectiveStateName(userData: UserData, year: number): string {
   const timeline = userData.stateTimeline;
+  // Defense-in-depth: the import validator enforces non-empty stateTimeline,
+  // but the engine shouldn't trust UI invariants for programmatically-built
+  // scenarios. Fall back to Florida (zero state tax) and warn so any leakage
+  // surfaces in dev rather than throwing on `timeline[0].state`.
+  if (!timeline || timeline.length === 0) {
+    if (typeof console !== 'undefined') {
+      console.warn('[getEffectiveStateName] stateTimeline is empty; falling back to Florida.');
+    }
+    return 'Florida';
+  }
   let effectiveState = timeline[0].state;
   for (let i = 1; i < timeline.length; i++) {
     const startYear = timeline[i].startYear;
@@ -75,6 +111,69 @@ export function getEffectiveStateName(userData: UserData, year: number): string 
   return effectiveState;
 }
 
+// ---------------- Widow's-penalty death model ----------------
+//
+// Models the survivor tax transition from explicit per-person death ages:
+// self death age = `lifeExpectancy`, spouse death age = `spouseLifeExpectancy`.
+// At the FIRST death the survivor flips MFJ→single for the remaining years
+// (compressed brackets, ~half standard deduction, more SS taxable, lower IRMAA
+// tiers), keeps the LARGER of the two Social Security benefits, and consolidates
+// all Traditional balances (combined RMD at the survivor's age). The projection
+// runs to the LATER of the two deaths.
+//
+// Convention: filing is MFJ THROUGH the year of the first death (IRS allows joint
+// filing in the year of death — the cheapest conversion window), then single every
+// year after. So survivor mode is `yearOffset > firstDeathOffset`.
+//
+// Inactive (not MFJ, no spouseAge, or no spouseLifeExpectancy): `firstDeathOffset`
+// is Infinity and `horizonYears` equals the self-only horizon, so every downstream
+// array/loop is bit-identical to pre-feature behavior.
+export interface DeathModel {
+  active: boolean;
+  selfDeathOffset: number;
+  spouseDeathOffset: number;
+  /** Year offset (0-based) of the first death. Filing flips the year AFTER. */
+  firstDeathOffset: number;
+  survivor: 'self' | 'spouse';
+  /** Total projection years = max(self, spouse) death offset + 1. */
+  horizonYears: number;
+}
+
+export function getDeathModel(userData: UserData): DeathModel {
+  const selfDeathOffset = userData.lifeExpectancy - userData.currentAge;
+  const spouseLE = userData.spouseLifeExpectancy;
+  const active =
+    userData.filingStatus === 'mfj' &&
+    userData.spouseAge !== null &&
+    spouseLE != null &&
+    spouseLE >= userData.spouseAge;
+  if (!active || userData.spouseAge === null || spouseLE == null) {
+    return {
+      active: false,
+      selfDeathOffset,
+      spouseDeathOffset: selfDeathOffset,
+      firstDeathOffset: Infinity,
+      survivor: 'self',
+      horizonYears: selfDeathOffset + 1,
+    };
+  }
+  const spouseDeathOffset = spouseLE - userData.spouseAge;
+  const firstDeathOffset = Math.min(selfDeathOffset, spouseDeathOffset);
+  // Ties resolve to 'self' as survivor (consistent with the rest of the engine
+  // treating self as the default owner); with equal death offsets there are no
+  // survivor years anyway.
+  const survivor: 'self' | 'spouse' =
+    selfDeathOffset >= spouseDeathOffset ? 'self' : 'spouse';
+  const horizonYears = Math.max(selfDeathOffset, spouseDeathOffset) + 1;
+  return { active: true, selfDeathOffset, spouseDeathOffset, firstDeathOffset, survivor, horizonYears };
+}
+
+// Single source of truth for the projection length. = max(self, spouse) death
+// offset + 1 when the death model is active; self horizon otherwise.
+export function projectionHorizonYears(userData: UserData): number {
+  return getDeathModel(userData).horizonYears;
+}
+
 // ---------------- Account index (precompute) ----------------
 
 // Precomputed account lookup tables — hoisted out of the per-year-per-run
@@ -84,22 +183,30 @@ export function getEffectiveStateName(userData: UserData, year: number): string 
 interface AccountIndex {
   byId: Map<string, Account>;
   byType: Record<AccountType, Account[]>;
-  firstTaxable: Account | null;
+  firstBrokerage: Account | null;
+  firstCash: Account | null;
   // event.id → resolved deposit-target account.id, for retirement_contribution events.
   // Built once so depositContributions doesn't re-resolve per year per run.
   contributionTargetByEventId: Map<string, string>;
   // account.id → stockAllocation, for the inner growth loop.
   allocationById: Map<string, number>;
+  // account.id → true iff the account is type 'cash'. Used in the growth loop's
+  // hot path to bypass the stock/bond shock multiplier + black-swan overlay and
+  // apply a deterministic yield instead. Cash is non-volatile by construction
+  // in this model (see CLAUDE.md).
+  isCashById: Map<string, boolean>;
 }
 
 export function buildAccountIndex(userData: UserData): AccountIndex {
   const byId = new Map<string, Account>();
-  const byType: Record<AccountType, Account[]> = { taxable: [], traditional: [], roth: [] };
+  const byType: Record<AccountType, Account[]> = { brokerage: [], traditional: [], roth: [], cash: [] };
   const allocationById = new Map<string, number>();
+  const isCashById = new Map<string, boolean>();
   for (const a of userData.accounts) {
     byId.set(a.id, a);
     byType[a.type].push(a);
     allocationById.set(a.id, a.stockAllocation);
+    isCashById.set(a.id, a.type === 'cash');
   }
   const contributionTargetByEventId = new Map<string, string>();
   for (const e of userData.incomeEvents) {
@@ -110,9 +217,11 @@ export function buildAccountIndex(userData: UserData): AccountIndex {
   return {
     byId,
     byType,
-    firstTaxable: byType.taxable[0] ?? null,
+    firstBrokerage: byType.brokerage[0] ?? null,
+    firstCash: byType.cash[0] ?? null,
     contributionTargetByEventId,
     allocationById,
+    isCashById,
   };
 }
 
@@ -177,12 +286,17 @@ function subtractFromAccounts(
 
 // Add `amount` to a precomputed list of accounts, proportional to current balance.
 // If no balances exist in the type, deposits to the first account of that type (if any).
-// Optional `sink` accumulates the per-account amount actually deposited.
+// Optional `sink` accumulates the per-account amount actually deposited. Optional
+// `extraSink` receives the same per-account amounts — useful when a single call
+// site needs to mirror its deposits into both a shared deposit aggregator and a
+// purpose-specific sink (e.g., isolating Roth-conversion-deposit shares from
+// Roth-contribution-deposit shares in audit.rothConvDepositByAccount).
 function addToAccounts(
   typeAccounts: Account[],
   balances: Record<string, number>,
   amount: number,
-  sink?: Map<string, number>
+  sink?: Map<string, number>,
+  extraSink?: Map<string, number>,
 ): void {
   if (amount <= 0 || typeAccounts.length === 0) return;
   let typeTotal = 0;
@@ -191,6 +305,7 @@ function addToAccounts(
     const first = typeAccounts[0];
     balances[first.id] = (balances[first.id] ?? 0) + amount;
     if (sink) sink.set(first.id, (sink.get(first.id) ?? 0) + amount);
+    if (extraSink) extraSink.set(first.id, (extraSink.get(first.id) ?? 0) + amount);
     return;
   }
   for (const a of typeAccounts) {
@@ -198,22 +313,40 @@ function addToAccounts(
     const share = (bal / typeTotal) * amount;
     balances[a.id] = bal + share;
     if (sink && share > 0) sink.set(a.id, (sink.get(a.id) ?? 0) + share);
+    if (extraSink && share > 0) extraSink.set(a.id, (extraSink.get(a.id) ?? 0) + share);
   }
 }
 
 function eventActiveInYear(
   userData: UserData,
   event: UserData['incomeEvents'][number],
-  year: number
+  year: number,
+  // The scenario's death model. Pass it in to avoid recomputing per event-year
+  // (callers iterate many events per year); falls back to computing it for
+  // standalone callers.
+  deathModel?: DeathModel,
 ): boolean {
   const ownerAge =
     event.owner === 'spouse' && userData.spouseAge !== null
       ? userData.spouseAge
       : userData.currentAge;
   const startYear = userData.referenceYear + (event.startAge - ownerAge);
+  const dm = deathModel ?? getDeathModel(userData);
+  // Ongoing (no endAge) events run to the full projection horizon (which extends
+  // to the survivor's death when the spouse outlives self). Legacy/inactive:
+  // horizonYears-1 = self death offset, so this is bit-identical to the old
+  // `lifeExpectancy + referenceYear - currentAge`.
   const endYear = event.endAge
     ? userData.referenceYear + (event.endAge - ownerAge)
-    : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
+    : userData.referenceYear + dm.horizonYears - 1;
+  // Widow's penalty: non-SS income owned by a deceased person stops after their
+  // death year. Social Security is handled specially (survivor keeps the larger
+  // benefit in `accumulateIncome`) and is intentionally NOT cut here.
+  if (dm.active && event.type !== 'social_security') {
+    const owner: 'self' | 'spouse' = event.owner ?? 'self';
+    const ownerDeathOffset = owner === 'self' ? dm.selfDeathOffset : dm.spouseDeathOffset;
+    if (year > userData.referenceYear + ownerDeathOffset) return false;
+  }
   if (event.isOneTime) return year === startYear;
   return year >= startYear && year <= endYear;
 }
@@ -229,7 +362,7 @@ function resolveContributionAccountId(
       ? 'traditional'
       : event.contributionType === 'roth'
         ? 'roth'
-        : 'taxable';
+        : 'brokerage';
   if (event.accountId) {
     const explicit = userData.accounts.find((a) => a.id === event.accountId);
     if (explicit) return explicit.id;
@@ -271,26 +404,109 @@ function applyCashFlow(
   // UI. The Map sinks are still allocated (cheap, needed by the rebalancing
   // helpers' optional-sink contract) — only the rows-array construction and
   // the breakdown.audit.accountFlows assignment are skipped.
-  includeAudit: boolean = true
+  includeAudit: boolean = true,
+  // Widow's-penalty survivor mode: the survivor owns ALL Traditional and ALL Roth,
+  // so RMD/conversion pulls and the conversion deposit ignore the per-owner `owner`
+  // filter (rmdSpouse/convSpouse are already 0 in this mode — see core). Default
+  // false preserves the per-owner IRS routing while both spouses are alive.
+  consolidated: boolean = false,
 ): void {
   const withdrawalSink = new Map<string, number>();
   const depositSink = new Map<string, number>();
-  subtractFromAccounts(accountIndex.byType.taxable, balances, breakdown.withdrawalFromTaxable, withdrawalSink);
-  subtractFromAccounts(accountIndex.byType.traditional, balances, breakdown.withdrawalFromTraditional, withdrawalSink);
+  // rmdSink tracks per-account RMD shares only (Pass 1 + Pass 2 below). This
+  // is what powers `audit.rmdByAccount` for the Cash Flow Sankey's per-account
+  // RMD detail. The non-RMD Trad withdrawal (Pass 3) accumulates into
+  // withdrawalSink alongside other account types — its per-account number is
+  // visible in accountFlows but isn't decomposed by sub-purpose.
+  const rmdSink = new Map<string, number>();
+  // rothConvDepositSink isolates the per-Roth-account share of the Roth
+  // conversion deposit (separate from `depositSink`, which also includes
+  // retirement_contribution Roth deposits and would conflate the two).
+  // Surfaced as `audit.rothConvDepositByAccount` for the Sankey per-account
+  // deposit detail.
+  const rothConvDepositSink = new Map<string, number>();
+  // Cash withdrawals are tax-free principal pulls — sourced first by the
+  // waterfall, but the order of subtractFromAccounts calls here doesn't matter
+  // since each one operates on its own account-type subset of balances.
+  subtractFromAccounts(accountIndex.byType.cash, balances, breakdown.withdrawalFromCash, withdrawalSink);
+  subtractFromAccounts(accountIndex.byType.brokerage, balances, breakdown.withdrawalFromBrokerage, withdrawalSink);
+
+  // Traditional withdrawal is split into three passes so per-owner RMD discipline
+  // is honored (IRS rule: each owner's RMD must be satisfied from their own
+  // accounts — a Spouse's IRA cannot fund Self's RMD). Non-RMD Trad pulls
+  // (discretionary spending + Roth conversion gross) keep the existing pro-rata-
+  // across-all-Trad behavior (no household-level IRS constraint on those).
+  //
+  // Order: RMD passes BEFORE the non-RMD pass. The IRS doesn't dictate intra-year
+  // order so either sequence would conserve total cash flow, but RMD-first matches
+  // the spending-waterfall mental model (forced obligations satisfied before
+  // discretionary). Per-account ending balances differ subtly between the two
+  // orders because Pass 3 sees post-RMD reduced balances; this is harmless.
+  const rmdSelf = breakdown.audit?.rmdSelf ?? 0;
+  const rmdSpouse = breakdown.audit?.rmdSpouse ?? 0;
+  const tradAccounts = accountIndex.byType.traditional;
+  // In survivor mode the "self" pool is ALL Traditional (survivor inherited the
+  // deceased's accounts); rmdSpouse/convSpouse are 0 so the spouse passes no-op.
+  const selfTradPool = consolidated
+    ? tradAccounts
+    : tradAccounts.filter(a => (a.owner ?? 'self') === 'self');
+  const spouseTradPool = consolidated
+    ? []
+    : tradAccounts.filter(a => a.owner === 'spouse');
+  if (rmdSelf > 0) {
+    subtractFromAccounts(selfTradPool, balances, rmdSelf, rmdSink);
+  }
+  if (rmdSpouse > 0) {
+    subtractFromAccounts(spouseTradPool, balances, rmdSpouse, rmdSink);
+  }
+  // Pass 3a — Self conversion pulls from Self-owned Trad only (IRS rule:
+  // a conversion moves Self's Trad to Self's Roth; Spouse's Trad cannot fund it).
+  // In survivor mode the self pool is all Trad.
+  const convSelf = breakdown.rothConversionGrossSelf;
+  if (convSelf > 0) {
+    subtractFromAccounts(selfTradPool, balances, convSelf, withdrawalSink);
+  }
+  // Pass 3b — Spouse conversion pulls from Spouse-owned Trad only.
+  const convSpouse = breakdown.rothConversionGrossSpouse;
+  if (convSpouse > 0) {
+    subtractFromAccounts(spouseTradPool, balances, convSpouse, withdrawalSink);
+  }
+  // Pass 3c — discretionary spending pull (the leftover non-RMD non-conversion
+  // portion). No household-level IRS constraint, so pro-rata across ALL Trad.
+  const discretionaryTrad = Math.max(
+    0,
+    breakdown.withdrawalFromTraditional - rmdSelf - rmdSpouse - convSelf - convSpouse,
+  );
+  if (discretionaryTrad > 0) {
+    subtractFromAccounts(tradAccounts, balances, discretionaryTrad, withdrawalSink);
+  }
+  // Merge rmdSink into withdrawalSink so accountFlows reports total per-account
+  // Trad outflow (RMD + non-RMD). rmdSink stays separate for rmdByAccount.
+  rmdSink.forEach((amount, id) => {
+    if (amount <= 0) return;
+    withdrawalSink.set(id, (withdrawalSink.get(id) ?? 0) + amount);
+  });
+
   subtractFromAccounts(accountIndex.byType.roth, balances, breakdown.withdrawalFromRoth, withdrawalSink);
-  // Deposit Roth conversion into Roth accounts (pro-rata). A receiving Roth is
-  // guaranteed by ensureRothConversionAccount when any conversion event exists.
-  // The deposit is the gross conversion minus any withheld tax (when Taxable +
-  // RMD-excess couldn't cover the marginal ordinary tax — IRS Form 1099-R Box 4).
+  // Deposit Roth conversion into Roth accounts — PER OWNER (IRS rule: each
+  // owner's conversion deposits into their own Roth accounts). The deposit
+  // is the per-owner gross minus that owner's withheld-tax share.
+  // ensureRothConversionAccount guarantees a per-owner receiving Roth exists
+  // whenever a per-owner conversion event exists.
   if (breakdown.rothConversionGross > 0) {
-    const rothDeposit = breakdown.rothConversionGross - breakdown.rothConversionTaxWithheld;
-    if (rothDeposit > 0) {
-      addToAccounts(accountIndex.byType.roth, balances, rothDeposit, depositSink);
-    }
+    const rothAccounts = accountIndex.byType.roth;
+    // Survivor mode: the survivor owns all Roth; deposit the (consolidated, all-self)
+    // conversion across every Roth account. depositSpouse is 0 in this mode.
+    const selfRoth   = consolidated ? rothAccounts : rothAccounts.filter(a => (a.owner ?? 'self') === 'self');
+    const spouseRoth = consolidated ? [] : rothAccounts.filter(a => a.owner === 'spouse');
+    const depositSelf   = Math.max(0, breakdown.rothConversionGrossSelf   - breakdown.rothConversionTaxWithheldSelf);
+    const depositSpouse = Math.max(0, breakdown.rothConversionGrossSpouse - breakdown.rothConversionTaxWithheldSpouse);
+    if (depositSelf > 0)   addToAccounts(selfRoth,   balances, depositSelf,   depositSink, rothConvDepositSink);
+    if (depositSpouse > 0) addToAccounts(spouseRoth, balances, depositSpouse, depositSink, rothConvDepositSink);
   }
   // Deposit RMD excess into the first taxable account (already ensured to exist by caller).
-  if (breakdown.rmdExcess > 0 && accountIndex.firstTaxable) {
-    const id = accountIndex.firstTaxable.id;
+  if (breakdown.rmdExcess > 0 && accountIndex.firstBrokerage) {
+    const id = accountIndex.firstBrokerage.id;
     balances[id] = (balances[id] ?? 0) + breakdown.rmdExcess;
     depositSink.set(id, (depositSink.get(id) ?? 0) + breakdown.rmdExcess);
   }
@@ -298,8 +514,8 @@ function applyCashFlow(
   depositContributions(accountIndex, contributions, balances, depositSink);
   // Surplus: deposit any positive netCashFlow into the first taxable account.
   // ensureReinvestmentAccount guarantees one exists when surplus is possible.
-  if (breakdown.netCashFlow > 0 && accountIndex.firstTaxable) {
-    const id = accountIndex.firstTaxable.id;
+  if (breakdown.netCashFlow > 0 && accountIndex.firstBrokerage) {
+    const id = accountIndex.firstBrokerage.id;
     balances[id] = (balances[id] ?? 0) + breakdown.netCashFlow;
     depositSink.set(id, (depositSink.get(id) ?? 0) + breakdown.netCashFlow);
   }
@@ -320,7 +536,7 @@ function applyCashFlow(
     rows.push({
       accountId: id,
       accountName: acct?.name ?? id,
-      accountType: acct?.type ?? 'taxable',
+      accountType: acct?.type ?? 'brokerage',
       withdrawal: amount,
       deposit: depositSink.get(id) ?? 0,
     });
@@ -331,7 +547,7 @@ function applyCashFlow(
     rows.push({
       accountId: id,
       accountName: acct?.name ?? id,
-      accountType: acct?.type ?? 'taxable',
+      accountType: acct?.type ?? 'brokerage',
       withdrawal: 0,
       deposit: amount,
     });
@@ -342,7 +558,147 @@ function applyCashFlow(
   // withdrawal sinks have run. Callers of the public calculateAnnualCashFlow
   // wrapper that don't subsequently call applyCashFlow will see accountFlows
   // as undefined; tests that need it should drive runSimulation.
-  if (breakdown.audit) breakdown.audit.accountFlows = rows;
+  if (breakdown.audit) {
+    breakdown.audit.accountFlows = rows;
+    // Per-account RMD attribution. Built from rmdSink alone so non-RMD Trad
+    // pulls in the same year don't pollute the row values. Conservation:
+    // sum equals rmdRequired within $1 (engine assertion).
+    const rmdRows: AccountFlowRow[] = [];
+    rmdSink.forEach((amount, id) => {
+      if (amount <= 0) return;
+      const acct = accountIndex.byId.get(id);
+      rmdRows.push({
+        accountId: id,
+        accountName: acct?.name ?? id,
+        accountType: acct?.type ?? 'traditional',
+        withdrawal: amount,
+        deposit: 0,
+      });
+    });
+    breakdown.audit.rmdByAccount = rmdRows;
+    // Per-account Roth conversion deposit. Built from rothConvDepositSink so
+    // Roth contribution deposits (from retirement_contribution events) don't
+    // pollute the row values. Conservation: sum equals
+    // (rothConversionGross − rothConversionTaxWithheld) within $1.
+    const rothConvDepositRows: AccountFlowRow[] = [];
+    rothConvDepositSink.forEach((amount, id) => {
+      if (amount <= 0) return;
+      const acct = accountIndex.byId.get(id);
+      rothConvDepositRows.push({
+        accountId: id,
+        accountName: acct?.name ?? id,
+        accountType: acct?.type ?? 'roth',
+        withdrawal: 0,
+        deposit: amount,
+      });
+    });
+    breakdown.audit.rothConvDepositByAccount = rothConvDepositRows;
+  }
+}
+
+/**
+ * Phase 2 post-convergence bucket-policy step. Runs AFTER `applyCashFlow` has
+ * settled all account flows for the year (withdrawals, conversion deposit,
+ * RMD-excess reinvestment, surplus deposit to Taxable, contribution deposits).
+ *
+ * STRUCTURAL INVARIANT (load-bearing — type-enforced by this signature):
+ * This function receives only the *settled* balances and a minimal subset of
+ * the breakdown, plus the policy and trigger inputs. It does NOT receive the
+ * full breakdown, does NOT import tax modules, and its return type contains
+ * only cash-routing fields. As a result, it cannot accidentally mutate
+ * `totalTax`, `ordinaryTax`, `federalCapGainsTax`, NIIT, IRMAA, or any income
+ * field. This makes "post-convergence step never re-enters the tax calc" a
+ * type-level guarantee rather than a discipline.
+ *
+ * Operations (thresholds are fixed nominal dollar amounts on the policy):
+ *  - SWEEP: when cashBal > maxAmount, move excess to first Taxable.
+ *    Tax-free balance transfer (no withdrawal path, no LTCG realized).
+ *  - REFILL: when cashBal < minAmount AND refillTrigger fires AND
+ *    surplus dollars are available (capped by `netCashFlow > 0` from this
+ *    year, already deposited into Taxable by applyCashFlow), move that surplus
+ *    from Taxable to first Cash up to targetAmount. Surplus-only
+ *    sourcing prevents phantom-tax archetype #3.
+ *
+ * Returns the dollar amounts moved so the breakdown / CSV / audit can show
+ * exactly where cash came from / went.
+ */
+function applyPostConvergenceBucketPolicy(
+  settled: { netCashFlow: number; spendingShortfall: number },
+  balances: Record<string, number>,
+  policy: CashBucketPolicy,
+  accountIndex: AccountIndex,
+  triggerInputs: { stockFactor: number; portfolioPostGrowth: number; deterministicBaseline: number | null },
+): { cashRefillFromSurplus: number; cashSweepToBrokerage: number } {
+  // No-op when policy is manual mode. Caller could also gate the call, but
+  // making this no-op internally keeps the call-site simpler.
+  if (policy.refillTrigger === 'none') {
+    return { cashRefillFromSurplus: 0, cashSweepToBrokerage: 0 };
+  }
+  // No-op when neither a Cash nor a Taxable bucket exists — nothing to route between.
+  const cashAcct = accountIndex.firstCash;
+  const brokerageAcct = accountIndex.firstBrokerage;
+  if (!cashAcct || !brokerageAcct) {
+    return { cashRefillFromSurplus: 0, cashSweepToBrokerage: 0 };
+  }
+
+  // Fixed dollar thresholds. The cashBucketBounds helper is the single source
+  // of truth so the spending floor (computeSpendingWaterfall) and the
+  // refill/sweep thresholds here can't drift independently.
+  const { minCash, targetCash, maxCash } = cashBucketBounds(policy);
+
+  // Sum cash across all cash accounts (multiple are unusual but supported);
+  // sweeps and refills route to/from the first cash account in the index.
+  let cashBal = 0;
+  for (const a of accountIndex.byType.cash) cashBal += balances[a.id] ?? 0;
+
+  // SWEEP first. If cash is well above max, move the excess to Taxable.
+  // Pure balance transfer.
+  let cashSweepToBrokerage = 0;
+  if (cashBal > maxCash) {
+    cashSweepToBrokerage = cashBal - maxCash;
+    balances[cashAcct.id] = (balances[cashAcct.id] ?? 0) - cashSweepToBrokerage;
+    balances[brokerageAcct.id] = (balances[brokerageAcct.id] ?? 0) + cashSweepToBrokerage;
+    cashBal -= cashSweepToBrokerage;
+  }
+
+  // REFILL: when cash is below min and the trigger fires.
+  // Surplus is the dollars that just deposited into Taxable via applyCashFlow's
+  // surplus-routing branch. We "reroute" that same money into Cash up to target.
+  let cashRefillFromSurplus = 0;
+  // Suppress refill in shortfall years (depletion-edge). When the portfolio is
+  // already failing, surplus by definition can't exist, but the early-exit also
+  // documents intent.
+  if (cashBal < minCash && settled.spendingShortfall === 0) {
+    let triggerFired = false;
+    switch (policy.refillTrigger) {
+      case 'always':
+        triggerFired = true;
+        break;
+      case 'gains_only':
+        triggerFired = triggerInputs.stockFactor > 1;
+        break;
+      case 'above_baseline':
+        triggerFired = triggerInputs.deterministicBaseline !== null
+          && triggerInputs.deterministicBaseline > 0
+          && triggerInputs.portfolioPostGrowth / triggerInputs.deterministicBaseline > 1;
+        break;
+      // 'none' is filtered out by the early-return at the top of the function;
+      // TypeScript narrows it out of the switch's discriminated union.
+    }
+    if (triggerFired) {
+      const surplus = Math.max(0, settled.netCashFlow);
+      const desired = targetCash - cashBal;
+      cashRefillFromSurplus = Math.min(desired, surplus);
+      if (cashRefillFromSurplus > 0) {
+        // Surplus already lives in the first taxable (via applyCashFlow);
+        // move that amount over to cash.
+        balances[brokerageAcct.id] = (balances[brokerageAcct.id] ?? 0) - cashRefillFromSurplus;
+        balances[cashAcct.id] = (balances[cashAcct.id] ?? 0) + cashRefillFromSurplus;
+      }
+    }
+  }
+
+  return { cashRefillFromSurplus, cashSweepToBrokerage };
 }
 
 // Ensure a taxable account exists to receive (a) excess RMD reinvestment from
@@ -350,12 +706,21 @@ function applyCashFlow(
 // from any year. The synthetic "Reinvestment" account starts at $0 and only matters
 // if it actually receives deposits; injecting it whenever no taxable account exists
 // is trivially safe. Returns a shallow copy with the account added when needed.
+/** Account IDs reserved for engine-injected synthetic accounts. The
+ *  `ensure*Account` helpers below gate on account *type* (not id), so a
+ *  user-defined account of the matching type prevents the synthetic from
+ *  being added regardless of its id. These constants are kept as named
+ *  exports for clarity and as audit anchors in scenario JSON exports. */
+export const SYNTHETIC_REINVESTMENT_ID = 'reinvestment-auto';
+export const SYNTHETIC_CASH_BUCKET_ID = 'cash-bucket-auto';
+export const SYNTHETIC_ROTH_CONVERSION_ID = 'roth-conversion-auto';
+
 function ensureReinvestmentAccount(userData: UserData): UserData {
-  if (userData.accounts.some((a) => a.type === 'taxable')) return userData;
+  if (userData.accounts.some((a) => a.type === 'brokerage')) return userData;
   const reinvestAccount: Account = {
-    id: 'reinvestment-auto',
+    id: SYNTHETIC_REINVESTMENT_ID,
     name: 'Reinvestment',
-    type: 'taxable',
+    type: 'brokerage',
     balance: 0,
     stockAllocation: 0.6,
     portfolioBalance: '60_40',
@@ -363,21 +728,60 @@ function ensureReinvestmentAccount(userData: UserData): UserData {
   return { ...userData, accounts: [...userData.accounts, reinvestAccount] };
 }
 
-// If any Roth conversion events exist but there is no Roth account to receive
-// the converted funds, inject a zero-balance "Roth Conversion" Roth account.
-function ensureRothConversionAccount(userData: UserData): UserData {
-  const hasConversion = userData.incomeEvents.some((e) => e.type === 'roth_conversion');
-  if (!hasConversion) return userData;
-  if (userData.accounts.some((a) => a.type === 'roth')) return userData;
-  const rothAccount: Account = {
-    id: 'roth-conversion-auto',
-    name: 'Roth Conversion',
-    type: 'roth',
+// When a `cashBucketPolicy` is configured but the user hasn't created a cash
+// account, inject a synthetic zero-balance "Cash Bucket" cash account so that
+// surplus routing + bucket refill have a destination. Activates only when the
+// policy is present — without policy, no cash account = no cash management,
+// no synthetic. Mirrors the `ensureReinvestmentAccount` / `ensureRothConversionAccount`
+// pattern. Must run BEFORE `ensureReinvestmentAccount` so the synthetic-account
+// selection rule (Cash if policy, else Reinvestment-Taxable) holds when neither
+// taxable nor cash exists.
+function ensureCashAccount(userData: UserData): UserData {
+  if (!userData.cashBucketPolicy) return userData;
+  if (userData.accounts.some((a) => a.type === 'cash')) return userData;
+  const cashAccount: Account = {
+    id: SYNTHETIC_CASH_BUCKET_ID,
+    name: 'Cash Bucket',
+    type: 'cash',
     balance: 0,
-    stockAllocation: 0.6,
+    stockAllocation: 0,
     portfolioBalance: '60_40',
   };
-  return { ...userData, accounts: [...userData.accounts, rothAccount] };
+  return { ...userData, accounts: [...userData.accounts, cashAccount] };
+}
+
+// If any Roth conversion events exist but there is no per-owner Roth account
+// to receive the converted funds, inject one zero-balance synthetic Roth per
+// owner. The IRS rule that a conversion deposits to the same-owner Roth means
+// a Spouse conversion event with no Spouse-owned Roth needs a Spouse synthetic
+// (even if a Self-owned Roth already exists — Self's Roth can't receive
+// Spouse's conversion).
+function ensureRothConversionAccount(userData: UserData): UserData {
+  const conversionEvents = userData.incomeEvents.filter((e) => e.type === 'roth_conversion');
+  if (conversionEvents.length === 0) return userData;
+  const needsOwners = new Set<'self' | 'spouse'>();
+  for (const e of conversionEvents) needsOwners.add(e.owner ?? 'self');
+  const existingRothByOwner = new Set<'self' | 'spouse'>();
+  for (const a of userData.accounts) {
+    if (a.type === 'roth') existingRothByOwner.add(a.owner ?? 'self');
+  }
+  const newAccounts: Account[] = [];
+  for (const owner of needsOwners) {
+    if (existingRothByOwner.has(owner)) continue;
+    newAccounts.push({
+      // Self keeps the legacy ID for back-compat with any persisted scenario
+      // that already injected the synthetic before this fix.
+      id: owner === 'self' ? SYNTHETIC_ROTH_CONVERSION_ID : `${SYNTHETIC_ROTH_CONVERSION_ID}-spouse`,
+      name: owner === 'self' ? 'Roth Conversion' : 'Roth Conversion (Spouse)',
+      type: 'roth',
+      owner,
+      balance: 0,
+      stockAllocation: 0.6,
+      portfolioBalance: '60_40',
+    });
+  }
+  if (newAccounts.length === 0) return userData;
+  return { ...userData, accounts: [...userData.accounts, ...newAccounts] };
 }
 
 // ---------------- Cash-flow calculation ----------------
@@ -392,12 +796,17 @@ export interface AnnualCashFlowBreakdown {
   otherSpendingGoalsNet: number;
   totalSpendingNet: number;
   portfolioWithdrawal: number;
-  withdrawalFromTaxable: number;
+  withdrawalFromBrokerage: number;
   withdrawalFromTraditional: number;  // total Traditional outflow: spending + RMD + Roth conversion
   withdrawalFromRoth: number;
+  withdrawalFromCash: number;        // spending pull from cash accounts (tax-free principal); 0 when no cash account
+  cashInterest: number;              // deterministic yield credited on beginning-of-year cash balance; taxed as ordinary income (folded into otherTaxableGross)
+  cashEndingBalance: number;         // sum of cash account balances at end of year (post-growth, post-withdrawal, POST refill/sweep). 0 when no cash account exists
+  cashRefillFromSurplus: number;     // (Phase 2) dollars moved Taxable→Cash by the post-convergence bucket policy refill step this year. Surplus-funded only; never realizes LTCG.
+  cashSweepToBrokerage: number;        // (Phase 2) dollars moved Cash→Taxable by the post-convergence sweep when cash > maxAmount. Tax-free balance transfer.
   totalTax: number;
   ordinaryTax: number;      // ordinary income tax (federal + state + locality surcharge) on Traditional + SS + other taxable
-  federalCapGainsTax: number; // federal LTCG tax on taxable account withdrawals (longTermCapGainsRate × fromTaxable)
+  federalCapGainsTax: number; // federal LTCG tax on taxable account withdrawals (flat longTermCapGainsRate × fromBrokerage, or 0/15/20% stacked when useStackedLtcgBrackets)
   stateCapGainsTax: number;   // state tax on taxable account withdrawals (most states treat LTCG as ordinary; WA flat threshold; MO exempt)
   stateLocalitySurcharge: number; // NYC ~3.876% municipal income tax (0 elsewhere); already included in `ordinaryTax` total
   irmaaSurcharge: number;     // Medicare IRMAA Part B+D surcharge (per enrollee × enrollee count); 0 if disabled or pre-65
@@ -410,7 +819,8 @@ export interface AnnualCashFlowBreakdown {
   // May be < requested only when capped by available Trad balance (a rare true cap).
   rothConversionGross: number;
   rothConversionRequested: number;  // user-configured conversion amount before any cap
-  rothConversionTaxFromTaxable: number;  // portion of conversion ordinary tax pulled from Taxable
+  rothConversionTaxFromCash: number;     // portion of conversion ordinary tax pulled from cash accounts (tax-free)
+  rothConversionTaxFromBrokerage: number;  // portion of conversion ordinary tax pulled from Taxable
   rothConversionTaxFromRmdExcess: number;  // portion of conversion ordinary tax absorbed by RMD-excess cash
   // Portion of conversion ordinary tax withheld from the conversion itself
   // (IRS Form 1099-R Box 4 mechanic). Subtracted from the Roth deposit by
@@ -418,6 +828,15 @@ export interface AnnualCashFlowBreakdown {
   // ordinary tax; surfaces a dialog warning advising the user that withholding
   // is suboptimal vs. funding from Taxable.
   rothConversionTaxWithheld: number;
+  // Per-owner split of the conversion gross (sum = rothConversionGross within $1).
+  // Self's conversion pulls from Self-owned Trad only and deposits to Self-owned
+  // Roth only; same for Spouse. The per-owner cap binds independently.
+  rothConversionGrossSelf: number;
+  rothConversionGrossSpouse: number;
+  // Per-owner split of the withheld portion (sum = rothConversionTaxWithheld
+  // within $1). Each owner's Roth deposit = their gross − their withheld share.
+  rothConversionTaxWithheldSelf: number;
+  rothConversionTaxWithheldSpouse: number;
   spendingShortfall: number;  // unmet spending+tax need when portfolio cap was binding; 0 otherwise
   wageIncomeGross: number;          // sum of wage_income events (already included in otherTaxableGross before any pre-tax deduction)
   preTaxContributions: number;      // employee pre_tax contributions deposited to Traditional this year
@@ -453,6 +872,13 @@ export interface EventIncomeRecord {
     | 'after_tax'
     | 'roth_contribution'
     | 'after_tax_contribution';
+  // IRS owner of the underlying event. Drives per-owner conversion sourcing
+  // (Self conv pulls from Self-Trad only) and per-owner deposit (Self conv
+  // deposits to Self-Roth only). Synthetic records (e.g. the
+  // 'traditional_withdrawal' step in computeMarginalStackAttribution) default
+  // to 'self' — the discretionary spending pull is household-pooled with no
+  // IRS owner constraint, so the field is informational there.
+  owner: 'self' | 'spouse';
 }
 
 export interface AccountFlowRow {
@@ -479,7 +905,7 @@ export interface IncomeEventTaxAttribution {
 }
 
 // IRS-audit-level intermediates surfaced for the Tax Audit detail view. Always
-// populated for every representative breakdown (median / projected / downside);
+// populated for every representative breakdown (median / projected);
 // also computed inside the MC hot loop for all runs, but only the
 // representative-run audit data is actually rendered.
 export interface AnnualAuditBreakdown {
@@ -554,6 +980,23 @@ export interface AnnualAuditBreakdown {
 
   // ----- Per-account flows (populated by applyCashFlow) -----
   accountFlows?: AccountFlowRow[];
+
+  // ----- Per-account RMD attribution (populated by applyCashFlow) -----
+  // Self-owned Traditional accounts contribute pro-rata to rmdSelf; Spouse-owned
+  // contribute pro-rata to rmdSpouse. Sum equals rmdRequired (within $1 rounding).
+  // `deposit` is always 0 on these rows — RMD is a withdrawal. Used by the Cash
+  // Flow Sankey to decompose the RMD aggregator into per-account detail nodes.
+  rmdByAccount?: AccountFlowRow[];
+
+  // ----- Per-account Roth conversion deposit (populated by applyCashFlow) -----
+  // Self conversion lands pro-rata in Self-owned Roth accounts only; Spouse
+  // conversion in Spouse-owned Roth only. Sum equals (rothConversionGross −
+  // rothConversionTaxWithheld) within $1. `withdrawal` is always 0 on these
+  // rows — conversion deposit is by definition a deposit. Used by the Cash
+  // Flow Sankey to decompose the dst_rothdep use-node into per-account detail
+  // downstream. Isolated from the combined depositSink so Roth contributions
+  // don't pollute the per-account conversion totals.
+  rothConvDepositByAccount?: AccountFlowRow[];
 }
 
 // Per-event contribution deposit instruction emitted by accumulateIncome and consumed
@@ -572,6 +1015,11 @@ export interface AccumulatedIncome {
   otherTaxableGross: number;
   afterTaxIncome: number;
   conversionGross: number;
+  // Per-owner split of conversion gross (sum = conversionGross). Drives the
+  // per-owner cap in calculateAnnualCashFlowCore (Self-conv capped by Self-Trad
+  // available, Spouse-conv by Spouse-Trad — independently).
+  conversionGrossSelf: number;
+  conversionGrossSpouse: number;
   wageIncomeGross: number;        // sum of wage_income events (pre-deduction)
   preTaxContributions: number;    // employee pre_tax contributions for this year
   rothContributions: number;
@@ -586,10 +1034,10 @@ export interface AccumulatedIncome {
 }
 
 // Resolve the cap-classification kind for a given target account.
-// Defaults: 'taxable' → brokerage; 'traditional' / 'roth' → IRA when accountKind is absent.
+// Defaults: 'brokerage' → brokerage; 'traditional' / 'roth' → IRA when accountKind is absent.
 function getAccountKind(account: Account): AccountKind {
   if (account.accountKind) return account.accountKind;
-  return account.type === 'taxable' ? 'brokerage' : 'ira';
+  return account.type === 'brokerage' ? 'brokerage' : 'ira';
 }
 
 function inflateAmount(
@@ -620,12 +1068,20 @@ function inflateAmount(
 function accumulateIncome(
   userData: UserData,
   year: number,
-  inflationRate: number
+  inflationRate: number,
+  // Widow's-penalty survivor year (year > first-death offset). When true, the
+  // household collects only the LARGER of the two Social Security benefits
+  // (survivor benefit rule). Default false = sum both (pre-death / no model).
+  survivorMode: boolean = false,
 ): AccumulatedIncome {
   let afterTaxIncome = 0;
   let ssGross = 0;
+  let ssGrossSelf = 0;
+  let ssGrossSpouse = 0;
   let otherTaxableGross = 0;
   let conversionGross = 0;
+  let conversionGrossSelf = 0;
+  let conversionGrossSpouse = 0;
   let wageIncomeGross = 0;
   let preTaxContributions = 0;
   let rothContributions = 0;
@@ -634,17 +1090,22 @@ function accumulateIncome(
   const contributions: ContributionDeposit[] = [];
   const eventBreakdowns: EventIncomeRecord[] = [];
 
+  // Compute the death model once and thread it through every per-event activity
+  // check (avoids recomputing it N events × Y years across the optimizer's many
+  // deterministic projections).
+  const deathModel = getDeathModel(userData);
+
   // Pre-pass: build wage-amount lookup keyed by event id so contributions linked to
   // a wage event can compute employer-match base off the inflated wage amount.
   const wageAmountById = new Map<string, number>();
   userData.incomeEvents.forEach((event) => {
     if (event.type !== 'wage_income') return;
-    if (!eventActiveInYear(userData, event, year)) return;
+    if (!eventActiveInYear(userData, event, year, deathModel)) return;
     wageAmountById.set(event.id, inflateAmount(userData, event, year, inflationRate));
   });
 
   userData.incomeEvents.forEach((event) => {
-    if (!eventActiveInYear(userData, event, year)) return;
+    if (!eventActiveInYear(userData, event, year, deathModel)) return;
 
     const amount = inflateAmount(userData, event, year, inflationRate);
 
@@ -653,12 +1114,16 @@ function accumulateIncome(
     if (event.type === 'roth_conversion') {
       const v = Math.max(0, amount);
       conversionGross += v;
+      const convOwner: 'self' | 'spouse' = event.owner ?? 'self';
+      if (convOwner === 'self') conversionGrossSelf += v;
+      else                       conversionGrossSpouse += v;
       eventBreakdowns.push({
         eventId: event.id,
         eventName: event.name ?? 'Roth Conversion',
         eventType: event.type,
         gross: v,
         classification: 'roth_conversion',
+        owner: convOwner,
       });
       return;
     }
@@ -710,6 +1175,7 @@ function accumulateIncome(
         eventType: event.type,
         gross: employeeAmount,
         classification,
+        owner: event.owner ?? 'self',
       });
       return;
     }
@@ -724,6 +1190,7 @@ function accumulateIncome(
         eventType: event.type,
         gross: amount,
         classification: 'ordinary',
+        owner: event.owner ?? 'self',
       });
       return;
     }
@@ -742,15 +1209,19 @@ function accumulateIncome(
         eventType: event.type,
         gross: effectiveAmount,
         classification: 'after_tax',
+        owner: event.owner ?? 'self',
       });
     } else if (event.type === 'social_security') {
       ssGross += effectiveAmount;
+      if ((event.owner ?? 'self') === 'self') ssGrossSelf += effectiveAmount;
+      else ssGrossSpouse += effectiveAmount;
       eventBreakdowns.push({
         eventId: event.id,
         eventName: event.name ?? 'Social Security',
         eventType: event.type,
         gross: effectiveAmount,
         classification: 'social_security',
+        owner: event.owner ?? 'self',
       });
     } else {
       otherTaxableGross += effectiveAmount;
@@ -760,9 +1231,25 @@ function accumulateIncome(
         eventType: event.type,
         gross: effectiveAmount,
         classification: 'ordinary',
+        owner: event.owner ?? 'self',
       });
     }
   });
+
+  // Widow's penalty: in survivor years the household collects only ONE Social
+  // Security benefit — the larger of the two (the survivor keeps their own if it
+  // was larger, or steps up to the deceased's). Collapse ssGross to the max and
+  // prune the smaller owner's SS attribution rows so the audit reconciles.
+  if (survivorMode && (ssGrossSelf > 0 || ssGrossSpouse > 0)) {
+    const keepOwner: 'self' | 'spouse' = ssGrossSelf >= ssGrossSpouse ? 'self' : 'spouse';
+    ssGross = Math.max(ssGrossSelf, ssGrossSpouse);
+    for (let k = eventBreakdowns.length - 1; k >= 0; k--) {
+      const r = eventBreakdowns[k];
+      if (r.classification === 'social_security' && (r.owner ?? 'self') !== keepOwner) {
+        eventBreakdowns.splice(k, 1);
+      }
+    }
+  }
 
   // Enforce IRS contribution caps per (owner, kind). Excess is removed from the deposit
   // instructions and refunded to the owner as spendable cash (added to afterTaxIncome).
@@ -881,6 +1368,8 @@ function accumulateIncome(
     otherTaxableGross,
     afterTaxIncome,
     conversionGross,
+    conversionGrossSelf,
+    conversionGrossSpouse,
     wageIncomeGross,
     preTaxContributions,
     rothContributions,
@@ -900,12 +1389,16 @@ function accumulateSpending(
   let baseSpendingNet = 0;
   let otherSpendingGoalsNet = 0;
 
+  // Ongoing (no endAge) goals run to the full projection horizon (extends to the
+  // survivor's death when the spouse outlives self — the survivor still spends).
+  // Legacy/inactive: horizonYears-1 = self death offset, so bit-identical.
+  const lastYear = userData.referenceYear + projectionHorizonYears(userData) - 1;
   userData.spendingGoals.forEach((goal) => {
     const startYear =
       userData.referenceYear + (goal.startAge - userData.currentAge);
     const endYear = goal.endAge
       ? userData.referenceYear + (goal.endAge - userData.currentAge)
-      : userData.lifeExpectancy + userData.referenceYear - userData.currentAge;
+      : lastYear;
 
     let shouldInclude = false;
     if (goal.isOneTime) {
@@ -922,7 +1415,13 @@ function accumulateSpending(
       }
       if (goal.yearlyDecreasePercent != null) {
         const yearsSinceStart = year - startYear;
-        amount *= Math.pow(1 - goal.yearlyDecreasePercent / 100, yearsSinceStart);
+        // Clamp the base above 0 to keep Math.pow real-valued. A
+        // yearlyDecreasePercent of 100 would make the base zero (and any
+        // subsequent fractional exponent NaN); >100 would make it negative
+        // (Math.pow(negative, fractional) = NaN). User input shouldn't hit
+        // these, but cheap defense costs nothing in the hot loop.
+        const base = Math.max(0.0001, 1 - goal.yearlyDecreasePercent / 100);
+        amount *= Math.pow(base, yearsSinceStart);
       }
       if (goal.type === 'living_expenses') {
         baseSpendingNet += amount;
@@ -951,7 +1450,15 @@ export function computeMarginalStackAttribution(args: {
   ssGross: number;
   ssTaxableAmount: number;
   fromTrad: number;
+  /** Aggregate conversion total = self + spouse. Drives the synthetic
+   *  `traditional_withdrawal` step's gross (fromTrad − rothConversionTotal). */
   rothConversionTotal: number;
+  /** Per-owner conversion totals used to scale per-event conversion records
+   *  independently. When a per-owner cap binds (e.g. Self capped, Spouse not),
+   *  a uniform aggregate scale misallocates per-event gross — Self events
+   *  would over-scale, Spouse events under-scale. Per-owner scaling fixes that. */
+  rothConversionTotalSelf: number;
+  rothConversionTotalSpouse: number;
   filingStatus: FilingStatus;
   /** Year's actual state-tax / federal-combinedTaxable ratio. State tax is
    *  distributed across stack steps proportional to each step's federal taxable
@@ -966,6 +1473,7 @@ export function computeMarginalStackAttribution(args: {
 }): IncomeEventTaxAttribution[] {
   const {
     eventBreakdowns, ssGross, ssTaxableAmount, fromTrad, rothConversionTotal,
+    rothConversionTotalSelf, rothConversionTotalSpouse,
     filingStatus, stateEffectiveRate, age, taxYear, spouseAge, inflationRate,
   } = args;
 
@@ -1005,14 +1513,34 @@ export function computeMarginalStackAttribution(args: {
       kind: 'trad_withdrawal',
     });
   }
-  // Roth conversion events. If multiple, scale each to match `rothConversionTotal`
-  // exactly (the calc caps conversion at the Trad balance after RMD/spending).
+  // Roth conversion events. The per-owner cap (each owner's conversion is
+  // capped by their own Trad balance after their RMD) can bind independently,
+  // so events scale by their owner's ratio — not a single aggregate scale.
+  // Example: Self requests $50k capped at $40k, Spouse requests $30k all
+  // allowed. Uniform scale 70/80 would mis-show Self events at $43.75k and
+  // Spouse at $26.25k; per-owner scale gives Self $40k and Spouse $30k.
   const conversionRecords = eventBreakdowns.filter((r) => r.classification === 'roth_conversion');
-  const conversionRequested = conversionRecords.reduce((s, r) => s + r.gross, 0);
-  if (rothConversionTotal > 0 && conversionRequested > 0) {
-    const scale = rothConversionTotal / conversionRequested;
-    for (const r of conversionRecords) {
-      const actualGross = r.gross * scale;
+  if (conversionRecords.length > 0) {
+    const selfRecords   = conversionRecords.filter((r) => r.owner === 'self');
+    const spouseRecords = conversionRecords.filter((r) => r.owner === 'spouse');
+    const selfRequested   = selfRecords.reduce((s, r) => s + r.gross, 0);
+    const spouseRequested = spouseRecords.reduce((s, r) => s + r.gross, 0);
+    const selfScale   = selfRequested   > 0 && rothConversionTotalSelf   > 0
+      ? rothConversionTotalSelf   / selfRequested   : 0;
+    const spouseScale = spouseRequested > 0 && rothConversionTotalSpouse > 0
+      ? rothConversionTotalSpouse / spouseRequested : 0;
+    for (const r of selfRecords) {
+      const actualGross = r.gross * selfScale;
+      if (actualGross <= 0) continue;
+      steps.push({
+        event: { id: r.eventId, name: r.eventName, type: r.eventType, gross: actualGross },
+        signedTaxable: actualGross,
+        kind: 'roth_conversion',
+      });
+    }
+    for (const r of spouseRecords) {
+      const actualGross = r.gross * spouseScale;
+      if (actualGross <= 0) continue;
       steps.push({
         event: { id: r.eventId, name: r.eventName, type: r.eventType, gross: actualGross },
         signedTaxable: actualGross,
@@ -1094,13 +1622,26 @@ export function computeMarginalStackAttribution(args: {
   return attributions;
 }
 
+// Public single-year thin wrapper around `calculateAnnualCashFlowCore`. Used by
+// tests and standalone callers that compute one year in isolation.
+//
+// NOTE: this wrapper does NOT apply the widow's-penalty death model — it always
+// uses `userData.filingStatus` and per-owner (non-consolidated) Traditional/Roth.
+// The per-year filing flip, survivor-SS collapse, and Traditional consolidation
+// live in the `buildPrecomputes` → `simulateOneRun` path. For death-aware results
+// go through `runSimulation` / `runDeterministicProjection`, not this wrapper.
 export function calculateAnnualCashFlow(
   userData: UserData,
   year: number,
   inflationRate: number = 0.03,
   accountBalances?: Record<string, number>,
   maxWithdrawal?: number,
-  beginningTradBalance?: number
+  beginningTradBalance?: number,
+  /** Optional pin for the spending policy. When omitted, runs the auto-selector
+   *  (which costs two deterministic projections). Tests and callers that want
+   *  to isolate a specific policy — or skip the selector's cost — should pass
+   *  this explicitly. */
+  _forceSpendingOrder?: ResolvedSpendingOrder,
 ): AnnualCashFlowBreakdown {
   const i = year - userData.referenceYear;
   const spouseAge = userData.spouseAge !== null ? userData.spouseAge + i : null;
@@ -1119,7 +1660,7 @@ export function calculateAnnualCashFlow(
   const stateName = getEffectiveStateName(userData, year);
   const { profile: stateProfile, resolvedKey: stateResolvedKey } = getStateTaxProfile(stateName, year);
   const income = accumulateIncome(userData, year, inflationRate);
-  const spendingOrder = resolveSpendingWithdrawalOrder(userData);
+  const spendingOrder = _forceSpendingOrder ?? selectBestSpendingOrder(userData);
   const bracketHeadroom = spendingOrder === 'bracket_aware'
     ? computeBracketHeadroomForTrad(userData, income, year, inflationRate, userData.currentAge + i, spouseAge)
     : 0;
@@ -1172,20 +1713,29 @@ export function computeBracketHeadroomForTrad(
   inflationRate: number,
   age: number,
   spouseAge: number | null,
+  // Effective filing status for the year (post-death survivor flips to 'single').
+  // Defaults to the scenario's static filing status for single-year callers.
+  filingStatus: FilingStatus = userData.filingStatus,
 ): number {
   const ordForSS = income.otherTaxableGross + income.conversionGross;
   const ssTaxable = income.ssGross > 0
-    ? calculateSSTaxableAmount(income.ssGross, ordForSS, userData.filingStatus)
+    ? calculateSSTaxableAmount(income.ssGross, ordForSS, filingStatus)
     : 0;
   const baselineOrdGross = ordForSS + ssTaxable;
-  const stdDed = getStandardDeduction(userData.filingStatus, year, inflationRate);
-  const numQualifying = getNumQualifyingSeniors(userData.filingStatus, age, spouseAge);
-  const seniorExtra = getUsualSeniorExtra(userData.filingStatus, year, numQualifying, inflationRate);
+  const stdDed = getStandardDeduction(filingStatus, year, inflationRate);
+  const numQualifying = getNumQualifyingSeniors(filingStatus, age, spouseAge);
+  const seniorExtra = getUsualSeniorExtra(filingStatus, year, numQualifying, inflationRate);
   const totalDed = stdDed + seniorExtra;
   // bracketIndex 1 = top of 12% bracket (above 10% bracket, below 22%)
-  const topOf12 = getBracketCeilingTaxableIncome(userData.filingStatus, 1, year, inflationRate);
+  const topOf12 = getBracketCeilingTaxableIncome(filingStatus, 1, year, inflationRate);
   if (!isFinite(topOf12)) return 0;
   const baselineTaxable = Math.max(0, baselineOrdGross - totalDed);
+  // No IRMAA/NIIT cliff clamp here on purpose: the 12% bracket fills to roughly
+  // $66k (single) / $133k (MFJ) of gross MAGI, both well below the first IRMAA
+  // tier ($103k / $206k) and the NIIT threshold ($200k / $250k), so a 12%-bracket
+  // spending pull can never trip those cliffs. Cliff-awareness lives where it can
+  // bind — the 22%/24% conversion-sizing fill (respectIrmaaNiitCliffs in
+  // FillToBracketStrategy).
   return Math.max(0, topOf12 - baselineTaxable);
 }
 
@@ -1213,9 +1763,9 @@ function calculateAnnualCashFlowCore(
   // 2-year-prior MAGI proxy used to determine the current year's IRMAA surcharge
   // (IRS lookback rule). Caller passes undefined / 0 when unavailable.
   priorMagi?: number,
-  // Resolved spending-source strategy (see resolveSpendingWithdrawalOrder).
+  // Resolved spending-source strategy (see selectBestSpendingOrder).
   // Public wrapper resolves it; fast-path passes the precomputed value.
-  spendingOrder: ResolvedSpendingOrder = 'taxable_first',
+  spendingOrder: ResolvedSpendingOrder = 'brokerage_first',
   // Max additional Trad-spending dollars that stay within the 12% federal
   // bracket, **conv-inclusive**. Only consulted when spendingOrder === 'bracket_aware'.
   bracketHeadroomForTrad: number = 0,
@@ -1224,18 +1774,61 @@ function calculateAnnualCashFlowCore(
   // the Tax Audit UI. The 4997 stat-only runs pass false. Public wrapper
   // (calculateAnnualCashFlow) defaults to true to preserve external behavior.
   includeAudit: boolean = true,
+  // Cash interest credited this year on cash account balances (yield × beginning
+  // balance, applied deterministically in the growth loop). Folded into the
+  // tax base as ordinary income (accrual basis) AND into the NIIT investment-
+  // income proxy (taxable-MMF/HYSA interest is investment income per IRC §1411).
+  // Caller passes 0 when no cash accounts exist (the only case for back-compat).
+  cashInterest: number = 0,
+  // Effective filing status for THIS year. Post-death survivor years pass 'single'
+  // (the widow's penalty). Defaults to the scenario's static status for callers
+  // without a per-year death model (the public wrapper, tests).
+  filingStatus: FilingStatus = userData.filingStatus,
+  // Survivor mode (post first death): all Traditional is one pool and all Roth
+  // is one pool. Conversions/RMD ignore the per-owner `owner` filter — the
+  // survivor owns everything. `beginningTradBalances` is passed as
+  // { self: combined, spouse: 0 } by the caller in this mode.
+  consolidated: boolean = false,
 ): AnnualCashFlowBreakdown {
-  const { ssGross, otherTaxableGross, afterTaxIncome, conversionGross } = income;
+  const { ssGross, afterTaxIncome, conversionGross } = income;
+  // In survivor mode the survivor owns everything, so fold both owners' requested
+  // conversion into a single 'self' pool (sourced from all Trad, deposited to all
+  // Roth via applyCashFlow's consolidated branch). Pre-death keeps the per-owner
+  // split for IRS-correct same-owner Trad→Roth routing.
+  const conversionGrossSelf = consolidated
+    ? income.conversionGrossSelf + income.conversionGrossSpouse
+    : income.conversionGrossSelf;
+  const conversionGrossSpouse = consolidated ? 0 : income.conversionGrossSpouse;
+  // Cash interest is ordinary income (accrual basis, taxed in the year credited).
+  // Fold into otherTaxableGross so the entire tax pipeline (federal/state ordinary,
+  // SS taxability via provisional income, IRMAA MAGI, NIIT MAGI) treats it
+  // uniformly. The breakdown surfaces both the inflated otherTaxableGross AND
+  // the original cashInterest separately so callers can audit the source.
+  const otherTaxableGross = income.otherTaxableGross + cashInterest;
   const totalSpendingNet = spending.baseSpendingNet + spending.otherSpendingGoalsNet;
   const totalGrossIncome = ssGross + otherTaxableGross + afterTaxIncome;
   const availableCash = afterTaxIncome + ssGross + otherTaxableGross;
 
   const ltcgRate = userData.longTermCapGainsRate ?? 0;
-  const taxableBal = sumBalancesOfType(userData.accounts, balances, 'taxable');
+  const cashBal = sumBalancesOfType(userData.accounts, balances, 'cash');
+  const brokerageBal = sumBalancesOfType(userData.accounts, balances, 'brokerage');
   const tradBal = sumBalancesOfType(userData.accounts, balances, 'traditional');
   const rothBal = sumBalancesOfType(userData.accounts, balances, 'roth');
-  const totalBal = taxableBal + tradBal + rothBal;
+  const totalBal = cashBal + brokerageBal + tradBal + rothBal;
   const cap = Math.min(maxWithdrawal ?? Infinity, totalBal);
+
+  // Cash bucket policy soft floor. Spending and conversion tax sourcing pull
+  // Cash only down to the fixed `minAmount`; below that, both fall through to
+  // the next priority (Taxable / withhold). Rationale: in reality every user
+  // has unmodeled liquid cash; the floor reflects how much they're willing to
+  // hold in this bucket. When no policy is configured or refillTrigger is
+  // 'none', minCashFloor = 0 (full drain allowed). The cashBucketBounds helper
+  // is the single source of truth shared with applyPostConvergenceBucketPolicy
+  // so the spending floor here cannot drift from the refill/sweep thresholds.
+  const policy = userData.cashBucketPolicy;
+  const minCashFloor = policy && policy.refillTrigger !== 'none'
+    ? cashBucketBounds(policy).minCash
+    : 0;
 
   const selfTradBal = beginningTradBalances?.self
     ?? sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self');
@@ -1254,11 +1847,14 @@ function calculateAnnualCashFlowCore(
   let withdrawal = Math.min(Math.max(0, totalSpendingNet - availableCash), cap);
   let totalTax = 0;
   let ssTaxableAmount = 0;
-  let fromTaxable = 0;
+  let fromCash = 0;
+  let fromBrokerage = 0;
   let fromTrad = 0;
   let fromRoth = 0;
   let rmdExcess = 0;
   let rothConversion = 0;
+  let rothConversionSelf = 0;
+  let rothConversionSpouse = 0;
   let rothConversionRequested = Math.max(0, conversionGross);
   let capWasBinding = false;
   let ordinaryTax = 0;
@@ -1268,23 +1864,29 @@ function calculateAnnualCashFlowCore(
   let stateOrdinaryTaxOnly = 0;
   let stateResultFinal: StateTaxResult | null = null;
   let niitTax = 0;
-  // Conversion tax sourcing — populated inside the loop. `convTaxFromTaxable` is
-  // the Taxable pull added specifically to cover the conversion's ordinary tax
-  // delta; `convTaxFromRmdExc` is the part absorbed by RMD-excess cash before
-  // any reinvestment. Their sum is the conversion's marginal ordinary tax.
-  let convTaxFromTaxable = 0;
+  // Conversion tax sourcing — populated inside the loop. Cash is preferred over
+  // Taxable because pulling Taxable realizes LTCG/NIIT that itself amplifies the
+  // marginal tax (the phantom-tax archetype). RMD-excess + Cash + Taxable are
+  // the three external funding sources; if all run dry the residual is withheld
+  // from the conversion's own Trad pull (IRS Form 1099-R Box 4 mechanic).
+  let convTaxFromCash = 0;
+  let convTaxFromBrokerage = 0;
   let convTaxFromRmdExc = 0;
-  // Conversion tax withheld from the conversion's own Trad pull when Taxable +
+  // Conversion tax withheld from the conversion's own Trad pull when Cash + Taxable +
   // RMD-excess can't cover the marginal ordinary tax. The Roth deposit shrinks
   // by this amount; the Trad pull stays at the requested conversion gross.
   let convTaxWithheld = 0;
+  // Per-owner split of the withheld portion. Each owner's Roth deposit shrinks
+  // by their proportional share (IRS reality: each owner's 1099-R is independent).
+  let convTaxWithheldSelf = 0;
+  let convTaxWithheldSpouse = 0;
 
   // IRMAA is determined by the 2-year-prior MAGI, so it does not depend on this
   // year's withdrawal — compute it once outside the fixed-point loop.
   const irmaaEnabled = userData.enableIRMAA !== false;
   const niitEnabled = userData.enableNIIT !== false;
   const irmaaSurcharge = irmaaEnabled
-    ? calculateIRMAA(priorMagi ?? 0, userData.filingStatus, year, inflationRate ?? 0, age, spouseAge)
+    ? calculateIRMAA(priorMagi ?? 0, filingStatus, year, inflationRate ?? 0, age, spouseAge)
     : 0;
 
   // Spending waterfall: RMD-up-to-spending → Taxable → Trad-above-RMD → Roth.
@@ -1300,8 +1902,17 @@ function calculateAnnualCashFlowCore(
   // 12% federal bracket. This is the "Cross-year spending source policy" layer
   // documented in CLAUDE.md — it preserves Taxable for high-mt conversion years.
   function computeSpendingWaterfall(w: number) {
-    const rmdSpendingPull = Math.min(w, rmdRequired, tradBal);
-    let remaining = w - rmdSpendingPull;
+    // Priority 0: Cash. Drains before any tax-generating source — cash withdrawals
+    // are tax-free principal, so consuming them first avoids unnecessary LTCG/
+    // NIIT churn and conversion-tax amplification.
+    // Phase 2: bucket policy clamps the cash pull to (cashBal - minCashFloor).
+    // When cash is already at/below the floor, spending falls through to Taxable.
+    const cashAvailableForSpending = Math.max(0, cashBal - minCashFloor);
+    const spendingFromCash = Math.min(w, cashAvailableForSpending);
+    let remaining = w - spendingFromCash;
+
+    const rmdSpendingPull = Math.min(remaining, rmdRequired, tradBal);
+    remaining -= rmdSpendingPull;
 
     let tradLowBracketPull = 0;
     if (spendingOrder === 'bracket_aware' && bracketHeadroomForTrad > 0) {
@@ -1316,7 +1927,7 @@ function calculateAnnualCashFlowCore(
       tradLowBracketPull = Math.min(remaining, headroomAfterRmd, tradAboveRmd);
       remaining -= tradLowBracketPull;
     }
-    const ft = Math.min(remaining, taxableBal);
+    const ft = Math.min(remaining, brokerageBal);
     remaining -= ft;
     const tradAboveHeadroom = Math.max(0, tradBal - rmdRequired - tradLowBracketPull);
     const spendingFromTradExtra = Math.min(remaining, tradAboveHeadroom);
@@ -1326,7 +1937,8 @@ function calculateAnnualCashFlowCore(
     const forcedTrad = Math.min(Math.max(sft, rmdRequired), tradBal);
     const rmdExc = Math.max(0, forcedTrad - sft);
     return {
-      spendingFromTaxable: ft,
+      spendingFromCash,
+      spendingFromBrokerage: ft,
       forcedTrad,
       spendingFromRoth: fr,
       rmdExc,
@@ -1346,20 +1958,20 @@ function calculateAnnualCashFlowCore(
     stateRes: StateTaxResult;
   } {
     const ord = otherTaxableGross + tradVal;
-    const ssTax = calculateSSTaxableAmount(ssGross, ord, userData.filingStatus);
+    const ssTax = calculateSSTaxableAmount(ssGross, ord, filingStatus);
     const comb = ord + ssTax;
     const fed = comb > 0
-      ? comb - calculateNetFromGross(comb, userData.filingStatus, age, year, spouseAge, inflationRate)
+      ? comb - calculateNetFromGross(comb, filingStatus, age, year, spouseAge, inflationRate)
       : 0;
     const sres = computeStateTax(stateProfile, {
       ordinaryGross: income.otherTaxableGross,
       ssTaxableFederal: ssTax,
       ssGross,
       traditionalWithdrawal: tradVal,
-      ltcgFromTaxable: ltcgVal,
+      ltcgFromBrokerage: ltcgVal,
       age,
       spouseAge,
-      filingStatus: userData.filingStatus,
+      filingStatus,
       year,
       inflationRate: inflationRate ?? 0,
       disableStateRetirementExclusion: userData.disableStateRetirementExclusion,
@@ -1376,26 +1988,34 @@ function calculateAnnualCashFlowCore(
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     const sw = computeSpendingWaterfall(withdrawal);
 
-    // Conversion principal capped by Trad balance remaining after forcedTrad
-    // (RMD must be satisfied first — IRS rule that RMD is not eligible for
-    // conversion).
-    const tradAvailForConv = Math.max(0, tradBal - sw.forcedTrad);
-    let convCandidate = Math.min(rothConversionRequested, tradAvailForConv);
+    // Conversion principal capped PER OWNER by their own Trad balance after
+    // their own RMD (IRS rules: (a) RMD is not eligible for conversion;
+    // (b) a conversion moves money from the owner's Trad to that same owner's
+    // Roth — Spouse's Trad cannot fund Self's conversion). The aggregate
+    // `tradAvailForConv` is the sum of per-owner caps but is only used for
+    // monitoring; the binding constraint is the per-owner cap.
+    const tradAvailForConvSelf   = Math.max(0, selfTradBal   - selfRmd);
+    const tradAvailForConvSpouse = Math.max(0, spouseTradBal - spouseRmd);
+    const convCandidateSelf   = Math.min(conversionGrossSelf,   tradAvailForConvSelf);
+    const convCandidateSpouse = Math.min(conversionGrossSpouse, tradAvailForConvSpouse);
+    let convCandidate = convCandidateSelf + convCandidateSpouse;
 
     // Baseline ordinary tax (no conversion) at the current spending waterfall.
-    const baseTax = computeOrdinaryTaxFor(sw.forcedTrad, sw.spendingFromTaxable);
+    const baseTax = computeOrdinaryTaxFor(sw.forcedTrad, sw.spendingFromBrokerage);
 
     const marginalOrdTax = (rc: number): number => {
       if (rc <= 0) return 0;
-      const r = computeOrdinaryTaxFor(sw.forcedTrad + rc, sw.spendingFromTaxable);
+      const r = computeOrdinaryTaxFor(sw.forcedTrad + rc, sw.spendingFromBrokerage);
       return Math.max(0, r.ordinaryTax - baseTax.ordinaryTax);
     };
 
     // Conversion ordinary tax is funded in priority order:
-    //   1. RMD-excess cash (already pulled from Trad as part of forcedTrad; using
+    //   1. Cash balance not consumed by spending (preferred — tax-free principal,
+    //      avoids LTCG/NIIT amplification on Taxable pulls)
+    //   2. RMD-excess cash (already pulled from Trad as part of forcedTrad; using
     //      it for conv tax costs nothing extra)
-    //   2. Taxable balance not consumed by spending
-    //   3. Withheld from the conversion itself (IRS Form 1099-R Box 4 mechanic) —
+    //   3. Taxable balance not consumed by spending (realizes LTCG/NIIT)
+    //   4. Withheld from the conversion itself (IRS Form 1099-R Box 4 mechanic) —
     //      Trad pull still equals convCandidate, but the Roth deposit shrinks by
     //      the withheld amount. This is mathematically suboptimal vs. paying from
     //      Taxable (gives up some of the conversion's arbitrage) but always lets
@@ -1404,34 +2024,49 @@ function calculateAnnualCashFlowCore(
     // Conversion tax is NEVER pulled from Trad-above-RMD or Roth — that's the
     // phantom-tax leak the prior PR fixed.
     const mt = marginalOrdTax(convCandidate);
-    const ctRmd = Math.min(mt, sw.rmdExc);
-    const taxableRemainingForConvTax = Math.max(0, taxableBal - sw.spendingFromTaxable);
-    const ctTaxable = Math.min(mt - ctRmd, taxableRemainingForConvTax);
-    const ctWithheld = Math.max(0, mt - ctRmd - ctTaxable);
+    // Conv-tax sourcing also respects the cash bucket floor — Cash above the
+    // floor is the only portion available for conversion tax. When cash is at/
+    // below the floor (e.g., after a hefty spendingFromCash that drained it),
+    // ctCash = 0 and the chain falls through to RMD-excess → Taxable → withheld.
+    const cashRemainingForConvTax = Math.max(0, cashBal - sw.spendingFromCash - minCashFloor);
+    const ctCash = Math.min(mt, cashRemainingForConvTax);
+    const ctRmd = Math.min(mt - ctCash, sw.rmdExc);
+    const brokerageRemainingForConvTax = Math.max(0, brokerageBal - sw.spendingFromBrokerage);
+    const ctBrokerage = Math.min(mt - ctCash - ctRmd, brokerageRemainingForConvTax);
+    const ctWithheld = Math.max(0, mt - ctCash - ctRmd - ctBrokerage);
 
     // Final per-account flows for this iteration. Trad pull is the full
     // convCandidate; the Roth deposit (applied in applyCashFlow) subtracts
     // ctWithheld from rothConversionGross.
-    fromTaxable = sw.spendingFromTaxable + ctTaxable;
+    fromCash = sw.spendingFromCash + ctCash;
+    fromBrokerage = sw.spendingFromBrokerage + ctBrokerage;
     fromTrad = sw.forcedTrad + convCandidate;
     fromRoth = sw.spendingFromRoth;
     rothConversion = convCandidate;
-    convTaxFromTaxable = ctTaxable;
+    rothConversionSelf   = convCandidateSelf;
+    rothConversionSpouse = convCandidateSpouse;
+    convTaxFromCash = ctCash;
+    convTaxFromBrokerage = ctBrokerage;
     convTaxFromRmdExc = ctRmd;
     convTaxWithheld = ctWithheld;
+    // Per-owner withholding splits proportionally to each owner's conv share.
+    // IRS reality: each owner's 1099-R is independent; combined withholding
+    // sums. When only one owner has a conversion, all withholding lands there.
+    convTaxWithheldSelf   = convCandidate > 0 ? ctWithheld * (convCandidateSelf   / convCandidate) : 0;
+    convTaxWithheldSpouse = ctWithheld - convTaxWithheldSelf;
     rmdExcess = sw.rmdExc - ctRmd;
 
     // Full tax recomputation with final pulls (captures LTCG/NIIT on the extra
     // Taxable pull used to pay conversion tax).
     const ordinaryGross = otherTaxableGross + fromTrad;
-    ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, userData.filingStatus);
+    ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, filingStatus);
     const combinedTaxable = ordinaryGross + ssTaxableAmount;
 
     let federalOrdinaryTaxIter = 0;
     if (combinedTaxable > 0) {
       const fedNet = calculateNetFromGross(
         combinedTaxable,
-        userData.filingStatus,
+        filingStatus,
         age,
         year,
         spouseAge,
@@ -1444,10 +2079,10 @@ function calculateAnnualCashFlowCore(
       ssTaxableFederal: ssTaxableAmount,
       ssGross,
       traditionalWithdrawal: fromTrad,
-      ltcgFromTaxable: fromTaxable,
+      ltcgFromBrokerage: fromBrokerage,
       age,
       spouseAge,
-      filingStatus: userData.filingStatus,
+      filingStatus,
       year,
       inflationRate: inflationRate ?? 0,
       disableStateRetirementExclusion: userData.disableStateRetirementExclusion,
@@ -1457,33 +2092,74 @@ function calculateAnnualCashFlowCore(
     stateLocalitySurcharge = stateRes.stateLocalitySurcharge;
     stateCapGainsTax = stateRes.stateCapGainsTax;
     ordinaryTax = federalOrdinaryTaxIter + stateOrdinaryTaxOnly + stateLocalitySurcharge;
-    federalCapGainsTax = fromTaxable * ltcgRate;
+    if (userData.useStackedLtcgBrackets) {
+      // Stacked 0/15/20%: gains sit on top of ordinary taxable income. Use the
+      // after-deduction ordinary taxable as the stack height (combinedTaxable is
+      // the pre-deduction gross — getFederalTaxableIncome applies the same
+      // deduction stack the ordinary-tax path uses).
+      const ordinaryTaxable = getFederalTaxableIncome(
+        combinedTaxable, filingStatus, age, year, spouseAge, inflationRate,
+      );
+      federalCapGainsTax = computeFederalLTCGTax(
+        ordinaryTaxable, fromBrokerage, filingStatus, year, inflationRate,
+      );
+    } else {
+      federalCapGainsTax = fromBrokerage * ltcgRate;
+    }
     if (niitEnabled) {
-      const magi = ordinaryGross + ssTaxableAmount + fromTaxable;
-      niitTax = calculateNIIT(magi, fromTaxable, userData.filingStatus);
+      const magi = ordinaryGross + ssTaxableAmount + fromBrokerage;
+      // NIIT investment-income proxy includes both taxable-account gross withdrawals
+      // (federal LTCG proxy) AND cash interest (MMF/HYSA interest is investment
+      // income per IRC §1411). Without `+ cashInterest`, cash-heavy retirees over
+      // the NIIT threshold are under-taxed. The interest is also in `ordinaryGross`
+      // (it's ordinary income for federal tax purposes), but its inclusion in the
+      // NIIT *base* is separate from the ordinary-income inclusion.
+      niitTax = calculateNIIT(magi, fromBrokerage + cashInterest, filingStatus);
     } else {
       niitTax = 0;
     }
     totalTax = ordinaryTax + federalCapGainsTax + stateCapGainsTax + niitTax + irmaaSurcharge;
 
     // Spending withdrawal sized to cover spending + tax − availableCash − (conv
-    // tax funded separately). `mt` (conv ordinary tax) is paid from Taxable +
+    // tax funded separately). `mt` (conv ordinary tax) is paid from Cash + Taxable +
     // rmdExc, so the spending pull doesn't need to cover it.
     const uncappedNewWithdrawal = Math.max(0, totalSpendingNet + totalTax - availableCash - mt);
     const newWithdrawal = Math.min(uncappedNewWithdrawal, cap);
     capWasBinding = uncappedNewWithdrawal > cap;
 
-    if (Math.abs(newWithdrawal - withdrawal) < 0.01) {
+    // Convergence tolerance: $0.01 absolute floor, scaled up for very large
+    // withdrawals by a 1e-9 relative term. On normal portfolios the floor
+    // dominates (1e-9 × w < 0.01 until w > $10M), so results are bit-identical
+    // to the old absolute-only check. On $10M+ withdrawals, where one fixed-point
+    // step can't shrink below $0.01 due to float granularity, the relative term
+    // lets the loop terminate instead of burning all iterations and warning.
+    // (Deliberately NOT a pure relative epsilon, which would loosen every normal
+    // scenario and force re-baselining the hand-verified expected files.)
+    const convergenceTol = Math.max(0.01, Math.abs(newWithdrawal) * 1e-9);
+    if (Math.abs(newWithdrawal - withdrawal) < convergenceTol) {
       withdrawal = newWithdrawal;
       break;
+    }
+    // E2: telemetry. Normal scenarios converge in 3–5 iterations. If we hit
+    // the cap with a non-trivial delta, surface it so future regressions
+    // (e.g. an oscillating fixed-point introduced by a new tax interaction)
+    // don't pass silently.
+    if (iter === MAX_ITERATIONS - 1) {
+      const delta = Math.abs(newWithdrawal - withdrawal);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[SimulationService] tax fixed-point did not converge in ${MAX_ITERATIONS} ` +
+        `iterations (year ${year}, age ${age}, residual delta=$${delta.toFixed(2)}). ` +
+        `Using last value.`,
+      );
     }
     withdrawal = newWithdrawal;
   }
 
-  // Conversion ordinary tax (mt) is funded from Taxable + RMD-excess, not from
-  // the spending withdrawal. So neither the surplus calc nor the spendingShortfall
+  // Conversion ordinary tax (mt) is funded from Cash + Taxable + RMD-excess, not
+  // from the spending withdrawal. So neither the surplus calc nor the spendingShortfall
   // should attribute mt to the spending-side cash gap.
-  const mtFinal = convTaxFromTaxable + convTaxFromRmdExc;
+  const mtFinal = convTaxFromCash + convTaxFromBrokerage + convTaxFromRmdExc;
   const netCashFlow = capWasBinding
     ? -withdrawal || 0
     : availableCash + mtFinal - totalTax - totalSpendingNet;
@@ -1508,16 +2184,16 @@ function calculateAnnualCashFlowCore(
     const combinedTaxableFinal = ordinaryGrossFinal + ssTaxableAmount;
     const detailedTax = combinedTaxableFinal > 0
       ? calculateNetFromGrossDetailed(
-          combinedTaxableFinal, userData.filingStatus, age, year, spouseAge, inflationRate,
+          combinedTaxableFinal, filingStatus, age, year, spouseAge, inflationRate,
         )
       : null;
-    const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal, userData.filingStatus);
+    const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal, filingStatus);
     const irmaaDetail = irmaaEnabled
-      ? calculateIRMAADetailed(priorMagi ?? 0, userData.filingStatus, year, inflationRate ?? 0, age, spouseAge)
+      ? calculateIRMAADetailed(priorMagi ?? 0, filingStatus, year, inflationRate ?? 0, age, spouseAge)
       : null;
-    const niitMagiFinal = ordinaryGrossFinal + ssTaxableAmount + fromTaxable;
+    const niitMagiFinal = ordinaryGrossFinal + ssTaxableAmount + fromBrokerage;
     const niitDetail = niitEnabled
-      ? calculateNIITDetailed(niitMagiFinal, fromTaxable, userData.filingStatus)
+      ? calculateNIITDetailed(niitMagiFinal, fromBrokerage + cashInterest, filingStatus)
       : null;
     // Marginal-stack attribution: each event's tax contribution is computed
     // federally only here (state tax is allocated post-hoc proportional to each
@@ -1535,7 +2211,9 @@ function calculateAnnualCashFlowCore(
       ssTaxableAmount,
       fromTrad,
       rothConversionTotal: rothConversion,
-      filingStatus: userData.filingStatus,
+      rothConversionTotalSelf:   rothConversionSelf,
+      rothConversionTotalSpouse: rothConversionSpouse,
+      filingStatus,
       stateEffectiveRate: stateEffectiveRateOnFederalTaxable,
       age,
       taxYear: year,
@@ -1597,6 +2275,15 @@ function calculateAnnualCashFlowCore(
     };
   }
 
+  // Initial capture of cash ending balance — after this year's spending pull
+  // but BEFORE any bucket-policy refill/sweep. Phase 2's
+  // applyPostConvergenceBucketPolicy step overwrites this value via a fresh
+  // re-walk of cash account balances when a policy is active (see the post-
+  // convergence block in simulateOneRun). Consumers that read this field
+  // directly therefore see the post-routing balance when a policy ran, and
+  // this initial value otherwise.
+  const cashEndingBalance = Math.max(0, cashBal - fromCash);
+
   return {
     ssGross,
     otherTaxableGross,
@@ -1606,10 +2293,25 @@ function calculateAnnualCashFlowCore(
     baseSpendingNet: spending.baseSpendingNet,
     otherSpendingGoalsNet: spending.otherSpendingGoalsNet,
     totalSpendingNet,
-    portfolioWithdrawal: fromTaxable + fromTrad + fromRoth,
-    withdrawalFromTaxable: fromTaxable,
+    // portfolioWithdrawal is the *taxable*-impact withdrawal (LTCG/ordinary/Roth
+    // sources); cash principal is tax-free, so we keep it out of this total to
+    // preserve the field's "tax-relevant withdrawal" semantics. Use cashEndingBalance
+    // / withdrawalFromCash to surface cash movement separately.
+    portfolioWithdrawal: fromBrokerage + fromTrad + fromRoth,
+    withdrawalFromBrokerage: fromBrokerage,
     withdrawalFromTraditional: fromTrad,
     withdrawalFromRoth: fromRoth,
+    withdrawalFromCash: fromCash,
+    cashInterest,
+    cashEndingBalance,
+    // Phase 2 post-convergence fields. Initialized to 0 here; populated by
+    // applyPostConvergenceBucketPolicy AFTER applyCashFlow runs. The structural
+    // isolation of that step (no access to tax functions) is what makes the
+    // "post-convergence step never mutates tax fields" invariant a type-level
+    // guarantee — see plan §"Structural enforcement of the post-convergence
+    // invariant".
+    cashRefillFromSurplus: 0,
+    cashSweepToBrokerage: 0,
     totalTax,
     ordinaryTax,
     federalCapGainsTax,
@@ -1622,9 +2324,14 @@ function calculateAnnualCashFlowCore(
     rmdExcess,
     rothConversionGross: rothConversion,
     rothConversionRequested,
-    rothConversionTaxFromTaxable: convTaxFromTaxable,
+    rothConversionTaxFromCash: convTaxFromCash,
+    rothConversionTaxFromBrokerage: convTaxFromBrokerage,
     rothConversionTaxFromRmdExcess: convTaxFromRmdExc,
     rothConversionTaxWithheld: convTaxWithheld,
+    rothConversionGrossSelf:        rothConversionSelf,
+    rothConversionGrossSpouse:      rothConversionSpouse,
+    rothConversionTaxWithheldSelf:  convTaxWithheldSelf,
+    rothConversionTaxWithheldSpouse: convTaxWithheldSpouse,
     spendingShortfall,
     wageIncomeGross: income.wageIncomeGross,
     preTaxContributions: income.preTaxContributions,
@@ -1642,7 +2349,7 @@ function calculateAnnualCashFlowCore(
 // the NIIT proxy). True MAGI adds tax-exempt muni interest and a few other items
 // the model doesn't track.
 function magiFromBreakdown(b: AnnualCashFlowBreakdown): number {
-  return b.otherTaxableGross + b.withdrawalFromTraditional + b.ssTaxableAmount + b.withdrawalFromTaxable;
+  return b.otherTaxableGross + b.withdrawalFromTraditional + b.ssTaxableAmount + b.withdrawalFromBrokerage;
 }
 
 interface SimRun {
@@ -1668,8 +2375,21 @@ interface Precomputes {
   stateResolvedKeyByYear: string[];
   /** Per-state profile resolved for each year (follows successor profiles for SC, WV). */
   stateProfileByYear: StateTaxProfile[];
+  /** EFFECTIVE primary age per year. Pre-death = self age. Post-first-death =
+   *  the survivor's age (used for RMD divisor, Medicare-65 IRMAA, senior bonus).
+   *  Note: the chart's x-axis labels use `currentAge + index` independently, so
+   *  this collapse doesn't affect the displayed age frame. */
   ageByYear: number[];
+  /** EFFECTIVE spouse age per year. Collapses to `null` after the first death so
+   *  IRMAA enrollee count and the senior-bonus count reflect a single survivor. */
   spouseAgeByYear: Array<number | null>;
+  /** Effective filing status per year. Flips MFJ→'single' the year AFTER the
+   *  first death (widow's penalty). Equals the static status when no death model. */
+  filingStatusByYear: FilingStatus[];
+  /** True for survivor years (year offset > first-death offset). Drives the
+   *  Traditional/Roth consolidation in the core + applyCashFlow. All false when
+   *  the death model is inactive. */
+  survivorModeByYear: boolean[];
   incomeByYear: AccumulatedIncome[];
   spendingByYear: Array<{
     baseSpendingNet: number;
@@ -1678,31 +2398,75 @@ interface Precomputes {
   /** Max additional Trad-spending dollars per year that stay within the 12%
    *  federal bracket, **conv-inclusive** (the year's conversion gross is already
    *  in the baseline). Used by `computeSpendingWaterfall` under
-   *  `spendingWithdrawalOrder === 'bracket_aware'`. Zero when no headroom
-   *  (high-bracket years) or when the strategy is `taxable_first`. */
+   *  the resolved spending policy is `'bracket_aware'`. Zero when no headroom
+   *  (high-bracket years) or when the policy is `'brokerage_first'`. */
   bracketHeadroomForTradByYear: number[];
   /** Resolved spending-source strategy for the scenario. Computed once via
-   *  `resolveSpendingWithdrawalOrder` so each MC run doesn't re-scan
+   *  `selectBestSpendingOrder` so each MC run doesn't re-scan
    *  `incomeEvents`. */
   spendingOrder: ResolvedSpendingOrder;
+  /** Per-year portfolio balance from the deterministic projection (nominal $).
+   *  Populated only when `cashBucketPolicy.refillTrigger === 'above_baseline'` —
+   *  used by the post-convergence step's trigger check. Undefined otherwise to
+   *  avoid the cost of a deterministic projection for scenarios that don't
+   *  need it. */
+  deterministicBaselineByYear?: number[];
 }
 
-// Resolve the spending-source strategy for the scenario. Content-aware default:
-// if any roth_conversion event exists, default to 'bracket_aware' (preserves
-// Taxable for high-mt conversion years); otherwise 'taxable_first' (current
-// conservative behavior). User can override via UserData.spendingWithdrawalOrder.
-//
-// Unknown values (legacy 'pro_rata' from a prior enum draft, typos in
-// hand-edited JSON, etc.) are NOT trusted — they fall through to the
-// content-aware default rather than silently behaving like taxable_first
-// with no signal. The TypeScript type prevents this for code-authored
-// scenarios; the runtime check covers JSON-imported scenarios.
-export type ResolvedSpendingOrder = 'taxable_first' | 'bracket_aware';
-export function resolveSpendingWithdrawalOrder(userData: UserData): ResolvedSpendingOrder {
-  const v = userData.spendingWithdrawalOrder;
-  if (v === 'taxable_first' || v === 'bracket_aware') return v;
-  const hasConversion = userData.incomeEvents.some((e) => e.type === 'roth_conversion');
-  return hasConversion ? 'bracket_aware' : 'taxable_first';
+export type ResolvedSpendingOrder = 'brokerage_first' | 'bracket_aware';
+
+/**
+ * Pick the better spending-source strategy for this scenario by running a
+ * quick deterministic projection with each candidate and comparing real
+ * terminal portfolio balances.
+ *
+ * **Why auto-select**: `bracket_aware` is not always better than
+ * `brokerage_first`. It depends on the scenario:
+ *  - Pre-SS retiree with low spending and a balanced Trad/Brokerage split →
+ *    brokerage_first wins (LTCG sits in 0% federal bracket; Trad pulls
+ *    needlessly trigger 10–12% federal).
+ *  - Pre-SS retiree with high spending or a heavy Trad balance →
+ *    bracket_aware wins (spending pushes LTCG into 15% bracket; filling
+ *    12% Trad headroom is cheaper).
+ *
+ * Previously the engine gated the choice on conversion-event presence —
+ * surprisingly user-hostile (adding a $1 placeholder conversion could
+ * unlock hundreds of $K of benefit). Auto-selection removes that gating
+ * and the implicit user-trigger requirement.
+ *
+ * Cost: two deterministic projections, ~10–20 ms total at sim setup
+ * (and once per generator-candidate inside the Roth wizard). Run once
+ * per `runSimulation` / `runDeterministicProjection` entry; the result
+ * is cached in `Precomputes.spendingOrder` so the MC inner loop never
+ * re-selects.
+ *
+ * Tiebreaker on exact score equality: `brokerage_first` (conservative —
+ * preserves Traditional balance for later flexibility).
+ */
+export function selectBestSpendingOrder(userData: UserData): ResolvedSpendingOrder {
+  // The inner projections pass `_forceSpendingOrder` so they skip
+  // re-running this selector (recursion guard).
+  const brokerageResult = runDeterministicProjection(userData, { _forceSpendingOrder: 'brokerage_first' });
+  const bracketResult = runDeterministicProjection(userData, { _forceSpendingOrder: 'bracket_aware' });
+  const brokerageScore = brokerageResult.path[brokerageResult.path.length - 1] ?? 0;
+  const bracketScore = bracketResult.path[bracketResult.path.length - 1] ?? 0;
+  // Prefer brokerage_first unless bracket_aware shows a MEANINGFUL improvement.
+  // The tiebreaker tolerance is the larger of $100 absolute and 0.05% relative
+  // (= $500 on a $1M portfolio, $5K on $10M). Three reasons for the wider
+  // floor than a naive epsilon:
+  //   1. Zero-spending scenarios still produce small REAL differences (~$500–
+  //      $1500 of Trad pull from the bracket-aware LTCG-cascade refeed), big
+  //      enough to defeat a 1e-6 tolerance on high-balance scenarios. The
+  //      policies are operationally equivalent for the user's intent in
+  //      those cases — we don't want to flip to bracket_aware over noise.
+  //   2. For meaningful policy wins (the bracket_aware-dominant high-spending
+  //      retiree case), the delta is hundreds of thousands of dollars over a
+  //      30-year horizon — orders of magnitude above this floor.
+  //   3. The conservative default (brokerage_first) preserves Traditional for
+  //      future flexibility, which has option value the deterministic
+  //      terminal score doesn't capture.
+  const tieTol = Math.max(100, Math.abs(brokerageScore) * 5e-4);
+  return bracketScore - brokerageScore > tieTol ? 'bracket_aware' : 'brokerage_first';
 }
 
 // Execute a single simulation run (Monte Carlo sim, historical slice, or nominal
@@ -1718,7 +2482,7 @@ function simulateOneRun(
   random: () => number,
   blackSwanLookup: Map<number, { stockMultiplier: number; bondMultiplier: number }>,
   // false for the 4997 stat-only MC runs; true for representative paths
-  // (median/downside/nominal) so the Tax Audit UI gets full per-year detail.
+  // (median/nominal) so the Tax Audit UI gets full per-year detail.
   includeAudit: boolean = true
 ): SimRun {
   const currentYear = userData.referenceYear;
@@ -1753,25 +2517,45 @@ function simulateOneRun(
     const yearStateResolvedKey = precomputes.stateResolvedKeyByYear[i];
     const yearAge = precomputes.ageByYear[i];
     const yearSpouseAge = precomputes.spouseAgeByYear[i];
+    const yearFilingStatus = precomputes.filingStatusByYear[i];
+    const yearSurvivorMode = precomputes.survivorModeByYear[i];
 
     const startBalance = sumBalances(balances);
     path.push(startBalance / cumulativeInflation);
     inflation.push(cumulativeInflation);
 
     // IRS rule: RMD uses Dec 31 of prior year (beginning-of-year) balance, split by owner.
-    const beginningTradBalances = {
-      self: sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self'),
-      spouse: sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'spouse'),
-    };
+    // In survivor mode the survivor inherited the deceased's Traditional, so the
+    // whole balance is one pool (combined RMD at the survivor's age, spouse=0).
+    const selfTradBoy = sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self');
+    const spouseTradBoy = sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'spouse');
+    const beginningTradBalances = yearSurvivorMode
+      ? { self: selfTradBoy + spouseTradBoy, spouse: 0 }
+      : { self: selfTradBoy, spouse: spouseTradBoy };
 
     // 1. Growth: draw base factors, apply black-swan overlay, blend by allocation.
+    //    Cash accounts BYPASS the stochastic shock + black-swan overlay entirely
+    //    and instead accrue a deterministic yield. Cash is non-volatile by
+    //    construction in this model — see CLAUDE.md "Cash accounts" and the
+    //    growth-bypass test scenarios. We capture `cashInterest` (the dollar
+    //    amount credited this year, on the beginning-of-year cash balance) and
+    //    thread it into calculateAnnualCashFlowCore as ordinary income.
     const base = generator.drawFactors(runIndex, i, random);
     const { stockFactor: sf, bondFactor: bf } = applyBlackSwan(base, year, blackSwanLookup);
     stockFactors.push(sf);
     bondFactors.push(bf);
+    const cashYieldRate = userData.portfolioAssumptions.cashYieldRate ?? 0.04;
+    let cashInterest = 0;
     for (const id in balances) {
-      const sa = accountIndex.allocationById.get(id) ?? 0.6; // fallback for synthetic accounts
-      balances[id] *= sa * sf + (1 - sa) * bf;
+      if (accountIndex.isCashById.get(id) === true) {
+        // Cash: deterministic yield, no market factor, no black-swan.
+        const interest = balances[id] * cashYieldRate;
+        cashInterest += interest;
+        balances[id] = balances[id] + interest;
+      } else {
+        const sa = accountIndex.allocationById.get(id) ?? 0.6; // fallback for synthetic accounts
+        balances[id] *= sa * sf + (1 - sa) * bf;
+      }
     }
 
     // 2. Cash flow. IRMAA uses MAGI from 2 years prior; pull from completed
@@ -1787,7 +2571,8 @@ function simulateOneRun(
     const cap = Math.max(0, postGrowth);
     const effectiveCashFlow = calculateAnnualCashFlowCore(
       userData, year, yearIncome, yearSpending, yearStateProfile, yearStateResolvedKey, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi,
-      spendingOrder, precomputes.bracketHeadroomForTradByYear[i], includeAudit,
+      spendingOrder, precomputes.bracketHeadroomForTradByYear[i], includeAudit, cashInterest,
+      yearFilingStatus, yearSurvivorMode,
     );
     breakdowns.push(effectiveCashFlow);
 
@@ -1796,7 +2581,45 @@ function simulateOneRun(
       failed = true;
     }
 
-    applyCashFlow(accountIndex, effectiveCashFlow, yearIncome.contributions, balances, includeAudit);
+    applyCashFlow(accountIndex, effectiveCashFlow, yearIncome.contributions, balances, includeAudit, yearSurvivorMode);
+    // Clamp against float drift BEFORE the post-convergence step so its sweep
+    // and refill arithmetic operate on clean non-negative balances. Without
+    // this clamp here, a sub-cent negative Taxable balance from
+    // subtractFromAccounts's proportional split could feed into the bucket
+    // policy and produce phantom dollars in the sweep destination. The
+    // bottom-of-loop clamp below is kept as a final safety net (cheap,
+    // catches any drift introduced by the post-convergence step itself).
+    for (const id in balances) if (balances[id] < 0) balances[id] = 0;
+
+    // Phase 2: post-convergence cash bucket policy. Runs AFTER applyCashFlow
+    // has settled all flows for the year. The function's signature deliberately
+    // withholds tax fields and tax modules so it cannot mutate the converged
+    // tax — see applyPostConvergenceBucketPolicy doc comment for the structural
+    // invariant. Capacity check: only runs when the policy is configured.
+    if (userData.cashBucketPolicy) {
+      const baselineForYear = precomputes.deterministicBaselineByYear?.[i] ?? null;
+      // postGrowth was captured just before calculateAnnualCashFlowCore — it's
+      // the post-growth, pre-withdrawal portfolio balance, which is the right
+      // input for the `above_baseline` trigger (do not include this year's
+      // withdrawals in the ratio — bucket-policy decisions key off plan health
+      // BEFORE we deplete for the year).
+      const routing = applyPostConvergenceBucketPolicy(
+        effectiveCashFlow,
+        balances,
+        userData.cashBucketPolicy,
+        accountIndex,
+        { stockFactor: sf, portfolioPostGrowth: postGrowth, deterministicBaseline: baselineForYear },
+      );
+      effectiveCashFlow.cashRefillFromSurplus = routing.cashRefillFromSurplus;
+      effectiveCashFlow.cashSweepToBrokerage = routing.cashSweepToBrokerage;
+      // cashEndingBalance was captured inside calculateAnnualCashFlowCore before
+      // applyCashFlow ran (and so before refill/sweep). Recompute it now to
+      // reflect the post-routing state — this is the value users see in the CSV
+      // and detail rows.
+      let postRoutingCashBal = 0;
+      for (const a of accountIndex.byType.cash) postRoutingCashBal += balances[a.id] ?? 0;
+      effectiveCashFlow.cashEndingBalance = postRoutingCashBal;
+    }
     // Clamp against float drift.
     for (const id in balances) if (balances[id] < 0) balances[id] = 0;
 
@@ -1823,8 +2646,8 @@ export interface McStats {
 // stat-only run captured per-year stockFactors/bondFactors and cumulative
 // inflation; we feed those back through simulateOneRun via a deterministic
 // replay generator so the resulting path is bit-identical to the original
-// but now includes AnnualAuditBreakdown per year. Cost: ~3 extra runs total
-// (median, downside, nominal) — overhead vs the 4997 audit-stripped runs is
+// but now includes AnnualAuditBreakdown per year. Cost: ~2 extra runs total
+// (median, nominal) — overhead vs the 4997 audit-stripped runs is
 // negligible, while the savings from skipping audit on those 4997 is the
 // dominant performance win.
 export function replayRunWithAudit(
@@ -1872,11 +2695,6 @@ export interface SimulationResult {
   medianBondFactors: number[];
   medianBreakdowns: AnnualCashFlowBreakdown[];
   medianInflation: number[];
-  downside: number[];
-  downsideStockFactors: number[];
-  downsideBondFactors: number[];
-  downsideBreakdowns: AnnualCashFlowBreakdown[];
-  downsideInflation: number[];
   nominal: number[];
   nominalBreakdowns: AnnualCashFlowBreakdown[];
   nominalInflation: number[];
@@ -1894,7 +2712,20 @@ export interface SimulationResult {
 // on the main thread before fanning out to workers — otherwise each worker would
 // inject independently and synthetic account ids could diverge.
 export function prepareUserData(rawUserData: UserData): UserData {
-  return ensureRothConversionAccount(ensureReinvestmentAccount(rawUserData));
+  // Tax-strategy resolution previously happened here (Layer 3 framework, now
+  // removed). All Roth conversions are first-class income events on the
+  // scenario; legacy `taxStrategy.cachedVector` is migrated to events on load.
+  // Synthetic-account creation order matters: ensureCashAccount runs first so
+  // that ensureReinvestmentAccount sees the cash account and the
+  // synthetic-account selection rule (Cash if policy, else Reinvestment-Taxable)
+  // is consistent. ensureReinvestmentAccount still runs because surplus
+  // deposits land in Taxable initially even under bucket policy — the post-
+  // convergence step then sweeps from Taxable into Cash up to target.
+  return ensureRothConversionAccount(
+    ensureReinvestmentAccount(
+      ensureCashAccount(rawUserData)
+    )
+  );
 }
 
 // Derives the effective number of MC runs without instantiating a ReturnGenerator
@@ -1907,7 +2738,7 @@ export function getEffectiveNumRuns(userData: UserData): number {
   if (model === 'historical_single') return 1;
   if (model === 'historical_rolling') {
     const wrap = pa.historicalWrapEnabled ?? false;
-    const horizon = userData.lifeExpectancy - userData.currentAge + 1;
+    const horizon = projectionHorizonYears(userData);
     return wrap ? HISTORICAL_YEARS : Math.max(1, HISTORICAL_YEARS - horizon + 1);
   }
   // parametric, historical_bootstrap
@@ -1918,36 +2749,91 @@ export function getEffectiveNumRuns(userData: UserData): number {
 // independent of RNG. Exported so the SimulationClient / Web Worker can build
 // precomputes inside the worker context (where it's used to thread the same
 // shared inputs into the MC loop without re-deriving per run).
-export function buildPrecomputes(userData: UserData): Precomputes {
+export function buildPrecomputes(
+  userData: UserData,
+  options?: {
+    /** Recursion-breaker for the inner deterministic-baseline run. When true,
+     *  skips the baseline computation even if the policy would request it.
+     *  Internal use only — `runDeterministicProjection` passes this so the
+     *  baseline pass doesn't try to compute its own baseline. */
+    skipBaselineForDeterministic?: boolean;
+    /** Recursion-breaker for `selectBestSpendingOrder`. When set, the engine
+     *  uses this spending policy directly instead of running auto-selection.
+     *  The selector itself uses this to pin each candidate without recursing
+     *  back into the selector. Unit tests use it to isolate behavior under
+     *  a specific policy. Not exposed via UserData. */
+    _forceSpendingOrder?: ResolvedSpendingOrder;
+  }
+): Precomputes {
   const currentYear = userData.referenceYear;
-  const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
+  const deathModel = getDeathModel(userData);
+  const totalYears = deathModel.horizonYears;
   const inflationRate = userData.inflationRate;
 
   const stateResolvedKeyByYear: string[] = new Array(totalYears);
   const stateProfileByYear: StateTaxProfile[] = new Array(totalYears);
   const ageByYear: number[] = new Array(totalYears);
   const spouseAgeByYear: Array<number | null> = new Array(totalYears);
+  const filingStatusByYear: FilingStatus[] = new Array(totalYears);
+  const survivorModeByYear: boolean[] = new Array(totalYears);
   const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
   const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
   const bracketHeadroomForTradByYear: number[] = new Array(totalYears);
-  const resolvedSpendingOrder = resolveSpendingWithdrawalOrder(userData);
+  const resolvedSpendingOrder: ResolvedSpendingOrder =
+    options?._forceSpendingOrder ?? selectBestSpendingOrder(userData);
   for (let i = 0; i < totalYears; i++) {
     const year = currentYear + i;
     const sn = getEffectiveStateName(userData, year);
     const resolved = getStateTaxProfile(sn, year);
     stateResolvedKeyByYear[i] = resolved.resolvedKey;
     stateProfileByYear[i] = resolved.profile;
-    ageByYear[i] = userData.currentAge + i;
-    spouseAgeByYear[i] = userData.spouseAge !== null ? userData.spouseAge + i : null;
-    incomeByYear[i] = accumulateIncome(userData, year, inflationRate);
+    // Widow's penalty: survivor years are strictly AFTER the first-death offset
+    // (MFJ holds through the death year). Collapse ages/filing to the survivor.
+    const survivorMode = deathModel.active && i > deathModel.firstDeathOffset;
+    survivorModeByYear[i] = survivorMode;
+    const selfAge = userData.currentAge + i;
+    const spouseAgeRaw = userData.spouseAge !== null ? userData.spouseAge + i : null;
+    if (survivorMode) {
+      ageByYear[i] = deathModel.survivor === 'self' ? selfAge : (spouseAgeRaw ?? selfAge);
+      spouseAgeByYear[i] = null;
+      filingStatusByYear[i] = 'single';
+    } else {
+      ageByYear[i] = selfAge;
+      spouseAgeByYear[i] = spouseAgeRaw;
+      filingStatusByYear[i] = userData.filingStatus;
+    }
+    incomeByYear[i] = accumulateIncome(userData, year, inflationRate, survivorMode);
     spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
     bracketHeadroomForTradByYear[i] = resolvedSpendingOrder === 'bracket_aware'
-      ? computeBracketHeadroomForTrad(userData, incomeByYear[i], year, inflationRate, ageByYear[i], spouseAgeByYear[i])
+      ? computeBracketHeadroomForTrad(userData, incomeByYear[i], year, inflationRate, ageByYear[i], spouseAgeByYear[i], filingStatusByYear[i])
       : 0;
   }
+
+  // Deterministic baseline precompute for the `above_baseline` refill trigger.
+  // Computed only when needed. Runs a one-shot deterministic projection with the
+  // skipBaselineForDeterministic option so the inner buildPrecomputes call does
+  // NOT recurse on its own baseline. We also pin the resolved spending policy
+  // via `_forceSpendingOrder` so the inner projection skips
+  // `selectBestSpendingOrder` — without this, the selector would fire on the
+  // inner call, run its own two projections, EACH of which would re-enter this
+  // baseline branch and infinitely recurse.
+  let deterministicBaselineByYear: number[] | undefined;
+  if (
+    !options?.skipBaselineForDeterministic
+    && userData.cashBucketPolicy?.refillTrigger === 'above_baseline'
+  ) {
+    const detResult = runDeterministicProjection(userData, {
+      skipBaselineForDeterministic: true,
+      _forceSpendingOrder: resolvedSpendingOrder,
+    });
+    deterministicBaselineByYear = detResult.path;
+  }
+
   return {
-    stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear, incomeByYear, spendingByYear,
+    stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear,
+    filingStatusByYear, survivorModeByYear, incomeByYear, spendingByYear,
     bracketHeadroomForTradByYear, spendingOrder: resolvedSpendingOrder,
+    deterministicBaselineByYear,
   };
 }
 
@@ -1976,12 +2862,18 @@ export function runShard(
     startRunIndex: number;
     endRunIndex: number;
     random?: () => number;
+    /** Optional pre-built indexes. When the caller is `runSimulation` (inline
+     *  path) it already builds these for the representative-replay step; pass
+     *  them in to avoid rebuilding from scratch here. Workers don't pass
+     *  them — they receive serialized userData and rebuild fresh. */
+    accountIndex?: AccountIndex;
+    blackSwanLookup?: Map<number, { stockMultiplier: number; bondMultiplier: number }>;
   }
 ): SimRun[] {
   const random = opts.random ?? Math.random;
-  const accountIndex = buildAccountIndex(userData);
+  const accountIndex = opts.accountIndex ?? buildAccountIndex(userData);
   const generator = createReturnGenerator(userData, random);
-  const blackSwanLookup = buildBlackSwanLookup(userData);
+  const blackSwanLookup = opts.blackSwanLookup ?? buildBlackSwanLookup(userData);
   const out: SimRun[] = new Array(opts.endRunIndex - opts.startRunIndex);
   for (let r = opts.startRunIndex; r < opts.endRunIndex; r++) {
     out[r - opts.startRunIndex] = simulateOneRun(
@@ -1991,11 +2883,11 @@ export function runShard(
   return out;
 }
 
-// Pick the median (50th percentile) and downside (10th percentile) representative
-// runs by score: failed runs sort by earliest `failedYear`; survivors by final balance.
-// The score formula (`failed ? failedYear : totalYears + finalBalance`) ensures failed
-// runs always sort before any survivor.
-export function pickRepresentatives(allRuns: SimRun[]): { medianRun: SimRun; downsideRun: SimRun } {
+// Pick the median (50th percentile) representative run by score: failed runs sort
+// by earliest `failedYear`; survivors by final balance. The score formula
+// (`failed ? failedYear : totalYears + finalBalance`) ensures failed runs always
+// sort before any survivor.
+export function pickRepresentatives(allRuns: SimRun[]): { medianRun: SimRun } {
   const totalYears = allRuns[0].path.length;
   const sorted = [...allRuns].sort((a, b) => {
     const scoreA = a.failed ? a.failedYear : totalYears + a.path[totalYears - 1];
@@ -2005,7 +2897,6 @@ export function pickRepresentatives(allRuns: SimRun[]): { medianRun: SimRun; dow
   const numRuns = allRuns.length;
   return {
     medianRun: sorted[Math.floor(numRuns * 0.5)],
-    downsideRun: sorted[Math.floor(numRuns * 0.1)],
   };
 }
 
@@ -2064,16 +2955,28 @@ export function runSimulation(
   clearTaxCalculationCache();
   const userData = prepareUserData(rawUserData);
   const currentYear = userData.referenceYear;
-  const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
+  const totalYears = projectionHorizonYears(userData);
 
   const precomputes = buildPrecomputes(userData);
   const numRuns = getEffectiveNumRuns(userData);
+
+  // Build indexes once and pass to BOTH the MC shard and the post-MC replay.
+  // (Previously runShard rebuilt them internally and we rebuilt them again here
+  // for the replay — same family of "double-call in a pipeline" pattern as the
+  // prepareUserData fingerprint bug. Pure functions, so no correctness issue,
+  // but wasteful and inconsistent.) Workers spawn their own runShard with no
+  // pre-built indexes — they receive serialized userData and rebuild fresh.
+  const accountIndex = buildAccountIndex(userData);
+  const blackSwanLookup = buildBlackSwanLookup(userData);
 
   // Inline single-shard MC. Bit-exact preservation: runShard's internal generator
   // construction (which may consume RNG for the bootstrap indexMap) happens at the
   // same logical point as today's pre-loop setup, and the per-run RNG consumption
   // order is identical.
-  const allRuns = runShard(userData, precomputes, { startRunIndex: 0, endRunIndex: numRuns, random });
+  const allRuns = runShard(userData, precomputes, {
+    startRunIndex: 0, endRunIndex: numRuns, random,
+    accountIndex, blackSwanLookup,
+  });
 
   let successCount = 0;
   for (let r = 0; r < numRuns; r++) if (!allRuns[r].failed) successCount++;
@@ -2081,11 +2984,8 @@ export function runSimulation(
 
   // Replay representative runs with audit. Replay is data-replay (uses recorded
   // factors on the SimRun), not RNG-replay — so it does not advance `random`.
-  const accountIndex = buildAccountIndex(userData);
-  const blackSwanLookup = buildBlackSwanLookup(userData);
-  const { medianRun: medianSeed, downsideRun: downsideSeed } = pickRepresentatives(allRuns);
+  const { medianRun: medianSeed } = pickRepresentatives(allRuns);
   const medianRun = replayRunWithAudit(medianSeed, userData, precomputes, accountIndex, blackSwanLookup);
-  const downsideRun = replayRunWithAudit(downsideSeed, userData, precomputes, accountIndex, blackSwanLookup);
 
   const { percentileBand, mcStats } = computePercentileBandAndStats(allRuns, totalYears, userData.currentAge);
 
@@ -2108,11 +3008,6 @@ export function runSimulation(
     medianBondFactors: medianRun.bondFactors,
     medianBreakdowns: medianRun.breakdowns,
     medianInflation: medianRun.inflation,
-    downside: downsideRun.path,
-    downsideStockFactors: downsideRun.stockFactors,
-    downsideBondFactors: downsideRun.bondFactors,
-    downsideBreakdowns: downsideRun.breakdowns,
-    downsideInflation: downsideRun.inflation,
     nominal: nominalRun.path,
     nominalBreakdowns: nominalRun.breakdowns,
     nominalInflation: nominalRun.inflation,
@@ -2126,7 +3021,23 @@ export function runSimulation(
 // engine that drives the "Deterministic" chart line. Exposed so callers (e.g.,
 // the Roth Conversion dialog's Net impact preview) can compute with-vs-without
 // deltas without paying for a full Monte Carlo run.
-export function runDeterministicProjection(rawUserData: UserData): {
+export function runDeterministicProjection(
+  rawUserData: UserData,
+  options?: {
+    /** Internal flag used by the cash-bucket baseline-precompute pass to break
+     *  the recursion: buildPrecomputes(userData) wants the deterministic
+     *  baseline → runs runDeterministicProjection(userData) which calls
+     *  buildPrecomputes again. When this flag is set, the inner buildPrecomputes
+     *  skips its baseline computation. Result: above_baseline triggers in the
+     *  deterministic run will never fire (since baseline=undefined), which is
+     *  the right semantic — the baseline run is the reference, not a follower. */
+    skipBaselineForDeterministic?: boolean;
+    /** Recursion-breaker for `selectBestSpendingOrder`. When set, the engine
+     *  uses this spending policy directly instead of running auto-selection.
+     *  See `buildPrecomputes` for the full rationale. */
+    _forceSpendingOrder?: ResolvedSpendingOrder;
+  }
+): {
   path: number[];
   breakdowns: AnnualCashFlowBreakdown[];
   inflation: number[];
@@ -2134,8 +3045,8 @@ export function runDeterministicProjection(rawUserData: UserData): {
 } {
   clearTaxCalculationCache();
   const userData = prepareUserData(rawUserData);
-  const totalYears = userData.lifeExpectancy - userData.currentAge + 1;
-  const precomputes = buildPrecomputes(userData);
+  const totalYears = projectionHorizonYears(userData);
+  const precomputes = buildPrecomputes(userData, options);
   const accountIndex = buildAccountIndex(userData);
   const blackSwanLookup = buildBlackSwanLookup(userData);
   const nominalGenerator = createNominalGenerator(userData);
@@ -2152,8 +3063,8 @@ export function runDeterministicProjection(rawUserData: UserData): {
 // chart already null-guards both. `cachedProbability` is plumbed in from the
 // caller (Scenario.lastSuccessProbability) so the engine itself stays
 // independent of that sidebar-only display value.
-// Median/downside fields mirror the deterministic line; the View selector
-// stays functional but flips to the real MC paths once runSimulation finishes.
+// Median fields mirror the deterministic line; the table flips to the real MC
+// path once runSimulation finishes.
 export function runFastPreview(rawUserData: UserData, cachedProbability?: number): SimulationResult {
   const det = runDeterministicProjection(rawUserData);
   return {
@@ -2166,11 +3077,6 @@ export function runFastPreview(rawUserData: UserData, cachedProbability?: number
     medianInflation: det.inflation,
     medianStockFactors: [],
     medianBondFactors: [],
-    downside: det.path,
-    downsideBreakdowns: det.breakdowns,
-    downsideInflation: det.inflation,
-    downsideStockFactors: [],
-    downsideBondFactors: [],
     years: det.years,
     percentileBand: null,
     mcStats: null,

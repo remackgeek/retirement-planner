@@ -167,6 +167,99 @@ const additionalSeniorPerByYear: Record<
   },
 };
 
+// Federal long-term capital-gains rate breakpoints (taxable-income thresholds).
+// LTCG stacks ON TOP of ordinary taxable income: the portion of gain sitting
+// below `zeroTop` is taxed 0%, between `zeroTop` and `fifteenTop` at 15%, and
+// above `fifteenTop` at 20%. Projected forward from the base year via the same
+// inflation factor as the ordinary brackets. Only consulted when a scenario
+// opts into stacked LTCG (UserData.useStackedLtcgBrackets); the default flat
+// `longTermCapGainsRate` path ignores this table.
+//
+// Sources: 2024 = Rev. Proc. 2023-34; 2025 = Rev. Proc. 2024-40; 2026 =
+// Rev. Proc. 2025-32. MFS values are half the MFJ thresholds, per statute.
+// Re-verify against the IRS revenue procedure before relying on a given year.
+const ltcgBreakpointsByYear: Record<number, Record<FilingStatus, { zeroTop: number; fifteenTop: number }>> = {
+  2024: {
+    single: { zeroTop: 47025, fifteenTop: 518900 },
+    mfs: { zeroTop: 47025, fifteenTop: 291850 },
+    mfj: { zeroTop: 94050, fifteenTop: 583750 },
+    hoh: { zeroTop: 63000, fifteenTop: 551350 },
+  },
+  2025: {
+    single: { zeroTop: 48350, fifteenTop: 533400 },
+    mfs: { zeroTop: 48350, fifteenTop: 300000 },
+    mfj: { zeroTop: 96700, fifteenTop: 600050 },
+    hoh: { zeroTop: 64750, fifteenTop: 566700 },
+  },
+  2026: {
+    single: { zeroTop: 49450, fifteenTop: 545500 },
+    mfs: { zeroTop: 49450, fifteenTop: 306850 },
+    mfj: { zeroTop: 98900, fifteenTop: 613700 },
+    hoh: { zeroTop: 66200, fifteenTop: 578650 },
+  },
+};
+
+/**
+ * Inflation-indexed federal LTCG 0%/15% breakpoints for a filing status/year.
+ * Above `fifteenTop` the 20% rate applies.
+ */
+export function getLtcgBreakpoints(
+  filingStatus: FilingStatus,
+  taxYear: number,
+  inflationRate?: number,
+): { zeroTop: number; fifteenTop: number } {
+  const years = Object.keys(ltcgBreakpointsByYear).map(Number).sort((a, b) => b - a);
+  const eff = years.find((y) => y <= taxYear) ?? years[0];
+  const bp = ltcgBreakpointsByYear[eff][filingStatus];
+  const f = inflationFactor(taxYear, inflationRate);
+  return { zeroTop: bp.zeroTop * f, fifteenTop: bp.fifteenTop * f };
+}
+
+/**
+ * Federal LTCG tax via 0/15/20% bracket stacking. `ordinaryTaxable` is the
+ * after-deduction ordinary taxable income (the height at which the gain stacks);
+ * `ltcg` is the long-term gain. The 0% band only applies to the part of the gain
+ * that falls below the 0% ceiling once ordinary income is accounted for.
+ */
+export function computeFederalLTCGTax(
+  ordinaryTaxable: number,
+  ltcg: number,
+  filingStatus: FilingStatus,
+  taxYear: number,
+  inflationRate?: number,
+): number {
+  const gain = Math.max(0, ltcg);
+  if (gain <= 0) return 0;
+  const base = Math.max(0, ordinaryTaxable);
+  const { zeroTop, fifteenTop } = getLtcgBreakpoints(filingStatus, taxYear, inflationRate);
+  const stackTop = base + gain;
+  const fifteenAmt = Math.max(0, Math.min(stackTop, fifteenTop) - Math.max(base, zeroTop));
+  const twentyAmt = Math.max(0, stackTop - Math.max(base, fifteenTop));
+  return fifteenAmt * 0.15 + twentyAmt * 0.20;
+}
+
+/**
+ * After-deduction federal ordinary taxable income for a gross amount — the same
+ * deduction stack `calculateNetFromGross` applies (base standard deduction +
+ * age-65 senior add-on + OBBB extra). Exposed so the LTCG-stacking path can find
+ * the height at which gains stack without re-deriving the deduction.
+ */
+export function getFederalTaxableIncome(
+  grossIncome: number,
+  filingStatus: FilingStatus,
+  age: number,
+  taxYear: number,
+  spouseAge: number | null = null,
+  inflationRate?: number,
+): number {
+  const safeGross = Math.max(0, grossIncome);
+  const numQualifying = getNumQualifyingSeniors(filingStatus, age, spouseAge);
+  const usualExtra = getUsualSeniorExtra(filingStatus, taxYear, numQualifying, inflationRate);
+  const obbbExtra = getOBBBSeniorDeduction(safeGross, filingStatus, taxYear, numQualifying);
+  const baseStdDed = getStandardDeduction(filingStatus, taxYear, inflationRate);
+  return Math.max(0, safeGross - (baseStdDed + usualExtra + obbbExtra));
+}
+
 /**
  * Number of filers age 65+ who qualify for the senior-bonus standard
  * deduction (1 for single/HoH/MFS filers age 65+, plus 1 for an MFJ spouse

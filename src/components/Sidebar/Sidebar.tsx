@@ -17,6 +17,7 @@ interface SidebarProps {
   isOpen: boolean;
   onToggle: () => void;
   requestSwitchScenario?: (id: string) => void;
+  onOpenUserGuide: () => void;
 }
 
 const SidebarContainer = styled.aside<{ $isOpen: boolean }>`
@@ -346,6 +347,29 @@ const EmptyStateCta = styled.button`
   }
 `;
 
+const GuideLink = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: ${spacing.xs};
+  margin-top: ${spacing.md};
+  padding: 0;
+  font-size: ${fontSize.xs};
+  font-family: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: ${colors.primary};
+
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
+const GuideHint = styled.div`
+  font-size: ${fontSize.xs};
+  color: ${colors.textMuted};
+`;
+
 const CompactTooltipStyle = createGlobalStyle`
   .compact-tooltip .p-tooltip-text {
     font-size: ${fontSize.xs};
@@ -360,7 +384,7 @@ const actionButtonStyle = {
   minWidth: '1.6rem',
 } as const;
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenario }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenario, onOpenUserGuide }) => {
   const [dialogVisible, setDialogVisible] = useState(false);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [cloneDialogVisible, setCloneDialogVisible] = useState(false);
@@ -447,6 +471,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenar
                 </ExampleButton>
               ))}
             </ExampleButtonRow>
+            <GuideLink onClick={onOpenUserGuide}>
+              <i className="pi pi-book" />
+              New here? Read the User Guide
+            </GuideLink>
+            <GuideHint>or open it later from Help → User Guide</GuideHint>
           </EmptyState>
         )}
         {scenarios.map((scenario) => {

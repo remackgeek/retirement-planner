@@ -2,7 +2,7 @@
   "_description": "Traditional-only starting portfolio with an active Roth conversion. Verifies ensureRothConversionAccount auto-creates a receiving Roth account.",
   "_rationale": "Age 60. Only Traditional account ($100k). Conversion of $20k at year 0. Without ensureRothConversionAccount, addToType would no-op on Roth deposit. With it, a Roth account is injected and receives the converted funds. rothConversionGross should be 20,000 and the simulation should complete without error.",
   "_seed": 12345,
-  "name": "Roth Conversion — Auto-Create Roth Account",
+  "name": "Roth Conversion \u00e2\u20ac\u201d Auto-Create Roth Account",
   "currentAge": 60,
   "lifeExpectancy": 63,
   "referenceYear": 2026,
@@ -54,6 +54,5 @@
   ],
   "longTermCapGainsRate": 0.15,
   "enableIRMAA": false,
-  "enableNIIT": false,
-  "spendingWithdrawalOrder": "taxable_first"
+  "enableNIIT": false
 }

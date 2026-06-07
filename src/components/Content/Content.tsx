@@ -4,6 +4,7 @@ import { ProgressSpinner } from 'primereact/progressspinner';
 import { RetirementContext } from '../../context/RetirementContext';
 import { runFastPreview } from '../../services/SimulationService';
 import { simulationClient, SupersededError } from '../../services/SimulationClient';
+import { strategyComputeClient } from '../../services/StrategyComputeClient';
 import Projections from '../Chart/Chart';
 import { SpendingGoalsManager } from '../SpendingGoalsManager';
 import { IncomeEventsManager } from '../IncomeEventsManager';
@@ -107,7 +108,12 @@ const Content: React.FC<{
   const activeScenarioRef = useRef(activeScenario);
   useEffect(() => { activeScenarioRef.current = activeScenario; });
   // Warm up the worker pool on first mount so the first MC pays no cold-start cost.
-  useEffect(() => { simulationClient.warmUp(); }, []);
+  // Also pre-spawn the strategy compute worker so the wizard's first Compute click
+  // doesn't pay a ~50ms worker-boot delay.
+  useEffect(() => {
+    simulationClient.warmUp();
+    strategyComputeClient.warmUp();
+  }, []);
   // When we write the freshly-computed probability back to the active scenario
   // (sidebar display cache), the resulting activeScenario reference change would
   // re-fire this effect and run MC again. Skip exactly one run after a write-back.
@@ -299,6 +305,23 @@ const Content: React.FC<{
     updateScenario(updatedScenario);
   };
 
+  // The Roth Conversion generator wizard now lives in the Tools menu
+  // (AppHeader); its "Apply" path uses the shared `applyGeneratedConversions`
+  // helper directly. The Income panel's Roth Conversion entry is single-only.
+
+  // Bulk-delete every event in a generator-tagged batch (one updateScenario,
+  // no per-event re-render thrash). Called from the IncomeEventsManager group
+  // card's "Delete all generated conversions" action.
+  const handleDeleteIncomeEventGroup = (ids: string[]) => {
+    if (!activeScenario || ids.length === 0) return;
+    const idSet = new Set(ids);
+    const updatedScenario = {
+      ...activeScenario,
+      incomeEvents: activeScenario.incomeEvents.filter((e) => !idSet.has(e.id)),
+    };
+    updateScenario(updatedScenario);
+  };
+
   const handleDeleteIncomeEvent = (id: string) => {
     if (!activeScenario) return;
     const updatedEvents = activeScenario.incomeEvents.filter(
@@ -325,6 +348,16 @@ const Content: React.FC<{
     );
     const updatedScenario = { ...activeScenario, accounts: updatedAccounts };
     updateScenario(updatedScenario);
+  };
+
+  // Scenario-wide cash yield, edited inline from the cash AccountDialog. Writes
+  // straight to portfolioAssumptions (applies to every cash account).
+  const handleCashYieldChange = (rate: number) => {
+    if (!activeScenario) return;
+    updateScenario({
+      ...activeScenario,
+      portfolioAssumptions: { ...activeScenario.portfolioAssumptions, cashYieldRate: rate },
+    });
   };
 
   const handleDeleteAccount = (id: string) => {
@@ -382,6 +415,8 @@ const Content: React.FC<{
                 onUpdate={handleUpdateAccount}
                 onDelete={handleDeleteAccount}
                 spouseAge={activeScenario.spouseAge}
+                cashYieldRate={activeScenario.portfolioAssumptions.cashYieldRate ?? 0.04}
+                onCashYieldChange={handleCashYieldChange}
               />
             </AccountsManagerSection>
             <ManagerSection>
@@ -392,6 +427,7 @@ const Content: React.FC<{
                 onAdd={handleAddIncomeEvent}
                 onUpdate={handleUpdateIncomeEvent}
                 onDelete={handleDeleteIncomeEvent}
+                onDeleteGroup={handleDeleteIncomeEventGroup}
               />
             </ManagerSection>
             <ManagerSection>

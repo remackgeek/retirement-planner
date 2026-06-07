@@ -1,0 +1,68 @@
+{
+  "_description": "above_baseline trigger — refill fires only when MC portfolio is above the deterministic baseline.",
+  "_rationale": "Cash $5k, pension $100k/yr, spending $20k, deterministic stockReturn=5%, 0% volatility. Policy 'above_baseline' (min $20k, target $40k, max $60k — fixed dollar amounts). With 0% volatility the MC path equals the deterministic baseline exactly each year, so the ratio = 1.0 and the trigger requires > 1.0 (strict). Refill does NOT fire. cashRefillFromSurplus = 0. Demonstrates 'above_baseline' is a strict-better trigger.",
+  "_seed": 12345,
+  "name": "Bucket Above Baseline",
+  "currentAge": 60,
+  "lifeExpectancy": 62,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 20000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "name": "Pension",
+      "amount": 100000,
+      "startAge": 60,
+      "endAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0.05,
+    "stockStdDev": 0,
+    "bondReturn": 0.03,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "cashYieldRate": 0
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "cash-1",
+      "name": "Cash",
+      "type": "cash",
+      "balance": 5000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "cashBucketPolicy": {
+    "minAmount": 20000,
+    "targetAmount": 40000,
+    "maxAmount": 60000,
+    "refillTrigger": "above_baseline"
+  },
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

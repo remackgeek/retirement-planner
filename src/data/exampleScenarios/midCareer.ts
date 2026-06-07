@@ -57,7 +57,7 @@ export const midCareer: Omit<Scenario, 'id'> = {
     {
       id: 'mid-tax-1',
       name: 'Brokerage',
-      type: 'taxable',
+      type: 'brokerage',
       balance: 25000,
       stockAllocation: 0.8,
       portfolioBalance: '80_20',

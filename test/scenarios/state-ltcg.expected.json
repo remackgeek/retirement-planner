@@ -7,7 +7,7 @@
     { "index": 2, "age": 62, "value": 877667, "tolerance": 60, "note": "After year-2 withdrawal" }
   ],
   "breakdownChecks": [
-    { "index": 0, "field": "withdrawalFromTaxable", "value": 61167, "tolerance": 20, "_note": "Solved from CA graduated LTCG stack against $50k spending net, with $5,540 std ded absorbed into LTCG" },
+    { "index": 0, "field": "withdrawalFromBrokerage", "value": 61167, "tolerance": 20, "_note": "Solved from CA graduated LTCG stack against $50k spending net, with $5,540 std ded absorbed into LTCG" },
     { "index": 0, "field": "federalCapGainsTax", "value": 9175, "tolerance": 5, "_note": "0.15 × 61167" },
     { "index": 0, "field": "stateCapGainsTax", "value": 1992, "tolerance": 5, "_note": "CA graduated brackets on (61167 − 5540) = $55,627" },
     { "index": 0, "field": "niitTax", "value": 0, "tolerance": 0.01, "_note": "MAGI $61,167 < $200k single threshold" },

@@ -1,8 +1,8 @@
 {
   "_description": "$50k Roth conversion with a healthy Taxable account, verifying the new sourcing rule: conversion ordinary tax pulls from Taxable, not Traditional. Single filer, FL, age 60.",
-  "_rationale": "Single age 60, FL (no state tax), Trad $500k, Roth $0, Taxable $50k. One-time $50k conversion. 2026 single std deduction ~$15,750 → ~$34,250 taxable income → ~$4,000–$5,000 federal tax. Under new sourcing rule: conv ordinary tax (~$4k) pulls from Taxable, not from extra Trad. Expected: withdrawalFromTraditional = exactly 50,000 (conversion principal only), withdrawalFromTaxable ≈ $4k (the conv tax), rothConversionGross = 50,000 fully executed.",
+  "_rationale": "Single age 60, FL (no state tax), Trad $500k, Roth $0, Taxable $50k. One-time $50k conversion. 2026 single std deduction ~$15,750 \u00e2\u2020\u2019 ~$34,250 taxable income \u00e2\u2020\u2019 ~$4,000\u00e2\u20ac\u201c$5,000 federal tax. Under new sourcing rule: conv ordinary tax (~$4k) pulls from Taxable, not from extra Trad. Expected: withdrawalFromTraditional = exactly 50,000 (conversion principal only), withdrawalFromBrokerage \u00e2\u2030\u02c6 $4k (the conv tax), rothConversionGross = 50,000 fully executed.",
   "_seed": 12345,
-  "name": "Roth Conversion — Tax From Taxable",
+  "name": "Roth Conversion \u00e2\u20ac\u201d Tax From Taxable",
   "currentAge": 60,
   "lifeExpectancy": 63,
   "referenceYear": 2026,
@@ -62,7 +62,7 @@
     {
       "id": "tax-1",
       "name": "Taxable 1",
-      "type": "taxable",
+      "type": "brokerage",
       "balance": 50000,
       "stockAllocation": 0.6,
       "portfolioBalance": "60_40"
@@ -70,6 +70,5 @@
   ],
   "longTermCapGainsRate": 0.15,
   "enableIRMAA": false,
-  "enableNIIT": false,
-  "spendingWithdrawalOrder": "taxable_first"
+  "enableNIIT": false
 }

@@ -7,7 +7,7 @@ import { Checkbox } from 'primereact/checkbox';
 import type { Scenario } from '../types/Scenario';
 import type { SimulationSettings } from '../types/UserData';
 import type { ReturnDistribution, ReturnModel, BlackSwanEvent } from '../types/IncomeEvent';
-import { spacing, fontSize } from '../styles/theme';
+import { spacing, fontSize, dialogWidth } from '../styles/theme';
 import BlackSwanEventsEditor from './BlackSwanEventsEditor';
 import {
   HISTORICAL_FIRST_YEAR,
@@ -83,6 +83,7 @@ interface FormState {
   inflationStdDev: number;
   simulationSettings: SimulationSettings;
   blackSwanEvents: BlackSwanEvent[];
+  cashYieldRate: number;
 }
 
 const ModelingDialog: React.FC<ModelingDialogProps> = ({
@@ -110,6 +111,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     blackSwanEvents: s.portfolioAssumptions.blackSwanEvents
       ? s.portfolioAssumptions.blackSwanEvents.map((e) => ({ ...e }))
       : [],
+    cashYieldRate: s.portfolioAssumptions.cashYieldRate ?? 0.04,
   });
 
   const [form, setForm] = useState<FormState>(() => formFromScenario(scenario));
@@ -118,12 +120,17 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     if (visible) setForm(formFromScenario(scenario));
   }, [visible, scenario]);
 
-  const totalBalance = scenario.accounts.reduce((s, a) => s + a.balance, 0);
-  const weightedStockAlloc = scenario.accounts.length === 0
+  // Blended return is computed over NON-cash accounts only. Cash is non-volatile
+  // and has its own yield assumption; including it here would mislead users
+  // about the equity/bond exposure mix.
+  const nonCashAccounts = scenario.accounts.filter((a) => a.type !== 'cash');
+  const hasCashAccount = scenario.accounts.some((a) => a.type === 'cash');
+  const nonCashBalance = nonCashAccounts.reduce((s, a) => s + a.balance, 0);
+  const weightedStockAlloc = nonCashAccounts.length === 0
     ? 0.6
-    : totalBalance > 0
-      ? scenario.accounts.reduce((s, a) => s + a.stockAllocation * a.balance, 0) / totalBalance
-      : scenario.accounts.reduce((s, a) => s + a.stockAllocation, 0) / scenario.accounts.length;
+    : nonCashBalance > 0
+      ? nonCashAccounts.reduce((s, a) => s + a.stockAllocation * a.balance, 0) / nonCashBalance
+      : nonCashAccounts.reduce((s, a) => s + a.stockAllocation, 0) / nonCashAccounts.length;
   const blendedReturn = weightedStockAlloc * form.stockReturn + (1 - weightedStockAlloc) * form.bondReturn;
 
   const handleSave = () => {
@@ -153,6 +160,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
         historicalBlockSize:
           form.returnModel === 'historical_bootstrap' ? form.historicalBlockSize : undefined,
         blackSwanEvents: form.blackSwanEvents.length > 0 ? form.blackSwanEvents : undefined,
+        cashYieldRate: form.cashYieldRate,
       },
     });
     onHide();
@@ -174,7 +182,7 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
     <Dialog
       header="Modeling"
       visible={visible}
-      style={{ width: '32rem' }}
+      style={dialogWidth('32rem')}
       onHide={onHide}
       footer={dialogFooter}
     >
@@ -401,6 +409,19 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
               </FieldRow>
             </Section>
           </>
+        )}
+
+        {hasCashAccount && (
+          <Section>
+            <SectionHeader>Cash Yield</SectionHeader>
+            <InputGroup>
+              <label>Annual Yield</label>
+              {pctField(form.cashYieldRate, (v) => setForm({ ...form, cashYieldRate: v }), 15)}
+              <HelpText>
+                Yield applied to all cash accounts (MMF / HYSA). Deterministic across all return models — cash is non-volatile in this model. Interest is taxed as ordinary income in the year accrued and counts toward IRMAA MAGI and the NIIT investment-income base.
+              </HelpText>
+            </InputGroup>
+          </Section>
         )}
 
         <Section>

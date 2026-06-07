@@ -1,0 +1,11 @@
+{
+  "_rationale": "Conversion of $100k from Trad → Roth. Marginal ordinary tax on $100k single (2026, no other income, std deduction) is roughly the 10% + 12% bands minus deduction. With ~$15,750 std dedn the taxable income is ~$84k → federal tax ~$13-14k. Cash $200k easily covers it. So rothConversionTaxFromCash > 0; rothConversionTaxFromBrokerage = 0 (no Taxable); rothConversionTaxWithheld = 0. rothConversionGross = $100k (full).",
+  "probability": 100,
+  "breakdownChecks": [
+    { "index": 0, "field": "rothConversionGross", "min": 99999, "max": 100001, "_note": "Full conversion lands" },
+    { "index": 0, "field": "rothConversionTaxFromCash", "min": 5000, "max": 25000, "_note": "Cash absorbs marginal tax; federal-only since FL has no state tax" },
+    { "index": 0, "field": "rothConversionTaxFromBrokerage", "value": 0, "tolerance": 0.01, "_note": "No Taxable account → 0" },
+    { "index": 0, "field": "rothConversionTaxFromRmdExcess", "value": 0, "tolerance": 0.01, "_note": "No RMD at age 60" },
+    { "index": 0, "field": "rothConversionTaxWithheld", "value": 0, "tolerance": 0.01, "_note": "Cash covered tax fully; nothing withheld" }
+  ]
+}

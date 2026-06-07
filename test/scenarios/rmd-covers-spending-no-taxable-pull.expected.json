@@ -1,10 +1,10 @@
 {
-  "_rationale": "RMD at 74 = 4,590,000 / 25.5 = $180,000 exactly. Spending $108k. As ordinary income, federal tax on $180k (single, 2026 std deduction) is roughly $30-36k; FL has no state tax; no LTCG since fromTaxable = 0; NIIT = 0 since MAGI $180k < $200k single threshold. Net of tax, the RMD provides ~$145-150k cash — comfortably more than the $108k spending need. The RMD-first waterfall absorbs the entire spending need into the RMD's spending pull, so withdrawalFromTaxable stays at exactly 0. Excess RMD (rmdRequired minus spending pull = $180k - ($108k + tax)) reinvests into the existing Taxable account, so Taxable grows year-over-year and Traditional shrinks by the full RMD each year.",
+  "_rationale": "RMD at 74 = 4,590,000 / 25.5 = $180,000 exactly. Spending $108k. As ordinary income, federal tax on $180k (single, 2026 std deduction) is roughly $30-36k; FL has no state tax; no LTCG since fromBrokerage = 0; NIIT = 0 since MAGI $180k < $200k single threshold. Net of tax, the RMD provides ~$145-150k cash — comfortably more than the $108k spending need. The RMD-first waterfall absorbs the entire spending need into the RMD's spending pull, so withdrawalFromBrokerage stays at exactly 0. Excess RMD (rmdRequired minus spending pull = $180k - ($108k + tax)) reinvests into the existing Taxable account, so Taxable grows year-over-year and Traditional shrinks by the full RMD each year.",
   "probability": 100,
   "tolerance": 1.0,
   "breakdownChecks": [
     { "index": 0, "field": "rmdRequired", "value": 180000, "tolerance": 1, "_note": "4,590,000 / 25.5" },
-    { "index": 0, "field": "withdrawalFromTaxable", "value": 0, "tolerance": 0.01, "_note": "RMD-first waterfall: RMD covers all spending+tax; no Taxable pull" },
+    { "index": 0, "field": "withdrawalFromBrokerage", "value": 0, "tolerance": 0.01, "_note": "RMD-first waterfall: RMD covers all spending+tax; no Taxable pull" },
     { "index": 0, "field": "withdrawalFromTraditional", "value": 180000, "tolerance": 1, "_note": "Exactly the forced RMD; no extra Trad pull above RMD" },
     { "index": 0, "field": "federalCapGainsTax", "value": 0, "tolerance": 0.01, "_note": "No taxable withdrawal => no LTCG" },
     { "index": 0, "field": "stateCapGainsTax", "value": 0, "tolerance": 0.01, "_note": "FL: no state tax" },

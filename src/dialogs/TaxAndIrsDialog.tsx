@@ -6,7 +6,7 @@ import { Checkbox } from 'primereact/checkbox';
 import type { Scenario } from '../types/Scenario';
 import type { ContributionLimits } from '../types/UserData';
 import { getContributionLimits } from '../utils/contributionLimits';
-import { fontSize } from '../styles/theme';
+import { fontSize, dialogWidth } from '../styles/theme';
 import {
   Form,
   Section,
@@ -27,6 +27,7 @@ interface TaxAndIrsDialogProps {
 
 interface FormState {
   longTermCapGainsRate: number;
+  useStackedLtcgBrackets: boolean;
   enableIRMAA: boolean;
   enableNIIT: boolean;
   priorWorkingMagi: number;
@@ -41,6 +42,7 @@ const TaxAndIrsDialog: React.FC<TaxAndIrsDialogProps> = ({
 }) => {
   const formFromScenario = (s: Scenario): FormState => ({
     longTermCapGainsRate: s.longTermCapGainsRate,
+    useStackedLtcgBrackets: s.useStackedLtcgBrackets === true,
     enableIRMAA: s.enableIRMAA !== false,
     enableNIIT: s.enableNIIT !== false,
     priorWorkingMagi: s.priorWorkingMagi ?? 0,
@@ -57,6 +59,7 @@ const TaxAndIrsDialog: React.FC<TaxAndIrsDialogProps> = ({
     onSave({
       ...scenario,
       longTermCapGainsRate: form.longTermCapGainsRate,
+      useStackedLtcgBrackets: form.useStackedLtcgBrackets ? true : undefined,
       enableIRMAA: form.enableIRMAA,
       enableNIIT: form.enableNIIT,
       priorWorkingMagi: form.priorWorkingMagi > 0 ? form.priorWorkingMagi : undefined,
@@ -76,7 +79,7 @@ const TaxAndIrsDialog: React.FC<TaxAndIrsDialogProps> = ({
     <Dialog
       header="Tax & IRS"
       visible={visible}
-      style={{ width: '30rem' }}
+      style={dialogWidth('30rem')}
       onHide={onHide}
       footer={dialogFooter}
     >
@@ -84,12 +87,26 @@ const TaxAndIrsDialog: React.FC<TaxAndIrsDialogProps> = ({
 
         <Section>
           <SectionHeader>Capital Gains</SectionHeader>
-          <InputGroup>
-            <label>Long-term Capital Gains Rate (federal)</label>
-            {pctField(form.longTermCapGainsRate, (v) => setForm({ ...form, longTermCapGainsRate: v }), 40)}
-          </InputGroup>
+          <AssetRow>
+            <Checkbox
+              inputId="stacked-ltcg"
+              checked={form.useStackedLtcgBrackets}
+              onChange={(e) => setForm({ ...form, useStackedLtcgBrackets: !!e.checked })}
+            />
+            <label htmlFor="stacked-ltcg" style={{ fontSize: fontSize.sm, cursor: 'pointer' }}>
+              Use 0/15/20% bracket stacking (federal)
+            </label>
+          </AssetRow>
+          {!form.useStackedLtcgBrackets && (
+            <InputGroup>
+              <label>Long-term Capital Gains Rate (federal)</label>
+              {pctField(form.longTermCapGainsRate, (v) => setForm({ ...form, longTermCapGainsRate: v }), 40)}
+            </InputGroup>
+          )}
           <HelpText>
-            State tax on capital gains is applied automatically at the resident state's rate.
+            {form.useStackedLtcgBrackets
+              ? 'Federal LTCG is taxed by the 0/15/20% brackets, stacked on top of your ordinary taxable income (the flat rate is ignored). State tax on capital gains is applied automatically at the resident state’s rate.'
+              : 'A flat federal rate is applied to brokerage gains. State tax on capital gains is applied automatically at the resident state’s rate.'}
           </HelpText>
         </Section>
 

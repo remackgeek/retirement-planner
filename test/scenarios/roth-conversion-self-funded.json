@@ -1,8 +1,8 @@
 {
   "_description": "$50k Roth conversion with NO Taxable account, verifying hybrid sourcing falls back to withholding tax from the conversion itself (IRS Form 1099-R Box 4 mechanic). Single filer, FL, age 60.",
-  "_rationale": "Single age 60, FL (no state tax), Trad $500k, Roth $0, NO Taxable. One-time $50k conversion. Federal tax on $50k single 60: std ded ~$15.75k → ~$34.25k taxable → ~$4-5k federal tax. Under hybrid: no Taxable + no RMD-excess (age 60), so the full conv tax is withheld from the conversion (rothConversionTaxWithheld ≈ $4-5k). The conversion still executes the full $50k gross — rothConversionGross = $50k, withdrawalFromTraditional = $50k. The Roth deposit (computed in applyCashFlow as gross − withheld) lands at ~$45k. This is the core hybrid behavior: instead of capping to $16k (prior PR), the conversion proceeds at the user's requested size with mathematically suboptimal but practical self-funded tax.",
+  "_rationale": "Single age 60, FL (no state tax), Trad $500k, Roth $0, NO Taxable. One-time $50k conversion. Federal tax on $50k single 60: std ded ~$15.75k \u00e2\u2020\u2019 ~$34.25k taxable \u00e2\u2020\u2019 ~$4-5k federal tax. Under hybrid: no Taxable + no RMD-excess (age 60), so the full conv tax is withheld from the conversion (rothConversionTaxWithheld \u00e2\u2030\u02c6 $4-5k). The conversion still executes the full $50k gross \u00e2\u20ac\u201d rothConversionGross = $50k, withdrawalFromTraditional = $50k. The Roth deposit (computed in applyCashFlow as gross \u00e2\u02c6\u2019 withheld) lands at ~$45k. This is the core hybrid behavior: instead of capping to $16k (prior PR), the conversion proceeds at the user's requested size with mathematically suboptimal but practical self-funded tax.",
   "_seed": 12345,
-  "name": "Roth Conversion — Self-Funded (no Taxable)",
+  "name": "Roth Conversion \u00e2\u20ac\u201d Self-Funded (no Taxable)",
   "currentAge": 60,
   "lifeExpectancy": 63,
   "referenceYear": 2026,
@@ -62,6 +62,5 @@
   ],
   "longTermCapGainsRate": 0.15,
   "enableIRMAA": false,
-  "enableNIIT": false,
-  "spendingWithdrawalOrder": "taxable_first"
+  "enableNIIT": false
 }

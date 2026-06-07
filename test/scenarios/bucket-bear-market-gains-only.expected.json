@@ -1,0 +1,9 @@
+{
+  "_rationale": "Year 0 has a black-swan (stockFactor = base × 0.5 = 0.5; with stockReturn=0 base is 1.0). 'gains_only' refill requires stockFactor > 1; the bear-market year fails this check. Refill suppressed. cashRefillFromSurplus = 0. cashEndingBalance stays at $5k starting balance (pension covered spending). Surplus deposits to Taxable as usual.",
+  "probability": 100,
+  "breakdownChecks": [
+    { "index": 0, "field": "cashRefillFromSurplus", "value": 0, "tolerance": 0.01, "_note": "Black-swan year; gains_only suppresses refill" },
+    { "index": 0, "field": "cashSweepToBrokerage", "value": 0, "tolerance": 0.01 },
+    { "index": 0, "field": "cashEndingBalance", "value": 5000, "tolerance": 1, "_note": "Unchanged — cash neither refilled nor drained" }
+  ]
+}

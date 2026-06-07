@@ -5,11 +5,12 @@ import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
+import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import type { Account, AccountType, AccountKind } from '../types/Account';
 import type { PortfolioType } from '../types/IncomeEvent';
 import { PORTFOLIO_PRESETS } from '../utils/portfolioPresets';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import {
   accountTypeLabels,
   accountTypeIcons,
@@ -87,6 +88,12 @@ interface AccountDialogProps {
   editAccount?: Account;
   existingAccounts: Account[];
   spouseAge: number | null;
+  // Scenario-level cash yield (from portfolioAssumptions.cashYieldRate).
+  // Shown for cash accounts. Editable inline when onCashYieldChange is provided
+  // (writes back to the scenario immediately, independent of account Save);
+  // otherwise read-only.
+  cashYieldRate: number;
+  onCashYieldChange?: (rate: number) => void;
 }
 
 const ownerOptions = [
@@ -108,6 +115,8 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   editAccount,
   existingAccounts,
   spouseAge,
+  cashYieldRate,
+  onCashYieldChange,
 }) => {
   const [name, setName] = useState('');
   const [balance, setBalance] = useState<number>(0);
@@ -115,8 +124,15 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   const [portfolioBalance, setPortfolioBalance] = useState<PortfolioType>('60_40');
   const [accountKind, setAccountKind] = useState<AccountKind>('ira');
 
-  const showOwnerField = accountType === 'traditional' && spouseAge !== null;
-  const showAccountKindField = accountType === 'traditional' || accountType === 'roth';
+  const isCash = accountType === 'cash';
+  // Owner field is deliberately hidden for cash in Phase 1. Cash accounts are
+  // commonly joint, and per-owner RMD (the original reason the owner field
+  // exists for Traditional) doesn't apply. Community-property nuance is
+  // future work — when an MFS-related cash-specific tax distinction appears,
+  // re-enable this field with the spouse-age gate.
+  const showOwnerField = !isCash && accountType === 'traditional' && spouseAge !== null;
+  const showAccountKindField = !isCash && (accountType === 'traditional' || accountType === 'roth');
+  const showAllocationField = !isCash;
 
   useEffect(() => {
     if (visible) {
@@ -126,14 +142,14 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         setOwner(editAccount.owner ?? 'self');
         setPortfolioBalance(editAccount.portfolioBalance ?? '60_40');
         setAccountKind(
-          editAccount.accountKind ?? (editAccount.type === 'taxable' ? 'brokerage' : 'ira')
+          editAccount.accountKind ?? (editAccount.type === 'brokerage' ? 'brokerage' : 'ira')
         );
       } else {
         setName(generateDefaultAccountName(accountType, existingAccounts));
         setBalance(0);
         setOwner('self');
         setPortfolioBalance('60_40');
-        setAccountKind(accountType === 'taxable' ? 'brokerage' : 'ira');
+        setAccountKind(accountType === 'brokerage' ? 'brokerage' : 'ira');
       }
     }
   }, [visible, editAccount, accountType, existingAccounts]);
@@ -142,12 +158,17 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
 
   const handleSave = () => {
     if (!isValid) return;
+    // Cash accounts have no meaningful stockAllocation (growth loop bypasses
+    // the market factor entirely — see SimulationService growth-loop bypass).
+    // Persist 0 so any consumer that reads stockAllocation gets a sensible
+    // value, while the growth loop branches on `account.type === 'cash'`
+    // before consulting allocation.
     const account: Omit<Account, 'id'> = {
       type: accountType,
       name: name.trim(),
       balance,
-      portfolioBalance,
-      stockAllocation: PORTFOLIO_PRESETS[portfolioBalance].stockAllocation,
+      portfolioBalance: isCash ? '60_40' : portfolioBalance,
+      stockAllocation: isCash ? 0 : PORTFOLIO_PRESETS[portfolioBalance].stockAllocation,
       ...(showOwnerField ? { owner } : {}),
       ...(showAccountKindField ? { accountKind } : {}),
     };
@@ -190,7 +211,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         </div>
       }
       visible={visible}
-      style={{ width: '24rem' }}
+      style={dialogWidth('24rem')}
       onHide={onHide}
       closable={false}
       closeOnEscape={true}
@@ -207,7 +228,19 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         </InputGroup>
         {showOwnerField && (
           <InputGroup>
-            <label>Owner</label>
+            <label>
+              Owner{' '}
+              <span className="owner-help-tip" style={{ color: colors.textMuted, cursor: 'help', fontWeight: 400 }}>(?)</span>
+            </label>
+            <PrimeTooltip target=".owner-help-tip" position="right" showDelay={150}>
+              <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                Whose account this is. Required Minimum Distributions are computed
+                per owner using each spouse's own age (Self uses your age, Spouse
+                uses your spouse's), and Roth conversions stay within the same
+                owner's accounts — so the owner here changes when and how much this
+                account is forced to distribute.
+              </div>
+            </PrimeTooltip>
             <Dropdown
               value={owner}
               options={ownerOptions}
@@ -235,24 +268,59 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
             min={0}
           />
         </InputGroup>
-        <InputGroup style={{ marginTop: spacing.md }}>
-          <label>Stocks / Bonds Mix</label>
-          <AllocationRow>
-            {(Object.keys(PORTFOLIO_PRESETS) as PortfolioType[]).map((key) => (
-              <PresetBtn
-                key={key}
-                type="button"
-                $active={portfolioBalance === key}
-                onClick={() => setPortfolioBalance(key)}
+        {showAllocationField && (
+          <InputGroup style={{ marginTop: spacing.md }}>
+            <label>Stocks / Bonds Mix</label>
+            <AllocationRow>
+              {(Object.keys(PORTFOLIO_PRESETS) as PortfolioType[]).map((key) => (
+                <PresetBtn
+                  key={key}
+                  type="button"
+                  $active={portfolioBalance === key}
+                  onClick={() => setPortfolioBalance(key)}
+                >
+                  {PORTFOLIO_PRESETS[key].label.split(' ')[0]}
+                </PresetBtn>
+              ))}
+            </AllocationRow>
+            <small style={{ color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.xs }}>
+              Sets how this account is split between stocks and bonds. Return and volatility assumptions apply to all accounts and are configured in Modeling.
+            </small>
+          </InputGroup>
+        )}
+        {isCash && (
+          <InputGroup style={{ marginTop: spacing.md }}>
+            <label>Yield (annual)</label>
+            {onCashYieldChange ? (
+              <InputNumber
+                value={cashYieldRate * 100}
+                onValueChange={(e) => onCashYieldChange((e.value ?? 0) / 100)}
+                mode="decimal"
+                minFractionDigits={2}
+                maxFractionDigits={2}
+                suffix="%"
+                min={0}
+                max={20}
+              />
+            ) : (
+              <div
+                style={{
+                  padding: `${spacing.xs} ${spacing.sm}`,
+                  background: colors.bgLight,
+                  border: border.standard,
+                  borderRadius: border.radius,
+                  fontSize: fontSize.base,
+                  color: colors.textSecondary,
+                }}
               >
-                {PORTFOLIO_PRESETS[key].label.split(' ')[0]}
-              </PresetBtn>
-            ))}
-          </AllocationRow>
-          <small style={{ color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.xs }}>
-            Sets how this account is split between stocks and bonds. Return and volatility assumptions apply to all accounts and are configured in Modeling.
-          </small>
-        </InputGroup>
+                {(cashYieldRate * 100).toFixed(2)}% annual (set in Modeling)
+              </div>
+            )}
+            <small style={{ color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.xs }}>
+              Cash accounts accrue a deterministic yield (treated as ordinary income) and are not subject to stock/bond market shocks. Interest counts toward IRMAA MAGI and the NIIT investment-income base. This rate is scenario-wide — changing it here applies to every cash account and saves immediately.
+            </small>
+          </InputGroup>
+        )}
       </Form>
     </Dialog>
   );

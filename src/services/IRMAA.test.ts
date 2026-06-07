@@ -4,7 +4,41 @@ import {
   calculateIRMAADetailed,
   calculateNIIT,
   calculateNIITDetailed,
+  nextIrmaaTierCeiling,
+  getNiitThreshold,
 } from './IRMAA';
+
+describe('nextIrmaaTierCeiling', () => {
+  it('returns the first-tier ceiling for a single filer below it (2024 base)', () => {
+    expect(nextIrmaaTierCeiling(50_000, 'single', 2024, 0)).toBe(103_000);
+  });
+
+  it('returns the tier the baseline already sits in (stay-in-current-tier semantics)', () => {
+    // $120k is in the single tier-2 band ($103k–$129k) → ceiling 129,000.
+    expect(nextIrmaaTierCeiling(120_000, 'single', 2024, 0)).toBe(129_000);
+  });
+
+  it('uses MFJ thresholds for MFJ filers', () => {
+    expect(nextIrmaaTierCeiling(150_000, 'mfj', 2024, 0)).toBe(206_000);
+  });
+
+  it('inflation-indexes the ceiling forward from 2024', () => {
+    expect(nextIrmaaTierCeiling(50_000, 'single', 2026, 0.03)).toBeCloseTo(103_000 * Math.pow(1.03, 2), 2);
+  });
+
+  it('returns Infinity when the baseline is in the top (uncapped) tier', () => {
+    expect(nextIrmaaTierCeiling(2_000_000, 'single', 2024, 0)).toBe(Infinity);
+  });
+});
+
+describe('getNiitThreshold', () => {
+  it('returns the statutory thresholds by filing status (not inflation-indexed)', () => {
+    expect(getNiitThreshold('single')).toBe(200_000);
+    expect(getNiitThreshold('hoh')).toBe(200_000);
+    expect(getNiitThreshold('mfj')).toBe(250_000);
+    expect(getNiitThreshold('mfs')).toBe(125_000);
+  });
+});
 
 describe('calculateIRMAA', () => {
   it('returns 0 below the first MFJ threshold', () => {

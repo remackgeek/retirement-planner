@@ -7,13 +7,16 @@ import 'primeicons/primeicons.css'
 import App from './App.tsx'
 import { RetirementProvider } from './context/RetirementContext'
 import { UIStateProvider } from './context/UIStateContext'
+import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RetirementProvider>
-      <UIStateProvider>
-        <App />
-      </UIStateProvider>
-    </RetirementProvider>
+    <ErrorBoundary>
+      <RetirementProvider>
+        <UIStateProvider>
+          <App />
+        </UIStateProvider>
+      </RetirementProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )

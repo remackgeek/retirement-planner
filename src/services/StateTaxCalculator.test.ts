@@ -9,7 +9,7 @@ const baseInput = (overrides: Partial<StateTaxInput> = {}): StateTaxInput => ({
   ssTaxableFederal: 0,
   ssGross: 0,
   traditionalWithdrawal: 0,
-  ltcgFromTaxable: 0,
+  ltcgFromBrokerage: 0,
   age: 60,
   spouseAge: null,
   filingStatus: 'single',
@@ -26,7 +26,7 @@ describe('StateTaxCalculator', () => {
         ordinaryGross: 100000,
         traditionalWithdrawal: 50000,
         ssTaxableFederal: 20000,
-        ltcgFromTaxable: 100000,
+        ltcgFromBrokerage: 100000,
       }), 'Florida');
       expect(r.stateOrdinaryTax).toBe(0);
       expect(r.stateCapGainsTax).toBe(0);
@@ -36,7 +36,7 @@ describe('StateTaxCalculator', () => {
     it('Texas, Wyoming, Tennessee, South Dakota, Nevada, Alaska, New Hampshire all return zero', () => {
       for (const state of ['Texas', 'Wyoming', 'Tennessee', 'South Dakota', 'Nevada', 'Alaska', 'New Hampshire']) {
         const p = getStateTaxProfile(state, 2026).profile;
-        const r = computeStateTax(p, baseInput({ ordinaryGross: 200000, ltcgFromTaxable: 500000 }), state);
+        const r = computeStateTax(p, baseInput({ ordinaryGross: 200000, ltcgFromBrokerage: 500000 }), state);
         expect(r.stateOrdinaryTax, state).toBe(0);
         expect(r.stateCapGainsTax, state).toBe(0);
       }
@@ -118,7 +118,7 @@ describe('StateTaxCalculator', () => {
       const p = getStateTaxProfile('Washington', 2026).profile;
       const r = computeStateTax(p, baseInput({
         ordinaryGross: 200000,
-        ltcgFromTaxable: 400000,
+        ltcgFromBrokerage: 400000,
         inflationRate: 0,
       }), 'Washington');
       expect(r.stateOrdinaryTax).toBe(0);
@@ -128,7 +128,7 @@ describe('StateTaxCalculator', () => {
 
     it('threshold inflation-indexes forward independently of bracket indexing', () => {
       const p = getStateTaxProfile('Washington', 2026).profile;
-      const r2040 = computeStateTax(p, baseInput({ ltcgFromTaxable: 400000, year: 2040, inflationRate: 0.03 }), 'Washington');
+      const r2040 = computeStateTax(p, baseInput({ ltcgFromBrokerage: 400000, year: 2040, inflationRate: 0.03 }), 'Washington');
       // 2040 threshold = 262000 × 1.03^16 ≈ $420k → $0 state cap-gains tax
       expect(r2040.ltcgThresholdApplied).toBeGreaterThan(400000);
       expect(r2040.stateCapGainsTax).toBe(0);
@@ -136,7 +136,7 @@ describe('StateTaxCalculator', () => {
 
     it('charges $0 when LTCG below the threshold', () => {
       const p = getStateTaxProfile('Washington', 2026).profile;
-      const r = computeStateTax(p, baseInput({ ltcgFromTaxable: 200000 }), 'Washington');
+      const r = computeStateTax(p, baseInput({ ltcgFromBrokerage: 200000 }), 'Washington');
       expect(r.stateCapGainsTax).toBe(0);
     });
   });
@@ -144,7 +144,7 @@ describe('StateTaxCalculator', () => {
   describe('Missouri — LTCG exemption', () => {
     it('zero state LTCG tax on $500k capital gains', () => {
       const p = getStateTaxProfile('Missouri', 2026).profile;
-      const r = computeStateTax(p, baseInput({ ltcgFromTaxable: 500000 }), 'Missouri');
+      const r = computeStateTax(p, baseInput({ ltcgFromBrokerage: 500000 }), 'Missouri');
       expect(r.stateCapGainsTax).toBe(0);
     });
 
@@ -294,7 +294,7 @@ describe('StateTaxCalculator', () => {
     it('every selectable state resolves to a profile and computes without throwing', () => {
       for (const name of Object.keys(STATE_TAX_PROFILES)) {
         const p = getStateTaxProfile(name, 2026).profile;
-        expect(() => computeStateTax(p, baseInput({ ordinaryGross: 80000, ltcgFromTaxable: 20000, age: 65 }), name)).not.toThrow();
+        expect(() => computeStateTax(p, baseInput({ ordinaryGross: 80000, ltcgFromBrokerage: 20000, age: 65 }), name)).not.toThrow();
       }
     });
   });
@@ -339,7 +339,7 @@ describe('StateTaxCalculator', () => {
     it('NYC locality applies to ordinary + LTCG base (LTCG NOT excluded)', () => {
       const p = getStateTaxProfile('New York City', 2026).profile;
       const noLtcg = computeStateTax(p, baseInput({ ordinaryGross: 100000 }), 'New York City');
-      const withLtcg = computeStateTax(p, baseInput({ ordinaryGross: 100000, ltcgFromTaxable: 50000 }), 'New York City');
+      const withLtcg = computeStateTax(p, baseInput({ ordinaryGross: 100000, ltcgFromBrokerage: 50000 }), 'New York City');
       // Adding $50k LTCG raises the locality surcharge by ~3.876% × $50k = $1,938
       expect(withLtcg.stateLocalitySurcharge - noLtcg.stateLocalitySurcharge).toBeCloseTo(0.03876 * 50000, 0);
     });
@@ -380,7 +380,7 @@ describe('StateTaxCalculator', () => {
   describe('LTCG stacked walk absorbs unused state std deduction', () => {
     it('CA $0 ordinary + $100k LTCG: std ded eats into LTCG before brackets walk', () => {
       const p = getStateTaxProfile('California', 2026).profile;
-      const r = computeStateTax(p, baseInput({ ordinaryGross: 0, ltcgFromTaxable: 100000 }), 'California');
+      const r = computeStateTax(p, baseInput({ ordinaryGross: 0, ltcgFromBrokerage: 100000 }), 'California');
       // taxableTotal = max(0, 0 + 100000 - 5540 stdDed) = $94,460
       // Walk CA brackets up to $94,460:
       // 1%·10412 + 2%·14272 + 4%·14275 + 6%·15122 + 8%·14269 + 9.3%·26110 ≈ $5,438
@@ -389,7 +389,7 @@ describe('StateTaxCalculator', () => {
 
     it('CA $20k ordinary + $80k LTCG: stack walks the combined $94,460 same way', () => {
       const p = getStateTaxProfile('California', 2026).profile;
-      const r = computeStateTax(p, baseInput({ ordinaryGross: 20000, ltcgFromTaxable: 80000 }), 'California');
+      const r = computeStateTax(p, baseInput({ ordinaryGross: 20000, ltcgFromBrokerage: 80000 }), 'California');
       // taxableTotal = 100000 - 5540 = $94,460; ordinary part taxable = 20000 - 5540 = $14,460
       // Total walk tax ≈ $5,438; ordinary-only walk tax ≈ $267.84 (1%·10412 + 2%·4048)
       // Cap-gains portion = $5,438 - $268 ≈ $5,170
@@ -401,7 +401,7 @@ describe('StateTaxCalculator', () => {
     it('MFJ $400k LTCG: under the $524k threshold → state cap-gains tax = 0', () => {
       const p = getStateTaxProfile('Washington', 2026).profile;
       const r = computeStateTax(p, baseInput({
-        ltcgFromTaxable: 400000,
+        ltcgFromBrokerage: 400000,
         filingStatus: 'mfj',
         spouseAge: 60,
         inflationRate: 0,
@@ -413,7 +413,7 @@ describe('StateTaxCalculator', () => {
     it('MFJ $600k LTCG: above $524k → 7% on $76k = $5,320', () => {
       const p = getStateTaxProfile('Washington', 2026).profile;
       const r = computeStateTax(p, baseInput({
-        ltcgFromTaxable: 600000,
+        ltcgFromBrokerage: 600000,
         filingStatus: 'mfj',
         spouseAge: 60,
         inflationRate: 0,
@@ -539,7 +539,7 @@ describe('SC transition end-to-end (precompute → audit)', () => {
   const makeSC = (): UserData => ({
     currentAge: 60,
     lifeExpectancy: 62,
-    accounts: [{ id: 'a', name: 'Reinvest', type: 'taxable', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' }],
+    accounts: [{ id: 'a', name: 'Reinvest', type: 'brokerage', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' }],
     spendingGoals: [],
     incomeEvents: [{ id: 'p1', type: 'pension_income', name: 'P', amount: 80000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' }],
     portfolioAssumptions: {

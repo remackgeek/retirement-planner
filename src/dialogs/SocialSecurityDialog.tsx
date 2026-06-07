@@ -8,7 +8,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import { eventTypeIcons } from '../utils/defaultName';
 import { buildAgeOptions } from '../utils/ageOptions';
 import { resolveOwnerAge } from '../utils/ownerAge';
@@ -242,11 +242,6 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
     onHide();
   };
 
-  const amountBasisOptions = [
-    { label: "Today's Dollars", value: 'today' },
-    { label: 'Adjusted for Future Inflation', value: 'future' },
-  ];
-
   const periodOptions = [
     { label: 'Monthly', value: 'monthly' },
     { label: 'Annual', value: 'annual' },
@@ -300,7 +295,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
         </div>
       }
       visible={visible}
-      style={{ width: '32rem' }}
+      style={dialogWidth('32rem')}
       onHide={onHide}
       closable={false}
       closeOnEscape={true}
@@ -339,6 +334,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
               }
               mode='currency'
               currency='USD'
+              min={0}
               required
             />
             <Dropdown
@@ -347,20 +343,6 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
               onChange={(e) => handlePeriodChange(e.value)}
             />
           </AmountRow>
-        </InputGroup>
-
-        <InputGroup>
-          <label>Amount is in</label>
-          <Dropdown
-            value={formData.ssAmountBasis}
-            options={amountBasisOptions}
-            onChange={(e) => setFormData({ ...formData, ssAmountBasis: e.value })}
-          />
-          <HelpText>
-            {formData.ssAmountBasis === 'future'
-              ? 'Projected nominal amount at claiming age — COLA applied after claiming'
-              : 'Amount from your SSA statement — will be adjusted for inflation'}
-          </HelpText>
         </InputGroup>
 
         <InputGroup>

@@ -1,0 +1,59 @@
+{
+  "_description": "Cash balance is unaffected by a black-swan event — verifies the growth-loop bypass also skips the black-swan overlay.",
+  "_rationale": "$100k cash with 0% yield. A black-swan event in year 0 (stockMultiplier 0.5, bondMultiplier 0.5 — simulating a -50% catastrophe). Cash must NOT be shocked: at end of year 0 (before spending), cash balance must still be $100k (0% yield, no shock). With spending of $20k, cash ends year 0 at exactly $80k. No stock/bond accounts so the black swan is purely informational; the test is that cash bypass takes precedence.",
+  "_seed": 12345,
+  "name": "Cash Skips Black Swan",
+  "currentAge": 60,
+  "lifeExpectancy": 65,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 20000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "cashYieldRate": 0,
+    "blackSwanEvents": [
+      {
+        "id": "swan-1",
+        "year": 2026,
+        "stockMultiplier": 0.5,
+        "bondMultiplier": 0.5
+      }
+    ]
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "cash-1",
+      "name": "Cash 1",
+      "type": "cash",
+      "balance": 100000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

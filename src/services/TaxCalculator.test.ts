@@ -5,7 +5,45 @@ import {
   calculateNetFromGross,
   calculateNetFromGrossDetailed,
   getBracketCeilingTaxableIncome,
+  computeFederalLTCGTax,
+  getLtcgBreakpoints,
 } from './TaxCalculator';
+
+describe('computeFederalLTCGTax (0/15/20% stacking)', () => {
+  it('taxes gains at 0% when they sit entirely below the 0% ceiling', () => {
+    // Single 2026 0% ceiling = 49,450. No ordinary income, $40k gain → all 0%.
+    expect(computeFederalLTCGTax(0, 40_000, 'single', 2026, 0)).toBe(0);
+  });
+
+  it('taxes the portion above the 0% ceiling at 15%', () => {
+    // Single 2026: zeroTop 49,450. $30k ordinary + $40k gain → stack 30k..70k.
+    // Below 49,450 → 0%: 49,450-30,000 = 19,450 at 0%. Remaining 20,550 at 15%.
+    const tax = computeFederalLTCGTax(30_000, 40_000, 'single', 2026, 0);
+    expect(tax).toBeCloseTo((70_000 - 49_450) * 0.15, 2);
+  });
+
+  it('pushes gains entirely into 15% when ordinary income already exceeds the 0% ceiling', () => {
+    // Ordinary taxable 60k > 49,450 ceiling; $20k gain all at 15% (below 15% top).
+    expect(computeFederalLTCGTax(60_000, 20_000, 'single', 2026, 0)).toBeCloseTo(20_000 * 0.15, 2);
+  });
+
+  it('applies 20% above the 15% ceiling', () => {
+    // Single 2026 15% top = 545,500. Ordinary 500k, gain 100k → 45.5k at 15%, 54.5k at 20%.
+    const tax = computeFederalLTCGTax(500_000, 100_000, 'single', 2026, 0);
+    expect(tax).toBeCloseTo((545_500 - 500_000) * 0.15 + (600_000 - 545_500) * 0.20, 2);
+  });
+
+  it('returns 0 for non-positive gains', () => {
+    expect(computeFederalLTCGTax(100_000, 0, 'single', 2026, 0)).toBe(0);
+    expect(computeFederalLTCGTax(100_000, -5_000, 'single', 2026, 0)).toBe(0);
+  });
+
+  it('inflation-indexes the breakpoints forward from 2026', () => {
+    const bp2026 = getLtcgBreakpoints('single', 2026, 0.03);
+    const bp2030 = getLtcgBreakpoints('single', 2030, 0.03);
+    expect(bp2030.zeroTop).toBeCloseTo(bp2026.zeroTop * Math.pow(1.03, 4), 2);
+  });
+});
 
 describe('calculateSSTaxableAmount', () => {
   describe('edge cases', () => {

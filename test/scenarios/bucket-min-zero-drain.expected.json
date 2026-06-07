@@ -1,0 +1,12 @@
+{
+  "_rationale": "minAmount=0 floor permits cash to drain to zero. Year 0: cash 100k - 50k spending = 50k. Year 1: 50k - 50k = 0. Year 2: cash empty, spending falls through to Taxable (100k - 50k = 50k). Year 3 (last, lifeExpectancy=63): Taxable 50k - some-tax-bill - 50k spending; depleted. Probability ~100 because total portfolio (200k) covers 4 years × 50k = 200k easily with some tax friction; might bind in the last year.",
+  "probability": {"min": 0, "max": 100},
+  "breakdownChecks": [
+    { "index": 0, "field": "withdrawalFromCash", "value": 50000, "tolerance": 1 },
+    { "index": 0, "field": "cashEndingBalance", "value": 50000, "tolerance": 1 },
+    { "index": 1, "field": "withdrawalFromCash", "value": 50000, "tolerance": 1, "_note": "Year 1 still drains cash" },
+    { "index": 1, "field": "cashEndingBalance", "value": 0, "tolerance": 1, "_note": "Cash hits 0 — allowed under min=0" },
+    { "index": 2, "field": "withdrawalFromCash", "value": 0, "tolerance": 1, "_note": "Year 2: cash empty, falls through to Taxable" },
+    { "index": 2, "field": "withdrawalFromBrokerage", "min": 49000, "max": 60000, "_note": "Year 2 spending now from Taxable" }
+  ]
+}

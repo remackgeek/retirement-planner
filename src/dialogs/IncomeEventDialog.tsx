@@ -8,7 +8,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 
 const Form = styled.form`
@@ -201,7 +201,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
     <Dialog
       header={headerLabel}
       visible={visible}
-      style={{ width: '32rem' }}
+      style={dialogWidth('32rem')}
       onHide={onHide}
       closable={false}
       closeOnEscape={true}
@@ -228,6 +228,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
             }
             mode='currency'
             currency='USD'
+            min={0}
             required
           />
         </InputGroup>

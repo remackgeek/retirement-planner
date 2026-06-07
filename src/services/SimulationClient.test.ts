@@ -40,7 +40,6 @@ describe('SimulationClient', () => {
     expect(typeof result.probability).toBe('number');
     expect(Array.isArray(result.median)).toBe(true);
     expect(Array.isArray(result.nominal)).toBe(true);
-    expect(Array.isArray(result.downside)).toBe(true);
     expect(Array.isArray(result.medianBreakdowns)).toBe(true);
     expect(result.medianBreakdowns.length).toBe(result.median.length);
   });

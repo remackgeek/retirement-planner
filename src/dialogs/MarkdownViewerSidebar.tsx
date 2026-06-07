@@ -2,6 +2,7 @@ import styled from 'styled-components';
 import { Sidebar } from 'primereact/sidebar';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeSlug from 'rehype-slug';
 import { spacing, colors, fontSize, border } from '../styles/theme';
 import yarpIcon from '../assets/YARP.ico';
 
@@ -174,7 +175,7 @@ const MarkdownViewerSidebar: React.FC<Props> = ({ title, icon, content, visible,
       style={{ width: '44rem', maxWidth: '95vw' }}
     >
       <Body>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSlug]}>{content}</ReactMarkdown>
       </Body>
     </Sidebar>
   );

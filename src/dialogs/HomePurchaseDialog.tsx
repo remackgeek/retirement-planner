@@ -7,7 +7,7 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, spendingGoalAgeRanges } from '../utils/ageOptions';
 import { generateDefaultSpendingGoalName, goalTypeIcons } from '../utils/defaultName';
 
@@ -178,7 +178,7 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
         </div>
       }
       visible={visible}
-      style={{ width: '32rem' }}
+      style={dialogWidth('32rem')}
       onHide={onHide}
       closable={false}
       closeOnEscape={true}
@@ -255,6 +255,7 @@ const HomePurchaseDialog: React.FC<HomePurchaseDialogProps> = ({
             }
             mode='currency'
             currency='USD'
+            min={0}
             required
           />
         </InputGroup>

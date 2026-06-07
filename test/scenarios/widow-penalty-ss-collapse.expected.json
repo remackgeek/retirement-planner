@@ -1,0 +1,34 @@
+{
+  "_rationale": "While both spouses are alive (indices 0–7), household Social Security = 40k + 25k = 65k. The spouse dies at age 72 (offset 7), so survivor mode begins at index 8: from then on the household keeps only the larger benefit, max(40k, 25k) = 40k. Roth-only portfolio means no RMDs and no Traditional/brokerage withdrawals muddy the income. The projection runs the full self horizon (index 25 = age 90). Probability is 100%: $1M Roth + $40–65k SS easily covers $50k/yr spending with 0% growth, so the portfolio never depletes.",
+  "probability": 100,
+  "breakdownChecks": [
+    {
+      "index": 3,
+      "field": "ssGross",
+      "value": 65000,
+      "tolerance": 1,
+      "_note": "Both alive: household SS is the SUM of both benefits"
+    },
+    {
+      "index": 7,
+      "field": "ssGross",
+      "value": 65000,
+      "tolerance": 1,
+      "_note": "Year of the spouse's death: still MFJ, still both benefits"
+    },
+    {
+      "index": 10,
+      "field": "ssGross",
+      "value": 40000,
+      "tolerance": 1,
+      "_note": "Survivor year: only the LARGER benefit (40k) survives — widow's penalty"
+    },
+    {
+      "index": 20,
+      "field": "ssGross",
+      "value": 40000,
+      "tolerance": 1,
+      "_note": "Survivor benefit persists for the rest of the survivor's life"
+    }
+  ]
+}

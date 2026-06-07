@@ -1,12 +1,12 @@
 import type { UserData, ContributionLimits } from '../types/UserData';
 
-// Default 2025 IRS limits.
+// Default 2026 IRS limits (Notice 2025-67).
 export const DEFAULT_CONTRIBUTION_LIMITS: ContributionLimits = {
-  elective401k: 23000,
-  iraLimit: 7000,
+  elective401k: 24500,
+  iraLimit: 7500,
   catchUpAge: 50,
-  catchUp401k: 7500,
-  catchUpIra: 1000,
+  catchUp401k: 8000,
+  catchUpIra: 1100,
   inflationAdjusted: true,
 };
 

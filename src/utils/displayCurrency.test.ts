@@ -46,3 +46,34 @@ describe('round-trip invariants', () => {
     expect(displayed * f).toBeCloseTo(nominal, 10);
   });
 });
+
+describe('regression guards', () => {
+  // **Why these exist.** PlanComparisonChart (originally RothConversionComparisonChart)
+  // had a custom
+  // `deflate` helper that divided already-real path values by inflation again —
+  // producing "real-real" units (double-deflated). The chart line ended at
+  // ~$6M while the actual real terminal was ~$13M, mismatching the main chart
+  // by a factor of (1+r)^horizon. The fix was to use `pathToDisplay` (which
+  // treats its input as real and only re-inflates in nominal mode), exactly
+  // mirroring the main chart's handling. These guards lock that contract.
+
+  it('pathToDisplay in real mode is identity — no double-deflation', () => {
+    // The historical bug pattern was `path[i] / (1+r)^i` applied to already-
+    // deflated values. pathToDisplay('real') must be a pass-through; if it
+    // ever divides in real mode, this test catches it.
+    const inflationFactor = Math.pow(1.03, 30); // ~2.43
+    const realPathValue = 13_000_000;
+    expect(pathToDisplay(realPathValue, inflationFactor, 'real')).toBe(realPathValue);
+  });
+
+  it('pathToDisplay in nominal mode multiplies (re-inflates) — does not divide', () => {
+    // Mirror guard: nominal mode must MULTIPLY, not divide. A reversed sign
+    // here would silently produce nominal-displayed values smaller than the
+    // real baseline, the opposite of what the user expects.
+    const inflationFactor = Math.pow(1.03, 30);
+    const realPathValue = 13_000_000;
+    const nominalDisplay = pathToDisplay(realPathValue, inflationFactor, 'nominal');
+    expect(nominalDisplay).toBeGreaterThan(realPathValue);
+    expect(nominalDisplay).toBeCloseTo(realPathValue * inflationFactor, 2);
+  });
+});

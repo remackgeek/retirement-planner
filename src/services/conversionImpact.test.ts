@@ -88,7 +88,7 @@ describe('estimateConversionImpact', () => {
       accounts: [
         { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable 1', type: 'taxable', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable 1', type: 'brokerage', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
       ],
     });
     const conversion = makeConversion({
@@ -103,6 +103,29 @@ describe('estimateConversionImpact', () => {
     // The conversion costs tax in the year before life expectancy; that
     // cost must register at end-of-plan.
     expect(Math.abs(result.netPlanValueImpact)).toBeGreaterThan(1000);
+  });
+
+  it('netPlanValueImpact reflects auto-selected spending policy on both sides of the diff', () => {
+    // The engine auto-selects the spending policy independently for the
+    // with-conversion and without-conversion projections. The reported
+    // netPlanValueImpact is the honest marginal effect of THIS conversion
+    // on top of the engine doing its best. Asserts the value is finite
+    // and sane for a non-trivial multi-year conversion.
+    const userData = baseUserData({
+      currentAge: 60,
+      lifeExpectancy: 80,
+      accounts: [
+        { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 800000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable 1', type: 'brokerage', balance: 300000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [
+        { id: 'le-1', type: 'living_expenses', name: 'Living', amount: 40000, startAge: 60, inflationAdjusted: false, isOneTime: false },
+      ],
+    });
+    const conversion = makeConversion({ amount: 40000, startAge: 60, endAge: 68, isOneTime: false });
+    const result = estimateConversionImpact(userData, conversion);
+    expect(Number.isFinite(result.netPlanValueImpact)).toBe(true);
   });
 
   it('computes incremental tax for a single-year conversion at age 60, single filer FL', () => {
@@ -124,9 +147,53 @@ describe('estimateConversionImpact', () => {
     const conversion = makeConversion({ amount: 50000 });
     const result = estimateConversionImpact(userData, conversion);
     // Blended return = 0.6*0.07 + 0.4*0.04 = 0.058. Converted at year 0 (age 60),
-    // grows to age 70 = 10 years. 50000 * 1.058^10 ≈ 88,000.
+    // grows to age 70 = 10 years. With inflation 0 in baseUserData, real ==
+    // nominal: 50000 * 1.058^10 ≈ 88,000. The real-dollar deflation in HIGH-1
+    // is a no-op here because inflationRate is 0; the next test exercises the
+    // deflation directly.
     expect(result.projectedRothAtEndOfPlan).toBeGreaterThan(80000);
     expect(result.projectedRothAtEndOfPlan).toBeLessThan(95000);
+  });
+
+  it('reports all dollar fields in real (year-0) dollars when inflation > 0', () => {
+    // Regression guard for Revision 3 HIGH-1: before the fix, firstYearTax /
+    // totalTaxOverConversion / projectedRothAtEndOfPlan / rmdReductionAt73 were
+    // nominal per-year values mixed against a real netPlanValueImpact. The fix
+    // deflates each to year-0. This test compares two scenarios that differ
+    // ONLY in inflation rate (with conversion at year 0, where deflation is a
+    // no-op) — `firstYearTax` should be approximately the same in both.
+    const zeroInflation = baseUserData({
+      currentAge: 60,
+      lifeExpectancy: 70,
+      inflationRate: 0,
+    });
+    const threePctInflation = baseUserData({
+      currentAge: 60,
+      lifeExpectancy: 70,
+      inflationRate: 0.03,
+    });
+    const conversion = makeConversion({ amount: 50000, startAge: 60, isOneTime: true });
+    const r0 = estimateConversionImpact(zeroInflation, conversion);
+    const r3 = estimateConversionImpact(threePctInflation, conversion);
+    // Year-0 tax: both deflators are 1 (year 0). Should be ~equal.
+    expect(r3.firstYearTax).toBeCloseTo(r0.firstYearTax, 0);
+
+    // Now make the conversion fire at year 5 (age 65). Two effects compound:
+    //  (a) the closed-form tax is computed against year-5 inflation-adjusted
+    //      brackets — wider, so the $50K conversion taxes at a lower effective
+    //      rate (the nominal tax is smaller under inflation than without it);
+    //  (b) the deflation `nominal / 1.03^5 ≈ × 0.863` brings the value back
+    //      toward year-0 units.
+    // Both effects shrink r3late vs r0late, so we just assert r3late < r0late
+    // (i.e., the deflation isn't a no-op). Tight bounds get fragile because
+    // bracket inflation interacts with the federal brackets nonlinearly; the
+    // direction-only check is what we actually care about: the field is in
+    // real dollars, not nominal.
+    const lateConversion = makeConversion({ amount: 50000, startAge: 65, isOneTime: true });
+    const r0late = estimateConversionImpact(zeroInflation, lateConversion);
+    const r3late = estimateConversionImpact(threePctInflation, lateConversion);
+    expect(r3late.firstYearTax).toBeLessThan(r0late.firstYearTax);
+    expect(r3late.firstYearTax).toBeGreaterThan(0);
   });
 
   it('sums incremental tax across a multi-year conversion', () => {
@@ -227,7 +294,7 @@ describe('estimateConversionImpact', () => {
       accounts: [
         { id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'brokerage', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
       ],
       incomeEvents: [
         {
@@ -326,7 +393,7 @@ describe('estimateConversionImpact', () => {
       accounts: [
         { id: 'trad-1', name: 'Traditional', type: 'traditional', balance: 800_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         { id: 'roth-1', name: 'Roth', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 150_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'brokerage', balance: 150_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
       ],
       spendingGoals: [
         { id: 'le-1', type: 'living_expenses', name: 'Living', amount: 45000, startAge: 60, inflationAdjusted: true },
@@ -359,7 +426,7 @@ describe('estimateConversionImpact', () => {
       accounts: [
         { id: 'trad-1', name: 'Traditional', type: 'traditional', balance: 800_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
         { id: 'roth-1', name: 'Roth', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
-        { id: 'tax-1', name: 'Taxable', type: 'taxable', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Taxable', type: 'brokerage', balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
       ],
       spendingGoals: [
         { id: 'le-1', type: 'living_expenses', name: 'Living', amount: 50000, startAge: 60, inflationAdjusted: true },

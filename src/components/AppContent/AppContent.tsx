@@ -4,7 +4,7 @@ import AppHeader from '../AppHeader/AppHeader';
 import Content from '../Content/Content';
 import Sidebar from '../Sidebar/Sidebar';
 import Footer from '../Footer';
-import { breakpoints, colors, mediaQuery } from '../../styles/theme';
+import { breakpoints, colors, mediaQuery, spacing, fontSize, border } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
 import type { Scenario } from '../../types/Scenario';
 import { confirmDialog } from 'primereact/confirmdialog';
@@ -32,6 +32,29 @@ const Backdrop = styled.div<{ $visible: boolean }>`
   }
 `;
 
+const PersistenceBanner = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: ${spacing.sm};
+  padding: ${spacing.sm} ${spacing.md};
+  background-color: ${colors.warningBg};
+  color: ${colors.warning};
+  font-size: ${fontSize.xs};
+  line-height: 1.4;
+  border-bottom: ${border.standard};
+`;
+
+const BannerDismiss = styled.button`
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: ${colors.warning};
+  cursor: pointer;
+  font-size: ${fontSize.base};
+  line-height: 1;
+  padding: 0 ${spacing.xs};
+`;
+
 const mobileMediaQuery = `(max-width: ${breakpoints.mobile - 1}px)`;
 
 const AppContent: React.FC = () => {
@@ -41,6 +64,8 @@ const AppContent: React.FC = () => {
   });
   const [compareScenarioId, setCompareScenarioId] = useState<string | null>(null);
   const [whatIfSnapshot, setWhatIfSnapshot] = useState<Scenario | null>(null);
+  const [persistenceBannerDismissed, setPersistenceBannerDismissed] = useState(false);
+  const [userGuideVisible, setUserGuideVisible] = useState(false);
   const ctx = useContext(RetirementContext);
   const exportCsvRef = useRef<(() => void) | null>(null);
   const [canExport, setCanExport] = useState(false);
@@ -61,7 +86,11 @@ const AppContent: React.FC = () => {
 
   const enterWhatIf = () => {
     if (!ctx?.activeScenario || whatIfSnapshot || compareScenarioId) return;
-    setWhatIfSnapshot(JSON.parse(JSON.stringify(ctx.activeScenario)) as Scenario);
+    // structuredClone preserves `undefined` fields and is the right primitive
+    // for plain-data scenario cloning. JSON.parse(JSON.stringify(...)) silently
+    // drops undefined and corrupts non-JSON-safe values — same family of footgun
+    // as the cache-fingerprint bug fixed elsewhere in this codebase.
+    setWhatIfSnapshot(structuredClone(ctx.activeScenario));
   };
 
   const discardWhatIf = () => {
@@ -144,13 +173,31 @@ const AppContent: React.FC = () => {
 
   return (
     <AppContentContainer>
-      <AppHeader onMenuToggle={toggle} onExportCsv={handleExportCsv} />
+      <AppHeader
+        onMenuToggle={toggle}
+        onExportCsv={handleExportCsv}
+        userGuideVisible={userGuideVisible}
+        onUserGuideVisibleChange={setUserGuideVisible}
+      />
+      {ctx?.persistenceError && !persistenceBannerDismissed && (
+        <PersistenceBanner role="alert">
+          <i className="pi pi-exclamation-triangle" style={{ marginTop: '2px' }} />
+          <span>{ctx.persistenceError}</span>
+          <BannerDismiss
+            aria-label="Dismiss"
+            onClick={() => setPersistenceBannerDismissed(true)}
+          >
+            ✕
+          </BannerDismiss>
+        </PersistenceBanner>
+      )}
       <ContentArea>
         <Backdrop $visible={isSidebarOpen} onClick={() => setIsSidebarOpen(false)} />
         <Sidebar
           isOpen={isSidebarOpen}
           onToggle={toggle}
           requestSwitchScenario={requestSwitchScenario}
+          onOpenUserGuide={() => setUserGuideVisible(true)}
         />
         <Content
           compareScenarioId={whatIfSnapshot ? null : compareScenarioId}

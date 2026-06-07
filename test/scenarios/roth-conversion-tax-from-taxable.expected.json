@@ -1,14 +1,15 @@
 {
-  "_rationale": "Healthy Taxable account fully funds conversion ordinary tax. Trad outflow is exactly the conversion principal ($50k), NOT an inflated amount including tax draw. Taxable absorbs the ordinary tax (~$4-6k for single 60 on $50k - $15.75k std ded). This is the core new behavior: under the Taxable-first sourcing rule, Trad-above-RMD is never tapped to pay conversion tax.",
+  "_rationale": "Healthy Taxable account fully funds conversion ordinary tax. Conv tax sourcing rule: conv ordinary tax pulls from Taxable, NOT from extra Trad — rothConversionTaxFromBrokerage > 0 and rothConversionTaxWithheld == 0 confirms it. Total Trad outflow may be slightly above the conversion principal because the engine auto-selects bracket_aware spending (which adds a small Trad pull to soak up the LTCG-cascade withdrawal at 12% federal instead of leaving it on Brokerage at 15% LTCG). That extra Trad pull is SPENDING-side, not conv-tax-side — the conv-tax sourcing invariant still holds.",
   "probability": 100,
   "tolerance": 1.0,
   "breakdownChecks": [
-    { "index": 0, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Full conversion executes; Taxable funds the tax" },
+    { "index": 0, "field": "rothConversionGross", "value": 50000, "tolerance": 1, "_note": "Full conversion executes; Taxable funds the conv tax" },
     { "index": 0, "field": "rothConversionRequested", "value": 50000, "tolerance": 1, "_note": "Requested matches actual — no cap activated" },
-    { "index": 0, "field": "withdrawalFromTraditional", "value": 50000, "tolerance": 50, "_note": "Conversion principal only; no extra Trad pull for tax under new rule" },
-    { "index": 0, "field": "withdrawalFromTaxable", "min": 3000, "max": 7000, "_note": "Taxable absorbs the ~$4-5k ordinary tax (federal on ~$34k taxable income)" },
-    { "index": 0, "field": "rothConversionTaxFromTaxable", "min": 3000, "max": 7000, "_note": "Audit field: conv tax sourced from Taxable" },
+    { "index": 0, "field": "withdrawalFromTraditional", "min": 50000, "max": 51500, "_note": "Conversion principal ($50k) plus a small bracket_aware spending pull from LTCG-cascade overflow" },
+    { "index": 0, "field": "withdrawalFromBrokerage", "min": 3000, "max": 7000, "_note": "Taxable absorbs the ~$4-5k ordinary tax (federal on ~$34k taxable income)" },
+    { "index": 0, "field": "rothConversionTaxFromBrokerage", "min": 3000, "max": 7000, "_note": "Audit field: conv tax sourced from Taxable" },
     { "index": 0, "field": "rothConversionTaxFromRmdExcess", "value": 0, "tolerance": 0.01, "_note": "No RMD at age 60" },
+    { "index": 0, "field": "rothConversionTaxWithheld", "value": 0, "tolerance": 0.01, "_note": "Brokerage covered the tax; nothing withheld from conversion" },
     { "index": 0, "field": "ordinaryTax", "min": 2000, "max": 5000, "_note": "Federal ordinary tax on conversion" }
   ]
 }

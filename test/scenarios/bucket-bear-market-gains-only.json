@@ -1,0 +1,71 @@
+{
+  "_description": "gains_only trigger suppresses refill in a black-swan year — verifies bear-market resilience.",
+  "_rationale": "Same shape as bucket-always-refill (min $20k, target $40k, max $60k) EXCEPT refillTrigger='gains_only'. The black-swan in year 0 (stock×0.5 → stockFactor < 1) MUST suppress the refill: gains_only requires stockFactor > 1. So cashRefillFromSurplus = 0 in year 0, even though surplus exists and cash is below min. Year 0 cashEndingBalance stays at $5k (pension covered spending, no refill). Contrasts directly with bucket-always-refill which refills to $40k.",
+  "_seed": 12345,
+  "name": "Bucket Bear-Market gains_only",
+  "currentAge": 60,
+  "lifeExpectancy": 62,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 20000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "pension-1",
+      "type": "pension_income",
+      "name": "Pension",
+      "amount": 100000,
+      "startAge": 60,
+      "endAge": 62,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "cashYieldRate": 0,
+    "blackSwanEvents": [
+      { "id": "swan-1", "year": 2026, "stockMultiplier": 0.5, "bondMultiplier": 0.5 }
+    ]
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "cash-1",
+      "name": "Cash",
+      "type": "cash",
+      "balance": 5000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "cashBucketPolicy": {
+    "minAmount": 20000,
+    "targetAmount": 40000,
+    "maxAmount": 60000,
+    "refillTrigger": "gains_only"
+  },
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

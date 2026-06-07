@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { Button } from 'primereact/button';
-import { spacing, colors, fontSize } from '../styles/theme';
+import { spacing, colors, fontSize, dialogWidth } from '../styles/theme';
 
 const FieldGroup = styled.div`
   display: flex;
@@ -65,7 +65,7 @@ const CloneScenarioDialog: React.FC<CloneScenarioDialogProps> = ({
         </>
       }
       visible={visible}
-      style={{ width: '28rem' }}
+      style={dialogWidth('28rem')}
       onHide={onHide}
       footer={footer}
     >

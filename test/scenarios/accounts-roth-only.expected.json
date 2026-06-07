@@ -30,7 +30,7 @@
     },
     {
       "index": 0,
-      "field": "withdrawalFromTaxable",
+      "field": "withdrawalFromBrokerage",
       "value": 0,
       "tolerance": 1
     }

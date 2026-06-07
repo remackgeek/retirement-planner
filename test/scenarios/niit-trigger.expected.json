@@ -6,7 +6,7 @@
     { "index": 1, "age": 61, "value": 639901, "tolerance": 2 }
   ],
   "breakdownChecks": [
-    { "index": 0, "field": "withdrawalFromTaxable", "value": 360098.52, "tolerance": 1 },
+    { "index": 0, "field": "withdrawalFromBrokerage", "value": 360098.52, "tolerance": 1 },
     { "index": 0, "field": "federalCapGainsTax", "value": 54014.78, "tolerance": 0.5 },
     { "index": 0, "field": "stateCapGainsTax", "value": 0, "tolerance": 0.01, "_note": "Florida — no state income tax" },
     { "index": 0, "field": "niitTax", "value": 6083.74, "tolerance": 0.5, "_note": "0.038 × ($360,098.52 − $200,000)" },

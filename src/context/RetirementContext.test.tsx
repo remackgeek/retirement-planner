@@ -2,8 +2,10 @@ import React from 'react';
 import { render, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RetirementProvider, RetirementContext } from './RetirementContext';
+import { migrateLegacyTaxStrategy } from '../utils/scenarioMigration';
 import { confirmDialog } from 'primereact/confirmdialog';
 import type { Scenario } from '../types/Scenario';
+import { CURRENT_SCHEMA_VERSION } from '../types/Scenario';
 import { openDB } from 'idb';
 
 vi.mock('idb', () => ({
@@ -25,8 +27,17 @@ function makeScenarioJson(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     name: 'New Scenario',
     currentAge: 40,
+    lifeExpectancy: 90,
+    referenceYear: 2026,
+    inflationRate: 0.03,
     inflationStdDev: 0,
+    filingStatus: 'single',
+    spouseAge: null,
     accounts: [],
+    incomeEvents: [],
+    spendingGoals: [],
+    stateTimeline: [{ state: 'Florida' }],
+    simulationSettings: { numSimulations: 100 },
     longTermCapGainsRate: 0.15,
     portfolioAssumptions: {
       portfolioBalance: '60_40',
@@ -241,6 +252,319 @@ describe('RetirementContext Import Tests', () => {
       expect(vi.mocked(confirmDialog)).toHaveBeenLastCalledWith(
         expect.objectContaining({ message: 'Scenario imported as a new copy.' })
       );
+    });
+  });
+
+  it('stamps schemaVersion on an imported scenario that lacks it', async () => {
+    // makeScenarioJson() emits no schemaVersion (a legacy / hand-written file).
+    const text = makeScenarioJson();
+    vi.mocked(crypto.randomUUID).mockReturnValue('123e4567-e89b-12d3-a456-426614174000');
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    const input = await waitFor(() => {
+      const el = inputSpy.getInput();
+      if (!el) throw new Error('no input captured');
+      return el;
+    });
+
+    await triggerFileSelection(input, makeFile(text));
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        'scenarios',
+        expect.objectContaining({ schemaVersion: CURRENT_SCHEMA_VERSION }),
+        '123e4567-e89b-12d3-a456-426614174000'
+      );
+    });
+  });
+
+  it('stamps schemaVersion on a legacy record during initDB load', async () => {
+    // A record already in IndexedDB with no schemaVersion must be re-persisted
+    // with the current stamp on load (silent — no migration toast for this).
+    const legacy = { id: 'legacy-id', name: 'Legacy', currentAge: 50 } as Scenario;
+    mockGetAll.mockResolvedValue([legacy]);
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        'scenarios',
+        expect.objectContaining({ id: 'legacy-id', schemaVersion: CURRENT_SCHEMA_VERSION }),
+        'legacy-id'
+      );
+    });
+  });
+
+  it('normalizes an under-specified legacy record silently on load (no toast)', async () => {
+    // Old record missing portfolioAssumptions defaults. The load path now runs
+    // the same normalization the import path always did — and persists it
+    // WITHOUT firing the "Scenarios updated" migration toast.
+    const legacy = {
+      id: 'norm-id',
+      name: 'Needs normalize',
+      currentAge: 50,
+      portfolioAssumptions: { stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.03, bondStdDev: 0.05 },
+    } as unknown as Scenario;
+    mockGetAll.mockResolvedValue([legacy]);
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        'scenarios',
+        expect.objectContaining({
+          id: 'norm-id',
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+          longTermCapGainsRate: 0.15,
+          portfolioAssumptions: expect.objectContaining({ returnDistribution: 'lognormal', returnModel: 'parametric' }),
+        }),
+        'norm-id'
+      );
+    });
+    // No content migration happened → no "Scenarios updated" toast.
+    expect(vi.mocked(confirmDialog)).not.toHaveBeenCalledWith(
+      expect.objectContaining({ header: 'Scenarios updated' })
+    );
+  });
+
+  it('leaves a newer-schema record untouched on load (forward-compat guard)', async () => {
+    const future = {
+      id: 'future-id',
+      name: 'From the future',
+      currentAge: 50,
+      schemaVersion: CURRENT_SCHEMA_VERSION + 5,
+    } as Scenario;
+    mockGetAll.mockResolvedValue([future]);
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    // Give the load loop a tick to settle, then assert it never re-persisted.
+    await waitFor(() => expect(mockGetAll).toHaveBeenCalled());
+    expect(mockPut).not.toHaveBeenCalledWith('scenarios', expect.anything(), 'future-id');
+  });
+
+  it('rejects importing a file from a newer app version', async () => {
+    const text = makeScenarioJson({ schemaVersion: CURRENT_SCHEMA_VERSION + 1 });
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    const input = await waitFor(() => {
+      const el = inputSpy.getInput();
+      if (!el) throw new Error('no input captured');
+      return el;
+    });
+
+    await triggerFileSelection(input, makeFile(text));
+
+    await waitFor(() => {
+      expect(vi.mocked(confirmDialog)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          header: 'Error',
+          message: expect.stringContaining('newer version of YARP'),
+        })
+      );
+    });
+    expect(mockPut).not.toHaveBeenCalled();
+  });
+
+  describe('migrateLegacyTaxStrategy', () => {
+    // Direct unit tests for the migration function (R13). Past-year filter,
+    // idempotency, empty-cache, and generator-name mapping each have
+    // user-data-affecting branches that should be locked in.
+
+    // Counter so each call to randomUUID returns a unique value (the migration
+    // builds event ids from a slice of generatorRunId — duplicate runIds
+    // would collide with our M2 idempotency strip).
+    let uuidCounter = 0;
+    beforeEach(() => {
+      uuidCounter = 0;
+      vi.mocked(crypto.randomUUID).mockImplementation(
+        () => `runid-${++uuidCounter}-0000-0000-0000-000000000000` as `${string}-${string}-${string}-${string}-${string}`
+      );
+    });
+
+    const baseScenario = (overrides: Partial<Scenario> = {}): Scenario =>
+      ({
+        id: 's1',
+        name: 'Legacy',
+        currentAge: 62,
+        lifeExpectancy: 92,
+        referenceYear: 2026,
+        accounts: [],
+        spendingGoals: [],
+        incomeEvents: [],
+        portfolioAssumptions: {
+          stockReturn: 0.07, stockStdDev: 0.15, bondReturn: 0.03, bondStdDev: 0.05,
+          stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+          returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        },
+        inflationRate: 0.03,
+        inflationStdDev: 0,
+        simulationSettings: { numSimulations: 100 },
+        filingStatus: 'single',
+        spouseAge: null,
+        stateTimeline: [{ state: 'Florida' }],
+        longTermCapGainsRate: 0.15,
+        ...overrides,
+      } as Scenario);
+
+    it('drops past-year decisions (year < referenceYear)', () => {
+      const scenarioWithLegacy = {
+        ...baseScenario(),
+        // legacy field — cast-through-unknown is how the production migration reads it
+        taxStrategy: {
+          name: 'optimize',
+          cachedVector: {
+            fingerprint: 'x',
+            perYearDecisions: [
+              { year: 2024, conversionAmount: 50_000 },  // past — must drop
+              { year: 2025, conversionAmount: 50_000 },  // past — must drop
+              { year: 2026, conversionAmount: 30_000 },  // current — keep
+              { year: 2027, conversionAmount: 30_000 },  // future — keep
+            ],
+          },
+        },
+      } as unknown as Scenario;
+      const { scenario: migrated, addedConversions } = migrateLegacyTaxStrategy(scenarioWithLegacy);
+      expect(addedConversions).toBe(2);
+      const conversions = migrated.incomeEvents.filter((e) => e.type === 'roth_conversion');
+      expect(conversions).toHaveLength(2);
+      // Verify the surviving years.
+      const years = conversions.map((e) => 2026 + (e.startAge - 62));
+      expect(years.sort()).toEqual([2026, 2027]);
+      // No event has startAge below currentAge (which would render it inert).
+      for (const c of conversions) expect(c.startAge).toBeGreaterThanOrEqual(62);
+      // taxStrategy field is stripped from the migrated scenario.
+      expect((migrated as unknown as { taxStrategy?: unknown }).taxStrategy).toBeUndefined();
+    });
+
+    it('returns the scenario unchanged when there is no cachedVector', () => {
+      const scenarioWithLegacy = {
+        ...baseScenario(),
+        taxStrategy: { name: 'fill_to_bracket' },  // strategy named but never Compute-d
+      } as unknown as Scenario;
+      const { scenario: migrated, addedConversions } = migrateLegacyTaxStrategy(scenarioWithLegacy);
+      expect(addedConversions).toBe(0);
+      expect(migrated.incomeEvents).toEqual([]);
+      // Field is still stripped even when nothing was materialized.
+      expect((migrated as unknown as { taxStrategy?: unknown }).taxStrategy).toBeUndefined();
+    });
+
+    it('idempotently strips prior migrated-conv-* events on re-migration', () => {
+      // Simulate: the scenario was already migrated once (so it has
+      // migrated-conv-* events on it), and the user re-imports the original
+      // legacy JSON (so taxStrategy.cachedVector is back). The function must
+      // strip the old migrated batch before appending the new one.
+      const priorMigrated = {
+        id: 'migrated-conv-2027-deadbeef',
+        type: 'roth_conversion' as const,
+        name: 'Roth conversion 2027',
+        amount: 99_999,  // stale value the user "edited" in JSON — should be replaced
+        startAge: 63,
+        endAge: 63,
+        isOneTime: true,
+        taxStatus: 'before_tax' as const,
+        colaType: 'fixed' as const,
+        meta: { generatedBy: 'optimize' as const, generatedAt: '2026-01-01', generatorRunId: 'old-run' },
+      };
+      const scenarioWithLegacy = {
+        ...baseScenario({ incomeEvents: [priorMigrated] }),
+        taxStrategy: {
+          name: 'optimize',
+          cachedVector: {
+            fingerprint: 'x',
+            perYearDecisions: [
+              { year: 2027, conversionAmount: 30_000 },  // fresh value
+            ],
+          },
+        },
+      } as unknown as Scenario;
+      const { scenario: migrated, addedConversions } = migrateLegacyTaxStrategy(scenarioWithLegacy);
+      expect(addedConversions).toBe(1);
+      const conversions = migrated.incomeEvents.filter((e) => e.type === 'roth_conversion');
+      // Exactly one — the prior migrated-conv-2027 was stripped, the fresh one added.
+      expect(conversions).toHaveLength(1);
+      expect(conversions[0].amount).toBe(30_000);
+      // The new event id is also migrated-conv-* (just with a new run-id slice).
+      expect(conversions[0].id.startsWith('migrated-conv-')).toBe(true);
+      expect(conversions[0].id).not.toBe(priorMigrated.id);
+    });
+
+    it("maps the legacy strategy name into meta.generatedBy", () => {
+      const cases = [
+        { name: 'optimize', expected: 'optimize' },
+        { name: 'auto_bracket', expected: 'auto_bracket' },
+        { name: 'fill_to_bracket', expected: 'fill_to_bracket' },
+        { name: 'fixed', expected: 'user' }, // anything else collapses to user
+        { name: 'unknown-future-name', expected: 'user' },
+      ];
+      for (const c of cases) {
+        const scenarioWithLegacy = {
+          ...baseScenario(),
+          taxStrategy: {
+            name: c.name,
+            cachedVector: {
+              fingerprint: 'x',
+              perYearDecisions: [{ year: 2026, conversionAmount: 25_000 }],
+            },
+          },
+        } as unknown as Scenario;
+        const { scenario: migrated } = migrateLegacyTaxStrategy(scenarioWithLegacy);
+        const conversion = migrated.incomeEvents.find((e) => e.type === 'roth_conversion');
+        expect(conversion?.meta?.generatedBy).toBe(c.expected);
+      }
+    });
+  });
+
+  it('rejects scenarios with numSimulations < 1 on import (E1)', async () => {
+    // numSimulations: 0 would crash runSimulation (division by zero in
+    // probability calc, undefined deref in pickRepresentatives). The import
+    // validator must reject it loudly.
+    const text = makeScenarioJson({ simulationSettings: { numSimulations: 0 } });
+
+    render(
+      <RetirementProvider>
+        <TestComponent />
+      </RetirementProvider>
+    );
+
+    const input = await waitFor(() => {
+      const el = inputSpy.getInput();
+      if (!el) throw new Error('no input captured');
+      return el;
+    });
+
+    await triggerFileSelection(input, makeFile(text));
+
+    await waitFor(() => {
+      expect(vi.mocked(confirmDialog)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('numSimulations must be at least 1'),
+          header: 'Error',
+        })
+      );
+      expect(mockPut).not.toHaveBeenCalled();
     });
   });
 

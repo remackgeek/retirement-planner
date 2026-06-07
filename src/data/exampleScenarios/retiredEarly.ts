@@ -29,7 +29,7 @@ export const retiredEarly: Omit<Scenario, 'id'> = {
     {
       id: 'early-tax-1',
       name: 'Brokerage',
-      type: 'taxable',
+      type: 'brokerage',
       balance: 900000,
       stockAllocation: 0.8,
       portfolioBalance: '80_20',

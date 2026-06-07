@@ -49,7 +49,7 @@ export const nearRetirement: Omit<Scenario, 'id'> = {
     {
       id: 'near-tax-1',
       name: 'Brokerage',
-      type: 'taxable',
+      type: 'brokerage',
       balance: 250000,
       stockAllocation: 0.6,
       portfolioBalance: '60_40',

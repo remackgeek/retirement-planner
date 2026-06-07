@@ -1,0 +1,61 @@
+{
+  "_description": "Roth conversion's marginal ordinary tax sources from Cash before Taxable — verifies the conversion-tax-sourcing extension with cash priority 0.",
+  "_rationale": "$500k Traditional + $200k Cash + $0 Taxable. Conversion event of $100k in year 0. No spending, no other income. cashYieldRate 0 to isolate the sourcing test. Year 0: Trad pulls $100k for conversion; conversion ordinary tax ≈ $12-15k federal (single, 2026 brackets, no other income, std deduction). Without cash, that tax would be withheld from the conversion (Box 4 mechanic) since no Taxable. WITH cash, ctCash absorbs the entire marginal tax → rothConversionTaxFromCash > 0, rothConversionTaxWithheld = 0, full conversion lands in Roth. Florida (0% state), 0% growth.",
+  "_seed": 12345,
+  "name": "Cash Funds Conversion Tax",
+  "currentAge": 60,
+  "lifeExpectancy": 65,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [
+    {
+      "id": "conv-1",
+      "type": "roth_conversion",
+      "name": "Conversion 1",
+      "amount": 100000,
+      "startAge": 60,
+      "endAge": 60,
+      "taxStatus": "before_tax",
+      "colaType": "fixed"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "cashYieldRate": 0
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "cash-1",
+      "name": "Cash 1",
+      "type": "cash",
+      "balance": 200000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

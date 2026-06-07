@@ -1,8 +1,8 @@
 {
   "_description": "Single-year $50k Roth conversion at age 65 with no tax. Verifies Trad drops by 50k and Roth rises by 50k, with ordinaryTax=0 (Florida + single standard deduction covers $50k below the taxable threshold minus brackets).",
-  "_rationale": "Age 65, Traditional $200k + Roth $0. One-time $50k conversion in year 0. No state tax (Florida). Filing single, age 65 → standard deduction ≈ $15,000 + senior extra ≈ $1,950 ≈ $16,950. $50k conversion produces $33,050 taxable, 10% bracket ≈ $1,160 + 12% bracket on balance. So some tax applies. To fully zero tax, use MFJ with both 65+ (deduction ~$30k). Using MFJ 65+/65+: std deduction ≈ $31,000 + senior extra for both. Conversion well within deduction → ordinaryTax ≈ 0.",
+  "_rationale": "Age 65, Traditional $200k + Roth $0. One-time $50k conversion in year 0. No state tax (Florida). Filing single, age 65 \u00e2\u2020\u2019 standard deduction \u00e2\u2030\u02c6 $15,000 + senior extra \u00e2\u2030\u02c6 $1,950 \u00e2\u2030\u02c6 $16,950. $50k conversion produces $33,050 taxable, 10% bracket \u00e2\u2030\u02c6 $1,160 + 12% bracket on balance. So some tax applies. To fully zero tax, use MFJ with both 65+ (deduction ~$30k). Using MFJ 65+/65+: std deduction \u00e2\u2030\u02c6 $31,000 + senior extra for both. Conversion well within deduction \u00e2\u2020\u2019 ordinaryTax \u00e2\u2030\u02c6 0.",
   "_seed": 12345,
-  "name": "Roth Conversion — Simple No Tax",
+  "name": "Roth Conversion \u00e2\u20ac\u201d Simple No Tax",
   "currentAge": 65,
   "lifeExpectancy": 70,
   "referenceYear": 2026,
@@ -62,6 +62,5 @@
   ],
   "longTermCapGainsRate": 0.15,
   "enableIRMAA": false,
-  "enableNIIT": false,
-  "spendingWithdrawalOrder": "taxable_first"
+  "enableNIIT": false
 }
