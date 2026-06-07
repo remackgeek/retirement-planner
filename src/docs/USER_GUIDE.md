@@ -14,16 +14,17 @@
 - [Scenarios](#scenarios)
 - [Accounts](#accounts)
 - [Income Events](#income-events)
-- [Tools](#tools)
 - [Spending Goals](#spending-goals)
-- [Taxes](#taxes)
 - [Reading the Chart](#reading-the-chart)
 - [Year-by-Year Detail](#year-by-year-detail)
 - [Today's $ vs Future $](#todays--vs-future-)
 - [Comparing Scenarios](#comparing-scenarios)
 - [What If? Mode](#what-if-mode)
 - [Reports](#reports)
+- [Tools](#tools)
 - [Settings](#settings)
+- [Help](#help)
+- [Taxes](#taxes)
 - [Tips for Honest Planning](#tips-for-honest-planning)
 - [Your Data Stays With You](#your-data-stays-with-you)
 - [Backing Up Your Data](#backing-up-your-data)
@@ -220,33 +221,6 @@ When you're happy, click **Apply** — every non-zero year becomes a real Roth C
 
 ---
 
-## Tools
-
-The **Tools** menu in the top bar holds focused planning helpers. It also has **Load
-example…** at the top — append one of the built-in example scenarios (Near retirement,
-Retired early, Mid-career) and make it active. This is always available, even before you've
-created any scenarios of your own.
-
-### Social Security — best time to claim
-
-When you start Social Security is one of the highest-stakes retirement decisions: claiming early means smaller checks for life, while waiting (up to age 70) earns delayed-retirement credits that permanently raise them. The **Tools → Social Security** wizard finds the claiming age that maximizes your plan's final value.
-
-**What to enter.** Pull one number off your SSA statement (ssa.gov/myaccount): your **estimated monthly benefit at full retirement age**. Enter it on the "Your estimated benefit" line — pick "Monthly" or "Annual" to match, and leave the "at" age selector on *Full retirement age* (you can instead pick 62 or 70 if that's the figure your statement shows). The wizard works in today's dollars — exactly how the SSA statement quotes it. If you already entered a Social Security benefit, the wizard pre-fills from it, so a recommendation appears immediately with nothing to type.
-
-From that one figure the wizard reconstructs your full benefit formula and computes the actuarially-correct check at every claiming age from 62 to 70.
-
-**What you get.** A plain headline — e.g. *"Claim at 70 → +$214K plan value (today's $) vs your current 67"* — a current-vs-proposed projection chart (with your saved plan as a third reference line), the breakeven age (when delaying pulls ahead), and a per-age table showing each claiming age's annual benefit, plan final value, and difference. Click any row to compare that age on the chart and choose it for Apply — not just the recommended one (marked ★). Everything in the wizard is shown in **today's (year-0) dollars**, regardless of the main chart's Today's $/Future $ setting — that's the right frame for comparing claiming ages across decades.
-
-**Important caveat.** The "best" age assumes you live to your plan's life expectancy. Claiming later is a bet on longevity — if your life expectancy is short, earlier often wins. Adjust life expectancy in the scenario and watch the recommendation move.
-
-**Couples.** With Married-filing-jointly and a spouse age set, an *Optimizing for* selector lets you tune each person separately; the other spouse's benefit is held fixed. A spouse who is already receiving Social Security (or is past 70) is locked — there's no claiming decision left to make — and the wizard points you to the other person.
-
-**Scope.** This models each person's own retirement benefit (early/delayed adjustment + an optional 2034 trust-fund reduction, toggled right in the wizard so you can compare claiming ages with and without it). Spousal (50%) and survivor benefits aren't modeled yet.
-
-When you click **Apply**, the chosen claiming age becomes a regular Social Security income event (replacing the previous one for that person), visible on the chart, in the Income panel, and in exports.
-
----
-
 ## Spending Goals
 
 Spending goals are everything flowing **out** of your portfolio. Categories include living expenses, healthcare, housing, travel, education, and several more. Each goal has a start age, optional end age, and the option to inflate over time.
@@ -264,28 +238,6 @@ Healthcare is worth its own goal — sometimes two. Pre-Medicare years (early re
 ### One-time expenses
 
 For lumpy events — replacing a car, a wedding gift, a new roof — set the start age and end age to the same year. The whole amount happens in that one year.
-
----
-
-## Taxes
-
-YARP figures federal and state income tax automatically each year. You configure:
-
-- **Filing status** — Single, Married Filing Jointly, Married Filing Separately, or Head of Household
-- **Spouse age** — needed if you're married
-- **State** — pick from any of the 50 states + DC, plus **New York City** as a pseudo-state that adds the ~3.876% NYC local income tax on top of NY state brackets. In single-state mode a short profile summary appears beneath the dropdown (e.g., "Graduated 1–13.3% · SS exempt · No retirement exclusion") so you can see at a glance how your state is modeled. When the active state's profile has a retirement-income exclusion, an "Disable state retirement-income exclusion (advanced)" checkbox lets you turn it off if your Traditional withdrawals don't qualify under the actual state rule (e.g., NY's $20k exclusion is for public pensions and IRAs only). In timeline mode (multiple relocations), the per-row chip is omitted to keep the table compact — the active profile still applies in simulation per year.
-- **Long-term capital gains rate** — defaults to 15%, which is the federal middle bracket. Most retirees can leave this alone. State LTCG treatment varies by profile: most states tax LTCG at their ordinary brackets, **Missouri** fully exempts LTCG, and **Washington** applies a 7% rate only above an inflation-indexed $270k threshold (and has no ordinary state tax).
-- **State retirement-income rules** — states with pension/IRA exclusions (NY $20k at 59.5+, PA all retirement income, IL all, MI age 67+, GA $65k at 65+, NJ phased to $150k AGI, …) are honored automatically based on the active state's profile. SS taxability varies too: states like CO exempt SS at age 65+, NM and UT phase out SS by AGI, and CT/MN/RI/VT/MT still tax SS.
-- **State relocation timeline** — if you plan to move to a different state in retirement, add the move year here. YARP will switch profiles at the right time. South Carolina and West Virginia both have **scheduled tax changes** that activate automatically: SC's top 6% rate sunsets after 2026 (drops to ~5.2%) and WV's SS tax phases out by 2027.
-
-The standard deduction (including the larger amount you get at 65+) is applied automatically. Social Security taxation follows IRS rules — depending on your other income, between 0% and 85% of your benefit will be taxable.
-
-Two additional taxes show up as separate line items in the yearly detail:
-
-- **Medicare IRMAA** — once you're 65, your Medicare Part B and Part D premiums include a surcharge if your modified AGI was high two years ago. The surcharge is per Medicare enrollee, so a married couple where both are 65+ pays it twice. If you retired with a high-income final working year, set **Last working year MAGI** under Settings → Tax & IRS so the first two retirement years correctly reflect the IRS lookback; otherwise YARP assumes $0 there and you won't see IRMAA until age 67. Toggle off under **Settings → Tax & IRS** if you'd rather model premiums separately.
-- **NIIT** — a flat 3.8% on investment income above $200k MAGI (single) or $250k (MFJ). Mostly relevant for high-balance brokerage accounts. Toggle off under **Settings → Tax & IRS**.
-
-Both matter most in years with large Roth conversions, sizable RMDs, or big brokerage-account withdrawals.
 
 ---
 
@@ -380,6 +332,37 @@ The **Reports** menu in the header has:
 
 ---
 
+## Tools
+
+The **Tools** menu in the top bar holds focused planning helpers. It also has **Load
+example…** at the top — append one of the built-in example scenarios (Near retirement,
+Retired early, Mid-career) and make it active. This is always available, even before you've
+created any scenarios of your own.
+
+- **Roth Conversions** — opens the multi-year conversion planner. The walkthrough lives
+  under *Income Events → [Let YARP plan a multi-year schedule for you](#let-yarp-plan-a-multi-year-schedule-for-you)*,
+  where it flows from the Roth-conversion basics.
+
+### Social Security — best time to claim
+
+When you start Social Security is one of the highest-stakes retirement decisions: claiming early means smaller checks for life, while waiting (up to age 70) earns delayed-retirement credits that permanently raise them. The **Tools → Social Security** wizard finds the claiming age that maximizes your plan's final value.
+
+**What to enter.** Pull one number off your SSA statement (ssa.gov/myaccount): your **estimated monthly benefit at full retirement age**. Enter it on the "Your estimated benefit" line — pick "Monthly" or "Annual" to match, and leave the "at" age selector on *Full retirement age* (you can instead pick 62 or 70 if that's the figure your statement shows). The wizard works in today's dollars — exactly how the SSA statement quotes it. If you already entered a Social Security benefit, the wizard pre-fills from it, so a recommendation appears immediately with nothing to type.
+
+From that one figure the wizard reconstructs your full benefit formula and computes the actuarially-correct check at every claiming age from 62 to 70.
+
+**What you get.** A plain headline — e.g. *"Claim at 70 → +$214K plan value (today's $) vs your current 67"* — a current-vs-proposed projection chart (with your saved plan as a third reference line), the breakeven age (when delaying pulls ahead), and a per-age table showing each claiming age's annual benefit, plan final value, and difference. Click any row to compare that age on the chart and choose it for Apply — not just the recommended one (marked ★). Everything in the wizard is shown in **today's (year-0) dollars**, regardless of the main chart's Today's $/Future $ setting — that's the right frame for comparing claiming ages across decades.
+
+**Important caveat.** The "best" age assumes you live to your plan's life expectancy. Claiming later is a bet on longevity — if your life expectancy is short, earlier often wins. Adjust life expectancy in the scenario and watch the recommendation move.
+
+**Couples.** With Married-filing-jointly and a spouse age set, an *Optimizing for* selector lets you tune each person separately; the other spouse's benefit is held fixed. A spouse who is already receiving Social Security (or is past 70) is locked — there's no claiming decision left to make — and the wizard points you to the other person.
+
+**Scope.** This models each person's own retirement benefit (early/delayed adjustment + an optional 2034 trust-fund reduction, toggled right in the wizard so you can compare claiming ages with and without it). Spousal (50%) and survivor benefits aren't modeled yet.
+
+When you click **Apply**, the chosen claiming age becomes a regular Social Security income event (replacing the previous one for that person), visible on the chart, in the Income panel, and in exports.
+
+---
+
 ## Settings
 
 The **Settings** menu in the header has:
@@ -414,6 +397,38 @@ For deeper detail on any of these settings — including the math, distributions
 
 ---
 
+## Help
+
+The **Help** menu in the header has:
+
+- **User Guide** — this document, opened in a side panel.
+- **Model Details** — the full technical reference: simulation engine, tax math, return models, RMD rules, and every modeling parameter. Read this when you want to know exactly how a number is computed.
+- **About YARP** — version, build, and license info.
+
+---
+
+## Taxes
+
+YARP figures federal and state income tax automatically each year. You configure:
+
+- **Filing status** — Single, Married Filing Jointly, Married Filing Separately, or Head of Household
+- **Spouse age** — needed if you're married
+- **State** — pick from any of the 50 states + DC, plus **New York City** as a pseudo-state that adds the ~3.876% NYC local income tax on top of NY state brackets. In single-state mode a short profile summary appears beneath the dropdown (e.g., "Graduated 1–13.3% · SS exempt · No retirement exclusion") so you can see at a glance how your state is modeled. When the active state's profile has a retirement-income exclusion, an "Disable state retirement-income exclusion (advanced)" checkbox lets you turn it off if your Traditional withdrawals don't qualify under the actual state rule (e.g., NY's $20k exclusion is for public pensions and IRAs only). In timeline mode (multiple relocations), the per-row chip is omitted to keep the table compact — the active profile still applies in simulation per year.
+- **Long-term capital gains rate** — defaults to 15%, which is the federal middle bracket. Most retirees can leave this alone. State LTCG treatment varies by profile: most states tax LTCG at their ordinary brackets, **Missouri** fully exempts LTCG, and **Washington** applies a 7% rate only above an inflation-indexed $270k threshold (and has no ordinary state tax).
+- **State retirement-income rules** — states with pension/IRA exclusions (NY $20k at 59.5+, PA all retirement income, IL all, MI age 67+, GA $65k at 65+, NJ phased to $150k AGI, …) are honored automatically based on the active state's profile. SS taxability varies too: states like CO exempt SS at age 65+, NM and UT phase out SS by AGI, and CT/MN/RI/VT/MT still tax SS.
+- **State relocation timeline** — if you plan to move to a different state in retirement, add the move year here. YARP will switch profiles at the right time. South Carolina and West Virginia both have **scheduled tax changes** that activate automatically: SC's top 6% rate sunsets after 2026 (drops to ~5.2%) and WV's SS tax phases out by 2027.
+
+The standard deduction (including the larger amount you get at 65+) is applied automatically. Social Security taxation follows IRS rules — depending on your other income, between 0% and 85% of your benefit will be taxable.
+
+Two additional taxes show up as separate line items in the yearly detail:
+
+- **Medicare IRMAA** — once you're 65, your Medicare Part B and Part D premiums include a surcharge if your modified AGI was high two years ago. The surcharge is per Medicare enrollee, so a married couple where both are 65+ pays it twice. If you retired with a high-income final working year, set **Last working year MAGI** under Settings → Tax & IRS so the first two retirement years correctly reflect the IRS lookback; otherwise YARP assumes $0 there and you won't see IRMAA until age 67. Toggle off under **Settings → Tax & IRS** if you'd rather model premiums separately.
+- **NIIT** — a flat 3.8% on investment income above $200k MAGI (single) or $250k (MFJ). Mostly relevant for high-balance brokerage accounts. Toggle off under **Settings → Tax & IRS**.
+
+Both matter most in years with large Roth conversions, sizable RMDs, or big brokerage-account withdrawals.
+
+---
+
 ## Tips for Honest Planning
 
 - **Plan to a high life expectancy** (95 or 100). You don't want to run out of money at 90 because you planned to age 85.
@@ -444,8 +459,9 @@ To restore or move to a new device, click **Import** and select the file. You ca
 
 ## Where to Go From Here
 
-- **Help → User Guide** — this document
-- **Help → Model Details** — full technical reference for the simulation engine, tax math, and known limitations
-- **Help → About YARP** — version and license info
+Once your baseline feels right, the highest-value next steps are usually: clone it and try a
+"what if?" variation, run **Historical: Rolling Start** as an honesty check, and explore a
+Roth-conversion schedule if you have Traditional balances. For the math behind any number,
+open **Help → Model Details** (see the *[Help](#help)* section above).
 
 Found a bug or want to suggest an improvement? Open a ticket on the [GitHub Issues page](https://github.com/remackgeek/retirement-planner/issues). The app lives at [yarp.bluewiz.net](https://yarp.bluewiz.net) — open **Help → About YARP** for project and build details.
