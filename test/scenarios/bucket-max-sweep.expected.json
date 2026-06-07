@@ -1,5 +1,5 @@
 {
-  "_rationale": "Year 0: Cash $500k pre-growth (0% yield → still 500k). Spending $40k pulls from cash with floor at 6×$3333=$20k → after spending cash=$460k. Post-convergence sees cashBal=$460k > maxCash (18×$3333≈$60k), sweeps $400k to Taxable (synthetic Reinvestment-Taxable created by ensureReinvestmentAccount). cashEndingBalance=$60k. Sweep is tax-free → totalTax=0. Total portfolio unchanged at $460k.",
+  "_rationale": "Year 0: Cash $500k pre-growth (0% yield → still 500k). Spending $40k pulls from cash with floor at minAmount $20k → after spending cash=$460k. Post-convergence sees cashBal=$460k > maxCash (maxAmount $60k), sweeps $400k to Taxable (synthetic Reinvestment-Taxable created by ensureReinvestmentAccount). cashEndingBalance=$60k. Sweep is tax-free → totalTax=0. Total portfolio unchanged at $460k.",
   "probability": 100,
   "pathValues": [
     { "index": 0, "value": 500000, "tolerance": 1 },
@@ -8,7 +8,7 @@
   "breakdownChecks": [
     { "index": 0, "field": "withdrawalFromCash", "value": 40000, "tolerance": 1 },
     { "index": 0, "field": "cashSweepToBrokerage", "min": 399000, "max": 401000, "_note": "$460k - $60k maxCash" },
-    { "index": 0, "field": "cashEndingBalance", "min": 59500, "max": 60500, "_note": "= maxMonths × monthly ≈ $60k" },
+    { "index": 0, "field": "cashEndingBalance", "min": 59500, "max": 60500, "_note": "= maxAmount $60k" },
     { "index": 0, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "Sweep is tax-free; FL = 0 state tax; cash interest = 0" },
     { "index": 0, "field": "federalCapGainsTax", "value": 0, "tolerance": 1, "_note": "Sweep does not realize LTCG" }
   ]

@@ -1,6 +1,6 @@
 {
-  "_description": "Bucket policy with minMonths=0 allows full cash drain — verifies that the soft floor reduces to zero when the user opts out of preserving cash.",
-  "_rationale": "Cash $100k + Taxable $100k. Policy min=0, target=12, max=36, refillTrigger='gains_only'. Spending $50k. Year 0: floor = 0 × monthly = 0, so cash drains fully. With 0% returns, 0% yield: 100k cash drains 50k → 50k. Year 1: 50k drains 50k → 0. No refill (no surplus). Cash is permitted to reach 0 because min=0. Demonstrates manual-mode-equivalent floor behavior even with an active trigger.",
+  "_description": "Bucket policy with minAmount=0 allows full cash drain — verifies that the soft floor reduces to zero when the user opts out of preserving cash.",
+  "_rationale": "Cash $100k + Taxable $100k. Policy min $0, target $50k, max $150k, refillTrigger='gains_only'. Spending $50k. Year 0: floor = $0, so cash drains fully. With 0% returns, 0% yield: 100k cash drains 50k → 50k. Year 1: 50k drains 50k → 0. No refill (no surplus). Cash is permitted to reach 0 because min=0. Demonstrates manual-mode-equivalent floor behavior even with an active trigger.",
   "_seed": 12345,
   "name": "Bucket Min Zero Drain",
   "currentAge": 60,
@@ -54,9 +54,9 @@
     }
   ],
   "cashBucketPolicy": {
-    "minMonths": 0,
-    "targetMonths": 12,
-    "maxMonths": 36,
+    "minAmount": 0,
+    "targetAmount": 50000,
+    "maxAmount": 150000,
     "refillTrigger": "gains_only"
   },
   "longTermCapGainsRate": 0.15,

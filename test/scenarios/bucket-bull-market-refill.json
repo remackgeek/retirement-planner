@@ -1,6 +1,6 @@
 {
   "_description": "Sustained bull market with gains_only — refill fires each year because stockFactor > 1.",
-  "_rationale": "Cash $5k, pension $100k/yr, spending $20k. Policy min=12 target=24 max=36 'gains_only'. With stockReturn=10% deterministic and no shock, stockFactor = exp(ln(1.10) - 0.5×0²) ≈ 1.10 > 1 → refill fires. Year 0: refill from surplus to target (~$40k). Year 1: cash starts at $40k (above min $20k) — no refill needed.",
+  "_rationale": "Cash $5k, pension $100k/yr, spending $20k. Policy min $20k, target $40k, max $60k 'gains_only' (fixed dollar amounts). With stockReturn=10% deterministic and no shock, stockFactor = exp(ln(1.10) - 0.5×0²) ≈ 1.10 > 1 → refill fires. Year 0: refill from surplus to target (~$40k). Year 1: cash starts at $40k (above min $20k) — no refill needed.",
   "_seed": 12345,
   "name": "Bucket Bull Refill",
   "currentAge": 60,
@@ -57,9 +57,9 @@
     }
   ],
   "cashBucketPolicy": {
-    "minMonths": 12,
-    "targetMonths": 24,
-    "maxMonths": 36,
+    "minAmount": 20000,
+    "targetAmount": 40000,
+    "maxAmount": 60000,
     "refillTrigger": "gains_only"
   },
   "longTermCapGainsRate": 0.15,

@@ -65,22 +65,20 @@ export function calculateRMD(tradBalance: number, age: number): number {
 }
 
 /**
- * Translate a CashBucketPolicy's month-denominated thresholds into dollar
- * amounts for the year, given the year's total spending net. Single source of
- * truth used by BOTH the in-loop spending waterfall (clamps Cash pulls at
- * `minCash`) and the post-convergence step (sweep above `maxCash`, refill
- * toward `targetCash`). Keeping the formula here prevents the two sites from
- * drifting if the definition of "monthly" ever changes.
+ * Surface a CashBucketPolicy's fixed dollar thresholds under the internal
+ * `minCash/targetCash/maxCash` names. The policy fields are already nominal
+ * dollar amounts (they do not inflate), so this is a thin alias rather than a
+ * conversion. Single source of truth used by BOTH the in-loop spending
+ * waterfall (clamps Cash pulls at `minCash`) and the post-convergence step
+ * (sweep above `maxCash`, refill toward `targetCash`).
  */
 export function cashBucketBounds(
-  policy: { minMonths: number; targetMonths: number; maxMonths: number },
-  totalSpendingNet: number,
+  policy: { minAmount: number; targetAmount: number; maxAmount: number },
 ): { minCash: number; targetCash: number; maxCash: number } {
-  const monthly = totalSpendingNet / 12;
   return {
-    minCash: policy.minMonths * monthly,
-    targetCash: policy.targetMonths * monthly,
-    maxCash: policy.maxMonths * monthly,
+    minCash: policy.minAmount,
+    targetCash: policy.targetAmount,
+    maxCash: policy.maxAmount,
   };
 }
 
@@ -605,28 +603,27 @@ function applyCashFlow(
  *
  * STRUCTURAL INVARIANT (load-bearing — type-enforced by this signature):
  * This function receives only the *settled* balances and a minimal subset of
- * the breakdown needed to compute floor/target/ceiling against monthly spending,
- * plus the policy and trigger inputs. It does NOT receive the full breakdown,
- * does NOT import tax modules, and its return type contains only cash-routing
- * fields. As a result, it cannot accidentally mutate `totalTax`,
- * `ordinaryTax`, `federalCapGainsTax`, NIIT, IRMAA, or any income field.
- * This makes "post-convergence step never re-enters the tax calc" a type-level
- * guarantee rather than a discipline.
+ * the breakdown, plus the policy and trigger inputs. It does NOT receive the
+ * full breakdown, does NOT import tax modules, and its return type contains
+ * only cash-routing fields. As a result, it cannot accidentally mutate
+ * `totalTax`, `ordinaryTax`, `federalCapGainsTax`, NIIT, IRMAA, or any income
+ * field. This makes "post-convergence step never re-enters the tax calc" a
+ * type-level guarantee rather than a discipline.
  *
- * Operations:
- *  - SWEEP: when cashBal > maxMonths × monthly, move excess to first Taxable.
+ * Operations (thresholds are fixed nominal dollar amounts on the policy):
+ *  - SWEEP: when cashBal > maxAmount, move excess to first Taxable.
  *    Tax-free balance transfer (no withdrawal path, no LTCG realized).
- *  - REFILL: when cashBal < minMonths × monthly AND refillTrigger fires AND
+ *  - REFILL: when cashBal < minAmount AND refillTrigger fires AND
  *    surplus dollars are available (capped by `netCashFlow > 0` from this
  *    year, already deposited into Taxable by applyCashFlow), move that surplus
- *    from Taxable to first Cash up to targetMonths × monthly. Surplus-only
+ *    from Taxable to first Cash up to targetAmount. Surplus-only
  *    sourcing prevents phantom-tax archetype #3.
  *
  * Returns the dollar amounts moved so the breakdown / CSV / audit can show
  * exactly where cash came from / went.
  */
 function applyPostConvergenceBucketPolicy(
-  settled: { baseSpendingNet: number; otherSpendingGoalsNet: number; netCashFlow: number; spendingShortfall: number },
+  settled: { netCashFlow: number; spendingShortfall: number },
   balances: Record<string, number>,
   policy: CashBucketPolicy,
   accountIndex: AccountIndex,
@@ -644,12 +641,10 @@ function applyPostConvergenceBucketPolicy(
     return { cashRefillFromSurplus: 0, cashSweepToBrokerage: 0 };
   }
 
-  // Use TOTAL spending net as the monthly basis (mirrors the floor used in
-  // computeSpendingWaterfall). The cashBucketBounds helper is the single
-  // source of truth so the spending floor and the refill/sweep thresholds
-  // can't drift independently.
-  const totalSpendingNet = settled.baseSpendingNet + settled.otherSpendingGoalsNet;
-  const { minCash, targetCash, maxCash } = cashBucketBounds(policy, totalSpendingNet);
+  // Fixed dollar thresholds. The cashBucketBounds helper is the single source
+  // of truth so the spending floor (computeSpendingWaterfall) and the
+  // refill/sweep thresholds here can't drift independently.
+  const { minCash, targetCash, maxCash } = cashBucketBounds(policy);
 
   // Sum cash across all cash accounts (multiple are unusual but supported);
   // sweeps and refills route to/from the first cash account in the index.
@@ -808,7 +803,7 @@ export interface AnnualCashFlowBreakdown {
   cashInterest: number;              // deterministic yield credited on beginning-of-year cash balance; taxed as ordinary income (folded into otherTaxableGross)
   cashEndingBalance: number;         // sum of cash account balances at end of year (post-growth, post-withdrawal, POST refill/sweep). 0 when no cash account exists
   cashRefillFromSurplus: number;     // (Phase 2) dollars moved Taxable→Cash by the post-convergence bucket policy refill step this year. Surplus-funded only; never realizes LTCG.
-  cashSweepToBrokerage: number;        // (Phase 2) dollars moved Cash→Taxable by the post-convergence sweep when cash > maxMonths × monthly. Tax-free balance transfer.
+  cashSweepToBrokerage: number;        // (Phase 2) dollars moved Cash→Taxable by the post-convergence sweep when cash > maxAmount. Tax-free balance transfer.
   totalTax: number;
   ordinaryTax: number;      // ordinary income tax (federal + state + locality surcharge) on Traditional + SS + other taxable
   federalCapGainsTax: number; // federal LTCG tax on taxable account withdrawals (flat longTermCapGainsRate × fromBrokerage, or 0/15/20% stacked when useStackedLtcgBrackets)
@@ -1823,19 +1818,16 @@ function calculateAnnualCashFlowCore(
   const cap = Math.min(maxWithdrawal ?? Infinity, totalBal);
 
   // Cash bucket policy soft floor. Spending and conversion tax sourcing pull
-  // Cash only down to `minMonths × monthly`; below that, both fall through to
+  // Cash only down to the fixed `minAmount`; below that, both fall through to
   // the next priority (Taxable / withhold). Rationale: in reality every user
   // has unmodeled liquid cash; the floor reflects how much they're willing to
   // hold in this bucket. When no policy is configured or refillTrigger is
   // 'none', minCashFloor = 0 (full drain allowed). The cashBucketBounds helper
   // is the single source of truth shared with applyPostConvergenceBucketPolicy
   // so the spending floor here cannot drift from the refill/sweep thresholds.
-  // (Plan describes monthly as baseSpendingNet/12; using totalSpendingNet here
-  // makes the floor robust against scenarios that put most spending into
-  // discretionary goals — same intent, marginally more conservative.)
   const policy = userData.cashBucketPolicy;
   const minCashFloor = policy && policy.refillTrigger !== 'none'
-    ? cashBucketBounds(policy, totalSpendingNet).minCash
+    ? cashBucketBounds(policy).minCash
     : 0;
 
   const selfTradBal = beginningTradBalances?.self

@@ -143,7 +143,8 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         const working = result.scenario;
         const migratedThisScenario =
           result.addedConversions > 0 || result.brokerageRenamed || result.spendingStripped;
-        const needsPersist = migratedThisScenario || result.normalized || result.stamped;
+        const needsPersist =
+          migratedThisScenario || result.cashBucketConverted || result.normalized || result.stamped;
 
         if (result.addedConversions > 0) totalConversionsAdded += result.addedConversions;
         if (result.brokerageRenamed) brokerageRenamedCount += 1;

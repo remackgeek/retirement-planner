@@ -1,6 +1,6 @@
 {
   "_description": "gains_only trigger suppresses refill in a black-swan year — verifies bear-market resilience.",
-  "_rationale": "Same shape as bucket-always-refill EXCEPT refillTrigger='gains_only'. The black-swan in year 0 (stock×0.5 → stockFactor < 1) MUST suppress the refill: gains_only requires stockFactor > 1. So cashRefillFromSurplus = 0 in year 0, even though surplus exists and cash is below min. Year 0 cashEndingBalance stays at $5k (pension covered spending, no refill). Contrasts directly with bucket-always-refill which refills to $40k.",
+  "_rationale": "Same shape as bucket-always-refill (min $20k, target $40k, max $60k) EXCEPT refillTrigger='gains_only'. The black-swan in year 0 (stock×0.5 → stockFactor < 1) MUST suppress the refill: gains_only requires stockFactor > 1. So cashRefillFromSurplus = 0 in year 0, even though surplus exists and cash is below min. Year 0 cashEndingBalance stays at $5k (pension covered spending, no refill). Contrasts directly with bucket-always-refill which refills to $40k.",
   "_seed": 12345,
   "name": "Bucket Bear-Market gains_only",
   "currentAge": 60,
@@ -60,9 +60,9 @@
     }
   ],
   "cashBucketPolicy": {
-    "minMonths": 12,
-    "targetMonths": 24,
-    "maxMonths": 36,
+    "minAmount": 20000,
+    "targetAmount": 40000,
+    "maxAmount": 60000,
     "refillTrigger": "gains_only"
   },
   "longTermCapGainsRate": 0.15,

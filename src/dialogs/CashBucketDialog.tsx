@@ -85,9 +85,9 @@ interface CashBucketDialogProps {
 }
 
 const DEFAULTS: CashBucketPolicy = {
-  minMonths: 6,
-  targetMonths: 18,
-  maxMonths: 36,
+  minAmount: 20000,
+  targetAmount: 60000,
+  maxAmount: 120000,
   refillTrigger: 'gains_only',
 };
 
@@ -98,9 +98,9 @@ const CashBucketDialog: React.FC<CashBucketDialogProps> = ({
   onSave,
 }) => {
   const [enabled, setEnabled] = useState<boolean>(false);
-  const [minMonths, setMinMonths] = useState<number>(DEFAULTS.minMonths);
-  const [targetMonths, setTargetMonths] = useState<number>(DEFAULTS.targetMonths);
-  const [maxMonths, setMaxMonths] = useState<number>(DEFAULTS.maxMonths);
+  const [minAmount, setMinAmount] = useState<number>(DEFAULTS.minAmount);
+  const [targetAmount, setTargetAmount] = useState<number>(DEFAULTS.targetAmount);
+  const [maxAmount, setMaxAmount] = useState<number>(DEFAULTS.maxAmount);
   const [refillTrigger, setRefillTrigger] = useState<CashBucketPolicy['refillTrigger']>(DEFAULTS.refillTrigger);
 
   useEffect(() => {
@@ -108,26 +108,26 @@ const CashBucketDialog: React.FC<CashBucketDialogProps> = ({
     const p = scenario.cashBucketPolicy;
     if (p) {
       setEnabled(true);
-      setMinMonths(p.minMonths);
-      setTargetMonths(p.targetMonths);
-      setMaxMonths(p.maxMonths);
+      setMinAmount(p.minAmount);
+      setTargetAmount(p.targetAmount);
+      setMaxAmount(p.maxAmount);
       setRefillTrigger(p.refillTrigger);
     } else {
       setEnabled(false);
-      setMinMonths(DEFAULTS.minMonths);
-      setTargetMonths(DEFAULTS.targetMonths);
-      setMaxMonths(DEFAULTS.maxMonths);
+      setMinAmount(DEFAULTS.minAmount);
+      setTargetAmount(DEFAULTS.targetAmount);
+      setMaxAmount(DEFAULTS.maxAmount);
       setRefillTrigger(DEFAULTS.refillTrigger);
     }
   }, [visible, scenario]);
 
   const hasCashAccount = scenario.accounts.some((a) => a.type === 'cash');
 
-  const ordered = enabled && minMonths <= targetMonths && targetMonths <= maxMonths;
+  const ordered = enabled && minAmount <= targetAmount && targetAmount <= maxAmount;
 
   const persist = (mutateAccounts?: (accounts: Account[]) => Account[]) => {
     const policy: CashBucketPolicy | undefined = enabled
-      ? { minMonths, targetMonths, maxMonths, refillTrigger }
+      ? { minAmount, targetAmount, maxAmount, refillTrigger }
       : undefined;
     const accounts = mutateAccounts ? mutateAccounts(scenario.accounts) : scenario.accounts;
     onSave({ ...scenario, accounts, cashBucketPolicy: policy });
@@ -201,15 +201,20 @@ const CashBucketDialog: React.FC<CashBucketDialogProps> = ({
         {enabled && (
           <>
             <Section>
-              <SectionHeader>Band (months of spending)</SectionHeader>
+              <SectionHeader>Cash band (dollar amounts)</SectionHeader>
               <FieldRow>
                 <InputGroup>
                   <label>Min</label>
                   <InputNumber
-                    value={minMonths}
-                    onValueChange={(e) => setMinMonths(e.value ?? 0)}
+                    value={minAmount}
+                    onValueChange={(e) => setMinAmount(e.value ?? 0)}
+                    mode="currency"
+                    currency="USD"
+                    locale="en-US"
+                    maxFractionDigits={0}
                     min={0}
-                    max={120}
+                    max={10000000}
+                    step={5000}
                     showButtons
                     inputStyle={{ width: '100%' }}
                   />
@@ -217,10 +222,15 @@ const CashBucketDialog: React.FC<CashBucketDialogProps> = ({
                 <InputGroup>
                   <label>Target</label>
                   <InputNumber
-                    value={targetMonths}
-                    onValueChange={(e) => setTargetMonths(e.value ?? 0)}
+                    value={targetAmount}
+                    onValueChange={(e) => setTargetAmount(e.value ?? 0)}
+                    mode="currency"
+                    currency="USD"
+                    locale="en-US"
+                    maxFractionDigits={0}
                     min={0}
-                    max={120}
+                    max={10000000}
+                    step={5000}
                     showButtons
                     inputStyle={{ width: '100%' }}
                   />
@@ -228,17 +238,22 @@ const CashBucketDialog: React.FC<CashBucketDialogProps> = ({
                 <InputGroup>
                   <label>Max</label>
                   <InputNumber
-                    value={maxMonths}
-                    onValueChange={(e) => setMaxMonths(e.value ?? 0)}
+                    value={maxAmount}
+                    onValueChange={(e) => setMaxAmount(e.value ?? 0)}
+                    mode="currency"
+                    currency="USD"
+                    locale="en-US"
+                    maxFractionDigits={0}
                     min={0}
-                    max={120}
+                    max={10000000}
+                    step={5000}
                     showButtons
                     inputStyle={{ width: '100%' }}
                   />
                 </InputGroup>
               </FieldRow>
               <HelpText>
-                Each band is a number of months of <strong>total annual spending</strong> divided by 12.
+                Each band is a fixed dollar amount (it does not inflate).
                 Spending pulls Cash only down to <strong>Min</strong> (then falls through to Taxable).
                 Surplus deposits fill up to <strong>Target</strong>. Cash above <strong>Max</strong> is
                 swept back to Taxable.

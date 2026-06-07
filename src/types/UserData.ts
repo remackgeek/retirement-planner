@@ -76,9 +76,8 @@ export interface UserData {
   // balance management. See CLAUDE.md "Cash bucket policy" and
   // MODEL_DETAILS.md "Cash bucket policy" for full semantics.
   //
-  // Months refer to monthly = baseSpendingNet / 12 for the current sim year, so
-  // the floor/target/ceiling adapt to the actual spending profile (and inflate
-  // naturally as living-expenses goals scale).
+  // The floor/target/ceiling are fixed nominal dollar amounts — they stay
+  // constant every year and do NOT inflate.
   //
   // Refill triggers:
   //   'always'         — refill every year that has surplus available. Conservative.
@@ -98,18 +97,18 @@ export interface UserData {
 // engine from UserData.
 
 export interface CashBucketPolicy {
-  /** Soft floor below which the engine *may* refill (per refillTrigger). Spending
-   *  pulls Cash only down to `minMonths × monthly`; below that, spending falls
+  /** Soft floor (dollars) below which the engine *may* refill (per refillTrigger).
+   *  Spending pulls Cash only down to `minAmount`; below that, spending falls
    *  through to Taxable. Rationale: in reality the user has unmodeled liquid
-   *  cash; setting minMonths > 0 reflects how much they're WILLING to drain
+   *  cash; setting minAmount > 0 reflects how much they're WILLING to drain
    *  this bucket. Set to 0 to allow full drain-to-zero behavior. */
-  minMonths: number;
-  /** Target balance for refill destination and surplus routing. Refills top up
-   *  to this level (capped by available surplus). */
-  targetMonths: number;
-  /** Hard ceiling. When cash > maxMonths × monthly, the excess is swept to
+  minAmount: number;
+  /** Target balance (dollars) for refill destination and surplus routing. Refills
+   *  top up to this level (capped by available surplus). */
+  targetAmount: number;
+  /** Hard ceiling (dollars). When cash > maxAmount, the excess is swept to
    *  Taxable in the post-convergence step (tax-free balance transfer). */
-  maxMonths: number;
+  maxAmount: number;
   refillTrigger: 'always' | 'gains_only' | 'above_baseline' | 'none';
 }
 

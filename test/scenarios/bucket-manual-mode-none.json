@@ -1,6 +1,6 @@
 {
   "_description": "cashBucketPolicy with refillTrigger='none' — verifies manual mode (engine performs no auto-refill or auto-sweep, but spending still pulls cash first).",
-  "_rationale": "Cash $100k + Taxable $100k. Policy set with min=6, target=18, max=36 BUT refillTrigger='none'. Spending $40k, 0% returns, 0% yield. Year 0: cash drains to 60k (40k spending pull). No refill from surplus (none trigger). No sweep (cash 60k well under max 120k). Demonstrates that 'none' = manual mode: policy fields present, engine does not act on them automatically (other than cash priority in waterfall, which is unconditional).",
+  "_rationale": "Cash $100k + Taxable $100k. Policy set with min $20k, target $60k, max $120k BUT refillTrigger='none'. Spending $40k, 0% returns, 0% yield. Year 0: cash drains to 60k (40k spending pull). No refill from surplus (none trigger). No sweep (cash 60k well under max 120k). Demonstrates that 'none' = manual mode: policy fields present, engine does not act on them automatically (other than cash priority in waterfall, which is unconditional).",
   "_seed": 12345,
   "name": "Bucket Manual Mode (none)",
   "currentAge": 60,
@@ -54,9 +54,9 @@
     }
   ],
   "cashBucketPolicy": {
-    "minMonths": 6,
-    "targetMonths": 18,
-    "maxMonths": 36,
+    "minAmount": 20000,
+    "targetAmount": 60000,
+    "maxAmount": 120000,
     "refillTrigger": "none"
   },
   "longTermCapGainsRate": 0.15,

@@ -2430,10 +2430,10 @@ describe('cash account', () => {
         cashYieldRate: 0,
       },
       simulationSettings: { numSimulations: 10 },
-      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 18, refillTrigger: 'none' },
+      cashBucketPolicy: { minAmount: 20_000, targetAmount: 40_000, maxAmount: 60_000, refillTrigger: 'none' },
     });
     const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
-    // 500k cash >> max=18×$3333≈$60k, but trigger='none' → no sweep.
+    // 500k cash >> max=$60k, but trigger='none' → no sweep.
     expect(bd.cashSweepToBrokerage).toBe(0);
     expect(bd.cashRefillFromSurplus).toBe(0);
     // Spending pulls cash with floor = 0 (suppressed by 'none' trigger).
@@ -2454,10 +2454,10 @@ describe('cash account', () => {
         cashYieldRate: 0,
       },
       simulationSettings: { numSimulations: 10 },
-      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 18, refillTrigger: 'gains_only' },
+      cashBucketPolicy: { minAmount: 20_000, targetAmount: 40_000, maxAmount: 60_000, refillTrigger: 'gains_only' },
     });
     const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
-    // maxCash = 18 × ($40k/12) ≈ $60k. After $40k spending (with $20k floor allows pull),
+    // maxCash = $60k. After $40k spending (with $20k floor allows pull),
     // cash = $460k. Sweep $460k − $60k = $400k. Tax-free.
     expect(bd.cashSweepToBrokerage).toBeGreaterThan(380_000);
     expect(bd.cashSweepToBrokerage).toBeLessThan(420_000);
@@ -2489,7 +2489,7 @@ describe('cash account', () => {
     });
     const noPolicy = runSimulation(baseUd, createSeededRandom(42)).nominalBreakdowns[0];
     const withPolicy = runSimulation(
-      { ...baseUd, cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 18, refillTrigger: 'gains_only' } },
+      { ...baseUd, cashBucketPolicy: { minAmount: 20_000, targetAmount: 40_000, maxAmount: 60_000, refillTrigger: 'gains_only' } },
       createSeededRandom(42)
     ).nominalBreakdowns[0];
     expect(withPolicy.totalTax).toBe(noPolicy.totalTax);
@@ -2506,7 +2506,7 @@ describe('cash account', () => {
   });
 
   it('bucket policy soft floor preserves cash; spending falls through to Taxable', () => {
-    // Cash floor at 6 months × $5k/month = $30k. Cash starting balance $30k.
+    // Cash floor $30k. Cash starting balance $30k.
     // Spending $60k. Cash floor immediate; spending should fall through to Taxable.
     const ud = makeUserData({
       currentAge: 60, lifeExpectancy: 61,
@@ -2522,10 +2522,10 @@ describe('cash account', () => {
         cashYieldRate: 0,
       },
       simulationSettings: { numSimulations: 10 },
-      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 24, refillTrigger: 'gains_only' },
+      cashBucketPolicy: { minAmount: 30_000, targetAmount: 60_000, maxAmount: 120_000, refillTrigger: 'gains_only' },
     });
     const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
-    // monthly = $60k/12 = $5k. minCash = 6 × $5k = $30k.
+    // minCash = $30k.
     // Cash balance equals the floor exactly → cashAvailableForSpending = 0.
     // All spending pulls from Taxable.
     expect(bd.withdrawalFromCash).toBe(0);
@@ -2576,7 +2576,7 @@ describe('cash account', () => {
         cashYieldRate: 0.04,
       },
       simulationSettings: { numSimulations: 10 },
-      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 18, refillTrigger: 'gains_only' },
+      cashBucketPolicy: { minAmount: 30_000, targetAmount: 60_000, maxAmount: 90_000, refillTrigger: 'gains_only' },
     });
     const result = runSimulation(ud, createSeededRandom(42));
     for (const v of result.nominal) expect(v).toBeGreaterThanOrEqual(0);

@@ -73,14 +73,14 @@ projections, and good tax awareness without overwhelming the user.
   a post-convergence step (`applyPostConvergenceBucketPolicy` in
   [src/services/SimulationService.ts](src/services/SimulationService.ts)) runs after
   `applyCashFlow` settles all flows for the year. The policy declares a band
-  `{ minMonths, targetMonths, maxMonths, refillTrigger }` where months are
-  multiples of `totalSpendingNet / 12`. Behavior: (a) the spending waterfall
-  pulls Cash only down to `minMonths × monthly`, then falls through to Brokerage
+  `{ minAmount, targetAmount, maxAmount, refillTrigger }` as **fixed dollar
+  amounts** (they do not inflate). Behavior: (a) the spending waterfall
+  pulls Cash only down to `minAmount`, then falls through to Brokerage
   (the conversion-tax sourcing chain respects the same floor); (b) when cash
-  exceeds `maxMonths × monthly`, the excess sweeps to Brokerage as a tax-free
-  balance transfer; (c) when cash is below `minMonths × monthly` AND the
+  exceeds `maxAmount`, the excess sweeps to Brokerage as a tax-free
+  balance transfer; (c) when cash is below `minAmount` AND the
   trigger fires, this year's surplus reroutes from Brokerage to Cash up to
-  `targetMonths × monthly`, capped by the surplus available. Refill is
+  `targetAmount`, capped by the surplus available. Refill is
   **surplus-only** (`netCashFlow > 0`) — the engine never sells Brokerage
   mid-loop to refill cash. That rule prevents phantom-tax archetype #3
   (the refill-LTCG leak). Triggers: `'always'`, `'gains_only'` (stockFactor > 1),
@@ -318,9 +318,9 @@ spending + spending-related tax only.
 | RMD                 | IRS Uniform Lifetime Table                  | Self-funding (RMD net is cash)                      |
 | Spending withdrawal | `totalSpendingNet`                          | **Cash** → RMD-first → Brokerage → Trad → Roth        |
 | Roth conversion     | User-entered (or future: fill-to-bracket)   | **Cash** → RMD-excess → Brokerage → withhold from conversion (IRS 1099-R Box 4) |
-| Surplus deposit     | `netCashFlow > 0`                           | Deposit to first Brokerage in `applyCashFlow`; under `cashBucketPolicy` a post-convergence step (Phase 2) reroutes from Brokerage to Cash up to `targetMonths × monthly` when the policy's trigger fires. |
-| Cash bucket refill  | `netCashFlow > 0` (this year's surplus only)| Move from first Brokerage → first Cash, capped by `target × monthly − cashBal` AND by available surplus. Tax-free balance transfer. **Never sells Brokerage to refill** — surplus-only sourcing prevents phantom-tax archetype #3 (the refill-LTCG leak). |
-| Cash bucket sweep   | `cashBal > maxMonths × monthly`             | Move from first Cash → first Brokerage. Tax-free balance transfer (no withdrawal path, no LTCG). |
+| Surplus deposit     | `netCashFlow > 0`                           | Deposit to first Brokerage in `applyCashFlow`; under `cashBucketPolicy` a post-convergence step (Phase 2) reroutes from Brokerage to Cash up to `targetAmount` when the policy's trigger fires. |
+| Cash bucket refill  | `netCashFlow > 0` (this year's surplus only)| Move from first Brokerage → first Cash, capped by `targetAmount − cashBal` AND by available surplus. Tax-free balance transfer. **Never sells Brokerage to refill** — surplus-only sourcing prevents phantom-tax archetype #3 (the refill-LTCG leak). |
+| Cash bucket sweep   | `cashBal > maxAmount`                       | Move from first Cash → first Brokerage. Tax-free balance transfer (no withdrawal path, no LTCG). |
 
 Cash is **a modeled account type** (Phase 1). The Cash steps in the precedence
 above are real — `computeSpendingWaterfall` and the conversion-tax-sourcing block
@@ -1015,7 +1015,7 @@ Current plugins:
   read-only blended return (portfolio-weighted average across accounts). Parametric-only
   inputs (returns, distribution, correlation, inflation rate/stddev) are disabled when a
   historical mode is active.
-- **Cash Bucket** → `CashBucketDialog` — min/target/max months and refill trigger for `UserData.cashBucketPolicy`. Menu item only rendered when the active scenario has ≥1 cash account (or already has a configured policy).
+- **Cash Bucket** → `CashBucketDialog` — min/target/max dollar amounts and refill trigger for `UserData.cashBucketPolicy`. Menu item only rendered when the active scenario has ≥1 cash account (or already has a configured policy).
 - **Tax & IRS** → `TaxAndIrsDialog` — long-term capital gains rate, IRMAA / NIIT toggles, `priorWorkingMagi` (last working year MAGI for first-2-years IRMAA lookback), and IRS contribution limits.
 - **Export CSV** — downloads the active scenario's yearly data table.
 

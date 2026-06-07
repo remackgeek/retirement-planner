@@ -166,25 +166,25 @@ Cash principal is **tax-free on withdrawal** (no LTCG, no NIIT on principal). Th
 
 ### Cash bucket policy (optional)
 
-`UserData.cashBucketPolicy` enables automatic cash-bucket management. The policy declares a band in **months of total annual spending** (`monthly = totalSpendingNet / 12`):
+`UserData.cashBucketPolicy` enables automatic cash-bucket management. The policy declares a band in **fixed dollar amounts** (they stay constant every year — they do not inflate):
 
 ```
 cashBucketPolicy: {
-  minMonths,                // soft floor — spending pulls Cash only down to this
-  targetMonths,             // surplus deposits and refills aim for this
-  maxMonths,                // hard ceiling — excess sweeps to Brokerage
+  minAmount,                // soft floor — spending pulls Cash only down to this
+  targetAmount,             // surplus deposits and refills aim for this
+  maxAmount,                // hard ceiling — excess sweeps to Brokerage
   refillTrigger: 'always' | 'gains_only' | 'above_baseline' | 'none',
 }
 ```
 
 Behavior:
 
-- **Soft floor.** The spending waterfall pulls Cash only down to `minMonths × monthly`. Below that, spending falls through to Brokerage. This reflects the reality that users have unmodeled liquid cash (checking, bill-pay buffer) — the floor represents how much they're willing to hold in this modeled bucket. Set `minMonths: 0` for full drain-to-zero behavior. The conversion-tax-sourcing chain respects the same floor.
-- **Hard ceiling.** When cash balance exceeds `maxMonths × monthly` at end of year, the excess sweeps to the first Brokerage account in a **post-convergence** step. The sweep is a **tax-free balance transfer** — implementation does not route through the withdrawal waterfall, so no LTCG / NIIT is realized.
-- **Refill.** When cash is below `minMonths × monthly` AND the trigger fires AND surplus is available, the engine reroutes this year's surplus from Brokerage to Cash up to `targetMonths × monthly`. Refill is **surplus-only** — the engine never sells Brokerage mid-loop to top up cash. That rule prevents phantom-tax archetype #3 (the refill-LTCG leak).
+- **Soft floor.** The spending waterfall pulls Cash only down to `minAmount`. Below that, spending falls through to Brokerage. This reflects the reality that users have unmodeled liquid cash (checking, bill-pay buffer) — the floor represents how much they're willing to hold in this modeled bucket. Set `minAmount: 0` for full drain-to-zero behavior. The conversion-tax-sourcing chain respects the same floor.
+- **Hard ceiling.** When cash balance exceeds `maxAmount` at end of year, the excess sweeps to the first Brokerage account in a **post-convergence** step. The sweep is a **tax-free balance transfer** — implementation does not route through the withdrawal waterfall, so no LTCG / NIIT is realized.
+- **Refill.** When cash is below `minAmount` AND the trigger fires AND surplus is available, the engine reroutes this year's surplus from Brokerage to Cash up to `targetAmount`. Refill is **surplus-only** — the engine never sells Brokerage mid-loop to top up cash. That rule prevents phantom-tax archetype #3 (the refill-LTCG leak).
 - **Triggers.** `'always'` (any year with surplus). `'gains_only'` (this year's stockFactor > 1 — recommended; bear-aware). `'above_baseline'` (portfolio post-growth / deterministic-baseline > 1; strictest bear-aware). `'none'` (manual mode — also disables the spending-waterfall floor; equivalent to leaving the policy undefined).
 
-**Structural enforcement of the no-tax-mutation invariant.** The post-convergence step lives in `applyPostConvergenceBucketPolicy` which receives only a minimal subset of the settled breakdown (`baseSpendingNet`, `otherSpendingGoalsNet`, `netCashFlow`, `spendingShortfall`) plus account balances and the policy. It does not import any tax module. Its return type contains only cash-routing fields. As a result, the function is type-prevented from mutating `totalTax`, `ordinaryTax`, `federalCapGainsTax`, `niitTax`, `irmaaSurcharge`, or any income field — making "post-convergence step never re-enters the tax calc" a type-level guarantee rather than a runtime discipline.
+**Structural enforcement of the no-tax-mutation invariant.** The post-convergence step lives in `applyPostConvergenceBucketPolicy` which receives only a minimal subset of the settled breakdown (`netCashFlow`, `spendingShortfall`) plus account balances and the policy. It does not import any tax module. Its return type contains only cash-routing fields. As a result, the function is type-prevented from mutating `totalTax`, `ordinaryTax`, `federalCapGainsTax`, `niitTax`, `irmaaSurcharge`, or any income field — making "post-convergence step never re-enters the tax calc" a type-level guarantee rather than a runtime discipline.
 
 The `cashRefillFromSurplus` and `cashSweepToBrokerage` fields in `AnnualCashFlowBreakdown` expose the per-year amounts moved.
 

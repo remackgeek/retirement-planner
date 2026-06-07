@@ -1,6 +1,6 @@
 {
-  "_description": "Initial cash balance well above maxMonths × monthly — verifies immediate sweep to Taxable on year 0.",
-  "_rationale": "Cash $500k starting balance. Spending $40k/yr. Policy min=6, target=12, max=18, refillTrigger='gains_only'. monthly = $40k/12 ≈ $3,333. maxCash = 18 × $3,333 ≈ $60,000. Cash $500k >> maxCash → sweep $440k to Taxable in year 0 post-convergence. Year 0 ending cash should equal maxCash (~$60k). No Taxable account exists initially → ensureReinvestmentAccount creates synthetic Reinvestment-Taxable receiving the sweep. Sweep is tax-free (no LTCG generated).",
+  "_description": "Initial cash balance well above maxAmount — verifies immediate sweep to Taxable on year 0.",
+  "_rationale": "Cash $500k starting balance. Spending $40k/yr. Policy min $20k, target $40k, max $60k (fixed dollar amounts), refillTrigger='gains_only'. Cash $500k >> maxCash $60k → sweep $440k to Taxable in year 0 post-convergence. Year 0 ending cash should equal maxCash ($60k). No Taxable account exists initially → ensureReinvestmentAccount creates synthetic Reinvestment-Taxable receiving the sweep. Sweep is tax-free (no LTCG generated).",
   "_seed": 12345,
   "name": "Bucket Max Sweep",
   "currentAge": 60,
@@ -46,9 +46,9 @@
     }
   ],
   "cashBucketPolicy": {
-    "minMonths": 6,
-    "targetMonths": 12,
-    "maxMonths": 18,
+    "minAmount": 20000,
+    "targetAmount": 40000,
+    "maxAmount": 60000,
     "refillTrigger": "gains_only"
   },
   "longTermCapGainsRate": 0.15,

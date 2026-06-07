@@ -1,6 +1,6 @@
 {
   "_description": "above_baseline trigger — refill fires only when MC portfolio is above the deterministic baseline.",
-  "_rationale": "Cash $5k, pension $100k/yr, spending $20k, deterministic stockReturn=5%, 0% volatility. Policy 'above_baseline'. With 0% volatility the MC path equals the deterministic baseline exactly each year, so the ratio = 1.0 and the trigger requires > 1.0 (strict). Refill does NOT fire. cashRefillFromSurplus = 0. Demonstrates 'above_baseline' is a strict-better trigger.",
+  "_rationale": "Cash $5k, pension $100k/yr, spending $20k, deterministic stockReturn=5%, 0% volatility. Policy 'above_baseline' (min $20k, target $40k, max $60k — fixed dollar amounts). With 0% volatility the MC path equals the deterministic baseline exactly each year, so the ratio = 1.0 and the trigger requires > 1.0 (strict). Refill does NOT fire. cashRefillFromSurplus = 0. Demonstrates 'above_baseline' is a strict-better trigger.",
   "_seed": 12345,
   "name": "Bucket Above Baseline",
   "currentAge": 60,
@@ -57,9 +57,9 @@
     }
   ],
   "cashBucketPolicy": {
-    "minMonths": 12,
-    "targetMonths": 24,
-    "maxMonths": 36,
+    "minAmount": 20000,
+    "targetAmount": 40000,
+    "maxAmount": 60000,
     "refillTrigger": "above_baseline"
   },
   "longTermCapGainsRate": 0.15,

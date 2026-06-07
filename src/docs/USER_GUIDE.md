@@ -115,9 +115,11 @@ YARP draws from your accounts in this order each year: **Cash first** (tax-free 
 
 If you have a cash account and want YARP to actively manage it — refilling from market gains and sweeping when it gets too large — open **Settings → Cash Bucket** (this menu item only appears when at least one cash account exists). The dialog has four controls:
 
-- **Min months** — the floor. Spending pulls Cash only down to this many months of total annual spending; below that, spending falls through to Brokerage. This reflects how much liquid cash you actually want to keep on hand. A typical value is 6.
-- **Target months** — the refill goal. When the engine refills the cash bucket from a year's surplus income, it tops up to this band. A typical value is 12–18 months.
-- **Max months** — the ceiling. If cash drifts above this, the excess is swept back into Brokerage as a tax-free balance transfer. Typical: 24–36 months.
+- **Min** — the floor, a fixed dollar amount. Spending pulls Cash only down to this balance; below that, spending falls through to Brokerage. This reflects how much liquid cash you actually want to keep on hand.
+- **Target** — the refill goal. When the engine refills the cash bucket from a year's surplus income, it tops up to this balance.
+- **Max** — the ceiling. If cash drifts above this, the excess is swept back into Brokerage as a tax-free balance transfer.
+
+The three bands are fixed dollar amounts — they stay constant every year and do not inflate.
 - **Refill trigger** — when does the engine actually refill?
   - *Gains only (recommended)* — refills only in years with positive stock returns. Bear-market aware: won't try to top up the bucket while equities are down.
   - *Above baseline* — strictest. Refills only when the portfolio is ahead of the deterministic baseline.
@@ -383,7 +385,7 @@ The **Reports** menu in the header has:
 The **Settings** menu in the header has:
 
 - **Modeling** — return generation (parametric vs. historical), distribution, asset correlation, inflation, Black Swan events, simulation run count.
-- **Cash Bucket** — min/target/max months and refill trigger (only appears when the active scenario has at least one cash account; see *Cash Bucket policy* under Accounts).
+- **Cash Bucket** — min/target/max dollar amounts and refill trigger (only appears when the active scenario has at least one cash account; see *Cash Bucket policy* under Accounts).
 - **Tax & IRS** — long-term capital gains rate, IRMAA, NIIT, last working year MAGI, and IRS contribution limits.
 
 ### Modeling

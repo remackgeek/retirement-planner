@@ -5,6 +5,7 @@ import {
   validateImportedScenario,
   runMigrationPipeline,
   normalizeScenario,
+  migrateCashBucketMonthsToAmounts,
 } from './scenarioMigration';
 
 function makeValidScenario(overrides: Partial<Scenario> = {}): Scenario {
@@ -226,5 +227,69 @@ describe('runMigrationPipeline', () => {
     const result = runMigrationPipeline(s);
     expect(result.spendingStripped).toBe(true);
     expect((result.scenario as Scenario & { spendingWithdrawalOrder?: string }).spendingWithdrawalOrder).toBeUndefined();
+  });
+
+  it('converts a month-based cash bucket policy through the pipeline', () => {
+    const s = makeValidScenario({
+      currentAge: 60,
+      spendingGoals: [
+        { id: 'le', type: 'living_expenses', name: 'Living', amount: 60000, startAge: 60, inflationAdjusted: false },
+      ],
+      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 24, refillTrigger: 'gains_only' } as never,
+    });
+    const result = runMigrationPipeline(s);
+    expect(result.cashBucketConverted).toBe(true);
+    // monthly = $60k/12 = $5k → min 6×$5k=$30k, target 12×$5k=$60k, max 24×$5k=$120k.
+    expect(result.scenario.cashBucketPolicy).toEqual({
+      minAmount: 30000,
+      targetAmount: 60000,
+      maxAmount: 120000,
+      refillTrigger: 'gains_only',
+    });
+  });
+});
+
+describe('migrateCashBucketMonthsToAmounts', () => {
+  it('is a no-op when the policy is already amount-based', () => {
+    const s = makeValidScenario({
+      cashBucketPolicy: { minAmount: 10000, targetAmount: 30000, maxAmount: 60000, refillTrigger: 'always' },
+    });
+    const { scenario, changed } = migrateCashBucketMonthsToAmounts(s);
+    expect(changed).toBe(false);
+    expect(scenario).toBe(s);
+  });
+
+  it('is a no-op when no policy exists', () => {
+    const { changed } = migrateCashBucketMonthsToAmounts(makeValidScenario());
+    expect(changed).toBe(false);
+  });
+
+  it('falls back to default amounts when no living-expenses spending is found', () => {
+    const s = makeValidScenario({
+      spendingGoals: [],
+      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 24, refillTrigger: 'gains_only' } as never,
+    });
+    const { scenario, changed } = migrateCashBucketMonthsToAmounts(s);
+    expect(changed).toBe(true);
+    expect(scenario.cashBucketPolicy).toEqual({
+      minAmount: 20000,
+      targetAmount: 60000,
+      maxAmount: 120000,
+      refillTrigger: 'gains_only',
+    });
+  });
+
+  it('is idempotent — a second pass leaves the converted policy unchanged', () => {
+    const s = makeValidScenario({
+      currentAge: 60,
+      spendingGoals: [
+        { id: 'le', type: 'living_expenses', name: 'Living', amount: 60000, startAge: 60, inflationAdjusted: false },
+      ],
+      cashBucketPolicy: { minMonths: 6, targetMonths: 12, maxMonths: 24, refillTrigger: 'gains_only' } as never,
+    });
+    const first = migrateCashBucketMonthsToAmounts(s);
+    const second = migrateCashBucketMonthsToAmounts(first.scenario);
+    expect(second.changed).toBe(false);
+    expect(second.scenario.cashBucketPolicy).toEqual(first.scenario.cashBucketPolicy);
   });
 });

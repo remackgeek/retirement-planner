@@ -81,6 +81,74 @@ export function stripDeprecatedSpendingWithdrawalOrder(scenario: Scenario): {
   return { scenario: rest as Scenario, changed: true };
 }
 
+/**
+ * Content-level migration: cash bucket policy thresholds expressed as MONTHS of
+ * spending (`minMonths`/`targetMonths`/`maxMonths`) → fixed dollar AMOUNTS
+ * (`minAmount`/`targetAmount`/`maxAmount`).
+ *
+ * The old engine converted months to dollars each sim year via
+ * `monthly = totalSpendingNet / 12`. To preserve behavior as closely as
+ * possible we convert against an estimate of the scenario's year-0 annual
+ * living expenses (the same `living_expenses`-goal annualization used in
+ * conversionImpact). When that estimate is non-positive we fall back to
+ * sensible default dollar amounts (mirrors CashBucketDialog DEFAULTS).
+ *
+ * Idempotent — a policy already in the new shape (no `minMonths`) is a no-op.
+ * Non-throwing — a slightly-off record must not brick the load path.
+ */
+const CASH_BUCKET_DEFAULTS = { minAmount: 20000, targetAmount: 60000, maxAmount: 120000 };
+
+export function migrateCashBucketMonthsToAmounts(scenario: Scenario): {
+  scenario: Scenario;
+  changed: boolean;
+} {
+  const policy = scenario.cashBucketPolicy as
+    | (Partial<{ minMonths: number; targetMonths: number; maxMonths: number }> &
+        Partial<{ minAmount: number; targetAmount: number; maxAmount: number }> & {
+          refillTrigger: 'always' | 'gains_only' | 'above_baseline' | 'none';
+        })
+    | undefined;
+  // Only act on the old month-denominated shape.
+  if (!policy || typeof policy.minMonths !== 'number') {
+    return { scenario, changed: false };
+  }
+
+  // Estimate year-0 annual living expenses active at currentAge (annualizing
+  // monthly-period goals). Matches conversionImpact's living-expenses sum.
+  const age = scenario.currentAge;
+  let annual = 0;
+  for (const goal of scenario.spendingGoals ?? []) {
+    if (goal.type !== 'living_expenses') continue;
+    const active = goal.isOneTime
+      ? age === goal.startAge
+      : age >= goal.startAge && (goal.endAge === undefined || age <= goal.endAge);
+    if (!active) continue;
+    annual += (goal.amountPeriod === 'monthly' ? goal.amount * 12 : goal.amount);
+  }
+
+  let minAmount: number;
+  let targetAmount: number;
+  let maxAmount: number;
+  if (annual > 0) {
+    const monthly = annual / 12;
+    minAmount = Math.round((policy.minMonths ?? 0) * monthly);
+    targetAmount = Math.round((policy.targetMonths ?? 0) * monthly);
+    maxAmount = Math.round((policy.maxMonths ?? 0) * monthly);
+  } else {
+    minAmount = CASH_BUCKET_DEFAULTS.minAmount;
+    targetAmount = CASH_BUCKET_DEFAULTS.targetAmount;
+    maxAmount = CASH_BUCKET_DEFAULTS.maxAmount;
+  }
+
+  return {
+    scenario: {
+      ...scenario,
+      cashBucketPolicy: { minAmount, targetAmount, maxAmount, refillTrigger: policy.refillTrigger },
+    },
+    changed: true,
+  };
+}
+
 export function migrateLegacyTaxStrategy(scenario: Scenario): { scenario: Scenario; addedConversions: number } {
   // The taxStrategy field is no longer part of the Scenario type, but legacy
   // scenarios in IndexedDB / imported JSON still carry it. Read via an
@@ -261,6 +329,9 @@ export interface MigrationResult {
   brokerageRenamed: boolean;
   /** The deprecated `spendingWithdrawalOrder` field was stripped. Toast-worthy. */
   spendingStripped: boolean;
+  /** Cash bucket policy thresholds converted months → dollar amounts. Persist
+   *  silently — forced one-way conversion with no user action, no toast. */
+  cashBucketConverted: boolean;
   /** A default was backfilled (normalization). Persist silently — no toast. */
   normalized: boolean;
   /** The schemaVersion stamp was set/updated. Persist silently — no toast. */
@@ -292,6 +363,10 @@ export function runMigrationPipeline(scenario: Scenario): MigrationResult {
     stripDeprecatedSpendingWithdrawalOrder(working);
   working = afterSpending;
 
+  const { scenario: afterCashBucket, changed: cashBucketConverted } =
+    migrateCashBucketMonthsToAmounts(working);
+  working = afterCashBucket;
+
   let stamped = false;
   if (working.schemaVersion !== CURRENT_SCHEMA_VERSION) {
     working = { ...working, schemaVersion: CURRENT_SCHEMA_VERSION };
@@ -303,6 +378,7 @@ export function runMigrationPipeline(scenario: Scenario): MigrationResult {
     addedConversions,
     brokerageRenamed,
     spendingStripped,
+    cashBucketConverted,
     normalized: didNormalize,
     stamped,
   };
