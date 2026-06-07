@@ -554,10 +554,10 @@ The Roth Conversion dialog's **Net impact on plan value** row is computed by run
 
 Roth conversions are first-class `roth_conversion` events on `scenario.incomeEvents`. There is no separate "strategy" runtime layer — what you see in the Income panel is exactly what the engine simulates.
 
-Two paths to add conversions, both in the **Roth Conversion** dialog:
+Two paths to add conversions, both backed by the same `RothConversionDialog`:
 
-1. **Single conversion** — one event with start/end age, COLA, etc.
-2. **Plan a multi-year schedule** (generator wizard, default tab) — pick a **plan window** (end-age cap, default 80) and toggle **cliff awareness** (default ON), click **Generate plan**, review the per-year preview table and the inline what-if chart, click **Apply** to materialize as `roth_conversion` events.
+1. **Single conversion** — Income → + → Roth Conversion. One event with start/end age, COLA, etc. The dialog is rendered without an `onApplyBatch` callback here, so it locks to single-conversion entry (the wizard tab is hidden).
+2. **Plan a multi-year schedule** — **Tools → Roth Conversions**. The generator wizard: pick a **plan window** (end-age cap, default 80) and toggle **cliff awareness** (default ON), click **Generate plan**, review the per-year preview table and the inline what-if chart, click **Apply** to materialize as `roth_conversion` events. Apply uses the shared `applyGeneratedConversions` helper ([src/utils/applyGeneratedConversions.ts](src/utils/applyGeneratedConversions.ts)) — it replaces the previous generator-tagged batch and preserves manual/detached conversions.
 
 ### Plan window (`endAgeCap`)
 

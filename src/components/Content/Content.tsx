@@ -305,25 +305,9 @@ const Content: React.FC<{
     updateScenario(updatedScenario);
   };
 
-  // Generator wizard "Apply": replace all generator-tagged roth_conversion
-  // events with the new batch, preserve manual conversions (meta.generatedBy
-  // === 'user' or meta absent) and all non-conversion events. Generator
-  // events are identified by `meta.generatedBy` being one of the generator
-  // names — matches the same predicate used in the wizard's replace-confirm.
-  const handleApplyGeneratedConversions = (newEvents: Omit<IncomeEvent, 'id'>[]) => {
-    if (!activeScenario) return;
-    const survivors = activeScenario.incomeEvents.filter((e) => {
-      if (e.type !== 'roth_conversion') return true;
-      const gb = e.meta?.generatedBy;
-      return gb === undefined || gb === 'user';
-    });
-    const tagged: IncomeEvent[] = newEvents.map((e) => ({ ...e, id: crypto.randomUUID() }));
-    const updatedScenario = {
-      ...activeScenario,
-      incomeEvents: [...survivors, ...tagged],
-    };
-    updateScenario(updatedScenario);
-  };
+  // The Roth Conversion generator wizard now lives in the Tools menu
+  // (AppHeader); its "Apply" path uses the shared `applyGeneratedConversions`
+  // helper directly. The Income panel's Roth Conversion entry is single-only.
 
   // Bulk-delete every event in a generator-tagged batch (one updateScenario,
   // no per-event re-render thrash). Called from the IncomeEventsManager group
@@ -444,7 +428,6 @@ const Content: React.FC<{
                 onUpdate={handleUpdateIncomeEvent}
                 onDelete={handleDeleteIncomeEvent}
                 onDeleteGroup={handleDeleteIncomeEventGroup}
-                onApplyGeneratedConversions={handleApplyGeneratedConversions}
               />
             </ManagerSection>
             <ManagerSection>

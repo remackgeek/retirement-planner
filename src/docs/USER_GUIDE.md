@@ -183,7 +183,7 @@ The Roth Conversion dialog shows an **Impact Preview** with a deterministic esti
 
 ### Let YARP plan a multi-year schedule for you
 
-Hand-tuning a conversion schedule year by year is fiddly. Open the **Roth Conversion** dialog (Income → + → Roth Conversion) — the **Plan a multi-year schedule** tab is the default. Two settings sit at the top:
+Hand-tuning a conversion schedule year by year is fiddly. Open **Tools → Roth Conversions** — the planner opens on the **Plan a multi-year schedule** tab. (To add a single one-off conversion instead, use Income → + → Roth Conversion, which opens the same dialog limited to single-conversion entry.) Two settings sit at the top of the planner:
 
 - **Plan window** — through what age should YARP consider conversions? Default is **through age 80**. Practitioner consensus: past 80, conversion is rarely worth it for owner-lifetime tax arbitrage (the math turns into estate planning, which YARP doesn't model). Drop to 73 or 75 if you want to limit the window to pre-RMD; bump to 85 or 90 if you have a specific heir-rate reason. Years past the cap emit no conversions.
 - **Cap under IRMAA / NIIT cliffs** — on by default. A large conversion can push your MAGI into a higher Medicare IRMAA tier (two years later) or trip the 3.8% NIIT surcharge. With this on, generated conversions are capped so MAGI stays under the next tier and the NIIT threshold. Only ever lowers a conversion; uncheck if you want to override the cliffs.

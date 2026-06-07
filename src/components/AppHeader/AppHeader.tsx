@@ -9,6 +9,8 @@ import ModelingDialog from '../../dialogs/ModelingDialog';
 import CashBucketDialog from '../../dialogs/CashBucketDialog';
 import TaxAndIrsDialog from '../../dialogs/TaxAndIrsDialog';
 import SocialSecurityWizardDialog from '../../dialogs/SocialSecurityWizardDialog';
+import RothConversionDialog from '../../dialogs/RothConversionDialog';
+import { applyGeneratedConversions } from '../../utils/applyGeneratedConversions';
 import ExamplePickerDialog from '../../dialogs/ExamplePickerDialog';
 import AboutDialog from '../../dialogs/AboutDialog';
 import MarkdownViewerSidebar from '../../dialogs/MarkdownViewerSidebar';
@@ -98,6 +100,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   const toolsMenuRef = useRef<Menu>(null);
   const helpMenuRef = useRef<Menu>(null);
   const [ssWizardVisible, setSsWizardVisible] = useState(false);
+  const [rothWizardVisible, setRothWizardVisible] = useState(false);
   const [modelingVisible, setModelingVisible] = useState(false);
   const [cashBucketVisible, setCashBucketVisible] = useState(false);
   const [taxIrsVisible, setTaxIrsVisible] = useState(false);
@@ -147,6 +150,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
       label: 'Social Security',
       icon: 'pi pi-shield',
       command: () => setSsWizardVisible(true),
+      disabled: !activeScenario,
+    },
+    {
+      label: 'Roth Conversions',
+      icon: 'pi pi-sync',
+      command: () => setRothWizardVisible(true),
       disabled: !activeScenario,
     },
   ];
@@ -261,6 +270,22 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
           onHide={() => setSsWizardVisible(false)}
           scenario={activeScenario}
           onSave={handleSave}
+        />
+      )}
+      {activeScenario && (
+        <RothConversionDialog
+          visible={rothWizardVisible}
+          onHide={() => setRothWizardVisible(false)}
+          userData={activeScenario}
+          existingEvents={activeScenario.incomeEvents}
+          onApplyBatch={(batch) => {
+            handleSave(applyGeneratedConversions(activeScenario, batch));
+            setRothWizardVisible(false);
+          }}
+          onSave={(event) => handleSave({
+            ...activeScenario,
+            incomeEvents: [...activeScenario.incomeEvents, { ...event, id: crypto.randomUUID() }],
+          })}
         />
       )}
       <ExamplePickerDialog

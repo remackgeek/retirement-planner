@@ -940,6 +940,13 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
         </Form>
       ) : (
       <Form onSubmit={handleSubmit}>
+        {!wizardAvailable && !isEditing && (
+          <HelpText style={{ lineHeight: 1.4 }}>
+            <i className='pi pi-info-circle' style={{ marginRight: spacing.xs }} />
+            Planning several years of conversions? Use{' '}
+            <strong>Tools → Roth Conversions</strong> for a multi-year schedule.
+          </HelpText>
+        )}
         {isEditing && editEvent?.meta?.generatedBy && editEvent.meta.generatedBy !== 'user' && (
           <HelpText style={{ color: colors.warning, lineHeight: 1.4 }}>
             <i className='pi pi-info-circle' style={{ marginRight: spacing.xs }} />

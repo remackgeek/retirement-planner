@@ -119,9 +119,6 @@ interface IncomeEventsManagerProps {
    *  call). Used by the group card's "Delete all generated conversions"
    *  action. Manual/detached rows live outside the group and are unaffected. */
   onDeleteGroup?: (eventIds: string[]) => void;
-  /** Roth Conversion generator wizard: replace all generator-tagged
-   *  conversions with this batch; preserves manual events. */
-  onApplyGeneratedConversions?: (events: Omit<IncomeEvent, 'id'>[]) => void;
 }
 
 export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
@@ -132,7 +129,6 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
   onUpdate,
   onDelete,
   onDeleteGroup,
-  onApplyGeneratedConversions,
 }) => {
   const [selectionDialogVisible, setSelectionDialogVisible] = useState(false);
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -402,12 +398,6 @@ export const IncomeEventsManager: React.FC<IncomeEventsManagerProps> = ({
           editEvent={editingEvent}
           existingEvents={events}
           userData={userData}
-          onApplyBatch={onApplyGeneratedConversions ? (batch) => {
-            onApplyGeneratedConversions(batch);
-            setDialogVisible(false);
-            setSelectedType(null);
-            setEditingEvent(undefined);
-          } : undefined}
         />
       ) : (
         <IncomeEventDialog
