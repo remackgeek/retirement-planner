@@ -88,9 +88,16 @@ const HeaderRight = styled.div`
 interface AppHeaderProps {
   onMenuToggle: () => void;
   onExportCsv?: () => void;
+  userGuideVisible: boolean;
+  onUserGuideVisibleChange: (v: boolean) => void;
 }
 
-const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
+const AppHeader: React.FC<AppHeaderProps> = ({
+  onMenuToggle,
+  onExportCsv,
+  userGuideVisible,
+  onUserGuideVisibleChange,
+}) => {
   const context = useContext(RetirementContext);
   const scenarioName = context?.activeScenario?.name;
   const activeScenario = context?.activeScenario ?? null;
@@ -114,7 +121,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   );
   const [examplePickerVisible, setExamplePickerVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
-  const [userGuideVisible, setUserGuideVisible] = useState(false);
   const [modelDetailsVisible, setModelDetailsVisible] = useState(false);
 
   const menuItems: MenuItem[] = [
@@ -170,7 +176,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   ];
 
   const helpMenuItems: MenuItem[] = [
-    { label: 'User Guide',    icon: 'pi pi-book',       command: () => setUserGuideVisible(true) },
+    { label: 'User Guide',    icon: 'pi pi-book',       command: () => onUserGuideVisibleChange(true) },
     { label: 'Model Details', icon: 'pi pi-sliders-h',  command: () => setModelDetailsVisible(true) },
     { separator: true },
     { label: 'About YARP',   icon: 'pi pi-info-circle', command: () => setAboutVisible(true) },
@@ -300,7 +306,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
         icon="pi pi-book"
         content={userGuideContent}
         visible={userGuideVisible}
-        onHide={() => setUserGuideVisible(false)}
+        onHide={() => onUserGuideVisibleChange(false)}
         showLogo
       />
       <MarkdownViewerSidebar

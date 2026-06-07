@@ -65,6 +65,7 @@ const AppContent: React.FC = () => {
   const [compareScenarioId, setCompareScenarioId] = useState<string | null>(null);
   const [whatIfSnapshot, setWhatIfSnapshot] = useState<Scenario | null>(null);
   const [persistenceBannerDismissed, setPersistenceBannerDismissed] = useState(false);
+  const [userGuideVisible, setUserGuideVisible] = useState(false);
   const ctx = useContext(RetirementContext);
   const exportCsvRef = useRef<(() => void) | null>(null);
   const [canExport, setCanExport] = useState(false);
@@ -172,7 +173,12 @@ const AppContent: React.FC = () => {
 
   return (
     <AppContentContainer>
-      <AppHeader onMenuToggle={toggle} onExportCsv={handleExportCsv} />
+      <AppHeader
+        onMenuToggle={toggle}
+        onExportCsv={handleExportCsv}
+        userGuideVisible={userGuideVisible}
+        onUserGuideVisibleChange={setUserGuideVisible}
+      />
       {ctx?.persistenceError && !persistenceBannerDismissed && (
         <PersistenceBanner role="alert">
           <i className="pi pi-exclamation-triangle" style={{ marginTop: '2px' }} />
@@ -191,6 +197,7 @@ const AppContent: React.FC = () => {
           isOpen={isSidebarOpen}
           onToggle={toggle}
           requestSwitchScenario={requestSwitchScenario}
+          onOpenUserGuide={() => setUserGuideVisible(true)}
         />
         <Content
           compareScenarioId={whatIfSnapshot ? null : compareScenarioId}
