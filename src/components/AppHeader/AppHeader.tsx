@@ -119,12 +119,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
 
   const menuItems: MenuItem[] = [
     {
-      label: 'Load example…',
-      icon: 'pi pi-bolt',
-      command: () => setExamplePickerVisible(true),
-    },
-    { separator: true },
-    {
       label: 'Modeling',
       icon: 'pi pi-chart-line',
       command: () => setModelingVisible(true),
@@ -146,6 +140,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
   ];
 
   const toolsMenuItems: MenuItem[] = [
+    {
+      label: 'Load example…',
+      icon: 'pi pi-bolt',
+      command: () => setExamplePickerVisible(true),
+    },
+    { separator: true },
     {
       label: 'Social Security',
       icon: 'pi pi-shield',
@@ -217,7 +217,6 @@ const AppHeader: React.FC<AppHeaderProps> = ({ onMenuToggle, onExportCsv }) => {
             className="p-button-text p-button-sm"
             style={{ padding: '0.15rem 0.5rem' }}
             onClick={(e) => toolsMenuRef.current?.toggle(e)}
-            disabled={!activeScenario}
           />
           <Menu model={menuItems} popup ref={menuRef} />
           <Button

@@ -36,7 +36,7 @@ YARP runs entirely in your web browser. **No account to create, no server, no up
 
 The first thing to do is create a baseline scenario that reflects your current plan. Don't try to optimize on the first pass — just get a realistic picture in.
 
-If you'd rather kick the tires before entering your own data, the empty sidebar offers three pre-populated example scenarios under **or try an example** (Near retirement, Retired early, Mid-career). The same options live under **Settings → Load example…** once you have scenarios of your own. Loading an example appends a new scenario and makes it active — you can edit, rename, or delete it freely.
+If you'd rather kick the tires before entering your own data, the empty sidebar offers three pre-populated example scenarios under **or try an example** (Near retirement, Retired early, Mid-career). The same options live under **Tools → Load example…** once you have scenarios of your own. Loading an example appends a new scenario and makes it active — you can edit, rename, or delete it freely.
 
 1. Click **New Scenario** in the sidebar and give it a name like "Baseline".
 2. Enter your **current age** and a **life expectancy** to plan to. Using a high number — 95 or 100 — gives you a margin against living longer than you expect. (There's no "retirement age" field — your retirement timing comes from the start ages of the income events and spending goals you add below: when your salary ends, when Social Security starts, when living expenses begin.)
@@ -209,7 +209,10 @@ When you're happy, click **Apply** — every non-zero year becomes a real Roth C
 
 ## Tools
 
-The **Tools** menu in the top bar holds focused planning helpers.
+The **Tools** menu in the top bar holds focused planning helpers. It also has **Load
+example…** at the top — append one of the built-in example scenarios (Near retirement,
+Retired early, Mid-career) and make it active. This is always available, even before you've
+created any scenarios of your own.
 
 ### Social Security — best time to claim
 
@@ -350,15 +353,21 @@ While in What If mode, **Compare with** is disabled (and vice versa) — they sh
 
 ---
 
+## Reports
+
+The **Reports** menu in the header has:
+
+- **Export CSV** — download the yearly data table for the active scenario.
+
+---
+
 ## Settings
 
 The **Settings** menu in the header has:
 
-- **Load example…** — append one of the built-in example scenarios.
 - **Modeling** — return generation (parametric vs. historical), distribution, asset correlation, inflation, Black Swan events, simulation run count.
 - **Cash Bucket** — min/target/max months and refill trigger (only appears when the active scenario has at least one cash account; see *Cash Bucket policy* under Accounts).
 - **Tax & IRS** — long-term capital gains rate, IRMAA, NIIT, last working year MAGI, and IRS contribution limits.
-- **Export CSV** — download the yearly data table for the active scenario.
 
 ### Modeling
 
