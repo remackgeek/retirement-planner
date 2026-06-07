@@ -43,10 +43,18 @@ const storeName = 'scenarios';
 // "IndexedDB schema migrations" for the full pattern.
 const DB_VERSION = 1;
 
+// Shown in the AppContent banner when IndexedDB can't be opened or written —
+// e.g. private/incognito mode, storage blocked by policy, or quota exhausted.
+// The app stays usable for the session; the user just can't persist between visits.
+export const PERSISTENCE_ERROR_MESSAGE =
+  "Your browser is blocking local storage (this can happen in private/incognito mode). " +
+  "You can still use YARP, but your scenarios won't be saved between visits.";
+
 export const RetirementContext = createContext<{
   scenarios: Scenario[];
   activeScenario: Scenario | null;
   loading: boolean;
+  persistenceError: string | null;
   addScenario: (data: Scenario) => Promise<void>;
   updateScenario: (data: Scenario) => Promise<void>;
   deleteScenario: (id: string) => Promise<void>;
@@ -63,9 +71,29 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     null
   );
   const [loading, setLoading] = useState(true);
+  const [persistenceError, setPersistenceError] = useState<string | null>(null);
+
+  // Run a DB operation, swallowing any open/read/write failure. On failure it
+  // flips `persistenceError` (surfaced as a banner) and returns false instead of
+  // throwing an unhandled rejection, so callers can still update in-memory state
+  // and keep the session usable. Used by every write path below.
+  const withDB = async (
+    fn: (db: Awaited<ReturnType<typeof openDB>>) => Promise<void>
+  ): Promise<boolean> => {
+    try {
+      const db = await openDB(dbName, DB_VERSION);
+      await fn(db);
+      return true;
+    } catch (err) {
+      console.error('Persistence error:', err);
+      setPersistenceError(PERSISTENCE_ERROR_MESSAGE);
+      return false;
+    }
+  };
 
   useEffect(() => {
     const initDB = async () => {
+     try {
       const db = await openDB(dbName, DB_VERSION, {
         upgrade(db) {
           db.createObjectStore(storeName);
@@ -117,7 +145,6 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         setActiveScenarioState(finalScenarios[0]); // Set first scenario as active
       }
       // If no scenarios exist, leave scenarios empty and activeScenario null
-      setLoading(false);
 
       if (migratedCount > 0) {
         const noun = migratedCount === 1 ? 'scenario' : 'scenarios';
@@ -150,22 +177,29 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           reject: undefined,
         });
       }
+     } catch (err) {
+       // IndexedDB unavailable (private/incognito, blocked, quota). Render the
+       // app anyway (empty/in-memory) and surface the banner; write paths use
+       // `withDB` so later saves fail soft too.
+       console.error('Failed to initialize local storage:', err);
+       setPersistenceError(PERSISTENCE_ERROR_MESSAGE);
+     } finally {
+       setLoading(false);
+     }
     };
     initDB();
   }, []);
 
   const addScenario = async (data: Scenario) => {
     const stamped: Scenario = { ...data, schemaVersion: CURRENT_SCHEMA_VERSION };
-    const db = await openDB(dbName, DB_VERSION);
-    await db.put(storeName, stamped, stamped.id);
+    await withDB((db) => db.put(storeName, stamped, stamped.id).then(() => undefined));
     setScenarios([...scenarios, stamped]);
     setActiveScenarioState(stamped);
   };
 
   const updateScenario = async (data: Scenario) => {
     const stamped: Scenario = { ...data, schemaVersion: CURRENT_SCHEMA_VERSION };
-    const db = await openDB(dbName, DB_VERSION);
-    await db.put(storeName, stamped, stamped.id);
+    await withDB((db) => db.put(storeName, stamped, stamped.id).then(() => undefined));
     setScenarios(
       scenarios.map((scenario) => (scenario.id === stamped.id ? stamped : scenario))
     );
@@ -175,8 +209,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteScenario = async (id: string) => {
-    const db = await openDB(dbName, DB_VERSION);
-    await db.delete(storeName, id);
+    await withDB((db) => db.delete(storeName, id));
     const updatedScenarios = scenarios.filter((scenario) => scenario.id !== id);
     setScenarios(updatedScenarios);
     if (activeScenario?.id === id) {
@@ -336,10 +369,17 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const setActiveScenario = async (id: string) => {
-    const db = await openDB(dbName, DB_VERSION);
-    const scenario = await db.get(storeName, id);
-    if (scenario) {
-      setActiveScenarioState(scenario);
+    const ok = await withDB(async (db) => {
+      const scenario = await db.get(storeName, id);
+      if (scenario) {
+        setActiveScenarioState(scenario);
+      }
+    });
+    // If persistence is unavailable, fall back to the in-memory copy so the
+    // session can still switch scenarios.
+    if (!ok) {
+      const local = scenarios.find((s) => s.id === id);
+      if (local) setActiveScenarioState(local);
     }
   };
 
@@ -349,6 +389,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         scenarios,
         activeScenario,
         loading,
+        persistenceError,
         addScenario,
         updateScenario,
         deleteScenario,

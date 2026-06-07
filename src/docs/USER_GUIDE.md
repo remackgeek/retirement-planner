@@ -29,6 +29,7 @@ YARP runs entirely in your web browser. **No account to create, no server, no up
 
 - **Privacy by design.** No tracking, no analytics, no selling anything.
 - The flip side: if you clear your browser, switch computers, or use a different browser, your scenarios won't be there. **Back them up periodically** — see the *Backing Up Your Data* section near the end.
+- **Private/incognito windows can't save.** Some browsers block local storage in private mode. If yours does, YARP shows a banner and you can still use it for the session — but nothing will be saved when you close the tab. Use a normal window (or export your scenario) to keep your work.
 
 ---
 

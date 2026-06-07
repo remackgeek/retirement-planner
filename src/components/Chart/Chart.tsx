@@ -679,12 +679,6 @@ const Projections = ({
       title: { display: false },
       htmlAnnotations: {
         annotations: htmlAnnotations,
-        onIconClick: (annotation: AnnotationConfig) => {
-          console.log('Clicked annotation:', annotation);
-        },
-        onIconHover: (annotation: AnnotationConfig | null) => {
-          console.log('Hovered annotation:', annotation);
-        },
       },
       blackSwanShading: {
         events: userData.portfolioAssumptions?.blackSwanEvents ?? [],
