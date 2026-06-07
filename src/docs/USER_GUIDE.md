@@ -175,8 +175,8 @@ Contributions are *deposit instructions* — they do not show up as spendable ca
 
 YARP enforces IRS contribution caps per owner per account kind. Configure the limits under **Settings → Tax & IRS → Contribution Limits**:
 
-- 401(k)/403(b)/TSP elective deferral (default $23,000)
-- IRA limit (default $7,000)
+- 401(k)/403(b)/TSP elective deferral (default $24,500)
+- IRA limit (default $7,500)
 - Catch-up age (default 50) and catch-up amounts
 - Optionally, scale the caps by inflation each year
 

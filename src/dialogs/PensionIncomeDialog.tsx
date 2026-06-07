@@ -272,6 +272,7 @@ const PensionIncomeDialog: React.FC<PensionIncomeDialogProps> = ({
               }
               mode='currency'
               currency='USD'
+              min={0}
               required
             />
             <Dropdown

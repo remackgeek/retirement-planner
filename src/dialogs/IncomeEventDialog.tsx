@@ -228,6 +228,7 @@ const IncomeEventDialog: React.FC<IncomeEventDialogProps> = ({
             }
             mode='currency'
             currency='USD'
+            min={0}
             required
           />
         </InputGroup>

@@ -319,6 +319,7 @@ const RetirementContributionDialog: React.FC<RetirementContributionDialogProps> 
               onValueChange={(e) => setFormData({ ...formData, displayAmount: e.value || 0 })}
               mode='currency'
               currency='USD'
+              min={0}
               required
             />
             <Dropdown

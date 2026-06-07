@@ -506,8 +506,8 @@ If the event's `accountId` doesn't match the contribution type (or is omitted), 
 
 Per-scenario IRS limits are configured under Tax & IRS → Contribution Limits:
 
-- `elective401k` — 401(k)/403(b)/TSP elective deferral cap (default $23,000)
-- `iraLimit` — IRA cap (default $7,000)
+- `elective401k` — 401(k)/403(b)/TSP elective deferral cap (default $24,500)
+- `iraLimit` — IRA cap (default $7,500)
 - `catchUpAge` — age at which catch-up kicks in (default 50)
 - `catchUp401k`, `catchUpIra` — extra contribution allowed at/after `catchUpAge`
 - `inflationAdjusted` — when true, all caps scale by deterministic mean inflation each year

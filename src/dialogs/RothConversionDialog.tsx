@@ -987,6 +987,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
             onValueChange={(e) => setFormData({ ...formData, amount: e.value || 0 })}
             mode='currency'
             currency='USD'
+            min={0}
             required
           />
           <HelpText>

@@ -334,6 +334,7 @@ const SocialSecurityDialog: React.FC<SocialSecurityDialogProps> = ({
               }
               mode='currency'
               currency='USD'
+              min={0}
               required
             />
             <Dropdown

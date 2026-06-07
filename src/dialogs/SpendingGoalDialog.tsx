@@ -248,6 +248,7 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
                 }
                 mode='currency'
                 currency='USD'
+                min={0}
                 required
               />
               <Dropdown
@@ -264,6 +265,7 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
               }
               mode='currency'
               currency='USD'
+              min={0}
               required
             />
           )}
