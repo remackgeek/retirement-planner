@@ -2309,11 +2309,10 @@ describe('cash account', () => {
       lifeExpectancy: 62,
     });
     const result = runSimulation(ud, createSeededRandom(42));
-    // cashEndingBalance isolates the cash account itself (total nominal path
-    // would also include a synthetic Reinvestment-Taxable account that absorbs
-    // the $4k surplus from cash interest income — that's correct behavior, just
-    // not what we're testing here). Cash growth: 100k × 1.04 = $104k. A bypass-bug
-    // would produce ~134k (= 100k × (0.6*1.5 + 0.4*1.1)).
+    // No spending goals, so the cash account simply grows by its yield and the
+    // interest is reinvested in the balance (accrue-in-account — it is NOT a
+    // surplus deposited to a synthetic Taxable account). Cash growth: 100k × 1.04
+    // = $104k. A bypass-bug would produce ~134k (= 100k × (0.6*1.5 + 0.4*1.1)).
     expect(result.nominalBreakdowns[0].cashInterest).toBeCloseTo(4000, 1);
     expect(result.nominalBreakdowns[0].cashEndingBalance).toBeCloseTo(104_000, 0);
     expect(result.nominalBreakdowns[0].cashEndingBalance).toBeLessThan(110_000); // would be ~134k if bypass missed
@@ -2533,9 +2532,11 @@ describe('cash account', () => {
   });
 
   it('cash sweeps and balances are reflected in cashEndingBalance', () => {
-    // Sanity check the surfaced cashEndingBalance field. 100k → 4k interest →
-    // -16k principal withdrawal (since 4k interest covered part of 20k spending)
-    // = 88k end balance.
+    // Sanity check the surfaced cashEndingBalance field. 100k → 4k interest credited
+    // to the balance ($104k) → withdraw the full 20k spending from the grown balance
+    // = 84k end balance. The interest is reinvested in the cash account (accrue-in-
+    // account), NOT counted again as spendable income, so the principal pull is the
+    // full $20k — not $16k. (Counting it twice was the cash-double-count bug.)
     const ud = makeUserData({
       accounts: [{ id: 'cash-1', name: 'Cash', type: 'cash', balance: 100_000, stockAllocation: 0, portfolioBalance: '60_40' as const }],
       spendingGoals: [baseSpending(20_000 / 12)],
@@ -2550,8 +2551,8 @@ describe('cash account', () => {
     });
     const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
     expect(bd.cashInterest).toBeCloseTo(4_000, 1);
-    expect(bd.withdrawalFromCash).toBeCloseTo(16_000, 0);
-    expect(bd.cashEndingBalance).toBeCloseTo(88_000, 0);
+    expect(bd.withdrawalFromCash).toBeCloseTo(20_000, 0);
+    expect(bd.cashEndingBalance).toBeCloseTo(84_000, 0);
   });
 
   it('all account balances are non-negative after the per-year loop (C1 clamp invariant)', () => {

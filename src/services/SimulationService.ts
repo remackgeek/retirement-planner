@@ -1807,7 +1807,13 @@ function calculateAnnualCashFlowCore(
   const otherTaxableGross = income.otherTaxableGross + cashInterest;
   const totalSpendingNet = spending.baseSpendingNet + spending.otherSpendingGoalsNet;
   const totalGrossIncome = ssGross + otherTaxableGross + afterTaxIncome;
-  const availableCash = afterTaxIncome + ssGross + otherTaxableGross;
+  // Cash interest is REINVESTED into the cash balance (credited in the growth loop
+  // as `balances[id] += interest`), so it is NOT separately spendable. It stays in
+  // otherTaxableGross above purely for the tax pipeline (accrual-basis ordinary
+  // income + NIIT proxy). Counting it in both the balance AND availableCash would
+  // double-count the yield (a 4% account behaving like 8%): the spending pull draws
+  // from the already-grown cash balance, so the interest funds spending there, not here.
+  const availableCash = afterTaxIncome + ssGross + otherTaxableGross - cashInterest;
 
   const ltcgRate = userData.longTermCapGainsRate ?? 0;
   const cashBal = sumBalancesOfType(userData.accounts, balances, 'cash');

@@ -160,7 +160,9 @@ balance ← balance + cashInterest
 
 `cashYieldRate` lives on `portfolioAssumptions` (default 4%). Cash is also skipped by the black-swan overlay — a "cash is trash" 2022-style episode shows up as opportunity cost vs. equities, not as a cash shock. This holds across all return models (parametric, historical, bootstrap); cash never participates in the stochastic stream.
 
-`cashInterest` is taxed as ordinary income in the year accrued (accrual basis, matching MMF/HYSA behavior — no basis tracking). It is folded into `otherTaxableGross` for the entire tax pipeline (federal/state ordinary, SS provisional income, IRMAA MAGI) and additionally added to the NIIT investment-income proxy per IRC §1411 (MMF interest is investment income for NIIT purposes — without this proxy extension, cash-heavy retirees above the NIIT threshold would be under-taxed).
+`cashInterest` is **reinvested into the cash balance** (`balance ← balance + cashInterest`, above) — it is *not* paid out as separately-spendable income. Spending draws from the already-grown balance via a withdrawal; the interest funds spending there, never as a second offset against the year's spending need. (Counting it in both the balance and the year's available cash would double-count the yield — a 4% account behaving like 8%.)
+
+`cashInterest` is taxed as ordinary income in the year accrued (accrual basis, matching MMF/HYSA behavior — no basis tracking). It is folded into `otherTaxableGross` for the entire tax pipeline (federal/state ordinary, SS provisional income, IRMAA MAGI) and additionally added to the NIIT investment-income proxy per IRC §1411 (MMF interest is investment income for NIIT purposes — without this proxy extension, cash-heavy retirees above the NIIT threshold would be under-taxed). The tax on accrued interest is funded by the normal spending waterfall, as accrual-basis income should be.
 
 Cash principal is **tax-free on withdrawal** (no LTCG, no NIIT on principal). The waterfall pulls Cash at priority 0 (before RMD and Brokerage) to avoid LTCG churn and the conversion-tax amplification phantom. See "Withdrawal Waterfall" below.
 
