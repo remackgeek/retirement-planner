@@ -23,7 +23,7 @@ import {
 } from '../services/conversionImpact';
 import { strategyComputeClient, StrategyCancelledError } from '../services/StrategyComputeClient';
 import { simulationClient, SupersededError } from '../services/SimulationClient';
-import { runDeterministicProjection } from '../services/SimulationService';
+import { runDeterministicProjection, getRmdStartAge } from '../services/SimulationService';
 import { buildStrategyConversionEvents, isGeneratorProducedConversion } from '../services/strategies/syntheticEvents';
 import PlanComparisonChart from './PlanComparisonChart';
 import { useUIState } from '../context/UIStateContext';
@@ -1079,8 +1079,8 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
                   <ImpactValue>{currency(impact.totalTaxOverConversion)}</ImpactValue>
                 </>
               )}
-              <ImpactLabel>RMD reduction at age 73</ImpactLabel>
-              <ImpactValue>{currency(impact.rmdReductionAt73)}</ImpactValue>
+              <ImpactLabel>RMD reduction at age {getRmdStartAge(userData.referenceYear - userData.currentAge)}</ImpactLabel>
+              <ImpactValue>{currency(impact.rmdReductionAtStart)}</ImpactValue>
               <ImpactLabel>Tax-free Roth at life expectancy</ImpactLabel>
               <ImpactValue>{currency(impact.projectedRothAtEndOfPlan)}</ImpactValue>
               <ImpactLabel>Net impact on plan value</ImpactLabel>

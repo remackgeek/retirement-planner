@@ -482,7 +482,7 @@ Synthetic stack-step IDs `SYNTHETIC_TRAD_WITHDRAWAL_ID` and `SYNTHETIC_SS_AGGREG
 
 ## Required Minimum Distributions
 
-Traditional accounts trigger **RMDs at age 73** (SECURE 2.0). Each year:
+Traditional accounts trigger **RMDs at a birth-year-dependent start age** (SECURE 2.0): **born ≤ 1950 → 72, 1951–1959 → 73, 1960 or later → 75**. The start age is derived per owner from `referenceYear − currentAge` (and `referenceYear − spouseAge`) via `getRmdStartAge`, so a retiree born in 1960+ correctly defers RMDs to 75 — two extra low-bracket conversion years. (The pre-2020 70½ rule is not modeled — it affects only those born ≤ 1949.) Each year:
 
 1. RMD is calculated on the **beginning-of-year (pre-growth) balance** using the IRS Uniform Lifetime Table — matching the IRS Dec 31 prior-year rule.
 2. The simulation forces `withdrawalFromTraditional ≥ rmdRequired`.

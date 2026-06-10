@@ -1,0 +1,41 @@
+{
+  "_description": "SECURE 2.0 RMD start age is 75 for anyone born 1960 or later. A born-1960 retiree must NOT have RMDs forced at 73/74 — the engine derives the start age from referenceYear - currentAge, not a hardcoded 73.",
+  "_rationale": "Single, Florida, currentAge 66, referenceYear 2026 → birth year 1960 → SECURE 2.0 RMD start age 75. $500k Traditional, no income, no spending, 0% growth, 0% inflation. With nothing pulling the account, the balance stays exactly $500k through age 74 and no RMD is forced (rmdRequired = 0 at ages 73 and 74 — the regression guard against the old hardcoded-73 behavior, which would have forced ~$18,868 at 73). At age 75 the first RMD fires on the $500k beginning-of-year balance: 500000 / 24.6 (IRS Uniform Lifetime divisor at 75) = $20,325.20. No spending means the plan never fails → probability 100%.",
+  "_seed": 12345,
+  "name": "RMD SECURE 2.0 Age 75",
+  "currentAge": 66,
+  "lifeExpectancy": 76,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "trad-1",
+      "name": "Traditional 1",
+      "type": "traditional",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

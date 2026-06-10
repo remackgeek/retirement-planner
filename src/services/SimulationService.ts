@@ -58,8 +58,24 @@ export const IRS_UNIFORM_LIFETIME_TABLE: Record<number, number> = {
   114:  3.0,
 };
 
-export function calculateRMD(tradBalance: number, age: number): number {
-  if (age < 73) return 0;
+/**
+ * SECURE 2.0 RMD start age by birth year:
+ *   born ≤ 1950 → 72  (SECURE 1.0; also the table's earliest divisor)
+ *   born 1951–1959 → 73 (SECURE 2.0, effective 2023)
+ *   born ≥ 1960 → 75 (SECURE 2.0, effective 2033)
+ * The pre-2020 70½ rule is intentionally not modeled — it affects only those
+ * born ≤ 1949 (outside this tool's audience) and the divisor table starts at 72.
+ * Birth year is derived from `referenceYear − currentAge` (per owner) at the
+ * call sites. Non-finite input falls back to 72 (safe, never over-defers RMD).
+ */
+export function getRmdStartAge(birthYear: number): number {
+  if (!Number.isFinite(birthYear) || birthYear <= 1950) return 72;
+  if (birthYear <= 1959) return 73;
+  return 75;
+}
+
+export function calculateRMD(tradBalance: number, age: number, rmdStartAge = 73): number {
+  if (age < rmdStartAge) return 0;
   const divisor = IRS_UNIFORM_LIFETIME_TABLE[Math.min(age, 114)] ?? 2.9;
   return tradBalance / divisor;
 }
@@ -1664,6 +1680,12 @@ export function calculateAnnualCashFlow(
   const bracketHeadroom = spendingOrder === 'bracket_aware'
     ? computeBracketHeadroomForTrad(userData, income, year, inflationRate, userData.currentAge + i, spouseAge)
     : 0;
+  // SECURE 2.0 RMD start ages (birth-year derived). Single-year callers don't
+  // model the survivor collapse, so plain per-owner start ages suffice here.
+  const selfRmdStartAge = getRmdStartAge(userData.referenceYear - userData.currentAge);
+  const spouseRmdStartAge = userData.spouseAge !== null
+    ? getRmdStartAge(userData.referenceYear - userData.spouseAge)
+    : 73;
   return calculateAnnualCashFlowCore(
     userData,
     year,
@@ -1680,6 +1702,14 @@ export function calculateAnnualCashFlow(
     undefined,
     spendingOrder,
     bracketHeadroom,
+    // Explicit pass-through of the defaults so the two trailing RMD-start-age
+    // args land in the right positions.
+    true,                   // includeAudit
+    0,                      // cashInterest
+    userData.filingStatus,  // filingStatus
+    false,                  // consolidated
+    selfRmdStartAge,
+    spouseRmdStartAge,
   );
 }
 
@@ -1789,6 +1819,12 @@ function calculateAnnualCashFlowCore(
   // survivor owns everything. `beginningTradBalances` is passed as
   // { self: combined, spouse: 0 } by the caller in this mode.
   consolidated: boolean = false,
+  // SECURE 2.0 RMD start age for the self/survivor slot and the spouse slot
+  // (73/75/72 by birth year — see getRmdStartAge). Default 73 keeps single-year
+  // callers that don't supply it on the pre-fix behavior; the public wrapper and
+  // the MC hot loop both pass birth-year-derived values.
+  rmdStartAge = 73,
+  spouseRmdStartAge = 73,
 ): AnnualCashFlowBreakdown {
   const { ssGross, afterTaxIncome, conversionGross } = income;
   // In survivor mode the survivor owns everything, so fold both owners' requested
@@ -1840,8 +1876,8 @@ function calculateAnnualCashFlowCore(
     ?? sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self');
   const spouseTradBal = beginningTradBalances?.spouse
     ?? sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'spouse');
-  const selfRmd = calculateRMD(selfTradBal, age);
-  const spouseRmd = spouseAge !== null ? calculateRMD(spouseTradBal, spouseAge) : 0;
+  const selfRmd = calculateRMD(selfTradBal, age, rmdStartAge);
+  const spouseRmd = spouseAge !== null ? calculateRMD(spouseTradBal, spouseAge, spouseRmdStartAge) : 0;
   const rmdRequired = selfRmd + spouseRmd;
   const selfRmdDivisor = selfRmd > 0 ? (IRS_UNIFORM_LIFETIME_TABLE[Math.min(age, 114)] ?? 2.9) : 0;
   const spouseRmdDivisor = spouseAge !== null && spouseRmd > 0
@@ -2407,6 +2443,13 @@ interface Precomputes {
    *  Traditional/Roth consolidation in the core + applyCashFlow. All false when
    *  the death model is inactive. */
   survivorModeByYear: boolean[];
+  /** SECURE 2.0 RMD start age (73/75/72 by birth year) for the primary/self slot.
+   *  In survivor years this is the SURVIVOR's start age (the self slot then holds
+   *  the consolidated Traditional at the survivor's age). See `getRmdStartAge`. */
+  rmdStartAgeByYear: number[];
+  /** RMD start age for the spouse slot; `null` when there is no spouse (and in
+   *  survivor years, where the spouse slot is unused). */
+  spouseRmdStartAgeByYear: Array<number | null>;
   incomeByYear: AccumulatedIncome[];
   spendingByYear: Array<{
     baseSpendingNet: number;
@@ -2590,6 +2633,7 @@ function simulateOneRun(
       userData, year, yearIncome, yearSpending, yearStateProfile, yearStateResolvedKey, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi,
       spendingOrder, precomputes.bracketHeadroomForTradByYear[i], includeAudit, cashInterest,
       yearFilingStatus, yearSurvivorMode,
+      precomputes.rmdStartAgeByYear[i], precomputes.spouseRmdStartAgeByYear[i] ?? 73,
     );
     breakdowns.push(effectiveCashFlow);
 
@@ -2793,6 +2837,14 @@ export function buildPrecomputes(
   const spouseAgeByYear: Array<number | null> = new Array(totalYears);
   const filingStatusByYear: FilingStatus[] = new Array(totalYears);
   const survivorModeByYear: boolean[] = new Array(totalYears);
+  const rmdStartAgeByYear: number[] = new Array(totalYears);
+  const spouseRmdStartAgeByYear: Array<number | null> = new Array(totalYears);
+  // SECURE 2.0 RMD start ages are static per person (birth-year derived). Compute
+  // once; the only per-year variation is the survivor collapse handled in the loop.
+  const selfRmdStartAge = getRmdStartAge(userData.referenceYear - userData.currentAge);
+  const spouseRmdStartAge = userData.spouseAge !== null
+    ? getRmdStartAge(userData.referenceYear - userData.spouseAge)
+    : null;
   const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
   const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
   const bracketHeadroomForTradByYear: number[] = new Array(totalYears);
@@ -2814,10 +2866,18 @@ export function buildPrecomputes(
       ageByYear[i] = deathModel.survivor === 'self' ? selfAge : (spouseAgeRaw ?? selfAge);
       spouseAgeByYear[i] = null;
       filingStatusByYear[i] = 'single';
+      // The self slot now holds the survivor's consolidated Traditional at the
+      // survivor's age, so its RMD start age must be the survivor's birth cohort.
+      rmdStartAgeByYear[i] = deathModel.survivor === 'self'
+        ? selfRmdStartAge
+        : (spouseRmdStartAge ?? selfRmdStartAge);
+      spouseRmdStartAgeByYear[i] = null;
     } else {
       ageByYear[i] = selfAge;
       spouseAgeByYear[i] = spouseAgeRaw;
       filingStatusByYear[i] = userData.filingStatus;
+      rmdStartAgeByYear[i] = selfRmdStartAge;
+      spouseRmdStartAgeByYear[i] = spouseAgeRaw !== null ? spouseRmdStartAge : null;
     }
     incomeByYear[i] = accumulateIncome(userData, year, inflationRate, survivorMode);
     spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
@@ -2848,7 +2908,8 @@ export function buildPrecomputes(
 
   return {
     stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear,
-    filingStatusByYear, survivorModeByYear, incomeByYear, spendingByYear,
+    filingStatusByYear, survivorModeByYear, rmdStartAgeByYear, spouseRmdStartAgeByYear,
+    incomeByYear, spendingByYear,
     bracketHeadroomForTradByYear, spendingOrder: resolvedSpendingOrder,
     deterministicBaselineByYear,
   };

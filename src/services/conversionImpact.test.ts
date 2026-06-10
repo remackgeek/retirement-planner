@@ -65,7 +65,7 @@ describe('estimateConversionImpact', () => {
     const result = estimateConversionImpact(userData, notAConversion);
     expect(result.firstYearTax).toBe(0);
     expect(result.totalTaxOverConversion).toBe(0);
-    expect(result.rmdReductionAt73).toBe(0);
+    expect(result.rmdReductionAtStart).toBe(0);
     expect(result.projectedRothAtEndOfPlan).toBe(0);
     expect(result.netPlanValueImpact).toBe(0);
   });
@@ -157,7 +157,7 @@ describe('estimateConversionImpact', () => {
 
   it('reports all dollar fields in real (year-0) dollars when inflation > 0', () => {
     // Regression guard for Revision 3 HIGH-1: before the fix, firstYearTax /
-    // totalTaxOverConversion / projectedRothAtEndOfPlan / rmdReductionAt73 were
+    // totalTaxOverConversion / projectedRothAtEndOfPlan / rmdReductionAtStart were
     // nominal per-year values mixed against a real netPlanValueImpact. The fix
     // deflates each to year-0. This test compares two scenarios that differ
     // ONLY in inflation rate (with conversion at year 0, where deflation is a
@@ -215,11 +215,12 @@ describe('estimateConversionImpact', () => {
     expect(result.totalTaxOverConversion).toBeLessThan(result.firstYearTax * 5.5);
   });
 
-  it('estimates RMD reduction at age 73 when conversion shrinks Traditional balance', () => {
+  it('estimates RMD reduction at the SECURE 2.0 start age when conversion shrinks Traditional balance', () => {
     const userData = baseUserData({
       currentAge: 60,
       lifeExpectancy: 90,
     });
+    // currentAge 60 @ referenceYear 2026 → birth 1966 → RMD start age 75 (SECURE 2.0).
     // Convert $50k/yr for 10 years, ages 60-69.
     const conversion = makeConversion({
       amount: 50000,
@@ -229,10 +230,10 @@ describe('estimateConversionImpact', () => {
       colaType: 'fixed',
     });
     const result = estimateConversionImpact(userData, conversion);
-    expect(result.rmdReductionAt73).toBeGreaterThan(0);
+    expect(result.rmdReductionAtStart).toBeGreaterThan(0);
     // Conversions removed ~$500k in nominal terms from Trad (compounded differences).
-    // Divisor at 73 = 26.5, so RMD reduction ≈ $500k/26.5 ≈ $18,000+, compounded even higher.
-    expect(result.rmdReductionAt73).toBeGreaterThan(10000);
+    // Divisor at 75 = 24.6, so RMD reduction ≈ $500k/24.6 ≈ $20,000+, compounded even higher.
+    expect(result.rmdReductionAtStart).toBeGreaterThan(10000);
   });
 
   it('returns zero RMD reduction when user is already past RMD age', () => {
@@ -240,10 +241,11 @@ describe('estimateConversionImpact', () => {
       currentAge: 74,
       lifeExpectancy: 90,
     });
+    // currentAge 74 @ referenceYear 2026 → birth 1952 → RMD start age 73, already passed.
     const conversion = makeConversion({ startAge: 74 });
     const result = estimateConversionImpact(userData, conversion);
     // yearsFromNowToRmd = 73 - 74 = -1, so the RMD estimator short-circuits to 0.
-    expect(result.rmdReductionAt73).toBe(0);
+    expect(result.rmdReductionAtStart).toBe(0);
   });
 
   it('applies inflation-adjusted COLA to conversion amount', () => {

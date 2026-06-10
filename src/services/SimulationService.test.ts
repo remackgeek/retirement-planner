@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateAnnualCashFlow,
   calculateRMD,
+  getRmdStartAge,
   computeBracketHeadroomForTrad,
   computeMarginalStackAttribution,
   getEffectiveStateName,
@@ -1031,11 +1032,36 @@ describe('runSimulation — hoisted precomputation equivalence', () => {
   });
 });
 
+describe('getRmdStartAge (SECURE 2.0 birth-year schedule)', () => {
+  it('returns 72 for born 1950 or earlier', () => {
+    expect(getRmdStartAge(1950)).toBe(72);
+    expect(getRmdStartAge(1945)).toBe(72);
+  });
+  it('returns 73 for born 1951-1959', () => {
+    expect(getRmdStartAge(1951)).toBe(73);
+    expect(getRmdStartAge(1959)).toBe(73);
+  });
+  it('returns 75 for born 1960 or later', () => {
+    expect(getRmdStartAge(1960)).toBe(75);
+    expect(getRmdStartAge(1975)).toBe(75);
+  });
+  it('falls back to 72 for non-finite input (never over-defers)', () => {
+    expect(getRmdStartAge(NaN)).toBe(72);
+  });
+});
+
 describe('calculateRMD', () => {
   it('returns 0 for age below 73', () => {
     expect(calculateRMD(500000, 72)).toBe(0);
     expect(calculateRMD(500000, 65)).toBe(0);
     expect(calculateRMD(500000, 0)).toBe(0);
+  });
+
+  it('honors an explicit rmdStartAge of 75 (SECURE 2.0 born-1960+ cohort)', () => {
+    // No RMD at 73/74 when the start age is 75; first RMD at 75.
+    expect(calculateRMD(500000, 73, 75)).toBe(0);
+    expect(calculateRMD(500000, 74, 75)).toBe(0);
+    expect(calculateRMD(500000, 75, 75)).toBeCloseTo(500000 / 24.6, 2);
   });
 
   it('returns 0 for zero balance regardless of age', () => {

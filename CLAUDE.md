@@ -56,9 +56,14 @@ projections, and good tax awareness without overwhelming the user.
   prevents over-pulling from Brokerage (and generating phantom federal/state LTCG and
   NIIT) when the RMD's net-of-tax proceeds already cover the year's need.
   Employment-savings income events target a specific account via `accountId`.
-  **RMD:** Traditional accounts trigger Required Minimum Distributions at age 73+ (SECURE 2.0,
-  IRS Uniform Lifetime Table). The simulation forces `withdrawalFromTraditional ≥ rmdRequired`
-  each year. Excess RMD beyond the spending need is reinvested into the first brokerage account;
+  **RMD:** Traditional accounts trigger Required Minimum Distributions at a SECURE 2.0
+  birth-year-dependent start age (born ≤1950 → 72, 1951–1959 → 73, 1960+ → 75; IRS Uniform
+  Lifetime Table). The start age is derived per owner from `referenceYear − currentAge`
+  (and `− spouseAge`) via `getRmdStartAge` and threaded through `calculateRMD(bal, age,
+  rmdStartAge)`; the precompute carries `rmdStartAgeByYear` / `spouseRmdStartAgeByYear`
+  (survivor-aware — the self slot uses the survivor's start age post-first-death). The
+  pre-2020 70½ rule is not modeled. The simulation forces `withdrawalFromTraditional ≥
+  rmdRequired` each year. Excess RMD beyond the spending need is reinvested into the first brokerage account;
   if none exists, `ensureReinvestmentAccount` auto-creates a `"Reinvestment"` brokerage
   account in the working simulation copy (not persisted to UserData). The same synthetic
   account also receives general surplus (see Surplus handling below) — never two synthetics.

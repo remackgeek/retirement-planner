@@ -84,8 +84,11 @@ describe('widow penalty in the projection', () => {
   const det = runDeterministicProjection(ud);
   const dm = getDeathModel(ud);
   // Pre-death year: both alive AND post-RMD so there's taxable income to deduce the
-  // std deduction from (idx 9 → age 74; spouse dies idx 10). Post-death: idx 12 → self 77.
-  const preIdx = 9;
+  // std deduction from. Born 1961 (currentAge 65 @ 2026) → SECURE 2.0 RMD start age 75,
+  // so the first MFJ year with RMD-driven taxable income is idx 10 → age 75. MFJ holds
+  // through the spouse's death year (offset 10); survivor/single mode begins idx 11.
+  // Post-death: idx 12 → self 77 (single survivor, RMD active).
+  const preIdx = 10;
   const postIdx = 12;
   const preYear = ud.referenceYear + preIdx;
   const postYear = ud.referenceYear + postIdx;
