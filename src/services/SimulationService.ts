@@ -1964,7 +1964,11 @@ function calculateAnnualCashFlowCore(
     stateRes: StateTaxResult;
   } {
     const ord = otherTaxableGross + tradVal;
-    const ssTax = calculateSSTaxableAmount(ssGross, ord, filingStatus);
+    // SS provisional income is AGI-ex-SS + ½ SS, and AGI includes net capital
+    // gains. The brokerage pull (ltcgVal, 100% gain in this model) therefore
+    // raises provisional income even though it is taxed at LTCG rates, not folded
+    // into the ordinary base `comb` below. See calculateSSTaxableAmount / IRS Pub 915.
+    const ssTax = calculateSSTaxableAmount(ssGross, ord + ltcgVal, filingStatus);
     const comb = ord + ssTax;
     const fed = comb > 0
       ? comb - calculateNetFromGross(comb, filingStatus, age, year, spouseAge, inflationRate)
@@ -2065,7 +2069,11 @@ function calculateAnnualCashFlowCore(
     // Full tax recomputation with final pulls (captures LTCG/NIIT on the extra
     // Taxable pull used to pay conversion tax).
     const ordinaryGross = otherTaxableGross + fromTrad;
-    ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, filingStatus);
+    // Capital gains (the brokerage pull, 100% gain in this model) are part of AGI
+    // and so raise SS provisional income — but are taxed at LTCG rates, so they are
+    // NOT added to the ordinary taxable base (combinedTaxable) below. This mirrors
+    // the IRMAA/NIIT MAGI proxy (magiFromBreakdown), which also includes brokerage.
+    ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross + fromBrokerage, filingStatus);
     const combinedTaxable = ordinaryGross + ssTaxableAmount;
 
     let federalOrdinaryTaxIter = 0;
@@ -2193,7 +2201,10 @@ function calculateAnnualCashFlowCore(
           combinedTaxableFinal, filingStatus, age, year, spouseAge, inflationRate,
         )
       : null;
-    const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal, filingStatus);
+    // Provisional income includes capital gains (see the in-loop ssTaxableAmount
+    // computation) — pass the brokerage pull so the audit's displayed provisional
+    // income / zone matches the SS taxable amount actually used in the tax calc.
+    const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal + fromBrokerage, filingStatus);
     const irmaaDetail = irmaaEnabled
       ? calculateIRMAADetailed(priorMagi ?? 0, filingStatus, year, inflationRate ?? 0, age, spouseAge)
       : null;

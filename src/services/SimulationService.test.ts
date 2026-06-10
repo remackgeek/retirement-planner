@@ -695,6 +695,28 @@ describe('calculateAnnualCashFlow', () => {
       expect(tradResult.ssTaxableAmount).toBeGreaterThan(0); // trad withdrawal pushed SS into taxable range
     });
 
+    it('brokerage withdrawal (capital gains) increases SS provisional income', () => {
+      // Capital gains are part of AGI, so a brokerage pull raises SS provisional
+      // income just like a Traditional pull does (unlike Roth principal, which is
+      // not in AGI). Same shape as the Roth/Trad cases above. LTCG rate 0 isolates
+      // the provisional-income mechanic; the standard deduction absorbs the taxable
+      // SS, so there is no tax feedback and the brokerage pull is exactly the $20k gap.
+      // Provisional = 20k LTCG + 0.5*20k SS = 30k → single 50% zone (t1 25k, t2 34k)
+      // → ssTaxable = min(0.5*(30k-25k), 0.5*20k) = 2,500.
+      // Before the fix, brokerage was excluded from provisional (10k < 25k) → ssTaxable 0.
+      const brokUserData = makeUserData({
+        accounts: [{ id: 'brok-1', name: 'Taxable 1', type: 'brokerage', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+        longTermCapGainsRate: 0,
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+        ],
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 40000, startAge: 60, inflationAdjusted: false }],
+      });
+      const brokResult = calculateAnnualCashFlow(brokUserData, 2026, 0);
+      expect(brokResult.withdrawalFromBrokerage).toBeGreaterThan(0);
+      expect(brokResult.ssTaxableAmount).toBeCloseTo(2500, 0);
+    });
+
     it('draws from taxable first, then traditional, with explicit accountBalances', () => {
       const userData = makeUserData({
         accounts: [

@@ -280,6 +280,8 @@ YARP implements the IRS provisional income worksheet. **Provisional income** is:
 provisional = AGI (excluding SS) + tax-exempt interest + 0.5 · SS_gross
 ```
 
+In YARP, **AGI (excluding SS)** is `otherTaxableGross + Traditional withdrawals + brokerage withdrawals (capital gains)`. Capital gains are part of AGI, so a brokerage-funded retirement raises provisional income and makes SS taxable just as a Traditional withdrawal would — even though the gains themselves are taxed at LTCG rates, not as ordinary income. (This matches the IRMAA/NIIT MAGI proxy, which also counts brokerage withdrawals.) Roth withdrawals are *not* in AGI and so never raise provisional income.
+
 The taxable portion of Social Security is then determined by two thresholds (frozen by Congress since 1983/1993, never inflation-adjusted):
 
 | Filing Status | Threshold 1 | Threshold 2 |
@@ -349,7 +351,7 @@ A flat **3.8%** tax applied to the lesser of (a) net investment income or (b) MA
 Every `AnnualCashFlowBreakdown` carries an `audit` sub-object capturing the intermediate values that the tax model computes and would otherwise discard. These power the **Tax Audit** and **Income Detail** tabs in the yearly data view, and ship as extra columns in the CSV export. Each representative path (median, projected) has its own audit data driven by that path's actual flows.
 
 - **Ordinary income tax** — `agi` (= otherTaxableGross + Traditional withdrawal + SS taxable portion), `standardDeduction`, `seniorAddOn`, `obbbReduction`, `totalDeductions`, `taxableIncome`, `federalBracketIndex` (0=10% rate through 6=37% rate), `federalMarginalRate`, `federalOrdinaryTax`, `stateOrdinaryTax`, and `federalBrackets[]` (per-bracket dollars-in-bracket and tax-in-bracket for the year's inflation-indexed thresholds).
-- **Social Security taxability** — `ssProvisionalIncome` (= otherTaxableGross + ½ × ssGross), the frozen IRS `ssProvisionalThreshold1`/`Threshold2`, and the `ssZone` hit (`none` / `50%` / `85%` / `mfs-flat`).
+- **Social Security taxability** — `ssProvisionalIncome` (= otherTaxableGross + Traditional withdrawal + brokerage withdrawal/capital gains + ½ × ssGross), the frozen IRS `ssProvisionalThreshold1`/`Threshold2`, and the `ssZone` hit (`none` / `50%` / `85%` / `mfs-flat`).
 - **IRMAA** — `irmaaLookbackMagi` (2-year-prior MAGI used for this year's surcharge), `irmaaTierIndex` (0..5 in the inflation-indexed tier table), `irmaaTierUpperScaled` (inflation-indexed upper bound of the hit tier), `irmaaMonthlySurcharge` and `irmaaPerEnrolleeAnnual` (Part B + Part D), `irmaaEnrolleeCount` (count of Medicare-enrolled spouses age 65+).
 - **NIIT** — `niitMagi`, `niitThreshold` (frozen, not inflation-indexed), `niitMagiExcess`, `niitInvestmentIncome` (= gross brokerage-account withdrawal), `niitTaxableBase` (= min of the two, × 3.8% = niitTax).
 - **RMD per owner** — `rmdSelf` / `rmdSpouse` totals, `rmdDivisorSelf` / `rmdDivisorSpouse` (IRS Uniform Lifetime Table divisor for the owner's age, 0 when no RMD), `rmdBoyBalanceSelf` / `rmdBoyBalanceSpouse` (beginning-of-year Traditional balance per owner, from before this year's growth).
