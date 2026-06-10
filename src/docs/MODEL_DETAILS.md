@@ -47,7 +47,7 @@ Stock and bond returns are drawn from **log-normal distributions** parameterized
 factor = exp(μ + σ · z)
 ```
 
-where `z` is a standard-normal draw (or a standardized Student's t draw if fat-tail mode is on). This parameterization ensures `E[factor] = 1 + mean` regardless of std dev.
+where `z` is a standard-normal draw (or a standardized Student's t draw if fat-tail mode is on). With a standard-normal shock, this parameterization ensures `E[factor] = 1 + mean` regardless of std dev. **The mean-preservation guarantee holds only for the normal branch.** With a Student's t shock the log-normal mean is not strictly preserved — the t-distribution's moment-generating function does not exist, so `E[exp(σ·t)]` is unbounded in theory; in practice fat-tail mode introduces a small upward mean bias and occasional extreme up-years. The variance matching (next section) is unaffected.
 
 ### Historical: Single Sequence
 
@@ -88,7 +88,9 @@ The standard normal shock `z` is replaced with a **standardized Student's t draw
 t_standardized = t(df) · √((df − 2) / df)
 ```
 
-The `√((df-2)/df)` scaling ensures the realized variance equals 1, so log-space variance still matches your configured `stockStdDev` / `bondStdDev`. **Fat tails come from excess kurtosis, not inflated variance** — extreme events become more frequent without changing the average outcome.
+The `√((df-2)/df)` scaling ensures the realized variance equals 1, so log-space variance still matches your configured `stockStdDev` / `bondStdDev`. **Fat tails come from excess kurtosis, not inflated variance** — extreme events become more frequent. Note this does *not* leave the average outcome exactly unchanged: because the mean-preservation identity above holds only for the normal shock, fat-tail mode adds a slight upward bias to the average factor along with the heavier tails (see the caveat under "Log-Normal").
+
+When asset correlation is enabled, the bond shock is formed as a Cholesky blend of two independent t-draws. A linear combination of t-variables is **not itself exactly t-distributed**, so the bond marginal in correlated fat-tail mode is an approximation rather than a true Student's t. This is acceptable for the model's purposes and noted here for honesty.
 
 `df` (degrees of freedom) is configurable from 3 to 12; default is **4**. Lower `df` = fatter tails. Inflation always uses log-normal regardless of this setting.
 
@@ -148,6 +150,8 @@ balance ← balance · (s · stockFactor + (1 − s) · bondFactor)
 ```
 
 **Rebalancing:** the formula implicitly assumes the account is rebalanced to its target allocation each year. We do not track separate stock and bond sub-balances per account.
+
+**Timing convention (end-of-year spending).** Each year a full year of growth is applied to balances *before* any withdrawal is taken — withdrawals effectively occur on December 31. (RMD is the consistent exception in spirit: it is computed on the *beginning-of-year*, pre-growth Traditional balance, matching the IRS Dec-31-prior-year rule.) End-of-year withdrawal is the optimistic end of the standard conventions — a mid-year convention would be neutral by comparison — so reported balances run modestly higher than a mid-year model would produce. We disclose it here rather than model multiple timing options.
 
 Synthetic accounts (auto-created Reinvestment, Roth Conversion accounts) default to **60/40** allocation.
 

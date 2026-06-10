@@ -222,6 +222,13 @@ projections, and good tax awareness without overwhelming the user.
   Cost-basis tracking is still absent in both modes (entire brokerage withdrawal
   treated as gain). `AnnualCashFlowBreakdown` exposes `federalCapGainsTax`
   and `stateCapGainsTax` separately.
+  **Forward-design constraint (if a configurable gain fraction is ever added):** a
+  brokerage gain fraction must be consumed by **both** the LTCG/NIIT taxable base
+  **and** the SS provisional-income proxy. Both currently treat the *entire* brokerage
+  withdrawal as the relevant amount, and the two errors point in opposite directions
+  (no cost basis overstates LTCG/NIIT; the provisional-income proxy understates SS
+  taxation), so applying the fraction to only one side would skew the net spending-order
+  recommendation. Thread it through both proxies together.
   **State tax (per-state profile):** `STATE_TAX_PROFILES` registry keys each state
   to a profile with brackets (single + MFJ), state standard deduction, SS rule
   (`exempt` / `taxed` / `exempt_if_age` / `agi_phaseout`), retirement-income
