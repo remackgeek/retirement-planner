@@ -1,0 +1,15 @@
+{
+  "_rationale": "Year 0 cash interest = 4% x $250,000 = $10,000, the sole ordinary income. Federal ordinary tax = $0 ($10k < $16,100 single 2026 standard deduction). Illinois flat 4.95% with no state standard deduction taxes the full $10k -> state ordinary tax = $495.00. ordinaryTax (federal + state ordinary + locality) = $495; totalTax = $495 (no LTCG/NIIT/IRMAA). This asserts cash interest reaches the STATE ordinary base: before the fix the state path used the pre-interest gross ($0), so ordinaryTax/totalTax would read $0 here. Solvent all 4 years -> 100%.",
+  "probability": 100,
+  "breakdownChecks": [
+    { "index": 0, "field": "cashInterest", "value": 10000, "tolerance": 0.01, "_note": "4% x $250k beginning balance" },
+    { "index": 0, "field": "withdrawalFromBrokerage", "value": 0, "tolerance": 1, "_note": "No brokerage -> no LTCG source" },
+    { "index": 0, "field": "withdrawalFromTraditional", "value": 0, "tolerance": 1, "_note": "No Traditional -> interest is the only ordinary income" },
+    { "index": 0, "field": "withdrawalFromRoth", "value": 0, "tolerance": 1 },
+    { "index": 0, "field": "federalCapGainsTax", "value": 0, "tolerance": 0.01 },
+    { "index": 0, "field": "stateCapGainsTax", "value": 0, "tolerance": 0.01 },
+    { "index": 0, "field": "niitTax", "value": 0, "tolerance": 0.01 },
+    { "index": 0, "field": "ordinaryTax", "value": 495, "tolerance": 0.5, "_note": "Federal $0 + Illinois 4.95% x $10k cash interest = $495. Pre-fix this was $0 (interest missing from state base)." },
+    { "index": 0, "field": "totalTax", "value": 495, "tolerance": 0.5, "_note": "Only the state ordinary tax on cash interest" }
+  ]
+}

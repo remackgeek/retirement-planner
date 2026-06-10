@@ -1,0 +1,51 @@
+{
+  "_description": "Cash interest must enter the STATE ordinary tax base, not just the federal one. Single filer in Illinois (flat 4.95%, no state standard deduction) whose only taxable income is $10k of cash-account interest. Regression guard for the bug where computeStateTax received the pre-interest otherTaxableGross while the federal path used the interest-inclusive value.",
+  "_rationale": "Cash $250k @ 4% yield -> cashInterest = $10,000 (credited on beginning-of-year balance). Cash interest is ordinary income (not retirement income, so no state retirement exclusion applies; not a Traditional withdrawal). No wage/pension income, no brokerage, no SS -> the $10k interest is the ONLY ordinary income. FEDERAL: combined taxable = $10,000; 2026 single standard deduction $16,100 -> federal taxable = max(0, 10000 - 16100) = 0 -> federal ordinary tax = $0. STATE (Illinois): flat 4.95%, standardDeduction null -> $0 deduction; state ordinary base = ordinaryGross($10,000) + 0 + 0 = $10,000 -> state ordinary tax = 0.0495 x 10000 = $495.00. ordinaryTax = $0 federal + $495 state = $495. No LTCG (no brokerage), NIIT disabled (and MAGI $10k << $200k anyway), IRMAA disabled (age 60, pre-Medicare) -> totalTax = $495. BEFORE THE FIX the state path saw $0 of interest -> stateOrdinaryTax $0 -> ordinaryTax/totalTax would have been $0, so these checks fail pre-fix and pass post-fix. Age 60 -> 63 (4 years) with $250k cash vs ~$30.5k/yr need -> always solvent -> 100%.",
+  "_seed": 12345,
+  "name": "State Cash Interest Ordinary",
+  "currentAge": 60,
+  "lifeExpectancy": 63,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 30000,
+      "startAge": 60,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "cashYieldRate": 0.04
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Illinois" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "cash-1",
+      "name": "Cash 1",
+      "type": "cash",
+      "balance": 250000,
+      "stockAllocation": 0,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

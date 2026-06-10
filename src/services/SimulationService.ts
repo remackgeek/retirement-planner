@@ -2010,7 +2010,7 @@ function calculateAnnualCashFlowCore(
       ? comb - calculateNetFromGross(comb, filingStatus, age, year, spouseAge, inflationRate)
       : 0;
     const sres = computeStateTax(stateProfile, {
-      ordinaryGross: income.otherTaxableGross,
+      ordinaryGross: otherTaxableGross,
       ssTaxableFederal: ssTax,
       ssGross,
       traditionalWithdrawal: tradVal,
@@ -2125,7 +2125,7 @@ function calculateAnnualCashFlowCore(
       federalOrdinaryTaxIter = combinedTaxable - fedNet;
     }
     const stateRes = computeStateTax(stateProfile, {
-      ordinaryGross: income.otherTaxableGross,
+      ordinaryGross: otherTaxableGross,
       ssTaxableFederal: ssTaxableAmount,
       ssGross,
       traditionalWithdrawal: fromTrad,
