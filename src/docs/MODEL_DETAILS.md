@@ -456,6 +456,20 @@ Detail nodes use `IncomeEventTaxAttribution.eventName` or `AccountFlowRow.accoun
 | Employer Match Deposit | `employerMatch` | After-Tax Cash |
 | RMD Excess → Brokerage | `rmdExcess` | After-Tax Cash |
 | Surplus → Brokerage | `surplusContribution` | After-Tax Cash |
+| Cash Interest → Cash | `cashInterest` | **Ordinary Income** *(see cash-interest note below)* |
+
+**Cash interest is a pass-through, not a fresh inflow.** The engine credits the
+year's cash yield *into* the cash balance (`balances[id] += interest`), so it is
+already contained in `withdrawalFromCash`; the engine then subtracts it back out of
+spendable cash (`availableCash = … − cashInterest`). The Sankey mirrors this exactly:
+`cashInterest` enters the Ordinary Income bucket as a source (so it drives the
+ordinary-tax base) and an equal **Cash Interest → Cash** use pulls it straight back
+out of that bucket. The pair nets to zero in the flow totals, so the interest
+contributes its tax (funded from the bucket residual) but no phantom spendable
+dollars — the actual cash delivery stays with `withdrawalFromCash`. Omitting this
+balancing use double-counts the interest and produces a spurious global drift equal
+to `cashInterest` (worst-bucket / worst-aggregator drift stay $0 because only the
+un-audited After-Tax Cash node is off).
 
 **Off-axis transfers** (rendered as a row below the diagram, not passing through any bucket):
 - Cash refill ← `cashRefillFromSurplus` (Brokerage → Cash)
@@ -465,7 +479,7 @@ Detail nodes use `IncomeEventTaxAttribution.eventName` or `AccountFlowRow.accoun
 
 Each bucket emits one residual link into After-Tax Cash equal to its inflow minus its direct (non-residual) outflows:
 
-- `OrdinaryIncome → AfterTaxCash` = OI_in − (federalOrdinaryTax + stateOrdinaryTax + stateLocalitySurcharge + irmaaSurcharge + (rothConversionGross − rothConversionTaxWithheld))
+- `OrdinaryIncome → AfterTaxCash` = OI_in − (federalOrdinaryTax + stateOrdinaryTax + stateLocalitySurcharge + irmaaSurcharge + (rothConversionGross − rothConversionTaxWithheld) + cashInterest)
 - `CapitalGains → AfterTaxCash` = CG_in − (federalCapGainsTax + stateCapGainsTax + niitTax)
 - `TaxExempt → AfterTaxCash` = TE_in (no taxes; full passthrough)
 

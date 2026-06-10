@@ -118,6 +118,53 @@ describe('buildSankeyModel — global conservation', () => {
     assertBucketsBalance(m.bucketAudits);
   });
 
+  // Regression: cash interest is credited INTO the cash balance by the engine and
+  // is therefore already inside `withdrawalFromCash`. Before the fix, buildSankeyModel
+  // counted it twice (once as the `src_cashint` Ordinary source, once embedded in the
+  // Tax-Exempt cash withdrawal), so inflowTotal overshot outflowTotal by exactly
+  // cashInterest — surfacing the dev-mode "engine drift" banner with worst-bucket and
+  // worst-aggregator drift both $0 (only the un-audited After-Tax Cash node was off).
+  it('balances when cash interest accrues AND cash is withdrawn (interest fully withdrawn)', () => {
+    // availableCash = otherTaxableGross - cashInterest = 0, so all spending + tax is
+    // funded by withdrawals: cash 70k + brokerage 10k + trad 100k = 180k = spend 168.5k + tax 11.5k.
+    const breakdown = emptyBreakdown({
+      otherTaxableGross: 3_000, // engine folds cashInterest into otherTaxableGross
+      cashInterest: 3_000,
+      withdrawalFromCash: 70_000,
+      withdrawalFromBrokerage: 10_000,
+      withdrawalFromTraditional: 100_000,
+      baseSpendingNet: 168_500,
+      totalSpendingNet: 168_500,
+      ordinaryTax: 10_000,
+      federalCapGainsTax: 1_500,
+      totalTax: 11_500,
+      audit: emptyAudit({ federalOrdinaryTax: 10_000 }),
+    });
+    const m = buildSankeyModel(breakdown, 1, 'nominal');
+    expect(Math.abs(m.conservationDiff)).toBeLessThan(1);
+    assertBucketsBalance(m.bucketAudits);
+  });
+
+  it('balances when cash interest accrues but cash is NOT withdrawn (interest retained)', () => {
+    // Pension $300k covers $60k spending; cash interest $200k is reinvested in the cash
+    // balance (not spent). otherTaxableGross = pension + interest = $500k. availableCash =
+    // 500k - 200k = 300k; surplus = 300k - 8k tax - 60k spend = 232k.
+    const breakdown = emptyBreakdown({
+      otherTaxableGross: 500_000,
+      cashInterest: 200_000,
+      withdrawalFromCash: 0,
+      baseSpendingNet: 60_000,
+      totalSpendingNet: 60_000,
+      ordinaryTax: 8_000,
+      totalTax: 8_000,
+      surplusContribution: 232_000,
+      audit: emptyAudit({ federalOrdinaryTax: 8_000 }),
+    });
+    const m = buildSankeyModel(breakdown, 1, 'nominal');
+    expect(Math.abs(m.conservationDiff)).toBeLessThan(1);
+    assertBucketsBalance(m.bucketAudits);
+  });
+
   it('balances for a Roth conversion year with Taxable-funded conv tax and no withholding', () => {
     const breakdown = emptyBreakdown({
       ssGross: 30_000,
