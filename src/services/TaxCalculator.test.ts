@@ -209,6 +209,54 @@ describe('calculateNetFromGrossDetailed', () => {
   });
 });
 
+describe('MFS (married-filing-separately) tables', () => {
+  // MFS is a married status: by statute its thresholds are HALF the MFJ figures,
+  // and its age-65 senior add-on is the MARRIED amount (not the single amount).
+  // These guard the two data-entry bugs where MFS had been copied from single.
+
+  describe('age-65 senior add-on uses the married amount', () => {
+    it('2026 MFS senior add-on is 1650 (married), not 2050 (single)', () => {
+      const d = calculateNetFromGrossDetailed(50000, 'mfs', 67, 2026, null, 0);
+      expect(d.numQualifyingSeniors).toBe(1);
+      expect(d.seniorAddOn).toBe(1650);
+    });
+    it('2025 MFS senior add-on is 1600 (married), not 2000 (single)', () => {
+      const d = calculateNetFromGrossDetailed(50000, 'mfs', 67, 2025, null, 0);
+      expect(d.seniorAddOn).toBe(1600);
+    });
+    it('2024 MFS senior add-on is 1550 (married), not 1950 (single)', () => {
+      const d = calculateNetFromGrossDetailed(50000, 'mfs', 67, 2024, null, 0);
+      expect(d.seniorAddOn).toBe(1550);
+    });
+  });
+
+  describe('35% bracket top is half the MFJ top', () => {
+    // 2026: MFJ 35% top 768,700 → MFS 384,350. Std ded 16,100, age 50 (no senior).
+    it('2026 MFS taxable just above 384,350 is in the 37% bracket', () => {
+      const above = calculateNetFromGrossDetailed(384350 + 16100 + 1000, 'mfs', 50, 2026, null, 0);
+      expect(above.taxableIncome).toBe(385350);
+      expect(above.federalBracketIndex).toBe(6);
+      expect(above.federalMarginalRate).toBe(0.37);
+
+      const below = calculateNetFromGrossDetailed(384350 + 16100 - 1000, 'mfs', 50, 2026, null, 0);
+      expect(below.taxableIncome).toBe(383350);
+      expect(below.federalBracketIndex).toBe(5);
+      expect(below.federalMarginalRate).toBe(0.35);
+    });
+
+    // 2025: MFJ 35% top 751,600 → MFS 375,800. Std ded 15,750, age 50.
+    it('2025 MFS taxable just above 375,800 is in the 37% bracket', () => {
+      const above = calculateNetFromGrossDetailed(375800 + 15750 + 1000, 'mfs', 50, 2025, null, 0);
+      expect(above.taxableIncome).toBe(376800);
+      expect(above.federalMarginalRate).toBe(0.37);
+
+      const below = calculateNetFromGrossDetailed(375800 + 15750 - 1000, 'mfs', 50, 2025, null, 0);
+      expect(below.taxableIncome).toBe(374800);
+      expect(below.federalMarginalRate).toBe(0.35);
+    });
+  });
+});
+
 describe('getBracketCeilingTaxableIncome', () => {
   it('returns the top of the 12% bracket for single 2026', () => {
     // 2026 single brackets: 10% to 12400, 12% to 50400

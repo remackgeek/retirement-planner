@@ -5,6 +5,9 @@ interface Bracket {
   upper: number;
 }
 
+// Federal ordinary-income brackets by year and filing status. MFS thresholds are
+// half the MFJ thresholds, per statute (do NOT copy them from the single column —
+// only the 10%–32% MFS rows coincide with single by arithmetic, the 35% top does not).
 const bracketsByYear: Record<number, Record<FilingStatus, Bracket[]>> = {
   2024: {
     single: [
@@ -60,7 +63,7 @@ const bracketsByYear: Record<number, Record<FilingStatus, Bracket[]>> = {
       { rate: 0.22, upper: 103350 },
       { rate: 0.24, upper: 197300 },
       { rate: 0.32, upper: 250525 },
-      { rate: 0.35, upper: 626350 },
+      { rate: 0.35, upper: 375800 },
       { rate: 0.37, upper: Infinity },
     ],
     mfj: [
@@ -98,7 +101,7 @@ const bracketsByYear: Record<number, Record<FilingStatus, Bracket[]>> = {
       { rate: 0.22, upper: 105700 },
       { rate: 0.24, upper: 201775 },
       { rate: 0.32, upper: 256225 },
-      { rate: 0.35, upper: 640600 },
+      { rate: 0.35, upper: 384350 },
       { rate: 0.37, upper: Infinity },
     ],
     mfj: [
@@ -143,25 +146,28 @@ const standardDeductionsByYear: Record<number, Record<FilingStatus, number>> = {
   },
 };
 
+// Age-65+ additional standard deduction, per qualifying senior. There are only two
+// statutory amounts each year: a married figure (used by both MFJ and MFS) and an
+// unmarried figure (single/HoH). MFS gets the MARRIED amount — do not copy it from single.
 const additionalSeniorPerByYear: Record<
   number,
   Record<FilingStatus, number>
 > = {
   2024: {
     single: 1950,
-    mfs: 1950,
+    mfs: 1550,
     mfj: 1550,
     hoh: 1950,
   },
   2025: {
     single: 2000,
-    mfs: 2000,
+    mfs: 1600,
     mfj: 1600,
     hoh: 2000,
   },
   2026: {
     single: 2050,
-    mfs: 2050,
+    mfs: 1650,
     mfj: 1650,
     hoh: 2050,
   },
