@@ -207,31 +207,33 @@ export const STATE_TAX_PROFILES: Record<string, StateTaxProfile> = {
     summary: 'Top 3.9% · SS exempt · $6k retirement exclusion',
   }),
   'California': graduatedProfile({
-    // 2024 single brackets (CA inflation-indexes annually; we let bracketsInflationIndexed handle forward years).
+    // 2024 single brackets (FTB tax year 2024; CA inflation-indexes annually, so
+    // bracketsInflationIndexed handles forward years). MFJ = 2× single, with the
+    // statutory $1M Mental Health surcharge (+1%) boundary interleaved.
     brackets: {
       single: [
         { threshold: 0, rate: 0.01 },
-        { threshold: 10412, rate: 0.02 },
-        { threshold: 24684, rate: 0.04 },
-        { threshold: 38959, rate: 0.06 },
-        { threshold: 54081, rate: 0.08 },
-        { threshold: 68350, rate: 0.093 },
-        { threshold: 349137, rate: 0.103 },
-        { threshold: 418961, rate: 0.113 },
-        { threshold: 698271, rate: 0.123 },
-        { threshold: 1000000, rate: 0.133 }, // includes 1% Mental Health surcharge
+        { threshold: 10756, rate: 0.02 },
+        { threshold: 25499, rate: 0.04 },
+        { threshold: 40245, rate: 0.06 },
+        { threshold: 55866, rate: 0.08 },
+        { threshold: 70606, rate: 0.093 },
+        { threshold: 360659, rate: 0.103 },
+        { threshold: 432787, rate: 0.113 },
+        { threshold: 721314, rate: 0.123 },
+        { threshold: 1000000, rate: 0.133 }, // 12.3% + 1% Mental Health surcharge
       ],
       mfj: [
         { threshold: 0, rate: 0.01 },
-        { threshold: 20824, rate: 0.02 },
-        { threshold: 49368, rate: 0.04 },
-        { threshold: 77918, rate: 0.06 },
-        { threshold: 108162, rate: 0.08 },
-        { threshold: 136700, rate: 0.093 },
-        { threshold: 698274, rate: 0.103 },
-        { threshold: 837922, rate: 0.113 },
-        { threshold: 1000000, rate: 0.123 },
-        { threshold: 1396542, rate: 0.133 },
+        { threshold: 21512, rate: 0.02 },
+        { threshold: 50998, rate: 0.04 },
+        { threshold: 80490, rate: 0.06 },
+        { threshold: 111732, rate: 0.08 },
+        { threshold: 141212, rate: 0.093 },
+        { threshold: 721318, rate: 0.103 },
+        { threshold: 865574, rate: 0.113 },
+        { threshold: 1000000, rate: 0.123 }, // 11.3% statutory + 1% Mental Health surcharge
+        { threshold: 1442628, rate: 0.133 }, // 12.3% statutory + 1% Mental Health surcharge
       ],
     },
     stdDed: { single: 5540, mfj: 11080 },

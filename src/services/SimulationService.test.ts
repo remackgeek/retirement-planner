@@ -810,7 +810,7 @@ describe('calculateAnnualCashFlow', () => {
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
       // CA profile: stateOrdinaryBase $100k − std ded $5,540 = $94,460 taxable.
-      // Walking CA single brackets: 1%·10,412 + 2%·14,272 + 4%·14,275 + 6%·15,122 + 8%·14,269 + 9.3%·26,110 ≈ $5,438.
+      // Walking CA 2024 single brackets: 1%·10,756 + 2%·14,743 + 4%·14,746 + 6%·15,621 + 8%·14,740 + 9.3%·23,854 ≈ $5,327.
       // Federal tax on $100k − $16,100 = $83,900 taxable → $13,170.
       expect(result.totalTax).toBeGreaterThan(5000); // federal + state
       const flResult = calculateAnnualCashFlow(makeUserData({
@@ -819,7 +819,7 @@ describe('calculateAnnualCashFlow', () => {
           { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       }), 2026, 0);
-      expect(result.totalTax - flResult.totalTax).toBeCloseTo(5438, 0);
+      expect(result.totalTax - flResult.totalTax).toBeCloseTo(5327, 0);
     });
 
     it('relocation changes tax rate at the correct year', () => {
@@ -834,8 +834,8 @@ describe('calculateAnnualCashFlow', () => {
       });
       const before = calculateAnnualCashFlow(userData, 2029, 0);
       const after = calculateAnnualCashFlow(userData, 2030, 0);
-      // Before: CA tax ≈ $5,438 on $100k pension (graduated brackets above std ded). After: FL 0%.
-      expect(before.totalTax - after.totalTax).toBeCloseTo(5438, 0);
+      // Before: CA tax ≈ $5,327 on $100k pension (graduated 2024 brackets above std ded). After: FL 0%.
+      expect(before.totalTax - after.totalTax).toBeCloseTo(5327, 0);
     });
 
     it('multiple relocations: middle segment uses correct rate', () => {

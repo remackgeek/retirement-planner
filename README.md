@@ -6,7 +6,7 @@ A browser-based retirement planning tool positioned between simple calculators (
 
 ## Features
 
-- **Monte Carlo simulation** — 5,000 runs with log-normal or Student's t returns; median, downside, and deterministic paths
+- **Monte Carlo simulation** — 1,000 runs by default (configurable up to 10,000) with log-normal or Student's t returns; a deterministic Projected line plus a shaded 10th–90th-percentile "likely range" band
 - **Multi-account modeling** — Traditional (pre-tax), Roth (tax-free), and Taxable accounts with per-account stock/bond allocation
 - **Tax-aware withdrawals** — federal + state income tax, RMDs at 73+, Roth conversions, SS provisional income formula
 - **Income events** — Social Security (with 2034 haircut option), pensions, employment savings, Roth conversions, and more

@@ -245,7 +245,14 @@ When the portfolio cannot cover the full spending + tax need, the year is record
 
 ### Cost-of-Living Adjustment (COLA)
 
-Inflation-adjusted income events (Social Security, pensions with COLA, etc.) compound from each event's **own start year**, not from "today." For an event starting at age 67 with a 2.5% COLA, the inflation factor is `(1.025)^(year − startYear)` — so the first payment at age 67 is the entered nominal amount, and amounts grow from there. Different events can use different COLA rates.
+COLA is a **binary per-event toggle**, not a per-event rate:
+
+- **`fixed`** — the entered amount is paid every year unchanged (frozen in nominal dollars).
+- **`inflation_adjusted`** — the amount grows at the **scenario inflation rate**, compounded from **today (the reference year)**, *not* from the event's start year. Because all inputs are entered in today's dollars, an inflation-adjusted amount has already been inflated to the start year by the time the event begins: the factor is `(1 + inflationRate)^(year − referenceYear)`. So an inflation-adjusted pension entered as $40k starting at age 67 pays *more* than $40k nominal in its first year — $40k of today's purchasing power, inflated forward to that future year.
+
+All inflation-adjusted events share the single scenario `inflationRate`; there is no per-event COLA rate.
+
+**Exception — Social Security with a future-dollar basis.** A `social_security` event whose `ssAmountBasis === 'future'` compounds from its **claim (start) year** instead of the reference year, so the entered figure is the first-year payment. This matches how an SSA statement quotes a future-dollar benefit at a chosen claiming age. (See the Social Security section.)
 
 ---
 
@@ -318,7 +325,7 @@ Approximations explicitly accepted:
 - **Bracket fidelity** — high-income states (CA, NY, NJ, OR, MN, HI, MD, NM, CT, DE, AR, ND, OH, RI, MO, ME, WI, MT, NE, VT, DC) carry real graduated schedules. States with statutory brackets I haven't encoded yet (some of AL/GA/KS/etc.) are modeled as flat at top rate above the state standard deduction — better than the prior flat-on-gross, but still understates progressivity. Schema is bracket-ready, so this is incremental data work.
 - **Partial exclusions** — "partial" SS / retirement exclusions are modeled per-state with structured rules (AGI thresholds, age gates, dollar caps). The exclusion applies to Traditional withdrawals as a lump sum and does not distinguish public vs private pensions or source-specific sub-rules within a state.
 - **Filing status** — HoH / MFS share the `single` bracket and deduction at the state level. Most state HoH schedules differ only slightly from single; MFS rules vary too widely to model uniformly.
-- **Not modeled** — MA 4% surtax above $1M, OH/PA local municipal income tax, Yonkers surcharge, multistate part-year residency within a single year (timeline switches are whole-year), tax credits (Oregon senior credit, Utah SS credit), alternative minimum tax, capital-gains 0/15/20% bracket stacking (federal LTCG is still a flat rate).
+- **Not modeled** — MA 4% surtax above $1M, OH/PA local municipal income tax, Yonkers surcharge, multistate part-year residency within a single year (timeline switches are whole-year), tax credits (Oregon senior credit, Utah SS credit), alternative minimum tax, and *state*-level capital-gains 0/15/20% bracket stacking (each state's LTCG follows its profile's `ltcgRule`). Note: *federal* LTCG bracket stacking **is** modeled — opt in per scenario via `useStackedLtcgBrackets` (see Capital Gains above).
 
 The state tax flows are exposed in `AnnualCashFlowBreakdown.audit` as: `stateOrdinaryTax`, `stateLocalitySurcharge` (top-level), `stateOrdinaryBaseGross`, `stateStdDeduction`, `stateRetirementExclusionApplied`, `stateSsIncludedInState`, `stateMarginalRate`, `stateBracketIndex`, `stateLtcgTaxableAtState`, `stateLtcgThresholdApplied`, and `stateNotes`. The Tax Audit detail tab renders each of these as a labeled row under a per-year "State tax — {name}" section.
 
@@ -721,7 +728,7 @@ Because pre-converting to Roth while *both* spouses are alive (at the wider join
 - **No SS provisional thresholds inflation** — these are frozen by Congress, so this matches reality, but the resulting "tax torpedo" gets steeper over time.
 - **No stochastic inflation in cash flows** — only portfolio deflation uses per-run inflation; income/spending use the deterministic mean.
 - **State tax on capital gains** uses the per-state profile's `ltcgRule`: most states stack LTCG on top of state ordinary brackets, Missouri exempts LTCG entirely, and Washington applies a 7% rate above an inflation-indexed $270k threshold (with no underlying ordinary state tax). NH/TN dividend & interest tax is not modeled.
-- **No state SS exemption** — applied uniformly even in states that exempt SS (CA, NY, etc.).
+- **State SS taxability is per-profile** — each state profile carries an SS rule (`exempt` / `taxed` / `exempt_if_age` / `agi_phaseout`), so states that exempt Social Security (CA, NY, etc.) are modeled correctly. (Per-state *partial* SS rules use the structured exclusion mechanics; see "Partial exclusions" above.)
 - **Federal LTCG rate** — defaults to a flat `longTermCapGainsRate × fromBrokerage`. Optional 0/15/20% bracket stacking (gains stacked on ordinary taxable income) is available per scenario via `useStackedLtcgBrackets`; when off, the flat rate is used. Cost-basis tracking is still absent in both modes — the entire brokerage withdrawal is treated as gain.
 - **No cost-basis tracking** in brokerage accounts; the entire withdrawal is treated as long-term capital gain (and as investment income for NIIT).
 - **IRMAA tier table is 2024** inflation-indexed forward, not refreshed annually; thresholds and surcharge amounts will drift from real IRS figures as Medicare updates the table.
@@ -731,7 +738,7 @@ Because pre-converting to Roth while *both* spouses are alive (at the wider join
 - **First-2-years IRMAA lookback** comes from a single `priorWorkingMagi` value on `UserData` (used for both year 0 and year 1). Leave at 0 to assume no IRMAA in the first two retirement years.
 - **Existing scenarios upgrade behavior** — scenarios saved before the IRMAA/NIIT/state-LTCG additions load with IRMAA and NIIT enabled by default, so tax bills and success probability will differ from prior runs. Disable under Settings → Tax & IRS to recover prior behavior.
 - **No ACA premium tax credit modeling** — pre-65 retirees on ACA-subsidized plans may face large effective marginal rates from subsidy phase-outs that the model does not capture.
-- **No surviving-spouse bracket shift** — filing status remains MFJ for the full horizon even after one spouse reaches life expectancy.
+- **Surviving-spouse bracket shift is modeled** (opt-in via `spouseLifeExpectancy`) — at the first death the filing status flips MFJ→single the following year, ages collapse to the survivor, and SS becomes the larger of the two benefits (the "widow's penalty"; see that section). Simplifications: no 2-year qualifying-surviving-spouse grace, and survivor household spending is not reduced.
 - **No tax-loss harvesting**.
 - **No mortality modeling** — life expectancy is a hard endpoint (see *Horizon and Mortality* above).
-- **No Social Security claiming optimization** — you specify the start age directly.
+- **Social Security claiming optimization is available** — the SS claiming-age wizard sweeps candidate ages and recommends one (see that section). You can also still specify the start age directly. (Spousal/survivor benefits and joint two-owner optimization remain future work.)
