@@ -509,11 +509,14 @@ The dialog shows an **inline what-if comparison chart** ([src/dialogs/RothConver
 The compute backends live in [src/services/strategies/](src/services/strategies/): `computeFillToBracketSchedule`, `computeAutoBracketSchedule`, `runOptimization`. They're pure compute — given `UserData` + a `TaxStrategy` config object (now including `endAgeCap`), they return a `PerYearStrategyDecision[]`. The engine no longer consults `userData.taxStrategy` at sim time. All three backends honor `taxStrategy.endAgeCap`: years where `min(self_age, spouse_age) > endAgeCap` emit zero (vector length stays `totalYears` so OptimizeStrategy's coordinate descent indexing stays uniform).
 
 **Scoring** (`scoreProjection` in [AutoBracketStrategy.ts](src/services/strategies/AutoBracketStrategy.ts)):
-- `'max_median_terminal_wealth'` (default) — start-of-last-year portfolio balance, **deflated to real (year-0) dollars** by `(1+inflationRate)^horizon`. Prevents the optimizer being seduced by nominal terminal wealth into late-life conversions whose owner-lifetime payoff is near zero once you correct for inflation.
+- `'max_median_terminal_wealth'` (default) — start-of-last-year portfolio balance, **deflated to real (year-0) dollars** by `(1+inflationRate)^horizon`. Prevents the optimizer being seduced by nominal terminal wealth into late-life conversions whose owner-lifetime payoff is near zero once you correct for inflation. **Known structural bias:** it scores PRE-TAX balances (a Traditional dollar = a Roth dollar), so a conversion's tax bill is fully visible while its benefit registers only for dollars actually withdrawn within the horizon — it under-recommends conversions for scenarios that die with a large Traditional balance.
+- `'max_after_tax_terminal_wealth'` (opt-in, fixes that bias) — same frame, valued net of embedded tax: `roth + cash + brokerage × (1 − longTermCapGainsRate) + traditional × (1 − TaxStrategy.terminalTradTaxRate)` (default rate `DEFAULT_TERMINAL_TRAD_TAX_RATE` = 0.25, user-editable in the wizard's Advanced section when this objective is selected). Reads `projection.finalBalancesByType` — per-type balances captured by `simulateOneRun` at the same instant/deflation as `path[last]`. Not the default (existing wizard behavior preserved); flipping it default is a tracked follow-up.
 - `'min_lifetime_tax'` — negative sum of per-year `totalTax`, each year deflated to year 0.
 - `'max_floor'` / `'max_lifetime_consumption'` — reserved; currently fall back to terminal wealth (full MC scoring / spending-tier feedback is future work).
 
-**IRMAA/NIIT cliff awareness is default ON** (`UserData.respectIrmaaNiitCliffs` treats `undefined` and `true` as enabled; only explicit `false` opts out). Practitioner consensus treats IRMAA tier crossings as hard caps, not soft scoring penalties. The toggle lives in the wizard itself, not the Scenario dialog — it's a generation-time concern, not a scenario-level configuration. Manual single-conversion entries remain uncapped (matches user intent).
+**IRMAA cliff awareness is default ON** (`UserData.respectIrmaaNiitCliffs` treats `undefined` and `true` as enabled; only explicit `false` opts out — field name keeps "Niit" for persisted-data compat only). Practitioner consensus treats IRMAA tier crossings as hard caps, not soft scoring penalties; ON guarantees the generated plan never crosses a tier. With the flag OFF the Optimize descent gains tier-boundary probes (`irmaaTierFillCandidates` in FillToBracketStrategy.ts — conversions that fill MAGI exactly to each IRMAA tier ceiling) so deliberate crossings are score-arbitrated at their efficient frontier points (the engine prices the surcharge). **NIIT is NOT capped in either state** — it's a marginal 3.8% tax, not a cliff, a conversion isn't investment income, and the engine prices it in every scored projection; the old hard cap silently limited all generated conversions to $200k/$250k MAGI for often-zero benefit. The toggle lives in the wizard itself ("Avoid IRMAA tier jumps"), not the Scenario dialog — it's a generation-time concern, not a scenario-level configuration. Manual single-conversion entries remain uncapped (matches user intent).
+
+**Worker-boundary lean clone** (`leanUserDataForWorker` in [StrategyComputeClient.ts](src/services/StrategyComputeClient.ts)): the client strips `meta.generatedAt`/`generatorRunId` before posting to the strategy worker but MUST preserve `meta.generatedBy` — `isGeneratorProducedConversion` reads it to strip previously-applied wizard conversions from baselines and candidate schedules. Dropping meta entirely (an earlier "optimization") made worker-path re-runs stack new synthetic conversions on top of the old applied batch, so the wizard always reported "couldn't improve". The inline (no-Worker) fallback never strips, which is why tests didn't catch it; `leanUserDataForWorker` is exported and unit-tested for exactly this.
 
 **Withdrawal source is not a user-facing knob.** The engine auto-selects per scenario via `selectBestSpendingOrder` — runs two deterministic projections (one per candidate policy) and picks the higher real terminal balance. No user input, no implicit gating on conversion presence. The `UserData.spendingWithdrawalOrder` field was removed entirely; a test-only `_forceSpendingOrder` internal hook lets unit tests isolate specific-policy behavior without exposing it as data. No competing planner (ProjectionLab, Boldin, Pralana, Income Lab) asks users to pick a withdrawal source for conversion tax.
 
@@ -605,17 +608,22 @@ one that matches their situation. We follow that pattern.
   65+ age deduction, NY $20k pension exclusion, etc.).
 - Full SS-torpedo modeling in headroom (currently uses a static
   approximation — see "Blind spots" above).
-- IRMAA + NIIT cliff awareness in conversion sizing — **implemented and on by default**:
+- IRMAA cliff awareness in conversion sizing — **implemented and on by default**:
   `UserData.respectIrmaaNiitCliffs` treats `undefined`/`true` as on; only explicit
   `false` opts out. `capConversionForCliffs` (exported from `FillToBracketStrategy.ts`)
   caps each year's generated conversion so MAGI stays under the next IRMAA tier
-  (year+2 lookback, gated on a Medicare enrollee existing then) and the NIIT
-  threshold. Honored uniformly by Fill, Auto-bracket, and the Optimize descent —
-  all three treat the flag as the same hard cap, not a soft scoring penalty. The
-  bracket-aware *spending* headroom is deliberately NOT clamped: the 12% bracket
-  fills to ~$66k/$133k gross, always below the first IRMAA tier and the NIIT
-  threshold, so a spending pull can't trip them. Exposed in the **Roth Conversion
-  wizard** as a checkbox, not on the Scenario dialog (it's a generation-time concern).
+  (year+2 lookback, gated on a Medicare enrollee existing then). Honored uniformly
+  by Fill, Auto-bracket, and the Optimize descent — all three treat the flag as the
+  same hard cap, not a soft scoring penalty. When the flag is OFF, the Optimize
+  descent additionally probes tier-boundary fills (`irmaaTierFillCandidates`) so
+  crossings are score-arbitrated rather than blind. NIIT was REMOVED from the cap
+  (it's a marginal 3.8% tax, not a cliff; a conversion isn't investment income; the
+  engine prices it in scoring — the old cap silently limited generated conversions
+  to $200k/$250k MAGI). The bracket-aware *spending* headroom is deliberately NOT
+  clamped: the 12% bracket fills to ~$66k/$133k gross, always below the first IRMAA
+  tier, so a spending pull can't trip it. Exposed in the **Roth Conversion wizard**
+  as the "Avoid IRMAA tier jumps" checkbox, not on the Scenario dialog (it's a
+  generation-time concern).
 - Liquid-cash bucket internal refactor (cleaner accounting that subsumes
   the RMD-first branch and the bracket-aware branch into one principled
   per-year cash-flow model).

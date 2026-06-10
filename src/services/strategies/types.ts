@@ -16,9 +16,16 @@ export type BracketTarget = 'none' | '12_percent' | '22_percent' | '24_percent';
 
 export type StrategyObjective =
   | 'max_median_terminal_wealth'
+  | 'max_after_tax_terminal_wealth'
   | 'max_floor'
   | 'max_lifetime_consumption'
   | 'min_lifetime_tax';
+
+/** Default for `TaxStrategy.terminalTradTaxRate` — the rate applied to the
+ *  terminal Traditional balance under `'max_after_tax_terminal_wealth'`. A
+ *  heir/estate proxy between the 22% and 24% federal brackets; user-tunable
+ *  in the wizard's Advanced section. */
+export const DEFAULT_TERMINAL_TRAD_TAX_RATE = 0.25;
 
 /** Per-year decision vector entry produced by a compute backend. Plain-data
  *  serializable (round-trips through the Web Worker boundary cleanly). */
@@ -48,4 +55,10 @@ export interface TaxStrategy {
    *  currentAge. Years past the cap emit zero-amount entries (vector length
    *  stays totalYears so coordinate descent indexing is uniform). */
   endAgeCap?: number;
+  /** `'max_after_tax_terminal_wealth'` only: the effective tax rate applied to
+   *  the terminal Traditional balance, valuing un-withdrawn Traditional at
+   *  (1 − rate) — a heir/estate proxy. Defaults to
+   *  `DEFAULT_TERMINAL_TRAD_TAX_RATE`. Plain number so the config bag stays
+   *  serializable across the strategy-worker boundary. */
+  terminalTradTaxRate?: number;
 }

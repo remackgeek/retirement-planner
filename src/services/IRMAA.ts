@@ -160,6 +160,22 @@ export function nextIrmaaTierCeiling(
   return Infinity;
 }
 
+// Inflation-indexed upper bounds of all finite IRMAA tiers for a filing status
+// and calendar year (the top Infinity tier is omitted — there is no ceiling to
+// fill toward). Used by the Optimize descent's tier-aware probes when
+// `respectIrmaaNiitCliffs` is off: candidates that fill MAGI exactly to each
+// ceiling let the score arbitrate whether crossing the tier below pays.
+export function irmaaTierCeilings(
+  filingStatus: FilingStatus,
+  year: number,
+  inflationRate: number,
+): number[] {
+  const factor = year > BASE_YEAR ? Math.pow(1 + inflationRate, year - BASE_YEAR) : 1;
+  return tiersFor(filingStatus)
+    .filter((t) => isFinite(t.magiUpper))
+    .map((t) => t.magiUpper * factor);
+}
+
 // Statutory NIIT MAGI threshold for a filing status (not inflation-indexed).
 export function getNiitThreshold(filingStatus: FilingStatus): number {
   return NIIT_THRESHOLDS[filingStatus];

@@ -21,6 +21,7 @@
 
 import type { UserData } from '../../types/UserData';
 import type { TaxStrategy, PerYearStrategyDecision, BracketTarget, StrategyObjective } from './types';
+import { DEFAULT_TERMINAL_TRAD_TAX_RATE } from './types';
 import { computeFillToBracketSchedule } from './FillToBracketStrategy';
 import { runDeterministicProjection, selectBestSpendingOrder, type ResolvedSpendingOrder } from '../SimulationService';
 import { buildStrategyConversionEvents, isGeneratorProducedConversion } from './syntheticEvents';
@@ -57,6 +58,12 @@ export function computeAutoBracketSchedule(
   pinnedSpendingOrder?: ResolvedSpendingOrder,
 ): AutoBracketResult {
   const objective = taxStrategy.objective ?? 'max_median_terminal_wealth';
+  // Consumed only when the objective is 'max_after_tax_terminal_wealth';
+  // harmless otherwise. Derived once — identical for all four candidates.
+  const afterTaxParams: AfterTaxScoreParams = {
+    ltcgRate: userData.longTermCapGainsRate ?? 0,
+    terminalTradRate: taxStrategy.terminalTradTaxRate ?? DEFAULT_TERMINAL_TRAD_TAX_RATE,
+  };
   const candidateScores: { bracket: BracketTarget; score: number }[] = [];
   let best: AutoBracketResult | null = null;
 
@@ -92,7 +99,7 @@ export function computeAutoBracketSchedule(
     const projection = runDeterministicProjection(candidateUserData, {
       _forceSpendingOrder: policyPin,
     });
-    const score = scoreProjection(projection, objective, userData.inflationRate);
+    const score = scoreProjection(projection, objective, userData.inflationRate, afterTaxParams);
     candidateScores.push({ bracket, score });
     if (best === null || score > best.winnerScore) {
       best = {
@@ -139,6 +146,16 @@ export function computeAutoBracketSchedule(
  *    end-of-last-year in the path array; for COMPARING strategies across
  *    the same horizon, this is bit-for-bit equivalent (both candidates'
  *    last-year start-balance reflects their full-horizon outcome).
+ *  - `'max_after_tax_terminal_wealth'`: same instant/frame, but each account
+ *    type is valued net of its embedded tax liability:
+ *    `roth + cash + brokerage × (1 − ltcgRate) + traditional × (1 − terminalTradRate)`.
+ *    The pre-tax objective counts a Traditional dollar the same as a Roth
+ *    dollar, which makes a conversion's tax bill fully visible while hiding
+ *    the benefit on dollars never withdrawn within the horizon — a structural
+ *    anti-conversion bias. This objective restores that benefit via a flat
+ *    terminal/heir rate (`TaxStrategy.terminalTradTaxRate`); brokerage is
+ *    discounted at the flat `longTermCapGainsRate`, consistent with the
+ *    engine's no-cost-basis model (entire withdrawal treated as gain).
  *  - `'min_lifetime_tax'`: negative sum of per-year nominal totalTax,
  *    deflated to year 0 before summing. Maximizing the negative =
  *    minimizing the real tax burden.
@@ -149,6 +166,15 @@ export function computeAutoBracketSchedule(
  *    so totalSpendingNet is exogenous (same across all strategies). Falls
  *    back to terminal wealth.
  */
+export interface AfterTaxScoreParams {
+  /** Flat LTCG rate applied to the terminal brokerage balance
+   *  (`userData.longTermCapGainsRate`, a fraction). */
+  ltcgRate: number;
+  /** Effective tax rate applied to the terminal Traditional balance
+   *  (`TaxStrategy.terminalTradTaxRate`, a fraction). */
+  terminalTradRate: number;
+}
+
 export function scoreProjection(
   projection: ReturnType<typeof runDeterministicProjection>,
   objective: StrategyObjective,
@@ -159,6 +185,9 @@ export function scoreProjection(
   // The parameter stays in the signature so callers don't have to remember
   // which objective uses it; passing it is harmless when unused.
   inflationRate: number,
+  // Consumed only by `'max_after_tax_terminal_wealth'`. Optional so existing
+  // call sites / tests that never select that objective stay source-compatible.
+  afterTaxParams?: AfterTaxScoreParams,
 ): number {
   switch (objective) {
     case 'min_lifetime_tax': {
@@ -167,6 +196,12 @@ export function scoreProjection(
         sum += deflateToYearZero(projection.breakdowns[i].totalTax, i, inflationRate);
       }
       return -sum;
+    }
+    case 'max_after_tax_terminal_wealth': {
+      const fb = projection.finalBalancesByType;
+      const ltcgRate = afterTaxParams?.ltcgRate ?? 0;
+      const tradRate = afterTaxParams?.terminalTradRate ?? DEFAULT_TERMINAL_TRAD_TAX_RATE;
+      return fb.roth + fb.cash + fb.brokerage * (1 - ltcgRate) + fb.traditional * (1 - tradRate);
     }
     case 'max_median_terminal_wealth':
     case 'max_floor':

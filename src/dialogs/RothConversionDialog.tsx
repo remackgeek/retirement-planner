@@ -9,7 +9,7 @@ import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import type { UserData } from '../types/UserData';
 import type { StrategyObjective, PerYearStrategyDecision } from '../services/strategies/types';
-import { DEFAULT_END_AGE_CAP } from '../services/strategies/types';
+import { DEFAULT_END_AGE_CAP, DEFAULT_TERMINAL_TRAD_TAX_RATE } from '../services/strategies/types';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { spacing, colors, border, fontSize, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
@@ -243,6 +243,7 @@ type Mode = 'single' | 'wizard';
 
 const OBJECTIVE_OPTIONS: { label: string; value: StrategyObjective }[] = [
   { label: 'Max terminal wealth (real $)', value: 'max_median_terminal_wealth' },
+  { label: 'Max after-tax wealth (values Roth $ above Traditional $)', value: 'max_after_tax_terminal_wealth' },
   { label: 'Min lifetime tax (real $)', value: 'min_lifetime_tax' },
 ];
 
@@ -326,6 +327,9 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
   const [wizEndAgeCap, setWizEndAgeCap] = useState<number>(defaultPlanWindow(userData.lifeExpectancy));
   const [wizRespectCliffs, setWizRespectCliffs] = useState<boolean>(userData.respectIrmaaNiitCliffs !== false);
   const [wizObjective, setWizObjective] = useState<StrategyObjective>('max_median_terminal_wealth');
+  // Percent for the InputNumber; converted to a fraction for the compute call.
+  // Only consumed by the 'max_after_tax_terminal_wealth' objective.
+  const [wizTerminalRate, setWizTerminalRate] = useState<number>(DEFAULT_TERMINAL_TRAD_TAX_RATE * 100);
   const [wizShowAdvanced, setWizShowAdvanced] = useState<boolean>(false);
   const [wizSchedule, setWizSchedule] = useState<PerYearStrategyDecision[] | null>(null);
   const [wizRunning, setWizRunning] = useState(false);
@@ -620,15 +624,19 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
     try {
       const result = await strategyComputeClient.optimize(wizardUserData, {
         name: 'optimize', objective: wizObjective, endAgeCap: wizEndAgeCap,
+        terminalTradTaxRate: wizTerminalRate / 100,
       });
       const elapsed = (performance.now() - t0) / 1000;
       setWizSchedule(result.perYearDecisions);
       const delta = result.finalScore - result.baselineScore;
       const nonZero = result.perYearDecisions.filter((d) => d.conversionAmount > 0).length;
       if (delta > 0) {
+        const deltaUnits = wizObjective === 'max_after_tax_terminal_wealth'
+          ? 'after-tax real dollars at end of plan'
+          : 'real dollars at end of plan';
         setWizMessage(
           `Generated in ${elapsed.toFixed(1)}s. Projected gain vs your current plan: ` +
-          `+${currency(delta)} (real dollars at end of plan), from ${nonZero} conversion year${nonZero === 1 ? '' : 's'}.`
+          `+${currency(delta)} (${deltaUnits}), from ${nonZero} conversion year${nonZero === 1 ? '' : 's'}.`
         );
       } else {
         setWizMessage(
@@ -848,7 +856,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
                   onChange={(e) => { setWizRespectCliffs(e.checked || false); setWizSchedule(null); setWizMessage(null); setWizSuccess(null); setWizCurrentPath(null); setWizProposedPath(null); setWizInflationFactors(null); wizSuccessToken.current++; }}
                 />
                 <label htmlFor='wizCliffs' style={{ fontSize: fontSize.sm, cursor: 'pointer' }}>
-                  Cap under IRMAA / NIIT cliffs
+                  Avoid IRMAA tier jumps
                 </label>
               </CheckboxGroup>
             </InputGroup>
@@ -875,10 +883,32 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
                 />
                 <HelpText>
                   Default maximizes the deterministic terminal portfolio in real
-                  (today's) dollars. Min lifetime tax minimizes the real-dollar
-                  sum of federal + state tax across the plan. Differences are
-                  usually small.
+                  (today's) dollars — it counts a Traditional dollar the same as
+                  a Roth dollar, so it only credits a conversion for taxes it
+                  saves within the plan. After-tax wealth also credits the
+                  deferred tax removed from Traditional dollars you never spend
+                  (typically recommends larger conversions). Min lifetime tax
+                  minimizes the real-dollar sum of federal + state tax across
+                  the plan.
                 </HelpText>
+                {wizObjective === 'max_after_tax_terminal_wealth' && (
+                  <InputGroup style={{ marginTop: spacing.xs }}>
+                    <label>Terminal Traditional tax rate (%)</label>
+                    <InputNumber
+                      value={wizTerminalRate}
+                      onValueChange={(e) => { setWizTerminalRate(e.value ?? DEFAULT_TERMINAL_TRAD_TAX_RATE * 100); setWizSchedule(null); setWizMessage(null); setWizSuccess(null); setWizCurrentPath(null); setWizProposedPath(null); setWizInflationFactors(null); wizSuccessToken.current++; }}
+                      min={0}
+                      max={50}
+                      suffix='%'
+                    />
+                    <HelpText>
+                      Values un-withdrawn Traditional dollars at the end of the
+                      plan at (1 − rate) — a proxy for the rate you or your
+                      heirs would pay on them. The comparison chart still shows
+                      pre-tax balances.
+                    </HelpText>
+                  </InputGroup>
+                )}
               </InputGroup>
             )}
           </div>

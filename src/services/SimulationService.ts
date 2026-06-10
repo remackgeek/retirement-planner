@@ -2405,6 +2405,19 @@ function magiFromBreakdown(b: AnnualCashFlowBreakdown): number {
   return b.otherTaxableGross + b.withdrawalFromTraditional + b.ssTaxableAmount + b.withdrawalFromBrokerage;
 }
 
+/** Per-type portfolio balances captured at the same instant as `path[last]`
+ *  (start of the final projection year), deflated by the same cumulative
+ *  inflation — i.e., real (year-0) dollars in the identical comparison frame
+ *  as terminal-wealth scoring. Consumed by the Roth wizard's after-tax
+ *  objective (`scoreProjection`), which discounts Traditional and Brokerage
+ *  by their embedded tax liabilities. */
+export interface FinalBalancesByType {
+  traditional: number;
+  roth: number;
+  brokerage: number;
+  cash: number;
+}
+
 interface SimRun {
   path: number[];
   stockFactors: number[];
@@ -2413,6 +2426,7 @@ interface SimRun {
   inflation: number[];
   failed: boolean;
   failedYear: number;
+  finalBalancesByType: FinalBalancesByType;
 }
 
 // Precompute phase convention: anything that doesn't depend on per-run randomness
@@ -2560,6 +2574,9 @@ function simulateOneRun(
   let failed = false;
   let failedYear = totalYears;
   let cumulativeInflation = 1;
+  // Zero-init covers the degenerate totalYears === 0 case; otherwise assigned
+  // in the final loop iteration alongside the last path point.
+  let finalBalancesByType: FinalBalancesByType = { traditional: 0, roth: 0, brokerage: 0, cash: 0 };
 
   for (let i = 0; i < totalYears; i++) {
     // The federal tax cache key includes taxYear, so cross-year hits are
@@ -2583,6 +2600,17 @@ function simulateOneRun(
     const startBalance = sumBalances(balances);
     path.push(startBalance / cumulativeInflation);
     inflation.push(cumulativeInflation);
+    if (i === totalYears - 1) {
+      // Same instant and deflation frame as the path point above, decomposed
+      // by account type for the after-tax terminal-wealth score. Sums to
+      // path[last] by construction.
+      finalBalancesByType = {
+        traditional: sumBalancesOfType(userData.accounts, balances, 'traditional') / cumulativeInflation,
+        roth: sumBalancesOfType(userData.accounts, balances, 'roth') / cumulativeInflation,
+        brokerage: sumBalancesOfType(userData.accounts, balances, 'brokerage') / cumulativeInflation,
+        cash: sumBalancesOfType(userData.accounts, balances, 'cash') / cumulativeInflation,
+      };
+    }
 
     // IRS rule: RMD uses Dec 31 of prior year (beginning-of-year) balance, split by owner.
     // In survivor mode the survivor inherited the deceased's Traditional, so the
@@ -2688,7 +2716,7 @@ function simulateOneRun(
     cumulativeInflation *= 1 + yearInflation;
   }
 
-  return { path, stockFactors, bondFactors, breakdowns, inflation, failed, failedYear };
+  return { path, stockFactors, bondFactors, breakdowns, inflation, failed, failedYear, finalBalancesByType };
 }
 
 export interface PercentileBand {
@@ -3120,6 +3148,9 @@ export function runDeterministicProjection(
   breakdowns: AnnualCashFlowBreakdown[];
   inflation: number[];
   years: number[];
+  /** Per-type decomposition of `path[last]` (same instant, same real-dollar
+   *  frame). Consumed by the Roth wizard's after-tax terminal-wealth score. */
+  finalBalancesByType: FinalBalancesByType;
 } {
   clearTaxCalculationCache();
   const userData = prepareUserData(rawUserData);
@@ -3132,7 +3163,13 @@ export function runDeterministicProjection(
     userData, precomputes, accountIndex, nominalGenerator, 0, Math.random, blackSwanLookup
   );
   const years = Array.from({ length: totalYears }, (_, i) => userData.referenceYear + i);
-  return { path: run.path, breakdowns: run.breakdowns, inflation: run.inflation, years };
+  return {
+    path: run.path,
+    breakdowns: run.breakdowns,
+    inflation: run.inflation,
+    years,
+    finalBalancesByType: run.finalBalancesByType,
+  };
 }
 
 // Fast deterministic preview shaped like a full SimulationResult. Used by the

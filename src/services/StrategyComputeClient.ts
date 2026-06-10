@@ -23,6 +23,26 @@ export class StrategyCancelledError extends Error {
   }
 }
 
+/**
+ * Lean-clone userData for the worker boundary: keep `meta.generatedBy` — the
+ * ONE meta field the compute backends read (`isGeneratorProducedConversion`
+ * uses it to strip previously-applied wizard conversions from baselines and
+ * candidate schedules) — and drop `generatedAt` / `generatorRunId` (UI-only
+ * provenance, wasteful to structured-clone). Dropping meta entirely (the
+ * original R7 optimization) made the worker path stack new synthetic
+ * conversions on top of the old applied batch, so wizard re-runs always
+ * concluded "couldn't improve". Exported for unit testing; the original
+ * userData in React state is never mutated.
+ */
+export function leanUserDataForWorker(userData: UserData): UserData {
+  return {
+    ...userData,
+    incomeEvents: userData.incomeEvents.map((e) =>
+      e.meta === undefined ? e : { ...e, meta: { generatedBy: e.meta.generatedBy } }
+    ),
+  };
+}
+
 type Pending = {
   requestId: number;
   resolve: (value: unknown) => void;
@@ -120,17 +140,7 @@ class StrategyComputeClient {
         resolve: resolve as (v: unknown) => void,
         reject,
       };
-      // Strip `meta` provenance from incomeEvents — compute backends never
-      // read it, and structured-cloning meta objects across the worker
-      // boundary is wasteful (R7). Original userData in React state is
-      // unchanged.
-      const leanUserData: UserData = {
-        ...userData,
-        incomeEvents: userData.incomeEvents.map((e) =>
-          e.meta === undefined ? e : { ...e, meta: undefined }
-        ),
-      };
-      const msg: StrategyWorkerInbound = { type: 'compute', requestId, kind, userData: leanUserData, taxStrategy };
+      const msg: StrategyWorkerInbound = { type: 'compute', requestId, kind, userData: leanUserDataForWorker(userData), taxStrategy };
       this.worker!.postMessage(msg);
     });
   }
