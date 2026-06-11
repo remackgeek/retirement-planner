@@ -8,6 +8,7 @@ import {
 } from './TaxCalculator';
 import {
   IRS_UNIFORM_LIFETIME_TABLE,
+  getRmdStartAge,
   initialAccountBalances,
   runDeterministicProjection,
   getEffectiveStateName,
@@ -26,7 +27,7 @@ export interface ConversionImpact {
   // nominal-year values, mixing units in the same grid.
   firstYearTax: number;             // incremental ordinary tax in the first conversion year (real)
   totalTaxOverConversion: number;   // sum of incremental taxes across all active years (real)
-  rmdReductionAt73: number;         // $ reduction in the first-year RMD attributable to conversion (real)
+  rmdReductionAtStart: number;      // $ reduction in the first-year RMD attributable to conversion (real); first RMD year is SECURE 2.0 birth-year dependent (73/75)
   projectedRothAtEndOfPlan: number; // Roth value from conversions at life expectancy (real)
   netPlanValueImpact: number;       // signed delta of plan value at life expectancy (real; with vs without)
   // True-cap detection: years where Trad balance (after RMD/spending) limited the conversion
@@ -178,7 +179,7 @@ export function estimateConversionImpact(
     return {
       firstYearTax: 0,
       totalTaxOverConversion: 0,
-      rmdReductionAt73: 0,
+      rmdReductionAtStart: 0,
       projectedRothAtEndOfPlan: 0,
       netPlanValueImpact: 0,
       conversionShortfallYears: 0,
@@ -271,19 +272,20 @@ export function estimateConversionImpact(
     projectedRothAtEndOfPlan += realDollars(nominalAtEnd, lastPlanYearIdx);
   }
 
-  // RMD reduction at the first RMD year (age 73) relative to baseline. Project
-  // Trad balance to age 73 with and without the conversion schedule. Use the
-  // initial account balances as the starting point (ignoring regular withdrawals,
-  // which is acceptable for a rough preview). Result is the NOMINAL year-73
-  // RMD-dollar savings, deflated to year-0 dollars for the display grid.
+  // RMD reduction at the first RMD year relative to baseline. The first RMD age is
+  // SECURE 2.0 birth-year dependent (73 for 1951–1959, 75 for 1960+), derived from
+  // referenceYear − currentAge. Project Trad balance to that age with and without
+  // the conversion schedule. Use the initial account balances as the starting point
+  // (ignoring regular withdrawals, which is acceptable for a rough preview). Result
+  // is the NOMINAL first-RMD-year dollar savings, deflated to year-0 dollars.
   const accountBalances = initialAccountBalances(userData);
   const initialTradBalance = userData.accounts
     .filter((a) => a.type === 'traditional')
     .reduce((s, a) => s + (accountBalances[a.id] ?? 0), 0);
 
-  const rmdAge = 73;
+  const rmdAge = getRmdStartAge(userData.referenceYear - userData.currentAge);
   const yearsFromNowToRmd = rmdAge - userData.currentAge;
-  let rmdReductionAt73 = 0;
+  let rmdReductionAtStart = 0;
   if (yearsFromNowToRmd >= 0) {
     // Compound forward, subtracting each year's conversion (if active) at year-end.
     let tradWithConv = initialTradBalance;
@@ -297,7 +299,7 @@ export function estimateConversionImpact(
     }
     const divisor = IRS_UNIFORM_LIFETIME_TABLE[rmdAge] ?? 26.5;
     const rmdReductionNominal = Math.max(0, tradNoConv / divisor - tradWithConv / divisor);
-    rmdReductionAt73 = realDollars(rmdReductionNominal, yearsFromNowToRmd);
+    rmdReductionAtStart = realDollars(rmdReductionNominal, yearsFromNowToRmd);
   }
 
   // Net plan-value impact: run the full deterministic simulation engine twice
@@ -348,7 +350,7 @@ export function estimateConversionImpact(
   return {
     firstYearTax,
     totalTaxOverConversion,
-    rmdReductionAt73,
+    rmdReductionAtStart,
     projectedRothAtEndOfPlan,
     netPlanValueImpact,
     conversionShortfallYears,

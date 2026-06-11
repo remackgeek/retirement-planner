@@ -47,9 +47,9 @@ describe('StateTaxCalculator', () => {
     it('walks the bracket schedule on $100k pension', () => {
       const p = getStateTaxProfile('California', 2026).profile;
       const r = computeStateTax(p, baseInput({ ordinaryGross: 100000 }), 'California');
-      // Base 100000 - $5,540 std ded = $94,460. Walk CA single brackets:
-      // 1%·10,412 + 2%·14,272 + 4%·14,275 + 6%·15,122 + 8%·14,269 + 9.3%·26,110 ≈ $5,438
-      expect(r.stateOrdinaryTax).toBeCloseTo(5438, 0);
+      // Base 100000 - $5,540 std ded = $94,460. Walk CA 2024 single brackets:
+      // 1%·10,756 + 2%·14,743 + 4%·14,746 + 6%·15,621 + 8%·14,740 + 9.3%·23,854 ≈ $5,327
+      expect(r.stateOrdinaryTax).toBeCloseTo(5327, 0);
       expect(r.stateMarginalRate).toBe(0.093);
     });
 
@@ -382,18 +382,18 @@ describe('StateTaxCalculator', () => {
       const p = getStateTaxProfile('California', 2026).profile;
       const r = computeStateTax(p, baseInput({ ordinaryGross: 0, ltcgFromBrokerage: 100000 }), 'California');
       // taxableTotal = max(0, 0 + 100000 - 5540 stdDed) = $94,460
-      // Walk CA brackets up to $94,460:
-      // 1%·10412 + 2%·14272 + 4%·14275 + 6%·15122 + 8%·14269 + 9.3%·26110 ≈ $5,438
-      expect(r.stateCapGainsTax).toBeCloseTo(5438, 0);
+      // Walk CA 2024 brackets up to $94,460:
+      // 1%·10756 + 2%·14743 + 4%·14746 + 6%·15621 + 8%·14740 + 9.3%·23854 ≈ $5,327
+      expect(r.stateCapGainsTax).toBeCloseTo(5327, 0);
     });
 
     it('CA $20k ordinary + $80k LTCG: stack walks the combined $94,460 same way', () => {
       const p = getStateTaxProfile('California', 2026).profile;
       const r = computeStateTax(p, baseInput({ ordinaryGross: 20000, ltcgFromBrokerage: 80000 }), 'California');
       // taxableTotal = 100000 - 5540 = $94,460; ordinary part taxable = 20000 - 5540 = $14,460
-      // Total walk tax ≈ $5,438; ordinary-only walk tax ≈ $267.84 (1%·10412 + 2%·4048)
-      // Cap-gains portion = $5,438 - $268 ≈ $5,170
-      expect(r.stateOrdinaryTax + r.stateCapGainsTax).toBeCloseTo(5438, 0);
+      // Total walk tax ≈ $5,327; ordinary-only walk tax ≈ $181.64 (1%·10756 + 2%·3704)
+      // Cap-gains portion = $5,327 - $182 ≈ $5,145
+      expect(r.stateOrdinaryTax + r.stateCapGainsTax).toBeCloseTo(5327, 0);
     });
   });
 

@@ -1,0 +1,13 @@
+{
+  "_rationale": "Year 0 (age 65): SS gross $40k covers part of $63.5k spending; $23.5k pulled from brokerage. Provisional income includes the brokerage gain: $23.5k + 0.5*$40k = $43.5k → single 85% zone → SS taxable = $12,575. That taxable SS is below the single 65+ standard deduction, and LTCG rate is 0, so federal/state/total tax = $0 — the brokerage pull is exactly $23,500 (no withdrawal feedback). End balance = $500,000 - $23,500 = $476,500. Brokerage lasts all 6 years ($141k drawn from $500k) → probability 100%. The key regression guard is ssTaxableAmount = $12,575 (was $0 before capital gains entered provisional income).",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 65, "value": 500000, "note": "Starting balance" },
+    { "index": 1, "age": 66, "value": 476500, "note": "500000 - 23500 brokerage pull (year 0 end)" }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "ssTaxableAmount", "value": 12575, "tolerance": 1, "_note": "Provisional $43.5k (incl. $23.5k LTCG) → 85% zone → $12,575. Was $0 when LTCG was excluded." },
+    { "index": 0, "field": "withdrawalFromBrokerage", "value": 23500, "tolerance": 1, "_note": "$63.5k spending - $40k SS gross; no tax to fund (taxable SS below std deduction, LTCG rate 0)" },
+    { "index": 0, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "$12,575 taxable SS < single 65+ std deduction; LTCG rate 0; FL no state tax" }
+  ]
+}

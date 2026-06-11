@@ -10,6 +10,7 @@ import RetirementContributionDialog from '../dialogs/RetirementContributionDialo
 import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import type { IncomeEvent, IncomeEventType } from '../types/IncomeEvent';
 import type { Account } from '../types/Account';
+import type { UserData } from '../types/UserData';
 import { spacing, colors, border, fontSize } from '../styles/theme';
 import { ManagerRow, RightAmount, SlatList, PlusButton, Header, HeaderLeft, HeaderRight } from './ManagerRow';
 import { eventTypeIcons } from '../utils/defaultName';
@@ -110,7 +111,7 @@ const generatorLabel = (g: string): string =>
 
 interface IncomeEventsManagerProps {
   events: IncomeEvent[];
-  userData: any;
+  userData: UserData;
   accounts: Account[];
   onAdd: (event: Omit<IncomeEvent, 'id'>) => void;
   onUpdate: (id: string, event: Partial<IncomeEvent>) => void;

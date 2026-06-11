@@ -1,0 +1,62 @@
+{
+  "_description": "Capital gains (brokerage withdrawals) must enter SS provisional income. Single filer drawing SS alongside a taxable account — the brokerage pull is part of AGI and so makes a portion of SS taxable, even though it is itself taxed at LTCG rates.",
+  "_rationale": "Single, Florida, age 65. SS $40k/yr (haircut disabled), spending $63.5k/yr, only account is brokerage (treated as 100% gain). SS gross $40k covers part of spending; the $23.5k gap is pulled from brokerage. IRS provisional income = AGI-ex-SS + 0.5*SS = $23.5k LTCG + $20k = $43.5k, above the single 85% threshold ($34k). SS taxable = min(0.85*($43.5k - $34k) + min($4.5k base, 0.5*$40k), 0.85*$40k) = min($8,075 + $4,500, $34,000) = $12,575. longTermCapGainsRate = 0 isolates the provisional mechanic (no LTCG tax), and the $12,575 taxable SS sits below the single 65+ standard deduction, so federal tax = $0 and there is no withdrawal feedback — the brokerage pull is exactly $23,500. End-of-year balance = $500,000 - $23,500 = $476,500. BEFORE the fix, brokerage was excluded from provisional income: provisional = 0.5*$40k = $20k < $25k threshold → zone 'none' → $0 SS taxable (the tax torpedo was invisible for brokerage-funded spending). 0% growth, 0% inflation, IRMAA/NIIT off.",
+  "_seed": 12345,
+  "name": "SS Provisional Includes LTCG",
+  "currentAge": 65,
+  "lifeExpectancy": 70,
+  "referenceYear": 2026,
+  "spendingGoals": [
+    {
+      "id": "base-spending-1",
+      "type": "living_expenses",
+      "amount": 63500,
+      "startAge": 65,
+      "inflationAdjusted": false,
+      "name": "Living Expenses 1"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "ss-1",
+      "type": "social_security",
+      "amount": 40000,
+      "startAge": 65,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "amountPeriod": "annual",
+      "ssHaircutEnabled": false,
+      "name": "Social Security 1"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric"
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "single",
+  "spouseAge": null,
+  "stateTimeline": [{ "state": "Florida" }],
+  "simulationSettings": { "numSimulations": 100 },
+  "accounts": [
+    {
+      "id": "brok-1",
+      "name": "Taxable 1",
+      "type": "brokerage",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

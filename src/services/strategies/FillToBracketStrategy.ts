@@ -27,10 +27,11 @@
  *    then re-fills to the bracket ceiling. Without this loop a high
  *    conversion in an SS-claiming year would push SS into the 85% tier and
  *    silently over-fill the bracket.
- *  - IRMAA / NIIT cliffs: ignored by default, but when
- *    `userData.respectIrmaaNiitCliffs` is set the per-year fill is additionally
- *    capped so MAGI stays under the next IRMAA tier (year+2 lookback) and the
- *    NIIT threshold. Conservative — it only ever reduces the conversion.
+ *  - IRMAA cliffs: capped by default (`respectIrmaaNiitCliffs` treats undefined
+ *    as ON) — the per-year fill is capped so MAGI stays under the next IRMAA
+ *    tier (year+2 lookback). Conservative — only ever reduces the conversion.
+ *    NIIT is NOT capped: it's a marginal 3.8% tax, not a cliff — the engine
+ *    prices it in every scored projection (see capConversionForCliffs doc).
  *  - Does NOT model funding-availability for the marginal tax (Cash / Taxable /
  *    RMD-excess). The engine's existing conv-tax sourcing handles that.
  *  - Does NOT cap below zero — when the user's baseline already exceeds the
@@ -48,7 +49,7 @@ import {
   getNumQualifyingSeniors,
   calculateSSTaxableAmount,
 } from '../TaxCalculator';
-import { nextIrmaaTierCeiling, getNiitThreshold } from '../IRMAA';
+import { nextIrmaaTierCeiling, irmaaTierCeilings } from '../IRMAA';
 
 /** Read `taxStatus` from an event, with a 'before_tax' default for events that
  *  don't declare one (most income types). Centralizes the optional-field
@@ -174,7 +175,7 @@ export function computeFillToBracketSchedule(
       if (Math.abs(convAmount - prevConv) < 1) break;
     }
 
-    // Optional IRMAA / NIIT cliff cap (off by default; see capConversionForCliffs).
+    // Optional IRMAA cliff cap (on unless explicitly disabled; see capConversionForCliffs).
     convAmount = capConversionForCliffs(userData, year, i, convAmount);
 
     decisions.push({ year, conversionAmount: convAmount });
@@ -184,26 +185,33 @@ export function computeFillToBracketSchedule(
 }
 
 /**
- * Optional IRMAA / NIIT cliff cap (off by default — returns `convAmount`
- * unchanged unless `userData.respectIrmaaNiitCliffs` is set). A conversion adds
- * to MAGI roughly dollar-for-dollar; for the 22%/24% targets the fill can reach
- * the IRMAA tiers ($103k single / $206k MFJ, indexed) and the NIIT threshold.
- * Caps the conversion so the year's MAGI stays under (a) the next IRMAA tier
- * ceiling — relevant only if a Medicare enrollee exists in year+2 (2-year
- * lookback) — and (b) the NIIT threshold. MAGI baseline proxy is ordinary +
- * SS-taxable (computed inclusive of `convAmount`, mirroring the fill loop).
+ * Optional IRMAA cliff cap (no-op when `userData.respectIrmaaNiitCliffs` is
+ * explicitly `false`). A conversion adds to MAGI roughly dollar-for-dollar; for
+ * the 22%/24% targets the fill can reach the IRMAA tiers ($103k single / $206k
+ * MFJ, indexed). Caps the conversion so the year's MAGI stays under the next
+ * IRMAA tier ceiling — relevant only if a Medicare enrollee exists in year+2
+ * (2-year lookback). MAGI baseline proxy is ordinary + SS-taxable (computed
+ * inclusive of `convAmount`, mirroring the fill loop).
+ *
+ * NIIT is deliberately NOT part of this cap. NIIT is a marginal 3.8% tax
+ * (`3.8% × min(investment income, MAGI − threshold)`), not a discontinuity:
+ * a conversion is not investment income, so crossing the threshold costs at
+ * most 3.8% of that year's investment income — often $0 when no brokerage
+ * withdrawal happens. The engine prices NIIT inside every scored projection,
+ * so the optimizer's score arbitrates it correctly; a hard MAGI cap here only
+ * suppressed legitimate 22%/24% fills (MAGI $300–400k) for zero benefit.
  *
  * Shared between `computeFillToBracketSchedule` (per-year fill) and the Optimize
  * coordinate descent (per-candidate cap), so all three backends honor the flag
- * identically — fill/auto/optimize treat the cliffs as the same hard cap.
+ * identically — fill/auto/optimize treat the IRMAA cliff as the same hard cap.
  *
  * Known looseness (the cap can under-count MAGI, so a capped conversion may
  * still nudge slightly past a tier): the baseline OMITS (1) forced RMD — a
  * Traditional withdrawal in the real MAGI proxy, so 73+ conversion years are the
  * exposed case — and (2) the Brokerage pull that funds the conversion's own
- * ordinary tax, which adds LTCG to the NIIT MAGI base. Acceptable for an opt-in
- * heuristic; the engine's true per-year MAGI still drives the actual IRMAA/NIIT
- * charged in the simulation. Only ever reduces the conversion.
+ * ordinary tax, which adds LTCG to MAGI. Acceptable for a heuristic; the
+ * engine's true per-year MAGI still drives the actual IRMAA charged in the
+ * simulation. Only ever reduces the conversion.
  */
 export function capConversionForCliffs(
   userData: UserData,
@@ -231,10 +239,53 @@ export function capConversionForCliffs(
       nextIrmaaTierCeiling(magiBaseline, userData.filingStatus, year + 2, userData.inflationRate),
     );
   }
-  if (userData.enableNIIT !== false) {
-    magiCeiling = Math.min(magiCeiling, getNiitThreshold(userData.filingStatus));
-  }
   return isFinite(magiCeiling) ? Math.min(convAmount, Math.max(0, magiCeiling - magiBaseline)) : convAmount;
+}
+
+/**
+ * Tier-aware probe candidates for the Optimize descent (consulted only when
+ * `respectIrmaaNiitCliffs === false`). For each finite IRMAA tier ceiling,
+ * returns the conversion amount that fills the year's MAGI exactly to that
+ * ceiling. The descent adds these to its candidate set so a deliberate tier
+ * crossing is evaluated at the efficient boundary point (max conversion that
+ * still tops out the destination tier) instead of blindly partway through —
+ * the engine prices the resulting surcharge (2-year lookback) in the scored
+ * projection, so the score arbitrates whether crossing pays.
+ *
+ * Mirrors `capConversionForCliffs`' MAGI machinery, including the SS-taxable
+ * fix-point from the bracket fill (the conversion that lands on a ceiling
+ * depends on ssTaxable, which depends on the conversion) and the same
+ * RMD-omission looseness — acceptable: these are probes the score arbitrates,
+ * not caps. Returns [] when IRMAA is disabled or no Medicare enrollee exists
+ * in year+2 — crossing has no priced effect then, so probes would be noise.
+ */
+export function irmaaTierFillCandidates(
+  userData: UserData,
+  year: number,
+  yearIndex: number,
+): number[] {
+  if (userData.enableIRMAA === false) return [];
+  const age = userData.currentAge + yearIndex;
+  const spouseAge = userData.spouseAge !== null ? userData.spouseAge + yearIndex : null;
+  const selfMedicareSoon = age + 2 >= 65;
+  const spouseMedicareSoon = spouseAge !== null && spouseAge + 2 >= 65;
+  if (!selfMedicareSoon && !spouseMedicareSoon) return [];
+  const ssGross = sumSSForYear(userData, year, yearIndex);
+  const otherOrdinary = computeBaselineOrdinaryGrossForYear(userData, year, yearIndex) - ssGross;
+  const candidates: number[] = [];
+  for (const ceiling of irmaaTierCeilings(userData.filingStatus, year + 2, userData.inflationRate)) {
+    let conv = 0;
+    for (let iter = 0; iter < 4; iter++) {
+      const prev = conv;
+      const ssTaxable = ssGross > 0
+        ? calculateSSTaxableAmount(ssGross, otherOrdinary + conv, userData.filingStatus)
+        : 0;
+      conv = Math.max(0, ceiling - (otherOrdinary + ssTaxable));
+      if (Math.abs(conv - prev) < 1) break;
+    }
+    if (conv > 0) candidates.push(conv);
+  }
+  return candidates;
 }
 
 /**

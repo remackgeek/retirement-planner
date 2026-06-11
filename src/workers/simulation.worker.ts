@@ -51,6 +51,13 @@ export type WorkerOutbound =
   | { type: 'replayResult'; requestId: number; shardIndex: number; runs: ReplayedRun[] }
   | { type: 'error'; requestId: number; message: string };
 
+// Typed wrapper for the worker-global postMessage: the DedicatedWorkerGlobalScope
+// type isn't in the default lib set, hence the one contained cast here.
+const post = (msg: WorkerOutbound, transfer?: Transferable[]) =>
+  transfer
+    ? (self as unknown as Worker).postMessage(msg, transfer)
+    : (self as unknown as Worker).postMessage(msg);
+
 // Per-shard cache of the most recent run. Holds SimRun[] + the userData/precomputes
 // needed by replayRunWithAudit. Discarded on the next 'runShard' or on 'cancel'.
 let cache: {
@@ -105,30 +112,25 @@ function handleRunShard(msg: Extract<WorkerInbound, { type: 'runShard' }>) {
 
     cache = { requestId, shardIndex, runs, userData, precomputes, accountIndex, blackSwanLookup };
 
-    const reply: WorkerOutbound = {
+    post({
       type: 'shardSummary', requestId, shardIndex,
       scores, failedFlags, failedYears, pathColumns,
       totalYears, runsInShard,
-    };
-    (self as unknown as Worker).postMessage(reply, [
-      scores.buffer, failedFlags.buffer, failedYears.buffer, pathColumns.buffer,
-    ]);
+    }, [scores.buffer, failedFlags.buffer, failedYears.buffer, pathColumns.buffer]);
   } catch (err) {
     // Log full stack inside the worker console before forwarding a bare message,
     // since structured-clone strips Error stack traces.
     console.error('[simulation.worker] runShard failed:', err);
-    const reply: WorkerOutbound = {
+    post({
       type: 'error', requestId,
       message: err instanceof Error ? err.message : String(err),
-    };
-    (self as unknown as Worker).postMessage(reply);
+    });
   }
 }
 
 function handleReplay(msg: Extract<WorkerInbound, { type: 'replay' }>) {
   if (!cache || cache.requestId !== msg.requestId) {
-    const reply: WorkerOutbound = { type: 'error', requestId: msg.requestId, message: 'replay: cache miss or stale requestId' };
-    (self as unknown as Worker).postMessage(reply);
+    post({ type: 'error', requestId: msg.requestId, message: 'replay: cache miss or stale requestId' });
     return;
   }
   const c = cache;
@@ -147,15 +149,13 @@ function handleReplay(msg: Extract<WorkerInbound, { type: 'replay' }>) {
     // Drop the cache after replay — chart only needs the 2 reps; further replay
     // would be a bug. Keeps memory low between sims.
     cache = null;
-    const reply: WorkerOutbound = { type: 'replayResult', requestId: msg.requestId, shardIndex: c.shardIndex, runs };
-    (self as unknown as Worker).postMessage(reply);
+    post({ type: 'replayResult', requestId: msg.requestId, shardIndex: c.shardIndex, runs });
   } catch (err) {
     console.error('[simulation.worker] replay failed:', err);
-    const reply: WorkerOutbound = {
+    post({
       type: 'error', requestId: msg.requestId,
       message: err instanceof Error ? err.message : String(err),
-    };
-    (self as unknown as Worker).postMessage(reply);
+    });
   }
 }
 

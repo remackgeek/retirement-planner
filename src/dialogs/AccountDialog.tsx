@@ -16,7 +16,10 @@ import {
   accountTypeIcons,
   generateDefaultAccountName,
 } from '../utils/defaultName';
+import { InputGroup, TrashButton } from './SettingsDialogPrimitives';
 
+// Local Form: deliberately omits the .p-dropdown width rule — the Owner /
+// account-kind dropdowns here size to content, unlike the entity dialogs.
 const Form = styled.form`
   display: flex;
   flex-direction: column;
@@ -26,17 +29,6 @@ const Form = styled.form`
   .p-inputtext,
   .p-inputnumber {
     width: 100%;
-  }
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.xs};
-
-  label {
-    font-size: ${fontSize.sm};
-    color: ${colors.textPrimary};
   }
 `;
 
@@ -58,24 +50,6 @@ const PresetBtn = styled.button<{ $active: boolean }>`
 
   &:hover {
     background: ${({ $active }) => ($active ? colors.primary : colors.bgMedium)};
-  }
-`;
-
-const TrashButton = styled.button`
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: ${spacing.xs};
-  border-radius: ${border.radius};
-  color: ${colors.danger};
-  font-size: ${fontSize.xl};
-  line-height: 1;
-  display: flex;
-  align-items: center;
-
-  &:hover {
-    color: ${colors.dangerHover};
-    background: ${colors.bgMedium};
   }
 `;
 

@@ -3,7 +3,7 @@
  *
  * Used in two places that compute the same formula:
  *  - `conversionImpact.ts` deflates per-year nominal helpers (firstYearTax,
- *    totalTaxOverConversion, rmdReductionAt73, projectedRothAtEndOfPlan) so
+ *    totalTaxOverConversion, rmdReductionAtStart, projectedRothAtEndOfPlan) so
  *    the Impact Preview grid is unit-consistent with the engine path's
  *    real-dollar `netPlanValueImpact`.
  *  - `AutoBracketStrategy.scoreProjection` deflates per-year `totalTax` for

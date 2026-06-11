@@ -1,11 +1,11 @@
 {
-  "_rationale": "Updated for the per-state profile model: CA state tax on $100k pension is now $5,438 (graduated brackets above $5,540 std ded), not the prior flat $8,000. Net CA = $100k − $13,170 federal − $5,438 CA = $81,392/yr. Net FL = $86,830/yr (unchanged). Portfolio: starts at $500k, accumulates net income each year with 0% growth. Year-1 balance = 500k + 81,392 = 581,392; year-3 (last full CA year) = 500k + 3·81,392 = 744,177; year-4 (first FL year, balance after CA-3 cashflow) = 500k + 4·81,392 = 825,569.",
+  "_rationale": "Updated for the CA 2024 bracket refresh (FTB tax-year-2024 thresholds; prior data was 2023 figures mislabeled 2024). CA state tax on a $100k pension is now $5,327 (graduated 2024 brackets above the $5,540 std ded), down from $5,438 under the stale 2023 thresholds. Net CA = $100k − $13,170 federal − $5,327 CA = $81,503/yr. Net FL = $86,830/yr (unchanged). Portfolio: starts at $500k, accumulates net income each year with 0% growth. Year-1 balance = 500k + 81,503 = 581,503; year-3 (last full CA year) = 500k + 3·81,503 = 744,509; year-4 (first FL year, balance after CA-3 cashflow) = 500k + 4·81,503 = 826,011.",
   "probability": 100,
   "pathValues": [
     { "index": 0, "age": 60, "value": 500000, "note": "Starting balance" },
-    { "index": 1, "age": 61, "value": 581392, "note": "500000 + 81392 (CA year)" },
-    { "index": 3, "age": 63, "value": 744177, "note": "500000 + 81392 * 3" },
-    { "index": 4, "age": 64, "value": 825569, "note": "500000 + 81392 * 4 (FL year, after final CA cashflow)" }
+    { "index": 1, "age": 61, "value": 581503, "note": "500000 + 81503 (CA year)" },
+    { "index": 3, "age": 63, "value": 744509, "note": "500000 + 81503 * 3" },
+    { "index": 4, "age": 64, "value": 826011, "note": "500000 + 81503 * 4 (FL year, after final CA cashflow)" }
   ],
   "tolerance": 5.0
 }

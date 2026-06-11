@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPlanWindowOptions, defaultPlanWindow } from './RothConversionDialog';
+import { buildPlanWindowOptions, defaultPlanWindow } from './planWindow';
 
 describe('buildPlanWindowOptions', () => {
   it('includes all fixed options when lifeExpectancy is well past the highest', () => {

@@ -25,25 +25,10 @@ import {
   findCrossoverAge,
 } from '../services/socialSecurityOptimizer';
 import PlanComparisonChart from './PlanComparisonChart';
-
-const Form = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.md};
-  padding: ${spacing.sm} 0;
-
-  .p-inputtext,
-  .p-dropdown,
-  .p-inputnumber {
-    width: 100%;
-  }
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.xs};
-`;
+import {
+  FormFullWidth as Form,
+  InputGroupPlain as InputGroup,
+} from './SettingsDialogPrimitives';
 
 const BenefitRow = styled.div`
   display: flex;
@@ -286,7 +271,6 @@ const SocialSecurityWizardDialog: React.FC<Props> = ({ visible, onHide, scenario
       haircutEnabled,
       haircutPercent: debouncedHaircutPercent,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scenario, owner, pia, fraMonths, elig.locked, elig.ageMin, elig.ageMax, elig.tmpl, haircutEnabled, debouncedHaircutPercent]);
 
   // Default the apply-age to the recommended best whenever the sweep changes.
@@ -405,7 +389,9 @@ const SocialSecurityWizardDialog: React.FC<Props> = ({ visible, onHide, scenario
       closeOnEscape
       footer={footer}
     >
-      <Form>
+      {/* as="div": this wizard isn't a submitting form — keep the original
+          <div> element while sharing FormFullWidth's styling. */}
+      <Form as="div">
         {hasSpouse && (
           <InputGroup>
             <Label>Optimizing for</Label>

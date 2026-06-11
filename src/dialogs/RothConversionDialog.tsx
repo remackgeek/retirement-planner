@@ -9,7 +9,8 @@ import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import type { UserData } from '../types/UserData';
 import type { StrategyObjective, PerYearStrategyDecision } from '../services/strategies/types';
-import { DEFAULT_END_AGE_CAP } from '../services/strategies/types';
+import { DEFAULT_TERMINAL_TRAD_TAX_RATE } from '../services/strategies/types';
+import { buildPlanWindowOptions, defaultPlanWindow } from './planWindow';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { spacing, colors, border, fontSize, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
@@ -23,41 +24,17 @@ import {
 } from '../services/conversionImpact';
 import { strategyComputeClient, StrategyCancelledError } from '../services/StrategyComputeClient';
 import { simulationClient, SupersededError } from '../services/SimulationClient';
-import { runDeterministicProjection } from '../services/SimulationService';
+import { runDeterministicProjection, getRmdStartAge } from '../services/SimulationService';
 import { buildStrategyConversionEvents, isGeneratorProducedConversion } from '../services/strategies/syntheticEvents';
 import PlanComparisonChart from './PlanComparisonChart';
 import { useUIState } from '../context/UIStateContext';
-
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.md};
-  padding: ${spacing.sm} 0;
-
-  .p-inputtext,
-  .p-dropdown,
-  .p-inputnumber {
-    width: 100%;
-  }
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.xs};
-`;
-
-const FieldRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: ${spacing.md};
-`;
-
-const CheckboxGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${spacing.sm};
-`;
+import {
+  FormFullWidth as Form,
+  InputGroupPlain as InputGroup,
+  FieldRowGrid as FieldRow,
+  CheckboxGroup,
+  TrashButton,
+} from './SettingsDialogPrimitives';
 
 const HelpText = styled.small`
   color: ${colors.textMuted};
@@ -93,24 +70,6 @@ const WarningList = styled.div`
   flex-direction: column;
   gap: ${spacing.xs};
   margin-top: ${spacing.xs};
-`;
-
-const TrashButton = styled.button`
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: ${spacing.xs};
-  border-radius: ${border.radius};
-  color: ${colors.danger};
-  font-size: ${fontSize.xl};
-  line-height: 1;
-  display: flex;
-  align-items: center;
-
-  &:hover {
-    color: ${colors.dangerHover};
-    background: ${colors.bgMedium};
-  }
 `;
 
 const ImpactPanel = styled.div`
@@ -243,47 +202,9 @@ type Mode = 'single' | 'wizard';
 
 const OBJECTIVE_OPTIONS: { label: string; value: StrategyObjective }[] = [
   { label: 'Max terminal wealth (real $)', value: 'max_median_terminal_wealth' },
+  { label: 'Max after-tax wealth (values Roth $ above Traditional $)', value: 'max_after_tax_terminal_wealth' },
   { label: 'Min lifetime tax (real $)', value: 'min_lifetime_tax' },
 ];
-
-// Plan-window options: end-age cap for the conversion schedule. Default 80
-// reflects practitioner consensus — past ~80 the math shifts from
-// owner-lifetime tax arbitrage to estate planning, which is a different
-// objective the wizard doesn't model.
-// Base END_AGE_OPTIONS — the fixed-age choices. The 'through life expectancy
-// (advanced)' option is appended at render time because its value depends on
-// userData.lifeExpectancy. Surfacing it as the last option keeps the default-
-// case UX clean while giving heir-rate-arbitrage users an explicit escape
-// hatch (vs. having to pick 90 as a workaround).
-const BASE_END_AGE_OPTIONS: { label: string; value: number }[] = [
-  { label: 'through age 73 (RMD start)', value: 73 },
-  { label: 'through age 75', value: 75 },
-  { label: 'through age 80 (default)', value: DEFAULT_END_AGE_CAP },
-  { label: 'through age 85', value: 85 },
-  { label: 'through age 90', value: 90 },
-];
-
-export const buildPlanWindowOptions = (lifeExpectancy: number): { label: string; value: number }[] => {
-  // Keep fixed-age options up to AND INCLUDING lifeExpectancy (no point
-  // offering "through age 90" when the plan ends at 85). Append a separate
-  // "through life expectancy" option ONLY when lifeExpectancy doesn't
-  // already equal one of the fixed values — otherwise we'd duplicate the
-  // value (e.g. for lifeExpectancy=80, "through age 80 (default)" and
-  // "through life expectancy (age 80, advanced)" would both have value=80,
-  // and the dropdown would show whichever label rendered last as the
-  // selected state, confusingly relabeling the default as "advanced").
-  const fixed = BASE_END_AGE_OPTIONS.filter((o) => o.value <= lifeExpectancy);
-  const alreadyCovered = BASE_END_AGE_OPTIONS.some((o) => o.value === lifeExpectancy);
-  return alreadyCovered
-    ? fixed
-    : [...fixed, { label: `through life expectancy (age ${lifeExpectancy}, advanced)`, value: lifeExpectancy }];
-};
-
-/** Initial / reset value for `wizEndAgeCap`. Clamps the default (80) to the
- *  scenario's `lifeExpectancy` so users with a short plan don't end up with
- *  a state value that doesn't match any option in the dropdown. */
-export const defaultPlanWindow = (lifeExpectancy: number): number =>
-  Math.min(DEFAULT_END_AGE_CAP, lifeExpectancy);
 
 const makeDefaultFormData = () => ({
   name: '',
@@ -326,6 +247,9 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
   const [wizEndAgeCap, setWizEndAgeCap] = useState<number>(defaultPlanWindow(userData.lifeExpectancy));
   const [wizRespectCliffs, setWizRespectCliffs] = useState<boolean>(userData.respectIrmaaNiitCliffs !== false);
   const [wizObjective, setWizObjective] = useState<StrategyObjective>('max_median_terminal_wealth');
+  // Percent for the InputNumber; converted to a fraction for the compute call.
+  // Only consumed by the 'max_after_tax_terminal_wealth' objective.
+  const [wizTerminalRate, setWizTerminalRate] = useState<number>(DEFAULT_TERMINAL_TRAD_TAX_RATE * 100);
   const [wizShowAdvanced, setWizShowAdvanced] = useState<boolean>(false);
   const [wizSchedule, setWizSchedule] = useState<PerYearStrategyDecision[] | null>(null);
   const [wizRunning, setWizRunning] = useState(false);
@@ -620,15 +544,19 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
     try {
       const result = await strategyComputeClient.optimize(wizardUserData, {
         name: 'optimize', objective: wizObjective, endAgeCap: wizEndAgeCap,
+        terminalTradTaxRate: wizTerminalRate / 100,
       });
       const elapsed = (performance.now() - t0) / 1000;
       setWizSchedule(result.perYearDecisions);
       const delta = result.finalScore - result.baselineScore;
       const nonZero = result.perYearDecisions.filter((d) => d.conversionAmount > 0).length;
       if (delta > 0) {
+        const deltaUnits = wizObjective === 'max_after_tax_terminal_wealth'
+          ? 'after-tax real dollars at end of plan'
+          : 'real dollars at end of plan';
         setWizMessage(
           `Generated in ${elapsed.toFixed(1)}s. Projected gain vs your current plan: ` +
-          `+${currency(delta)} (real dollars at end of plan), from ${nonZero} conversion year${nonZero === 1 ? '' : 's'}.`
+          `+${currency(delta)} (${deltaUnits}), from ${nonZero} conversion year${nonZero === 1 ? '' : 's'}.`
         );
       } else {
         setWizMessage(
@@ -848,7 +776,7 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
                   onChange={(e) => { setWizRespectCliffs(e.checked || false); setWizSchedule(null); setWizMessage(null); setWizSuccess(null); setWizCurrentPath(null); setWizProposedPath(null); setWizInflationFactors(null); wizSuccessToken.current++; }}
                 />
                 <label htmlFor='wizCliffs' style={{ fontSize: fontSize.sm, cursor: 'pointer' }}>
-                  Cap under IRMAA / NIIT cliffs
+                  Avoid IRMAA tier jumps
                 </label>
               </CheckboxGroup>
             </InputGroup>
@@ -875,10 +803,32 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
                 />
                 <HelpText>
                   Default maximizes the deterministic terminal portfolio in real
-                  (today's) dollars. Min lifetime tax minimizes the real-dollar
-                  sum of federal + state tax across the plan. Differences are
-                  usually small.
+                  (today's) dollars — it counts a Traditional dollar the same as
+                  a Roth dollar, so it only credits a conversion for taxes it
+                  saves within the plan. After-tax wealth also credits the
+                  deferred tax removed from Traditional dollars you never spend
+                  (typically recommends larger conversions). Min lifetime tax
+                  minimizes the real-dollar sum of federal + state tax across
+                  the plan.
                 </HelpText>
+                {wizObjective === 'max_after_tax_terminal_wealth' && (
+                  <InputGroup style={{ marginTop: spacing.xs }}>
+                    <label>Terminal Traditional tax rate (%)</label>
+                    <InputNumber
+                      value={wizTerminalRate}
+                      onValueChange={(e) => { setWizTerminalRate(e.value ?? DEFAULT_TERMINAL_TRAD_TAX_RATE * 100); setWizSchedule(null); setWizMessage(null); setWizSuccess(null); setWizCurrentPath(null); setWizProposedPath(null); setWizInflationFactors(null); wizSuccessToken.current++; }}
+                      min={0}
+                      max={50}
+                      suffix='%'
+                    />
+                    <HelpText>
+                      Values un-withdrawn Traditional dollars at the end of the
+                      plan at (1 − rate) — a proxy for the rate you or your
+                      heirs would pay on them. The comparison chart still shows
+                      pre-tax balances.
+                    </HelpText>
+                  </InputGroup>
+                )}
               </InputGroup>
             )}
           </div>
@@ -1079,8 +1029,8 @@ const RothConversionDialog: React.FC<RothConversionDialogProps> = ({
                   <ImpactValue>{currency(impact.totalTaxOverConversion)}</ImpactValue>
                 </>
               )}
-              <ImpactLabel>RMD reduction at age 73</ImpactLabel>
-              <ImpactValue>{currency(impact.rmdReductionAt73)}</ImpactValue>
+              <ImpactLabel>RMD reduction at age {getRmdStartAge(userData.referenceYear - userData.currentAge)}</ImpactLabel>
+              <ImpactValue>{currency(impact.rmdReductionAtStart)}</ImpactValue>
               <ImpactLabel>Tax-free Roth at life expectancy</ImpactLabel>
               <ImpactValue>{currency(impact.projectedRothAtEndOfPlan)}</ImpactValue>
               <ImpactLabel>Net impact on plan value</ImpactLabel>

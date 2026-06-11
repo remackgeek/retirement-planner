@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components --
+   Context object + provider in one file is idiomatic React; splitting them
+   across files for HMR-only benefit isn't worth the importer churn. */
 import { createContext, useState, useEffect, type ReactNode } from 'react';
 import type { Scenario } from '../types/Scenario';
 import { CURRENT_SCHEMA_VERSION } from '../types/Scenario';

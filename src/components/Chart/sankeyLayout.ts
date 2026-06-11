@@ -221,6 +221,20 @@ export function buildSankeyModel(
     { id: 'dst_match',       label: 'Employer Match Deposit',    kind: 'deposit',  amount: breakdown.employerMatch,         source: CASHPOOL },
     { id: 'dst_rmdexcess',   label: 'RMD Excess → Brokerage',    kind: 'deposit',  amount: breakdown.rmdExcess,             source: CASHPOOL },
     { id: 'dst_surplus',     label: 'Surplus → Brokerage',       kind: 'deposit',  amount: breakdown.surplusContribution,   source: CASHPOOL },
+    // Cash interest is credited INTO the cash account balance by the engine
+    // (`balances[id] += interest`), so it is NOT a fresh spendable inflow — the
+    // year's spendable cash from the cash account is `withdrawalFromCash`, which
+    // already contains any withdrawn interest. The engine mirrors this by
+    // subtracting cashInterest back out of spendable cash
+    // (`availableCash = ... - cashInterest` in SimulationService). We keep
+    // `src_cashint` in the Ordinary bucket so the interest still drives the
+    // ordinary-tax base, then route an equal amount straight back out to the
+    // cash balance here. The pair nets to zero in the flow totals, so the
+    // interest contributes its tax (paid from the bucket residual) but no
+    // phantom spendable dollars — preventing the global "engine drift" the
+    // double-count otherwise produced (worst-bucket/aggregator stay $0 because
+    // the After-Tax Cash node is reconciled only globally).
+    { id: 'dst_cashint',     label: 'Cash Interest → Cash',      kind: 'deposit',  amount: breakdown.cashInterest,          source: BUCKET_ORD },
   ];
 
   const EPS = 0.005;

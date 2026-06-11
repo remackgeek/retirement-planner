@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components --
+   Context object + provider + hook in one file is idiomatic React; splitting
+   them across files for HMR-only benefit isn't worth the importer churn. */
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { DisplayCurrency } from '../utils/displayCurrency';
 

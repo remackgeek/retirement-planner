@@ -1,0 +1,13 @@
+{
+  "_rationale": "Born 1960 (currentAge 66 @ referenceYear 2026) → SECURE 2.0 RMD start age 75. Index 7 = age 73 and index 8 = age 74 have rmdRequired = 0 (deferred past 73 — the regression guard). Index 9 = age 75 forces the first RMD on the still-full $500k balance: 500000 / 24.6 = $20,325.20. Balance is flat at $500k through age 74 (no income, no spending, 0% growth) so the age-75 BOY balance is exactly $500k. probability 100% (no spending → never fails).",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 66, "value": 500000, "note": "Starting balance" },
+    { "index": 7, "age": 73, "value": 500000, "tolerance": 1, "note": "Still full at 73 — no RMD forced for a born-1960 retiree (would be pulled under the old hardcoded-73 rule)" }
+  ],
+  "breakdownChecks": [
+    { "index": 7, "field": "rmdRequired", "value": 0, "tolerance": 0.01, "_note": "Age 73: no RMD (start age is 75 for born 1960+)" },
+    { "index": 8, "field": "rmdRequired", "value": 0, "tolerance": 0.01, "_note": "Age 74: still no RMD" },
+    { "index": 9, "field": "rmdRequired", "value": 20325.2, "tolerance": 1, "_note": "Age 75: first RMD = 500000 / 24.6 IRS divisor" }
+  ]
+}

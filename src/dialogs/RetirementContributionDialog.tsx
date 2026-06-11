@@ -9,70 +9,22 @@ import { Checkbox } from 'primereact/checkbox';
 import { confirmDialog } from 'primereact/confirmdialog';
 import type { IncomeEvent, ContributionType } from '../types/IncomeEvent';
 import type { Account, AccountType } from '../types/Account';
-import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
+import { spacing, colors, fontSize, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
 import { generateDefaultIncomeEventName, eventTypeIcons } from '../utils/defaultName';
 import { resolveOwnerAge } from '../utils/ownerAge';
-
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.md};
-  padding: ${spacing.sm} 0;
-
-  .p-inputtext,
-  .p-dropdown,
-  .p-inputnumber {
-    width: 100%;
-  }
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.xs};
-`;
-
-const FieldRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: ${spacing.md};
-`;
-
-const AmountRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 9rem;
-  gap: ${spacing.sm};
-  align-items: start;
-`;
-
-const CheckboxGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${spacing.sm};
-`;
+import {
+  FormFullWidth as Form,
+  InputGroupPlain as InputGroup,
+  FieldRowGrid as FieldRow,
+  AmountRow,
+  CheckboxGroup,
+  TrashButton,
+} from './SettingsDialogPrimitives';
 
 const HelpText = styled.small`
   color: ${colors.textMuted};
   font-size: ${fontSize.xs};
-`;
-
-const TrashButton = styled.button`
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: ${spacing.xs};
-  border-radius: ${border.radius};
-  color: ${colors.danger};
-  font-size: ${fontSize.xl};
-  line-height: 1;
-  display: flex;
-  align-items: center;
-
-  &:hover {
-    color: ${colors.dangerHover};
-    background: ${colors.bgMedium};
-  }
 `;
 
 interface RetirementContributionDialogProps {
@@ -163,7 +115,7 @@ const RetirementContributionDialog: React.FC<RetirementContributionDialogProps> 
         name: generateDefaultIncomeEventName('retirement_contribution', existingEvents),
       });
     }
-  }, [visible, editEvent, existingEvents, currentAge]);
+  }, [visible, editEvent, existingEvents, currentAge, range.max]);
 
   const requiredAccountType = accountTypeForContribution[formData.contributionType];
   const eligibleAccounts = accounts.filter((a) => a.type === requiredAccountType);

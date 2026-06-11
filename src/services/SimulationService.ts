@@ -58,8 +58,24 @@ export const IRS_UNIFORM_LIFETIME_TABLE: Record<number, number> = {
   114:  3.0,
 };
 
-export function calculateRMD(tradBalance: number, age: number): number {
-  if (age < 73) return 0;
+/**
+ * SECURE 2.0 RMD start age by birth year:
+ *   born ≤ 1950 → 72  (SECURE 1.0; also the table's earliest divisor)
+ *   born 1951–1959 → 73 (SECURE 2.0, effective 2023)
+ *   born ≥ 1960 → 75 (SECURE 2.0, effective 2033)
+ * The pre-2020 70½ rule is intentionally not modeled — it affects only those
+ * born ≤ 1949 (outside this tool's audience) and the divisor table starts at 72.
+ * Birth year is derived from `referenceYear − currentAge` (per owner) at the
+ * call sites. Non-finite input falls back to 72 (safe, never over-defers RMD).
+ */
+export function getRmdStartAge(birthYear: number): number {
+  if (!Number.isFinite(birthYear) || birthYear <= 1950) return 72;
+  if (birthYear <= 1959) return 73;
+  return 75;
+}
+
+export function calculateRMD(tradBalance: number, age: number, rmdStartAge = 73): number {
+  if (age < rmdStartAge) return 0;
   const divisor = IRS_UNIFORM_LIFETIME_TABLE[Math.min(age, 114)] ?? 2.9;
   return tradBalance / divisor;
 }
@@ -1664,6 +1680,12 @@ export function calculateAnnualCashFlow(
   const bracketHeadroom = spendingOrder === 'bracket_aware'
     ? computeBracketHeadroomForTrad(userData, income, year, inflationRate, userData.currentAge + i, spouseAge)
     : 0;
+  // SECURE 2.0 RMD start ages (birth-year derived). Single-year callers don't
+  // model the survivor collapse, so plain per-owner start ages suffice here.
+  const selfRmdStartAge = getRmdStartAge(userData.referenceYear - userData.currentAge);
+  const spouseRmdStartAge = userData.spouseAge !== null
+    ? getRmdStartAge(userData.referenceYear - userData.spouseAge)
+    : 73;
   return calculateAnnualCashFlowCore(
     userData,
     year,
@@ -1680,6 +1702,14 @@ export function calculateAnnualCashFlow(
     undefined,
     spendingOrder,
     bracketHeadroom,
+    // Explicit pass-through of the defaults so the two trailing RMD-start-age
+    // args land in the right positions.
+    true,                   // includeAudit
+    0,                      // cashInterest
+    userData.filingStatus,  // filingStatus
+    false,                  // consolidated
+    selfRmdStartAge,
+    spouseRmdStartAge,
   );
 }
 
@@ -1789,6 +1819,12 @@ function calculateAnnualCashFlowCore(
   // survivor owns everything. `beginningTradBalances` is passed as
   // { self: combined, spouse: 0 } by the caller in this mode.
   consolidated: boolean = false,
+  // SECURE 2.0 RMD start age for the self/survivor slot and the spouse slot
+  // (73/75/72 by birth year — see getRmdStartAge). Default 73 keeps single-year
+  // callers that don't supply it on the pre-fix behavior; the public wrapper and
+  // the MC hot loop both pass birth-year-derived values.
+  rmdStartAge = 73,
+  spouseRmdStartAge = 73,
 ): AnnualCashFlowBreakdown {
   const { ssGross, afterTaxIncome, conversionGross } = income;
   // In survivor mode the survivor owns everything, so fold both owners' requested
@@ -1807,7 +1843,13 @@ function calculateAnnualCashFlowCore(
   const otherTaxableGross = income.otherTaxableGross + cashInterest;
   const totalSpendingNet = spending.baseSpendingNet + spending.otherSpendingGoalsNet;
   const totalGrossIncome = ssGross + otherTaxableGross + afterTaxIncome;
-  const availableCash = afterTaxIncome + ssGross + otherTaxableGross;
+  // Cash interest is REINVESTED into the cash balance (credited in the growth loop
+  // as `balances[id] += interest`), so it is NOT separately spendable. It stays in
+  // otherTaxableGross above purely for the tax pipeline (accrual-basis ordinary
+  // income + NIIT proxy). Counting it in both the balance AND availableCash would
+  // double-count the yield (a 4% account behaving like 8%): the spending pull draws
+  // from the already-grown cash balance, so the interest funds spending there, not here.
+  const availableCash = afterTaxIncome + ssGross + otherTaxableGross - cashInterest;
 
   const ltcgRate = userData.longTermCapGainsRate ?? 0;
   const cashBal = sumBalancesOfType(userData.accounts, balances, 'cash');
@@ -1834,8 +1876,8 @@ function calculateAnnualCashFlowCore(
     ?? sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'self');
   const spouseTradBal = beginningTradBalances?.spouse
     ?? sumBalancesOfTypeAndOwner(userData.accounts, balances, 'traditional', 'spouse');
-  const selfRmd = calculateRMD(selfTradBal, age);
-  const spouseRmd = spouseAge !== null ? calculateRMD(spouseTradBal, spouseAge) : 0;
+  const selfRmd = calculateRMD(selfTradBal, age, rmdStartAge);
+  const spouseRmd = spouseAge !== null ? calculateRMD(spouseTradBal, spouseAge, spouseRmdStartAge) : 0;
   const rmdRequired = selfRmd + spouseRmd;
   const selfRmdDivisor = selfRmd > 0 ? (IRS_UNIFORM_LIFETIME_TABLE[Math.min(age, 114)] ?? 2.9) : 0;
   const spouseRmdDivisor = spouseAge !== null && spouseRmd > 0
@@ -1855,7 +1897,7 @@ function calculateAnnualCashFlowCore(
   let rothConversion = 0;
   let rothConversionSelf = 0;
   let rothConversionSpouse = 0;
-  let rothConversionRequested = Math.max(0, conversionGross);
+  const rothConversionRequested = Math.max(0, conversionGross);
   let capWasBinding = false;
   let ordinaryTax = 0;
   let federalCapGainsTax = 0;
@@ -1958,13 +2000,17 @@ function calculateAnnualCashFlowCore(
     stateRes: StateTaxResult;
   } {
     const ord = otherTaxableGross + tradVal;
-    const ssTax = calculateSSTaxableAmount(ssGross, ord, filingStatus);
+    // SS provisional income is AGI-ex-SS + ½ SS, and AGI includes net capital
+    // gains. The brokerage pull (ltcgVal, 100% gain in this model) therefore
+    // raises provisional income even though it is taxed at LTCG rates, not folded
+    // into the ordinary base `comb` below. See calculateSSTaxableAmount / IRS Pub 915.
+    const ssTax = calculateSSTaxableAmount(ssGross, ord + ltcgVal, filingStatus);
     const comb = ord + ssTax;
     const fed = comb > 0
       ? comb - calculateNetFromGross(comb, filingStatus, age, year, spouseAge, inflationRate)
       : 0;
     const sres = computeStateTax(stateProfile, {
-      ordinaryGross: income.otherTaxableGross,
+      ordinaryGross: otherTaxableGross,
       ssTaxableFederal: ssTax,
       ssGross,
       traditionalWithdrawal: tradVal,
@@ -1998,7 +2044,7 @@ function calculateAnnualCashFlowCore(
     const tradAvailForConvSpouse = Math.max(0, spouseTradBal - spouseRmd);
     const convCandidateSelf   = Math.min(conversionGrossSelf,   tradAvailForConvSelf);
     const convCandidateSpouse = Math.min(conversionGrossSpouse, tradAvailForConvSpouse);
-    let convCandidate = convCandidateSelf + convCandidateSpouse;
+    const convCandidate = convCandidateSelf + convCandidateSpouse;
 
     // Baseline ordinary tax (no conversion) at the current spending waterfall.
     const baseTax = computeOrdinaryTaxFor(sw.forcedTrad, sw.spendingFromBrokerage);
@@ -2059,7 +2105,11 @@ function calculateAnnualCashFlowCore(
     // Full tax recomputation with final pulls (captures LTCG/NIIT on the extra
     // Taxable pull used to pay conversion tax).
     const ordinaryGross = otherTaxableGross + fromTrad;
-    ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross, filingStatus);
+    // Capital gains (the brokerage pull, 100% gain in this model) are part of AGI
+    // and so raise SS provisional income — but are taxed at LTCG rates, so they are
+    // NOT added to the ordinary taxable base (combinedTaxable) below. This mirrors
+    // the IRMAA/NIIT MAGI proxy (magiFromBreakdown), which also includes brokerage.
+    ssTaxableAmount = calculateSSTaxableAmount(ssGross, ordinaryGross + fromBrokerage, filingStatus);
     const combinedTaxable = ordinaryGross + ssTaxableAmount;
 
     let federalOrdinaryTaxIter = 0;
@@ -2075,7 +2125,7 @@ function calculateAnnualCashFlowCore(
       federalOrdinaryTaxIter = combinedTaxable - fedNet;
     }
     const stateRes = computeStateTax(stateProfile, {
-      ordinaryGross: income.otherTaxableGross,
+      ordinaryGross: otherTaxableGross,
       ssTaxableFederal: ssTaxableAmount,
       ssGross,
       traditionalWithdrawal: fromTrad,
@@ -2146,7 +2196,6 @@ function calculateAnnualCashFlowCore(
     // don't pass silently.
     if (iter === MAX_ITERATIONS - 1) {
       const delta = Math.abs(newWithdrawal - withdrawal);
-      // eslint-disable-next-line no-console
       console.warn(
         `[SimulationService] tax fixed-point did not converge in ${MAX_ITERATIONS} ` +
         `iterations (year ${year}, age ${age}, residual delta=$${delta.toFixed(2)}). ` +
@@ -2187,7 +2236,10 @@ function calculateAnnualCashFlowCore(
           combinedTaxableFinal, filingStatus, age, year, spouseAge, inflationRate,
         )
       : null;
-    const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal, filingStatus);
+    // Provisional income includes capital gains (see the in-loop ssTaxableAmount
+    // computation) — pass the brokerage pull so the audit's displayed provisional
+    // income / zone matches the SS taxable amount actually used in the tax calc.
+    const ssDetail = calculateSSTaxableAmountDetailed(ssGross, ordinaryGrossFinal + fromBrokerage, filingStatus);
     const irmaaDetail = irmaaEnabled
       ? calculateIRMAADetailed(priorMagi ?? 0, filingStatus, year, inflationRate ?? 0, age, spouseAge)
       : null;
@@ -2352,6 +2404,19 @@ function magiFromBreakdown(b: AnnualCashFlowBreakdown): number {
   return b.otherTaxableGross + b.withdrawalFromTraditional + b.ssTaxableAmount + b.withdrawalFromBrokerage;
 }
 
+/** Per-type portfolio balances captured at the same instant as `path[last]`
+ *  (start of the final projection year), deflated by the same cumulative
+ *  inflation — i.e., real (year-0) dollars in the identical comparison frame
+ *  as terminal-wealth scoring. Consumed by the Roth wizard's after-tax
+ *  objective (`scoreProjection`), which discounts Traditional and Brokerage
+ *  by their embedded tax liabilities. */
+export interface FinalBalancesByType {
+  traditional: number;
+  roth: number;
+  brokerage: number;
+  cash: number;
+}
+
 interface SimRun {
   path: number[];
   stockFactors: number[];
@@ -2360,6 +2425,7 @@ interface SimRun {
   inflation: number[];
   failed: boolean;
   failedYear: number;
+  finalBalancesByType: FinalBalancesByType;
 }
 
 // Precompute phase convention: anything that doesn't depend on per-run randomness
@@ -2390,6 +2456,13 @@ interface Precomputes {
    *  Traditional/Roth consolidation in the core + applyCashFlow. All false when
    *  the death model is inactive. */
   survivorModeByYear: boolean[];
+  /** SECURE 2.0 RMD start age (73/75/72 by birth year) for the primary/self slot.
+   *  In survivor years this is the SURVIVOR's start age (the self slot then holds
+   *  the consolidated Traditional at the survivor's age). See `getRmdStartAge`. */
+  rmdStartAgeByYear: number[];
+  /** RMD start age for the spouse slot; `null` when there is no spouse (and in
+   *  survivor years, where the spouse slot is unused). */
+  spouseRmdStartAgeByYear: Array<number | null>;
   incomeByYear: AccumulatedIncome[];
   spendingByYear: Array<{
     baseSpendingNet: number;
@@ -2500,6 +2573,9 @@ function simulateOneRun(
   let failed = false;
   let failedYear = totalYears;
   let cumulativeInflation = 1;
+  // Zero-init covers the degenerate totalYears === 0 case; otherwise assigned
+  // in the final loop iteration alongside the last path point.
+  let finalBalancesByType: FinalBalancesByType = { traditional: 0, roth: 0, brokerage: 0, cash: 0 };
 
   for (let i = 0; i < totalYears; i++) {
     // The federal tax cache key includes taxYear, so cross-year hits are
@@ -2523,6 +2599,17 @@ function simulateOneRun(
     const startBalance = sumBalances(balances);
     path.push(startBalance / cumulativeInflation);
     inflation.push(cumulativeInflation);
+    if (i === totalYears - 1) {
+      // Same instant and deflation frame as the path point above, decomposed
+      // by account type for the after-tax terminal-wealth score. Sums to
+      // path[last] by construction.
+      finalBalancesByType = {
+        traditional: sumBalancesOfType(userData.accounts, balances, 'traditional') / cumulativeInflation,
+        roth: sumBalancesOfType(userData.accounts, balances, 'roth') / cumulativeInflation,
+        brokerage: sumBalancesOfType(userData.accounts, balances, 'brokerage') / cumulativeInflation,
+        cash: sumBalancesOfType(userData.accounts, balances, 'cash') / cumulativeInflation,
+      };
+    }
 
     // IRS rule: RMD uses Dec 31 of prior year (beginning-of-year) balance, split by owner.
     // In survivor mode the survivor inherited the deceased's Traditional, so the
@@ -2573,6 +2660,7 @@ function simulateOneRun(
       userData, year, yearIncome, yearSpending, yearStateProfile, yearStateResolvedKey, yearAge, yearSpouseAge, balances, beginningTradBalances, cap, userData.inflationRate, priorMagi,
       spendingOrder, precomputes.bracketHeadroomForTradByYear[i], includeAudit, cashInterest,
       yearFilingStatus, yearSurvivorMode,
+      precomputes.rmdStartAgeByYear[i], precomputes.spouseRmdStartAgeByYear[i] ?? 73,
     );
     breakdowns.push(effectiveCashFlow);
 
@@ -2627,7 +2715,7 @@ function simulateOneRun(
     cumulativeInflation *= 1 + yearInflation;
   }
 
-  return { path, stockFactors, bondFactors, breakdowns, inflation, failed, failedYear };
+  return { path, stockFactors, bondFactors, breakdowns, inflation, failed, failedYear, finalBalancesByType };
 }
 
 export interface PercentileBand {
@@ -2776,6 +2864,14 @@ export function buildPrecomputes(
   const spouseAgeByYear: Array<number | null> = new Array(totalYears);
   const filingStatusByYear: FilingStatus[] = new Array(totalYears);
   const survivorModeByYear: boolean[] = new Array(totalYears);
+  const rmdStartAgeByYear: number[] = new Array(totalYears);
+  const spouseRmdStartAgeByYear: Array<number | null> = new Array(totalYears);
+  // SECURE 2.0 RMD start ages are static per person (birth-year derived). Compute
+  // once; the only per-year variation is the survivor collapse handled in the loop.
+  const selfRmdStartAge = getRmdStartAge(userData.referenceYear - userData.currentAge);
+  const spouseRmdStartAge = userData.spouseAge !== null
+    ? getRmdStartAge(userData.referenceYear - userData.spouseAge)
+    : null;
   const incomeByYear: Precomputes['incomeByYear'] = new Array(totalYears);
   const spendingByYear: Precomputes['spendingByYear'] = new Array(totalYears);
   const bracketHeadroomForTradByYear: number[] = new Array(totalYears);
@@ -2797,10 +2893,18 @@ export function buildPrecomputes(
       ageByYear[i] = deathModel.survivor === 'self' ? selfAge : (spouseAgeRaw ?? selfAge);
       spouseAgeByYear[i] = null;
       filingStatusByYear[i] = 'single';
+      // The self slot now holds the survivor's consolidated Traditional at the
+      // survivor's age, so its RMD start age must be the survivor's birth cohort.
+      rmdStartAgeByYear[i] = deathModel.survivor === 'self'
+        ? selfRmdStartAge
+        : (spouseRmdStartAge ?? selfRmdStartAge);
+      spouseRmdStartAgeByYear[i] = null;
     } else {
       ageByYear[i] = selfAge;
       spouseAgeByYear[i] = spouseAgeRaw;
       filingStatusByYear[i] = userData.filingStatus;
+      rmdStartAgeByYear[i] = selfRmdStartAge;
+      spouseRmdStartAgeByYear[i] = spouseAgeRaw !== null ? spouseRmdStartAge : null;
     }
     incomeByYear[i] = accumulateIncome(userData, year, inflationRate, survivorMode);
     spendingByYear[i] = accumulateSpending(userData, year, inflationRate);
@@ -2831,7 +2935,8 @@ export function buildPrecomputes(
 
   return {
     stateResolvedKeyByYear, stateProfileByYear, ageByYear, spouseAgeByYear,
-    filingStatusByYear, survivorModeByYear, incomeByYear, spendingByYear,
+    filingStatusByYear, survivorModeByYear, rmdStartAgeByYear, spouseRmdStartAgeByYear,
+    incomeByYear, spendingByYear,
     bracketHeadroomForTradByYear, spendingOrder: resolvedSpendingOrder,
     deterministicBaselineByYear,
   };
@@ -3042,6 +3147,9 @@ export function runDeterministicProjection(
   breakdowns: AnnualCashFlowBreakdown[];
   inflation: number[];
   years: number[];
+  /** Per-type decomposition of `path[last]` (same instant, same real-dollar
+   *  frame). Consumed by the Roth wizard's after-tax terminal-wealth score. */
+  finalBalancesByType: FinalBalancesByType;
 } {
   clearTaxCalculationCache();
   const userData = prepareUserData(rawUserData);
@@ -3054,7 +3162,13 @@ export function runDeterministicProjection(
     userData, precomputes, accountIndex, nominalGenerator, 0, Math.random, blackSwanLookup
   );
   const years = Array.from({ length: totalYears }, (_, i) => userData.referenceYear + i);
-  return { path: run.path, breakdowns: run.breakdowns, inflation: run.inflation, years };
+  return {
+    path: run.path,
+    breakdowns: run.breakdowns,
+    inflation: run.inflation,
+    years,
+    finalBalancesByType: run.finalBalancesByType,
+  };
 }
 
 // Fast deterministic preview shaped like a full SimulationResult. Used by the

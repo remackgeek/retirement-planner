@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateAnnualCashFlow,
   calculateRMD,
+  getRmdStartAge,
   computeBracketHeadroomForTrad,
   computeMarginalStackAttribution,
   getEffectiveStateName,
@@ -695,6 +696,28 @@ describe('calculateAnnualCashFlow', () => {
       expect(tradResult.ssTaxableAmount).toBeGreaterThan(0); // trad withdrawal pushed SS into taxable range
     });
 
+    it('brokerage withdrawal (capital gains) increases SS provisional income', () => {
+      // Capital gains are part of AGI, so a brokerage pull raises SS provisional
+      // income just like a Traditional pull does (unlike Roth principal, which is
+      // not in AGI). Same shape as the Roth/Trad cases above. LTCG rate 0 isolates
+      // the provisional-income mechanic; the standard deduction absorbs the taxable
+      // SS, so there is no tax feedback and the brokerage pull is exactly the $20k gap.
+      // Provisional = 20k LTCG + 0.5*20k SS = 30k → single 50% zone (t1 25k, t2 34k)
+      // → ssTaxable = min(0.5*(30k-25k), 0.5*20k) = 2,500.
+      // Before the fix, brokerage was excluded from provisional (10k < 25k) → ssTaxable 0.
+      const brokUserData = makeUserData({
+        accounts: [{ id: 'brok-1', name: 'Taxable 1', type: 'brokerage', balance: 500000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+        longTermCapGainsRate: 0,
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 20000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: false },
+        ],
+        spendingGoals: [{ id: 's1', name: 'Living Expenses 1', type: 'living_expenses', amount: 40000, startAge: 60, inflationAdjusted: false }],
+      });
+      const brokResult = calculateAnnualCashFlow(brokUserData, 2026, 0);
+      expect(brokResult.withdrawalFromBrokerage).toBeGreaterThan(0);
+      expect(brokResult.ssTaxableAmount).toBeCloseTo(2500, 0);
+    });
+
     it('draws from taxable first, then traditional, with explicit accountBalances', () => {
       const userData = makeUserData({
         accounts: [
@@ -787,7 +810,7 @@ describe('calculateAnnualCashFlow', () => {
       });
       const result = calculateAnnualCashFlow(userData, 2026, 0);
       // CA profile: stateOrdinaryBase $100k − std ded $5,540 = $94,460 taxable.
-      // Walking CA single brackets: 1%·10,412 + 2%·14,272 + 4%·14,275 + 6%·15,122 + 8%·14,269 + 9.3%·26,110 ≈ $5,438.
+      // Walking CA 2024 single brackets: 1%·10,756 + 2%·14,743 + 4%·14,746 + 6%·15,621 + 8%·14,740 + 9.3%·23,854 ≈ $5,327.
       // Federal tax on $100k − $16,100 = $83,900 taxable → $13,170.
       expect(result.totalTax).toBeGreaterThan(5000); // federal + state
       const flResult = calculateAnnualCashFlow(makeUserData({
@@ -796,7 +819,7 @@ describe('calculateAnnualCashFlow', () => {
           { id: '1', name: 'Pension Income 1', type: 'pension_income', amount: 100000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       }), 2026, 0);
-      expect(result.totalTax - flResult.totalTax).toBeCloseTo(5438, 0);
+      expect(result.totalTax - flResult.totalTax).toBeCloseTo(5327, 0);
     });
 
     it('relocation changes tax rate at the correct year', () => {
@@ -811,8 +834,8 @@ describe('calculateAnnualCashFlow', () => {
       });
       const before = calculateAnnualCashFlow(userData, 2029, 0);
       const after = calculateAnnualCashFlow(userData, 2030, 0);
-      // Before: CA tax ≈ $5,438 on $100k pension (graduated brackets above std ded). After: FL 0%.
-      expect(before.totalTax - after.totalTax).toBeCloseTo(5438, 0);
+      // Before: CA tax ≈ $5,327 on $100k pension (graduated 2024 brackets above std ded). After: FL 0%.
+      expect(before.totalTax - after.totalTax).toBeCloseTo(5327, 0);
     });
 
     it('multiple relocations: middle segment uses correct rate', () => {
@@ -1009,11 +1032,36 @@ describe('runSimulation — hoisted precomputation equivalence', () => {
   });
 });
 
+describe('getRmdStartAge (SECURE 2.0 birth-year schedule)', () => {
+  it('returns 72 for born 1950 or earlier', () => {
+    expect(getRmdStartAge(1950)).toBe(72);
+    expect(getRmdStartAge(1945)).toBe(72);
+  });
+  it('returns 73 for born 1951-1959', () => {
+    expect(getRmdStartAge(1951)).toBe(73);
+    expect(getRmdStartAge(1959)).toBe(73);
+  });
+  it('returns 75 for born 1960 or later', () => {
+    expect(getRmdStartAge(1960)).toBe(75);
+    expect(getRmdStartAge(1975)).toBe(75);
+  });
+  it('falls back to 72 for non-finite input (never over-defers)', () => {
+    expect(getRmdStartAge(NaN)).toBe(72);
+  });
+});
+
 describe('calculateRMD', () => {
   it('returns 0 for age below 73', () => {
     expect(calculateRMD(500000, 72)).toBe(0);
     expect(calculateRMD(500000, 65)).toBe(0);
     expect(calculateRMD(500000, 0)).toBe(0);
+  });
+
+  it('honors an explicit rmdStartAge of 75 (SECURE 2.0 born-1960+ cohort)', () => {
+    // No RMD at 73/74 when the start age is 75; first RMD at 75.
+    expect(calculateRMD(500000, 73, 75)).toBe(0);
+    expect(calculateRMD(500000, 74, 75)).toBe(0);
+    expect(calculateRMD(500000, 75, 75)).toBeCloseTo(500000 / 24.6, 2);
   });
 
   it('returns 0 for zero balance regardless of age', () => {
@@ -1708,7 +1756,7 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 50_000, startAge: 65, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 50_000, startAge: 65, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 500_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1761,8 +1809,8 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv',   amount: 30_000, startAge: 60, owner: 'self',   taxStatus: 'before_tax', colaType: 'fixed' } as any,
-        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 20_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv',   amount: 30_000, startAge: 60, owner: 'self',   taxStatus: 'before_tax', colaType: 'fixed' },
+        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 20_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 400_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1800,7 +1848,7 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 100_000, startAge: 60, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 100_000, startAge: 60, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 40_000,  owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1839,8 +1887,8 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv',   amount: 60_000, startAge: 60, owner: 'self',   taxStatus: 'before_tax', colaType: 'fixed' } as any,
-        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 40_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv',   amount: 60_000, startAge: 60, owner: 'self',   taxStatus: 'before_tax', colaType: 'fixed' },
+        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 40_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 500_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1873,7 +1921,7 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 50_000, startAge: 60, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 50_000, startAge: 60, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-self',    name: 'Self Trad',      type: 'traditional', balance: 500_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1929,7 +1977,7 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 25_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 25_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-spouse', name: 'Spouse Trad', type: 'traditional', balance: 300_000, owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1961,7 +2009,7 @@ describe('audit.accountFlows (via runSimulation)', () => {
           startAge: 60,
           taxStatus: 'after_tax',
           colaType: 'fixed',
-        } as any,
+        },
       ],
       accounts: [
         { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 100_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -2309,11 +2357,10 @@ describe('cash account', () => {
       lifeExpectancy: 62,
     });
     const result = runSimulation(ud, createSeededRandom(42));
-    // cashEndingBalance isolates the cash account itself (total nominal path
-    // would also include a synthetic Reinvestment-Taxable account that absorbs
-    // the $4k surplus from cash interest income — that's correct behavior, just
-    // not what we're testing here). Cash growth: 100k × 1.04 = $104k. A bypass-bug
-    // would produce ~134k (= 100k × (0.6*1.5 + 0.4*1.1)).
+    // No spending goals, so the cash account simply grows by its yield and the
+    // interest is reinvested in the balance (accrue-in-account — it is NOT a
+    // surplus deposited to a synthetic Taxable account). Cash growth: 100k × 1.04
+    // = $104k. A bypass-bug would produce ~134k (= 100k × (0.6*1.5 + 0.4*1.1)).
     expect(result.nominalBreakdowns[0].cashInterest).toBeCloseTo(4000, 1);
     expect(result.nominalBreakdowns[0].cashEndingBalance).toBeCloseTo(104_000, 0);
     expect(result.nominalBreakdowns[0].cashEndingBalance).toBeLessThan(110_000); // would be ~134k if bypass missed
@@ -2333,7 +2380,7 @@ describe('cash account', () => {
         id: 'pension-1', type: 'pension_income', name: 'Pension',
         amount: 300_000, startAge: 60, endAge: 60,
         taxStatus: 'before_tax', colaType: 'fixed',
-      } as any],
+      }],
       portfolioAssumptions: {
         stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
         stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
@@ -2395,7 +2442,7 @@ describe('cash account', () => {
         id: 'conv-1', type: 'roth_conversion', name: 'Conv',
         amount: 100_000, startAge: 60, endAge: 60,
         taxStatus: 'before_tax', colaType: 'fixed',
-      } as any],
+      }],
       portfolioAssumptions: {
         stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
         stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
@@ -2533,9 +2580,11 @@ describe('cash account', () => {
   });
 
   it('cash sweeps and balances are reflected in cashEndingBalance', () => {
-    // Sanity check the surfaced cashEndingBalance field. 100k → 4k interest →
-    // -16k principal withdrawal (since 4k interest covered part of 20k spending)
-    // = 88k end balance.
+    // Sanity check the surfaced cashEndingBalance field. 100k → 4k interest credited
+    // to the balance ($104k) → withdraw the full 20k spending from the grown balance
+    // = 84k end balance. The interest is reinvested in the cash account (accrue-in-
+    // account), NOT counted again as spendable income, so the principal pull is the
+    // full $20k — not $16k. (Counting it twice was the cash-double-count bug.)
     const ud = makeUserData({
       accounts: [{ id: 'cash-1', name: 'Cash', type: 'cash', balance: 100_000, stockAllocation: 0, portfolioBalance: '60_40' as const }],
       spendingGoals: [baseSpending(20_000 / 12)],
@@ -2550,8 +2599,8 @@ describe('cash account', () => {
     });
     const bd = runSimulation(ud, createSeededRandom(42)).nominalBreakdowns[0];
     expect(bd.cashInterest).toBeCloseTo(4_000, 1);
-    expect(bd.withdrawalFromCash).toBeCloseTo(16_000, 0);
-    expect(bd.cashEndingBalance).toBeCloseTo(88_000, 0);
+    expect(bd.withdrawalFromCash).toBeCloseTo(20_000, 0);
+    expect(bd.cashEndingBalance).toBeCloseTo(84_000, 0);
   });
 
   it('all account balances are non-negative after the per-year loop (C1 clamp invariant)', () => {

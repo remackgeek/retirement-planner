@@ -3,7 +3,7 @@ import { spacing, colors, border, fontSize } from '../../styles/theme';
 import { toDisplay, type DisplayCurrency } from '../../utils/displayCurrency';
 import { fmtPct } from '../../utils/formatPercent';
 import type { AnnualCashFlowBreakdown } from '../../services/SimulationService';
-import { fmtMoney } from './YearTaxAudit';
+import { fmtMoney } from '../../utils/fmtMoney';
 
 interface Props {
   breakdown: AnnualCashFlowBreakdown;

@@ -53,13 +53,17 @@ export interface UserData {
   priorWorkingMagi?: number;
   contributionLimits?: ContributionLimits;
   // Caps the Roth Conversion wizard's generated per-year conversion so the
-  // year's MAGI stays under (a) the next IRMAA tier ceiling — avoiding a
-  // higher Medicare surcharge 2 years later — and (b) the NIIT threshold.
-  // Conservative: it only ever lowers a conversion. Affects generated
+  // year's MAGI stays under the next IRMAA tier ceiling — avoiding a higher
+  // Medicare surcharge 2 years later. Conservative: it only ever lowers a
+  // conversion. NIIT is NOT part of the cap (it's a marginal 3.8% tax, not a
+  // cliff — the engine prices it in every scored projection). Affects generated
   // schedules only, NOT manually entered conversions and NOT the
-  // bracket-aware spending pull (the 12% spending headroom sits below both
-  // cliffs and can't trip them). Default ON (undefined or true): practitioner
-  // consensus treats IRMAA cliffs as hard caps. Explicit `false` opts out.
+  // bracket-aware spending pull (the 12% spending headroom sits below the
+  // first tier and can't trip it). Default ON (undefined or true): practitioner
+  // consensus treats IRMAA cliffs as hard caps. Explicit `false` opts out —
+  // the optimizer then weighs IRMAA surcharges against conversion benefit
+  // (tier-aware probes) instead of forbidding crossings. The field name keeps
+  // "Niit" for persisted-data compatibility only.
   // Exposed in the Roth Conversion wizard, not in the Scenario dialog.
   // See CLAUDE.md "Cross-year spending source policy" and
   // MODEL_DETAILS "respectIrmaaNiitCliffs".

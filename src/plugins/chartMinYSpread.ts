@@ -1,6 +1,8 @@
 import type { Chart, Plugin, ChartType, Scale } from 'chart.js';
 
 declare module 'chart.js' {
+  // Type param name must match chart.js's own declaration for merging (TS2428).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface PluginOptionsByType<TType extends ChartType> {
     minYSpread?: MinYSpreadOptions;
   }

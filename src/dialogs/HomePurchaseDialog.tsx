@@ -7,28 +7,14 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
+import { spacing, colors, fontSize, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, spendingGoalAgeRanges } from '../utils/ageOptions';
 import { generateDefaultSpendingGoalName, goalTypeIcons } from '../utils/defaultName';
-
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.md};
-  padding: ${spacing.sm} 0;
-
-  .p-inputtext,
-  .p-inputnumber,
-  .p-dropdown {
-    width: 100%;
-  }
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.xs};
-`;
+import {
+  FormFullWidth as Form,
+  InputGroupPlain as InputGroup,
+  TrashButton,
+} from './SettingsDialogPrimitives';
 
 const RadioGroup = styled.div`
   display: flex;
@@ -48,24 +34,6 @@ const RadioDescription = styled.span`
   color: ${colors.textMuted};
   font-size: ${fontSize.xs};
   display: block;
-`;
-
-const TrashButton = styled.button`
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: ${spacing.xs};
-  border-radius: ${border.radius};
-  color: ${colors.danger};
-  font-size: ${fontSize.xl};
-  line-height: 1;
-  display: flex;
-  align-items: center;
-
-  &:hover {
-    color: ${colors.dangerHover};
-    background: ${colors.bgMedium};
-  }
 `;
 
 interface HomePurchaseDialogProps {

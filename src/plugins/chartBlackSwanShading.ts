@@ -4,6 +4,8 @@ import { colors } from '../styles/theme';
 
 // Extend Chart.js types to include our custom plugin
 declare module 'chart.js' {
+  // Type param name must match chart.js's own declaration for merging (TS2428).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface PluginOptionsByType<TType extends ChartType> {
     blackSwanShading?: BlackSwanShadingOptions;
   }

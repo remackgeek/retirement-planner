@@ -90,9 +90,15 @@ describe('FillToBracketStrategy IRMAA/NIIT cliff cap', () => {
     expect(clamped[0].conversionAmount).toBe(unclamped[0].conversionAmount);
   });
 
-  it('applies the NIIT cap regardless of age (threshold is not age-gated)', () => {
-    // Age 55, NIIT enabled, IRMAA disabled. The 24% single-filer fill exceeds the
-    // $200k NIIT threshold, so the cap binds even pre-Medicare.
+  it('does NOT cap at the NIIT threshold (NIIT is a marginal tax, not a cliff)', () => {
+    // Requirements changed (optimizer review): NIIT was removed from the hard
+    // cap. It's 3.8% × min(investment income, MAGI − threshold) — a marginal
+    // tax, not a discontinuity — and a conversion is not investment income, so
+    // crossing the threshold often costs $0. The engine prices NIIT inside
+    // every scored projection, so the score arbitrates it. Pre-change this
+    // exact setup clamped the fill at the $200k single threshold; now the
+    // cliffs-ON fill must equal the cliffs-OFF fill (well above $200k), since
+    // IRMAA is disabled and nothing else binds.
     const ud = baseUserData({
       currentAge: 55, lifeExpectancy: 57,
       accounts: [
@@ -100,8 +106,26 @@ describe('FillToBracketStrategy IRMAA/NIIT cliff cap', () => {
       ],
       enableIRMAA: false, enableNIIT: true, respectIrmaaNiitCliffs: true,
     });
-    const clamped = computeFillToBracketSchedule(ud, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
-    expect(clamped[0].conversionAmount).toBeCloseTo(200_000, -2);
+    const cliffsOn = computeFillToBracketSchedule(ud, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    const cliffsOff = computeFillToBracketSchedule({ ...ud, respectIrmaaNiitCliffs: false }, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    expect(cliffsOn[0].conversionAmount).toBeGreaterThan(200_000);
+    expect(cliffsOn[0].conversionAmount).toBe(cliffsOff[0].conversionAmount);
+  });
+
+  it('does not NIIT-cap a pre-Medicare year even with cliffs ON (regression: NIIT removal)', () => {
+    // Age 55 with both IRMAA and NIIT enabled: year+2 = 57 → no Medicare
+    // enrollee, so the IRMAA branch is inactive; with NIIT gone from the cap,
+    // nothing binds and the fill passes through unclamped. Pre-change this
+    // was capped at $200k.
+    const ud = baseUserData({
+      currentAge: 55, lifeExpectancy: 57,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 2_000_000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      enableIRMAA: true, enableNIIT: true, respectIrmaaNiitCliffs: true,
+    });
+    const cliffsOn = computeFillToBracketSchedule(ud, { name: 'fill_to_bracket', bracketTarget: '24_percent' });
+    expect(cliffsOn[0].conversionAmount).toBeGreaterThan(200_000);
   });
 });
 
@@ -147,18 +171,54 @@ describe('OptimizeStrategy IRMAA/NIIT cliff cap (candidate generation)', () => {
     expect(uncappedFill.some((d) => d.conversionAmount > 104_000)).toBe(true);
   });
 
-  it('produces an identical schedule whether respectIrmaaNiitCliffs is false or undefined (cap is a no-op when off)', () => {
+  it('produces an identical schedule whether respectIrmaaNiitCliffs is false or undefined when IRMAA is disabled (the flag gates IRMAA only)', () => {
+    // With enableIRMAA: false, the flag has nothing to act on in either
+    // state: cliffs-ON has no ceiling to clamp to, and cliffs-OFF emits no
+    // tier probes (irmaaTierFillCandidates returns [] when IRMAA is
+    // disabled). Both runs must therefore produce the same schedule. NIIT is
+    // enabled but irrelevant — it was removed from the cap (marginal tax,
+    // not a cliff).
     const common = {
       currentAge: 64, lifeExpectancy: 67,
       accounts: cliffAccounts,
       portfolioAssumptions: cliffAssumptions,
-      enableIRMAA: true, enableNIIT: true,
+      enableIRMAA: false, enableNIIT: true,
     };
     const rFalse = runOptimization(baseUserData({ ...common, respectIrmaaNiitCliffs: false }), { name: 'optimize', objective: 'max_median_terminal_wealth' });
     const rUndef = runOptimization(baseUserData({ ...common, respectIrmaaNiitCliffs: undefined }), { name: 'optimize', objective: 'max_median_terminal_wealth' });
     expect(rFalse.perYearDecisions.map((d) => d.conversionAmount)).toEqual(
       rUndef.perYearDecisions.map((d) => d.conversionAmount),
     );
+  });
+
+  it('explores tier crossings when cliffs are OFF and the after-tax objective makes them pay', () => {
+    // Tier-aware arbitration: with cliffs OFF the descent gains probes that
+    // fill MAGI exactly to each IRMAA tier ceiling, and the engine prices the
+    // surcharge in the scored projection. Under the after-tax objective with a
+    // high terminal Traditional rate (35%), converting far more than the
+    // tier-1 ceiling (~$103k single, inflation 0) is clearly net-positive —
+    // the ~$1–3k/yr surcharge is dwarfed by removing 35% embedded tax from
+    // six-figure conversions. Cliffs ON must still hold the hard-cap
+    // guarantee on the same scenario.
+    const common = {
+      currentAge: 64, lifeExpectancy: 70,
+      accounts: cliffAccounts,
+      portfolioAssumptions: cliffAssumptions,
+      enableIRMAA: true, enableNIIT: true,
+    };
+    const strategy = {
+      name: 'optimize' as const,
+      objective: 'max_after_tax_terminal_wealth' as const,
+      terminalTradTaxRate: 0.35,
+    };
+    const off = runOptimization(baseUserData({ ...common, respectIrmaaNiitCliffs: false }), strategy);
+    const on = runOptimization(baseUserData({ ...common, respectIrmaaNiitCliffs: true }), strategy);
+    // OFF: at least one year deliberately crosses the tier-1 ceiling.
+    expect(off.perYearDecisions.some((d) => d.conversionAmount > 104_000)).toBe(true);
+    // ON: the hard-cap guarantee holds — no year exceeds the tier-1 ceiling.
+    for (const d of on.perYearDecisions) {
+      expect(d.conversionAmount).toBeLessThanOrEqual(104_000);
+    }
   });
 });
 
@@ -182,7 +242,7 @@ describe('FillToBracketStrategy SS-feedback fix-point (direct compute)', () => {
         id: 'ss-1', type: 'social_security', name: 'SS',
         amount: 40_000, startAge: 67,
         taxStatus: 'before_tax', colaType: 'fixed', amountPeriod: 'annual',
-      } as any],
+      }],
     });
     const udNoSS = baseUserData({
       currentAge: 67, lifeExpectancy: 70,
@@ -433,6 +493,109 @@ describe('scoreProjection', () => {
     const lastIdx = projection.path.length - 1;
     const score = scoreProjection(projection, 'max_median_terminal_wealth', inflationRate);
     expect(score).toBe(projection.path[lastIdx]);
+  });
+});
+
+describe("scoreProjection 'max_after_tax_terminal_wealth'", () => {
+  const afterTaxParams = { ltcgRate: 0.15, terminalTradRate: 0.25 };
+
+  it('finalBalancesByType sums to path[last] (same instant, same real-dollar frame)', () => {
+    const ud = baseUserData({
+      inflationRate: 0.03,
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 400_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'roth-1', name: 'Roth', type: 'roth' as const, balance: 300_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Tax', type: 'brokerage' as const, balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+    });
+    const projection = runDeterministicProjection(ud);
+    const fb = projection.finalBalancesByType;
+    const sum = fb.traditional + fb.roth + fb.brokerage + fb.cash;
+    expect(sum).toBeCloseTo(projection.path[projection.path.length - 1], 0);
+  });
+
+  it('values a Roth-heavy projection above a Trad-heavy projection of equal face value', () => {
+    // Same $500k face, no income/spending/growth so the terminal balance is
+    // identical pre-tax. The after-tax score must discount the Traditional
+    // version by terminalTradRate while the Roth version scores at face.
+    const tradHeavy = baseUserData({
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+    });
+    const rothHeavy = baseUserData({
+      accounts: [
+        { id: 'roth-1', name: 'Roth', type: 'roth' as const, balance: 500_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+    });
+    const tradProj = runDeterministicProjection(tradHeavy);
+    const rothProj = runDeterministicProjection(rothHeavy);
+    const tradScore = scoreProjection(tradProj, 'max_after_tax_terminal_wealth', 0, afterTaxParams);
+    const rothScore = scoreProjection(rothProj, 'max_after_tax_terminal_wealth', 0, afterTaxParams);
+    // Pre-tax both projections end equal (no flows, 0% growth). The trad-heavy
+    // one is RMD-forced at no point inside this horizon (60→70), so balances
+    // stay put and only the valuation differs.
+    expect(rothScore).toBeCloseTo(rothProj.path[rothProj.path.length - 1], 0);
+    expect(tradScore).toBeCloseTo(tradProj.path[tradProj.path.length - 1] * (1 - afterTaxParams.terminalTradRate), 0);
+    expect(rothScore).toBeGreaterThan(tradScore);
+  });
+
+  it('a zero terminal Trad rate and zero LTCG rate reproduces the pre-tax score', () => {
+    const ud = baseUserData({
+      accounts: [
+        { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 400_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'tax-1', name: 'Tax', type: 'brokerage' as const, balance: 200_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+    });
+    const projection = runDeterministicProjection(ud);
+    const preTax = scoreProjection(projection, 'max_median_terminal_wealth', 0);
+    const afterTaxZeroRates = scoreProjection(projection, 'max_after_tax_terminal_wealth', 0, { ltcgRate: 0, terminalTradRate: 0 });
+    expect(afterTaxZeroRates).toBeCloseTo(preTax, 0);
+  });
+});
+
+describe('after-tax objective fixes the pre-tax anti-conversion bias (regression)', () => {
+  // The canonical case the pre-tax objective gets wrong: zero growth, zero
+  // inflation, big Traditional, no income or spending. Converting C pays tax t
+  // now and the pre-tax terminal balance ends at exactly −t vs baseline (the
+  // benefit — removing the embedded deferred tax on never-withdrawn dollars —
+  // is invisible), so the pre-tax optimizer rationally emits all zeros. The
+  // after-tax objective values the converted dollars at face vs (1 − 25%) in
+  // Traditional: converting in low brackets (~8–12% effective) is clearly
+  // net-positive, so the optimizer must emit a non-empty schedule.
+  const biasUd = (over: Partial<UserData> = {}) => baseUserData({
+    currentAge: 60, lifeExpectancy: 70,
+    accounts: [
+      { id: 'trad-1', name: 'Trad', type: 'traditional' as const, balance: 1_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+    ],
+    ...over,
+  });
+
+  it('pre-tax objective emits an all-zero schedule on the bias scenario', () => {
+    const result = runOptimization(biasUd(), { name: 'optimize', objective: 'max_median_terminal_wealth' });
+    expect(result.perYearDecisions.every((d) => d.conversionAmount === 0)).toBe(true);
+  });
+
+  it('after-tax objective emits a non-empty schedule and improves on the baseline', () => {
+    const result = runOptimization(biasUd(), {
+      name: 'optimize',
+      objective: 'max_after_tax_terminal_wealth',
+      terminalTradTaxRate: 0.25,
+    });
+    expect(result.perYearDecisions.some((d) => d.conversionAmount > 0)).toBe(true);
+    expect(result.finalScore).toBeGreaterThan(result.baselineScore);
+  });
+
+  it('defaults terminalTradTaxRate to 25% when unspecified', () => {
+    const explicit = runOptimization(biasUd(), {
+      name: 'optimize', objective: 'max_after_tax_terminal_wealth', terminalTradTaxRate: 0.25,
+    });
+    const defaulted = runOptimization(biasUd(), {
+      name: 'optimize', objective: 'max_after_tax_terminal_wealth',
+    });
+    expect(defaulted.perYearDecisions.map((d) => d.conversionAmount)).toEqual(
+      explicit.perYearDecisions.map((d) => d.conversionAmount),
+    );
   });
 });
 

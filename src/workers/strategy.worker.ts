@@ -30,29 +30,30 @@ export type StrategyWorkerOutbound =
   | { type: 'optimizeResult'; requestId: number; result: OptimizeResult }
   | { type: 'error'; requestId: number; message: string };
 
+// Typed wrapper for the worker-global postMessage: the DedicatedWorkerGlobalScope
+// type isn't in the default lib set, hence the one contained cast here.
+const post = (msg: StrategyWorkerOutbound) =>
+  (self as unknown as Worker).postMessage(msg);
+
 self.onmessage = (ev: MessageEvent<StrategyWorkerInbound>) => {
   const msg = ev.data;
   if (msg.type !== 'compute') return;
   try {
     if (msg.kind === 'fill_to_bracket') {
       const result = computeFillToBracketSchedule(msg.userData, msg.taxStrategy);
-      const out: StrategyWorkerOutbound = { type: 'fillResult', requestId: msg.requestId, result };
-      (self as unknown as Worker).postMessage(out);
+      post({ type: 'fillResult', requestId: msg.requestId, result });
     } else if (msg.kind === 'auto_bracket') {
       const result = computeAutoBracketSchedule(msg.userData, msg.taxStrategy);
-      const out: StrategyWorkerOutbound = { type: 'autoResult', requestId: msg.requestId, result };
-      (self as unknown as Worker).postMessage(out);
+      post({ type: 'autoResult', requestId: msg.requestId, result });
     } else if (msg.kind === 'optimize') {
       const result = runOptimization(msg.userData, msg.taxStrategy);
-      const out: StrategyWorkerOutbound = { type: 'optimizeResult', requestId: msg.requestId, result };
-      (self as unknown as Worker).postMessage(out);
+      post({ type: 'optimizeResult', requestId: msg.requestId, result });
     }
   } catch (err) {
-    const out: StrategyWorkerOutbound = {
+    post({
       type: 'error',
       requestId: msg.requestId,
       message: err instanceof Error ? err.message : String(err),
-    };
-    (self as unknown as Worker).postMessage(out);
+    });
   }
 };

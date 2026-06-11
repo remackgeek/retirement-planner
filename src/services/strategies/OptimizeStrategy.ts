@@ -29,10 +29,10 @@
 
 import type { UserData } from '../../types/UserData';
 import type { TaxStrategy, PerYearStrategyDecision } from './types';
-import { DEFAULT_END_AGE_CAP } from './types';
+import { DEFAULT_END_AGE_CAP, DEFAULT_TERMINAL_TRAD_TAX_RATE } from './types';
 import { runDeterministicProjection, selectBestSpendingOrder } from '../SimulationService';
-import { computeAutoBracketSchedule, scoreProjection } from './AutoBracketStrategy';
-import { capConversionForCliffs } from './FillToBracketStrategy';
+import { computeAutoBracketSchedule, scoreProjection, type AfterTaxScoreParams } from './AutoBracketStrategy';
+import { capConversionForCliffs, irmaaTierFillCandidates } from './FillToBracketStrategy';
 import { buildStrategyConversionEvents, isGeneratorProducedConversion } from './syntheticEvents';
 
 // Tunables. Named (not magic numbers in the descent loop body) per the plan's
@@ -81,6 +81,13 @@ export function runOptimization(
   taxStrategy: TaxStrategy,
 ): OptimizeResult {
   const objective = taxStrategy.objective ?? 'max_median_terminal_wealth';
+  // Consumed only when the objective is 'max_after_tax_terminal_wealth';
+  // harmless otherwise. Same derivation as computeAutoBracketSchedule so the
+  // seed's winnerScore stays directly comparable to descent scores.
+  const afterTaxParams: AfterTaxScoreParams = {
+    ltcgRate: userData.longTermCapGainsRate ?? 0,
+    terminalTradRate: taxStrategy.terminalTradTaxRate ?? DEFAULT_TERMINAL_TRAD_TAX_RATE,
+  };
   let projectionCount = 0;
 
   // **Perf:** pin the spending policy once for the entire descent. Without
@@ -102,7 +109,7 @@ export function runOptimization(
   const baselineProjection = runDeterministicProjection(userData, {
     _forceSpendingOrder: pinnedSpendingOrder,
   });
-  const baselineScore = scoreProjection(baselineProjection, objective, userData.inflationRate);
+  const baselineScore = scoreProjection(baselineProjection, objective, userData.inflationRate, afterTaxParams);
   projectionCount++;
 
   // Initialize: Auto-bracket's best schedule. Pass our already-pinned
@@ -111,7 +118,7 @@ export function runOptimization(
   const seed = computeAutoBracketSchedule(userData, taxStrategy, pinnedSpendingOrder);
   // Auto-bracket: 4 candidate projections (no selector probe — pinned).
   projectionCount += 4;
-  let bestSchedule: PerYearStrategyDecision[] = seed.perYearDecisions.map((d) => ({ ...d }));
+  const bestSchedule: PerYearStrategyDecision[] = seed.perYearDecisions.map((d) => ({ ...d }));
 
   // Helper: evaluate a candidate schedule via deterministic projection.
   // Passes `_forceSpendingOrder: pinnedSpendingOrder` so the inner call
@@ -132,7 +139,7 @@ export function runOptimization(
     const projection = runDeterministicProjection(candidateUserData, {
       _forceSpendingOrder: pinnedSpendingOrder,
     });
-    return scoreProjection(projection, objective, userData.inflationRate);
+    return scoreProjection(projection, objective, userData.inflationRate, afterTaxParams);
   };
 
   // Use AutoBracket's reported winner score directly — no re-score needed.
@@ -163,6 +170,18 @@ export function runOptimization(
     return age > endAgeCap;
   };
 
+  // Tier-aware probes (cliffs OFF only): conversion amounts that fill MAGI
+  // exactly to each IRMAA tier ceiling, so the descent evaluates deliberate
+  // tier crossings at their efficient boundary points and the score (which
+  // prices the surcharge via the engine) arbitrates whether crossing pays.
+  // With cliffs ON these would be redundant — capConversionForCliffs already
+  // snaps over-sized candidates onto the next-tier ceiling and forbids
+  // crossings by design. Precomputed per year (invariant across sweeps).
+  const cliffsOff = userData.respectIrmaaNiitCliffs === false;
+  const tierProbesByYear: number[][] = bestSchedule.map((d, i) =>
+    cliffsOff && !yearIsCapped(i) ? irmaaTierFillCandidates(userData, d.year, i) : [],
+  );
+
   // Coordinate descent. Forward sweep, then backward sweep per iteration.
   for (let sweep = 0; sweep < OPTIMIZE_MAX_SWEEPS; sweep++) {
     const prevScore = bestScore;
@@ -185,12 +204,15 @@ export function runOptimization(
       if (currentAmount === 0) {
         for (const probe of OPTIMIZE_ZERO_INIT_PROBES) rawCandidates.push(probe);
       }
-      // Cliff-aware candidate generation: cap each candidate under the IRMAA/NIIT
-      // ceiling so the descent never probes a conversion that trips a cliff — the
-      // same hard cap fill-to-bracket and auto-bracket already apply. No-op when
-      // `respectIrmaaNiitCliffs` is off (capConversionForCliffs returns its input),
-      // so results stay bit-exact with the prior blind candidate set. Dedupe so
-      // candidates that collapse onto the ceiling don't trigger redundant projections.
+      // IRMAA tier-boundary probes (empty unless cliffs are off — see above).
+      for (const probe of tierProbesByYear[i]) rawCandidates.push(probe);
+      // Cliff-aware candidate generation: cap each candidate under the next IRMAA
+      // tier ceiling so the descent never probes a conversion that trips a cliff —
+      // the same hard cap fill-to-bracket and auto-bracket already apply. No-op when
+      // `respectIrmaaNiitCliffs` is off (capConversionForCliffs returns its input);
+      // in that mode the tier-boundary probes above give the descent the efficient
+      // crossing candidates instead. Dedupe so candidates that collapse onto the
+      // ceiling don't trigger redundant projections.
       const candidates = [
         ...new Set(rawCandidates.map((c) => (c < 0 ? c : capConversionForCliffs(userData, year, i, c)))),
       ];
