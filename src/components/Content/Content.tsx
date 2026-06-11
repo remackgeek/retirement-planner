@@ -1,8 +1,8 @@
-import { useContext, useState, useEffect, useRef } from 'react';
+import { useContext, useState, useEffect, useRef, type ContextType } from 'react';
 import styled from 'styled-components';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { RetirementContext } from '../../context/RetirementContext';
-import { runFastPreview } from '../../services/SimulationService';
+import { runFastPreview, type SimulationResult } from '../../services/SimulationService';
 import { simulationClient, SupersededError } from '../../services/SimulationClient';
 import { strategyComputeClient } from '../../services/StrategyComputeClient';
 import Projections from '../Chart/Chart';
@@ -70,7 +70,7 @@ const SpinnerLabel = styled.div`
   color: ${colors.textSecondary};
 `;
 
-const Content: React.FC<{
+type ContentProps = {
   compareScenarioId?: string | null;
   onSetCompare: (id: string | null) => void;
   onRegisterExport?: (fn: (() => void) | null) => void;
@@ -81,15 +81,25 @@ const Content: React.FC<{
   onDiscardWhatIf?: () => void;
   onSaveWhatIf?: () => void;
   onSaveWhatIfAsNew?: (name: string) => void;
-}> = ({ compareScenarioId, onSetCompare, onRegisterExport, whatIfSnapshot, whatIfActive, compareDisabled, onEnterWhatIf, onDiscardWhatIf, onSaveWhatIf, onSaveWhatIfAsNew }) => {
+};
+
+// Thin guard so ContentInner can call hooks unconditionally (rules-of-hooks):
+// the context null-check must not sit above the hook calls.
+const Content: React.FC<ContentProps> = (props) => {
   const context = useContext(RetirementContext);
   if (!context) return null;
+  return <ContentInner context={context} {...props} />;
+};
+
+const ContentInner: React.FC<ContentProps & {
+  context: NonNullable<ContextType<typeof RetirementContext>>;
+}> = ({ context, compareScenarioId, onSetCompare, onRegisterExport, whatIfSnapshot, whatIfActive, compareDisabled, onEnterWhatIf, onDiscardWhatIf, onSaveWhatIf, onSaveWhatIfAsNew }) => {
   const { activeScenario, updateScenario, scenarios } = context;
   const compareScenario = compareScenarioId
     ? (scenarios.find(s => s.id === compareScenarioId) ?? null)
     : null;
-  const [results, setResults] = useState<any>(null);
-  const [compareResults, setCompareResults] = useState<{ scenarioId: string; results: any } | null>(null);
+  const [results, setResults] = useState<SimulationResult | null>(null);
+  const [compareResults, setCompareResults] = useState<{ scenarioId: string; results: SimulationResult } | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   // Loading state derived synchronously from id mismatch — avoids one-frame flash of
   // "End comparison" before useEffect fires.
@@ -184,6 +194,11 @@ const Content: React.FC<{
     // sim-input content, new activeScenario reference) would clear the
     // pending sim and then early-return without rescheduling, leaving
     // isCalculating stuck at true. Unmount cleanup is below.
+    //
+    // updateScenario is deliberately omitted: it's recreated on provider
+    // renders, and including it would re-fire this MC-trigger effect on
+    // unrelated context churn. The writeback closure reads it fresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeScenario]);
 
   // Unmount-only: clear any in-flight timeout so it doesn't fire post-unmount.
@@ -194,9 +209,12 @@ const Content: React.FC<{
     }
   }, []);
 
+  // onSetCompare is AppContent's setCompareScenarioId (a setState — stable
+  // identity), so including it never re-fires this; the effect still only
+  // clears comparison when the active scenario actually changes.
   useEffect(() => {
     onSetCompare(null);
-  }, [activeScenario?.id]);
+  }, [activeScenario?.id, onSetCompare]);
 
   useEffect(() => {
     if (!compareScenario) {
@@ -223,12 +241,16 @@ const Content: React.FC<{
       });
     }, 0);
     return () => clearTimeout(id);
+    // Keyed on the id, not the object: scenarios-array churn (e.g. the
+    // probability writeback) must not re-run the compare MC for the same
+    // scenario. The body reads compareScenario fresh from the closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compareScenario?.id]);
 
   // Snapshot sim is computed once per snapshot identity — frozen original baseline.
   // Deferred to a 0ms setTimeout so React can paint the "Setting up…" loading
   // state before the 5000-run Monte Carlo blocks the main thread.
-  const [whatIfSnapshotResults, setWhatIfSnapshotResults] = useState<any>(null);
+  const [whatIfSnapshotResults, setWhatIfSnapshotResults] = useState<SimulationResult | null>(null);
   useEffect(() => {
     if (!whatIfSnapshot) { setWhatIfSnapshotResults(null); return; }
     // Fast preview first so the Original line appears instantly when entering What If.

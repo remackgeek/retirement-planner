@@ -93,6 +93,9 @@ const TestComponent = () => {
     if (!context.loading) {
       context.importScenario();
     }
+    // Test harness: fire importScenario exactly once when loading flips false.
+    // Including `context` (new object each provider render) would re-trigger it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context.loading]);
   return <div data-testid='test'>Test</div>;
 };
@@ -117,7 +120,7 @@ describe('RetirementContext Import Tests', () => {
       put: mockPut,
       delete: mockDelete,
       get: mockGet,
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof openDB>>);
 
     vi.mocked(confirmDialog).mockClear();
     vi.mocked(crypto.randomUUID).mockClear();

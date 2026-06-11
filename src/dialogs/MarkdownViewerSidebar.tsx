@@ -3,7 +3,7 @@ import { Sidebar } from 'primereact/sidebar';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
-import { spacing, colors, fontSize, border } from '../styles/theme';
+import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import yarpIcon from '../assets/YARP.ico';
 
 interface Props {
@@ -172,7 +172,7 @@ const MarkdownViewerSidebar: React.FC<Props> = ({ title, icon, content, visible,
       onHide={onHide}
       position="right"
       modal={false}
-      style={{ width: '44rem', maxWidth: '95vw' }}
+      style={dialogWidth('44rem')}
     >
       <Body>
         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSlug]}>{content}</ReactMarkdown>

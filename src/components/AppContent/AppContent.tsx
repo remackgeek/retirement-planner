@@ -138,12 +138,14 @@ const AppContent: React.FC = () => {
   };
 
   // Auto-clear What If state if the active scenario changes for any other reason
-  // (e.g. delete, import).
+  // (e.g. delete, import). Keyed on the id, not the object — reference churn
+  // from edits within the same scenario must not clear the snapshot.
+  const activeScenarioId = ctx?.activeScenario?.id;
   useEffect(() => {
-    if (whatIfSnapshot && ctx?.activeScenario && ctx.activeScenario.id !== whatIfSnapshot.id) {
+    if (whatIfSnapshot && activeScenarioId && activeScenarioId !== whatIfSnapshot.id) {
       setWhatIfSnapshot(null);
     }
-  }, [ctx?.activeScenario?.id, whatIfSnapshot]);
+  }, [activeScenarioId, whatIfSnapshot]);
 
   // While What If is active, warn before unload: edits are live-persisted to
   // IndexedDB and the in-memory snapshot is the only path back to the original.

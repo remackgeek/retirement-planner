@@ -26,8 +26,8 @@ import {
   BlendedRow,
   BlendedValue,
   HelpText,
-  pctField,
 } from './SettingsDialogPrimitives';
+import { pctField } from './SettingsDialogFields';
 
 const simRunOptions = [
   { label: '1,000 (good)', value: 1000 },

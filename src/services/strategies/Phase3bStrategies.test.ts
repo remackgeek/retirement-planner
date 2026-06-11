@@ -242,7 +242,7 @@ describe('FillToBracketStrategy SS-feedback fix-point (direct compute)', () => {
         id: 'ss-1', type: 'social_security', name: 'SS',
         amount: 40_000, startAge: 67,
         taxStatus: 'before_tax', colaType: 'fixed', amountPeriod: 'annual',
-      } as any],
+      }],
     });
     const udNoSS = baseUserData({
       currentAge: 67, lifeExpectancy: 70,

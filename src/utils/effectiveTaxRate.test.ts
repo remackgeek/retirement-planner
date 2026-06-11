@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { effectiveTaxRate, fmtRate } from './effectiveTaxRate';
+import { effectiveTaxRate } from './effectiveTaxRate';
+import { fmtPct1 } from './formatPercent';
 import type { AnnualCashFlowBreakdown } from '../services/SimulationService';
 
 const makeBd = (overrides: Partial<AnnualCashFlowBreakdown>): AnnualCashFlowBreakdown => ({
@@ -120,11 +121,11 @@ describe('effectiveTaxRate', () => {
   });
 });
 
-describe('fmtRate', () => {
+describe('fmtPct1', () => {
   it('formats with one decimal place and a percent sign', () => {
-    expect(fmtRate(0.142)).toBe('14.2%');
-    expect(fmtRate(0.15)).toBe('15.0%');
-    expect(fmtRate(1)).toBe('100.0%');
-    expect(fmtRate(0)).toBe('0.0%');
+    expect(fmtPct1(0.142)).toBe('14.2%');
+    expect(fmtPct1(0.15)).toBe('15.0%');
+    expect(fmtPct1(1)).toBe('100.0%');
+    expect(fmtPct1(0)).toBe('0.0%');
   });
 });

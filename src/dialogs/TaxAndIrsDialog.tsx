@@ -15,8 +15,8 @@ import {
   InputGroup,
   AssetRow,
   HelpText,
-  pctField,
 } from './SettingsDialogPrimitives';
+import { pctField } from './SettingsDialogFields';
 
 interface TaxAndIrsDialogProps {
   visible: boolean;

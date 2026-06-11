@@ -3,6 +3,7 @@ import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import { spacing, colors, border, fontSize } from '../../styles/theme';
 import { toDisplay, type DisplayCurrency } from '../../utils/displayCurrency';
 import { fmtPctRound } from '../../utils/formatPercent';
+import { fmtMoney } from '../../utils/fmtMoney';
 import type { AnnualCashFlowBreakdown } from '../../services/SimulationService';
 
 interface Props {
@@ -11,8 +12,6 @@ interface Props {
   displayCurrency: DisplayCurrency;
   year: number;
 }
-
-const fmtMoney = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div style={{ marginBottom: spacing.md }}>
@@ -295,4 +294,3 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
 };
 
 export default YearTaxAudit;
-export { fmtMoney };

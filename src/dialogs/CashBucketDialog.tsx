@@ -10,20 +10,9 @@ import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme'
 import type { Scenario } from '../types/Scenario';
 import type { CashBucketPolicy } from '../types/UserData';
 import type { Account } from '../types/Account';
+import { Form, Section } from './SettingsDialogPrimitives';
 
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.md};
-  padding: ${spacing.sm} 0;
-`;
-
-const Section = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.sm};
-`;
-
+// Local SectionHeader: heavier weight / no uppercase vs the shared one.
 const SectionHeader = styled.div`
   font-weight: 600;
   font-size: ${fontSize.sm};

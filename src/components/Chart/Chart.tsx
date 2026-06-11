@@ -19,7 +19,7 @@ import chartPercentileBandPlugin from '../../plugins/chartPercentileBand';
 import chartMinYSpreadPlugin from '../../plugins/chartMinYSpread';
 import chartMilestonesPlugin from '../../plugins/chartMilestones';
 import {
-  type AnnualCashFlowBreakdown,
+  type SimulationResult,
   getDeathModel,
 } from '../../services/SimulationService';
 import React, { useState, useMemo, useEffect, useRef, useContext, useCallback } from 'react';
@@ -33,12 +33,17 @@ import CloneScenarioDialog from '../../dialogs/CloneScenarioDialog';
 import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
 import { useUIState } from '../../context/UIStateContext';
 import { RetirementContext } from '../../context/RetirementContext';
-import { toDisplay, pathToDisplay, type DisplayCurrency } from '../../utils/displayCurrency';
+import { toDisplay, pathToDisplay } from '../../utils/displayCurrency';
 import { formatCurrencyShort } from '../../utils/formatCurrencyShort';
 import type { Account } from '../../types/Account';
+import type { Scenario } from '../../types/Scenario';
+import type { IncomeEvent } from '../../types/IncomeEvent';
+import type { SpendingGoal } from '../../types/SpendingGoal';
 import { eventTypeIcons, goalTypeIcons } from '../../utils/defaultName';
 import { getProbabilityTier } from '../../utils/probabilityTier';
-import { effectiveTaxRate, fmtRate } from '../../utils/effectiveTaxRate';
+import { effectiveTaxRate } from '../../utils/effectiveTaxRate';
+import { fmtPct1 as fmtRate } from '../../utils/formatPercent';
+import { exportCsv } from '../../utils/exportChartCsv';
 
 ChartJS.register(
   CategoryScale,
@@ -249,145 +254,34 @@ function useIsMobile(): boolean {
   return isMobile;
 }
 
-function exportCsv(
-  scenarioName: string,
-  years: number[],
-  nominal: number[],
-  median: number[],
-  nominalInflation: number[],
-  medianInflation: number[],
-  breakdownInflation: number[],
-  annualBreakdowns: AnnualCashFlowBreakdown[],
-  currentAge: number,
-  displayCurrency: DisplayCurrency,
-  options: { nominalHidden: boolean; medianHidden: boolean },
-  band: { p10: number[]; p90: number[] } | null,
-) {
-  const modeLabel = displayCurrency === 'real' ? "today's dollars" : 'nominal dollars';
-  const timestamp = new Date().toISOString();
-  const comment = `# scenario: ${scenarioName} | exported: ${timestamp} | values in ${modeLabel}`;
-  const pathHeaders: string[] = [];
-  if (!options.nominalHidden) pathHeaders.push('Projected Portfolio ($)');
-  if (!options.medianHidden) pathHeaders.push('Median Portfolio ($)');
-  if (band) pathHeaders.push('Band p10 ($)', 'Band p90 ($)');
-  // Scalar audit columns are appended after the core columns. Per-event tax
-  // attribution and per-account flows are NOT exported — they don't fit a flat
-  // one-row-per-year CSV cleanly. See the Income Detail tab in the app for those.
-  const header = [
-    'Age', 'Year',
-    ...pathHeaders,
-    'SS Gross', 'Other Taxable Income', 'After-Tax Income', 'Total Gross Income',
-    'Base Spending', 'Goal Spending', 'Total Spending',
-    'Total Tax', 'Ordinary Income Tax', 'Federal LTCG Tax', 'State LTCG Tax', 'NIIT (3.8%)', 'IRMAA Surcharge', 'Portfolio Withdrawal',
-    'Withdrawal — Brokerage', 'Withdrawal — Traditional', 'Withdrawal — Roth',
-    'RMD Required', 'RMD Reinvested',
-    'Roth Conversion',
-    'Surplus Contribution',
-    'Net Cash Flow',
-    // ---- audit columns ----
-    'AGI', 'Standard Deduction', 'Senior Add-On', 'OBBB Reduction', 'Total Deductions', 'Taxable Income',
-    'Federal Bracket Index', 'Federal Marginal Rate', 'Federal Ordinary Tax', 'State Ordinary Tax', 'Effective State',
-    'State Std Deduction', 'State Retirement Exclusion', 'State SS Included', 'State Marginal Rate', 'State Bracket Index',
-    'State Locality Surcharge', 'State LTCG Taxable', 'State LTCG Threshold',
-    'SS Provisional Income', 'SS Zone',
-    'IRMAA Lookback MAGI', 'IRMAA Tier', 'IRMAA Per-Enrollee Annual', 'IRMAA Enrollees',
-    'NIIT MAGI', 'NIIT Threshold', 'NIIT MAGI Excess', 'NIIT Taxable Base',
-    'RMD Self', 'RMD Spouse', 'RMD Divisor Self', 'RMD Divisor Spouse', 'BoY Trad Bal Self', 'BoY Trad Bal Spouse',
-  ].join(',');
 
-  const rows = years.map((year, i) => {
-    const bd = annualBreakdowns[i];
-    const bdF = breakdownInflation[i] ?? 1;
-    const pathCells: number[] = [];
-    if (!options.nominalHidden) {
-      pathCells.push(Math.round(pathToDisplay(nominal[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)));
-    }
-    if (!options.medianHidden) {
-      pathCells.push(Math.round(pathToDisplay(median[i] ?? 0, medianInflation[i] ?? 1, displayCurrency)));
-    }
-    if (band) {
-      // Band values displayed using the deterministic inflation deflator —
-      // matches the chart's band rendering.
-      pathCells.push(Math.round(pathToDisplay(band.p10[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)));
-      pathCells.push(Math.round(pathToDisplay(band.p90[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)));
-    }
-    return [
-      currentAge + i,
-      year,
-      ...pathCells,
-      Math.round(toDisplay(bd.ssGross, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.otherTaxableGross, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.afterTaxIncome, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.totalGrossIncome, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.baseSpendingNet, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.otherSpendingGoalsNet, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.totalSpendingNet, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.totalTax, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.ordinaryTax, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.federalCapGainsTax, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.stateCapGainsTax, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.niitTax, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.irmaaSurcharge, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.portfolioWithdrawal, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.withdrawalFromBrokerage, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.withdrawalFromTraditional, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.withdrawalFromRoth, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.rmdRequired, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.rmdExcess, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.rothConversionGross, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.surplusContribution, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.netCashFlow, bdF, displayCurrency)),
-      // ---- audit columns ----
-      Math.round(toDisplay(bd.audit?.agi ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.standardDeduction ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.seniorAddOn ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.obbbReduction ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.totalDeductions ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.taxableIncome ?? 0, bdF, displayCurrency)),
-      bd.audit?.federalBracketIndex ?? 0,
-      ((bd.audit?.federalMarginalRate ?? 0) * 100).toFixed(2) + '%',
-      Math.round(toDisplay(bd.audit?.federalOrdinaryTax ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.stateOrdinaryTax ?? 0, bdF, displayCurrency)),
-      // Quote the state name in case it contains a comma (e.g., "Washington, DC").
-      `"${(bd.audit?.effectiveStateName ?? '').replace(/"/g, '""')}"`,
-      Math.round(toDisplay(bd.audit?.stateStdDeduction ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.stateRetirementExclusionApplied ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.stateSsIncludedInState ?? 0, bdF, displayCurrency)),
-      ((bd.audit?.stateMarginalRate ?? 0) * 100).toFixed(2) + '%',
-      bd.audit?.stateBracketIndex ?? 0,
-      Math.round(toDisplay(bd.audit?.stateLocalitySurcharge ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.stateLtcgTaxableAtState ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.stateLtcgThresholdApplied ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.ssProvisionalIncome ?? 0, bdF, displayCurrency)),
-      bd.audit?.ssZone ?? 'none',
-      Math.round(toDisplay(bd.audit?.irmaaLookbackMagi ?? 0, bdF, displayCurrency)),
-      bd.audit?.irmaaTierIndex ?? 0,
-      Math.round(toDisplay(bd.audit?.irmaaPerEnrolleeAnnual ?? 0, bdF, displayCurrency)),
-      bd.audit?.irmaaEnrolleeCount ?? 0,
-      Math.round(toDisplay(bd.audit?.niitMagi ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.niitThreshold ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.niitMagiExcess ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.niitTaxableBase ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.rmdSelf ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.rmdSpouse ?? 0, bdF, displayCurrency)),
-      (bd.audit?.rmdDivisorSelf ?? 0).toFixed(1),
-      (bd.audit?.rmdDivisorSpouse ?? 0).toFixed(1),
-      Math.round(toDisplay(bd.audit?.rmdBoyBalanceSelf ?? 0, bdF, displayCurrency)),
-      Math.round(toDisplay(bd.audit?.rmdBoyBalanceSpouse ?? 0, bdF, displayCurrency)),
-    ].join(',');
-  });
+type ProjectionsProps = {
+  results: SimulationResult | null;
+  userData: Scenario;
+  isCalculating?: boolean;
+  compareResults?: SimulationResult | null;
+  compareScenario?: Scenario | null;
+  isCompareCalculating?: boolean;
+  onSetCompare: (id: string | null) => void;
+  onRegisterExport?: (fn: (() => void) | null) => void;
+  whatIfActive?: boolean;
+  whatIfSnapshot?: Scenario | null;
+  whatIfSnapshotResults?: SimulationResult | null;
+  compareDisabled?: boolean;
+  onEnterWhatIf?: () => void;
+  onDiscardWhatIf?: () => void;
+  onSaveWhatIf?: () => void;
+  onSaveWhatIfAsNew?: (name: string) => void;
+};
 
-  const csv = [comment, header, ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${scenarioName.replace(/[^a-z0-9]/gi, '-')}-projection.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+// Thin guard so ProjectionsInner can call its hooks unconditionally
+// (rules-of-hooks): the results null-check must not sit above hook calls.
+const Projections = (props: ProjectionsProps) => {
+  if (!props.results) return null;
+  return <ProjectionsInner {...props} results={props.results} />;
+};
 
-const Projections = ({
+const ProjectionsInner = ({
   results,
   userData,
   isCalculating,
@@ -404,26 +298,8 @@ const Projections = ({
   onDiscardWhatIf,
   onSaveWhatIf,
   onSaveWhatIfAsNew,
-}: {
-  results: any;
-  userData: any;
-  isCalculating?: boolean;
-  compareResults?: any;
-  compareScenario?: any;
-  isCompareCalculating?: boolean;
-  onSetCompare: (id: string | null) => void;
-  onRegisterExport?: (fn: (() => void) | null) => void;
-  whatIfActive?: boolean;
-  whatIfSnapshot?: any;
-  whatIfSnapshotResults?: any;
-  compareDisabled?: boolean;
-  onEnterWhatIf?: () => void;
-  onDiscardWhatIf?: () => void;
-  onSaveWhatIf?: () => void;
-  onSaveWhatIfAsNew?: (name: string) => void;
-}) => {
+}: ProjectionsProps & { results: SimulationResult }) => {
   const [cloneDialogVisible, setCloneDialogVisible] = useState(false);
-  if (!results) return null;
   const {
     probability, median, nominal, nominalBreakdowns, years,
     medianStockFactors, medianBondFactors, medianBreakdowns,
@@ -494,13 +370,13 @@ const Projections = ({
   const toggleRow = (index: number) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
-      next.has(index) ? next.delete(index) : next.add(index);
+      if (next.has(index)) next.delete(index); else next.add(index);
       return next;
     });
   };
 
   // --- Crosshair hover state ---
-  const chartRef = useRef<any>(null);
+  const chartRef = useRef<ChartJS<'line'> | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const hoverRafRef = useRef<number | null>(null);
 
@@ -617,12 +493,12 @@ const Projections = ({
       }
     }
     return { labels, datasets };
-  }, [labels, median, nominal, medianInflation, nominalInflation, displayCurrency, nominalHidden, medianHidden, compareResults, compareScenario, whatIfActive, whatIfSnapshotResults, chartPrimaryMode, chartPrimaryPath, chartPrimaryInflation]);
+  }, [labels, displayCurrency, compareResults, compareScenario, whatIfActive, whatIfSnapshotResults, chartPrimaryMode, chartPrimaryPath, chartPrimaryInflation]);
 
   // Group income events / spending goals by their start year once, then iterate
   // years to build the annotation list. Avoids N × M filter passes per render.
   const htmlAnnotations = useMemo<AnnotationConfig[]>(() => {
-    const eventsByYear = new Map<number, any[]>();
+    const eventsByYear = new Map<number, IncomeEvent[]>();
     for (const event of userData.incomeEvents) {
       const ownerAge = (event.owner === 'spouse' && userData.spouseAge != null)
         ? userData.spouseAge : userData.currentAge;
@@ -630,7 +506,7 @@ const Projections = ({
       const list = eventsByYear.get(startYear);
       if (list) list.push(event); else eventsByYear.set(startYear, [event]);
     }
-    const goalsByYear = new Map<number, any[]>();
+    const goalsByYear = new Map<number, SpendingGoal[]>();
     for (const goal of userData.spendingGoals) {
       const startYear = userData.referenceYear + (goal.startAge - userData.currentAge);
       const list = goalsByYear.get(startYear);
@@ -1368,7 +1244,7 @@ const Projections = ({
                   const cashFlow = nextPortfolio !== null ? nextPortfolio - portfolio : null;
 
                   const startingEvents = userData.incomeEvents.filter(
-                    (event: any) => {
+                    (event) => {
                       const ownerAge = (event.owner === 'spouse' && userData.spouseAge != null)
                         ? userData.spouseAge : userData.currentAge;
                       const startYear =
@@ -1378,7 +1254,7 @@ const Projections = ({
                   );
 
                   const startingGoals = userData.spendingGoals.filter(
-                    (goal: any) => {
+                    (goal) => {
                       const startYear =
                         userData.referenceYear +
                         (goal.startAge - userData.currentAge);
@@ -1428,7 +1304,7 @@ const Projections = ({
                       <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                         {startingEvents.length > 0 && (
                           <div style={{ marginBottom: spacing.xs, textAlign: 'left' }}>
-                            {startingEvents.map((event: any) =>
+                            {startingEvents.map((event) =>
                               iconChip(event.id, (eventTypeIcons as Record<string, string>)[event.type], colors.income, colors.incomeBg)
                             )}
                           </div>
@@ -1438,7 +1314,7 @@ const Projections = ({
                       <td style={{ padding: spacing.sm, border: border.standard, textAlign: 'right' }}>
                         {startingGoals.length > 0 && (
                           <div style={{ marginBottom: spacing.xs, textAlign: 'left' }}>
-                            {startingGoals.map((goal: any) =>
+                            {startingGoals.map((goal) =>
                               iconChip(goal.id, (goalTypeIcons as Record<string, string>)[goal.type], colors.spending, colors.spendingBg)
                             )}
                           </div>

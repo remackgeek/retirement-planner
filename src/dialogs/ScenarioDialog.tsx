@@ -149,8 +149,11 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
     setTempData(scenario ? { ...scenario } : makeDefaults());
   }, [scenario]);
 
-  const handleChange = (field: keyof Scenario, value: any) => {
-    setTempData({ ...tempData, [field]: value });
+  // Draft state may transiently hold null for cleared numeric inputs
+  // (PrimeReact InputNumber emits null mid-edit), so the value is wider than
+  // the field's persisted type — hence the cast rather than Scenario[K].
+  const handleChange = (field: keyof Scenario, value: unknown) => {
+    setTempData({ ...tempData, [field]: value } as Scenario);
   };
 
   const handleFilingStatusChange = (value: Scenario['filingStatus']) => {

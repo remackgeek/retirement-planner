@@ -2,7 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import type { IncomeEventType, IncomeEvent } from '../types/IncomeEvent';
-import { spacing, colors, border, fontSize } from '../styles/theme';
+import { spacing, colors, border, fontSize, dialogWidth } from '../styles/theme';
 import { eventTypeLabels, eventTypeIcons } from '../utils/defaultName';
 
 const GridContainer = styled.div`
@@ -84,7 +84,7 @@ const EventTypeSelectionDialog: React.FC<EventTypeSelectionDialogProps> = ({
     <Dialog
       header='Add Income Event'
       visible={visible}
-      style={{ width: '50vw' }}
+      style={dialogWidth('50rem')}
       onHide={onHide}
     >
       <GridContainer>

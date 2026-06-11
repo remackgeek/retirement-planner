@@ -13,5 +13,3 @@ export function effectiveTaxRate(b: AnnualCashFlowBreakdown): number | null {
   if (denom <= 0 || incomeTax <= 0) return null;
   return incomeTax / denom;
 }
-
-export const fmtRate = (rate: number) => `${(rate * 100).toFixed(1)}%`;

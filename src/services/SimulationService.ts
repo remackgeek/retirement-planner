@@ -1897,7 +1897,7 @@ function calculateAnnualCashFlowCore(
   let rothConversion = 0;
   let rothConversionSelf = 0;
   let rothConversionSpouse = 0;
-  let rothConversionRequested = Math.max(0, conversionGross);
+  const rothConversionRequested = Math.max(0, conversionGross);
   let capWasBinding = false;
   let ordinaryTax = 0;
   let federalCapGainsTax = 0;
@@ -2044,7 +2044,7 @@ function calculateAnnualCashFlowCore(
     const tradAvailForConvSpouse = Math.max(0, spouseTradBal - spouseRmd);
     const convCandidateSelf   = Math.min(conversionGrossSelf,   tradAvailForConvSelf);
     const convCandidateSpouse = Math.min(conversionGrossSpouse, tradAvailForConvSpouse);
-    let convCandidate = convCandidateSelf + convCandidateSpouse;
+    const convCandidate = convCandidateSelf + convCandidateSpouse;
 
     // Baseline ordinary tax (no conversion) at the current spending waterfall.
     const baseTax = computeOrdinaryTaxFor(sw.forcedTrad, sw.spendingFromBrokerage);
@@ -2196,7 +2196,6 @@ function calculateAnnualCashFlowCore(
     // don't pass silently.
     if (iter === MAX_ITERATIONS - 1) {
       const delta = Math.abs(newWithdrawal - withdrawal);
-      // eslint-disable-next-line no-console
       console.warn(
         `[SimulationService] tax fixed-point did not converge in ${MAX_ITERATIONS} ` +
         `iterations (year ${year}, age ${age}, residual delta=$${delta.toFixed(2)}). ` +

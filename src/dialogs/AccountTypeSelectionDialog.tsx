@@ -2,7 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import type { AccountType } from '../types/Account';
-import { spacing, colors, border, fontSize } from '../styles/theme';
+import { spacing, colors, border, fontSize, dialogWidth } from '../styles/theme';
 import { accountTypeLabels, accountTypeIcons } from '../utils/defaultName';
 
 const GridContainer = styled.div`
@@ -75,7 +75,7 @@ const AccountTypeSelectionDialog: React.FC<AccountTypeSelectionDialogProps> = ({
     <Dialog
       header="Add Account"
       visible={visible}
-      style={{ width: '50vw' }}
+      style={dialogWidth('50rem')}
       onHide={onHide}
     >
       <GridContainer>

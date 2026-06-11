@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import styled from 'styled-components';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
@@ -8,64 +7,16 @@ import { Checkbox } from 'primereact/checkbox';
 import { Dropdown } from 'primereact/dropdown';
 import type { SpendingGoal } from '../types/SpendingGoal';
 import { confirmDialog } from 'primereact/confirmdialog';
-import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
+import { spacing, colors, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, spendingGoalAgeRanges } from '../utils/ageOptions';
-
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.md};
-  padding: ${spacing.sm} 0;
-
-  .p-inputtext,
-  .p-dropdown,
-  .p-inputnumber {
-    width: 100%;
-  }
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.xs};
-`;
-
-const FieldRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: ${spacing.md};
-`;
-
-const AmountRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 9rem;
-  gap: ${spacing.sm};
-  align-items: start;
-`;
-
-const CheckboxGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${spacing.sm};
-`;
-
-const TrashButton = styled.button`
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: ${spacing.xs};
-  border-radius: ${border.radius};
-  color: ${colors.danger};
-  font-size: ${fontSize.xl};
-  line-height: 1;
-  display: flex;
-  align-items: center;
-
-  &:hover {
-    color: ${colors.dangerHover};
-    background: ${colors.bgMedium};
-  }
-`;
+import {
+  FormFullWidth as Form,
+  InputGroupPlain as InputGroup,
+  FieldRowGrid as FieldRow,
+  AmountRow,
+  CheckboxGroup,
+  TrashButton,
+} from './SettingsDialogPrimitives';
 
 interface SpendingGoalDialogProps {
   visible: boolean;
@@ -163,14 +114,13 @@ const SpendingGoalDialog: React.FC<SpendingGoalDialogProps> = ({
     const amount = formData.amountPeriod === 'monthly'
       ? formData.displayAmount * 12
       : formData.displayAmount;
-    const saveData: any = { ...formData, amount };
-    if (!isLivingExpenses) {
-      delete saveData.amountPeriod;
-    }
-    delete saveData.displayAmount;
-    if (saveData.yearlyDecreasePercent === undefined) {
-      delete saveData.yearlyDecreasePercent;
-    }
+    const { displayAmount: _displayAmount, amountPeriod, yearlyDecreasePercent, ...rest } = formData;
+    const saveData: Omit<SpendingGoal, 'id'> = {
+      ...rest,
+      amount,
+      ...(isLivingExpenses ? { amountPeriod } : {}),
+      ...(yearlyDecreasePercent !== undefined ? { yearlyDecreasePercent } : {}),
+    };
     onSave(saveData);
     onHide();
   };

@@ -118,7 +118,7 @@ export function runOptimization(
   const seed = computeAutoBracketSchedule(userData, taxStrategy, pinnedSpendingOrder);
   // Auto-bracket: 4 candidate projections (no selector probe — pinned).
   projectionCount += 4;
-  let bestSchedule: PerYearStrategyDecision[] = seed.perYearDecisions.map((d) => ({ ...d }));
+  const bestSchedule: PerYearStrategyDecision[] = seed.perYearDecisions.map((d) => ({ ...d }));
 
   // Helper: evaluate a candidate schedule via deterministic projection.
   // Passes `_forceSpendingOrder: pinnedSpendingOrder` so the inner call

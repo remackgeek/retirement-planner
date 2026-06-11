@@ -4,6 +4,7 @@ import SpendingGoalTypeSelectionDialog from '../dialogs/SpendingGoalTypeSelectio
 import SpendingGoalDialog from '../dialogs/SpendingGoalDialog';
 import HomePurchaseDialog from '../dialogs/HomePurchaseDialog';
 import type { SpendingGoal } from '../types/SpendingGoal';
+import type { UserData } from '../types/UserData';
 import { colors } from '../styles/theme';
 import { goalTypeIcons } from '../utils/defaultName';
 import { ManagerRow, RightAmount, RightLabel, SlatList, PlusButton, Header, HeaderLeft, HeaderRight } from './ManagerRow';
@@ -12,7 +13,7 @@ const Container = styled.div``;
 
 interface SpendingGoalsManagerProps {
   goals: SpendingGoal[];
-  userData: any;
+  userData: UserData;
   onAdd: (goal: Omit<SpendingGoal, 'id'>) => void;
   onUpdate: (id: string, goal: Partial<SpendingGoal>) => void;
   onDelete: (id: string) => void;

@@ -2,9 +2,13 @@ import { Chart } from 'chart.js';
 import type { Plugin, ChartType } from 'chart.js';
 import { colors } from '../styles/theme';
 import { eventTypeIcons as incomeEventTypeIcons, goalTypeIcons } from '../utils/defaultName';
+import type { IncomeEvent } from '../types/IncomeEvent';
+import type { SpendingGoal } from '../types/SpendingGoal';
 
 // Extend Chart.js types to include our custom plugin
 declare module 'chart.js' {
+  // Type param name must match chart.js's own declaration for merging (TS2428).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface PluginOptionsByType<TType extends ChartType> {
     htmlAnnotations?: HtmlAnnotationsOptions;
   }
@@ -17,7 +21,7 @@ export interface AnnotationConfig {
   xValue: number;
   yValue: number;
   stackIndex: number;
-  data?: any;
+  data?: IncomeEvent | SpendingGoal;
 }
 
 interface HtmlAnnotationsOptions {
@@ -26,16 +30,27 @@ interface HtmlAnnotationsOptions {
   onIconHover?: (annotation: AnnotationConfig | null) => void;
 }
 
+// Per-chart plugin state attached in beforeInit, removed in beforeDestroy.
+// Private to this file — nothing else reads these fields.
+interface HtmlAnnotationsState {
+  container: HTMLDivElement;
+  dataKey: string | null;
+  elements: Map<string, HTMLElement>;
+}
+
+type ChartWithAnnotations = Chart & { _htmlAnnotations?: HtmlAnnotationsState };
+
+const getState = (chart: Chart): HtmlAnnotationsState | undefined =>
+  (chart as ChartWithAnnotations)._htmlAnnotations;
+
 const eventTypeIcons: Record<string, string> = {
   ...incomeEventTypeIcons,
   ...goalTypeIcons,
 };
 
 function updateIconPositions(chart: Chart, annotations: AnnotationConfig[]) {
-  const elements = (chart as any)._htmlAnnotationsElements as Map<
-    string,
-    HTMLElement
-  >;
+  const elements = getState(chart)?.elements;
+  if (!elements) return;
 
   annotations.forEach((annotation) => {
     const element = elements.get(annotation.id);
@@ -94,9 +109,7 @@ function createIconElement(
 
   // Add tooltip
   const tooltipText = annotation.data
-    ? `${annotation.data.name}\nAmount: $${(
-        annotation.data.annualAmount || annotation.data.amount
-      )?.toLocaleString()}`
+    ? `${annotation.data.name}\nAmount: $${annotation.data.amount?.toLocaleString()}`
     : '';
   icon.title = tooltipText;
 
@@ -153,37 +166,41 @@ const htmlAnnotationsPlugin: Plugin = {
     }
 
     // Store container and state
-    (chart as any)._htmlAnnotationsContainer = container;
-    (chart as any)._htmlAnnotationsData = null;
-    (chart as any)._htmlAnnotationsElements = new Map();
+    (chart as ChartWithAnnotations)._htmlAnnotations = {
+      container,
+      dataKey: null,
+      elements: new Map(),
+    };
   },
 
   afterDraw(chart: Chart) {
-    const container = (chart as any)._htmlAnnotationsContainer as HTMLElement;
-    const options = chart.options.plugins
-      ?.htmlAnnotations as HtmlAnnotationsOptions;
+    const state = getState(chart);
+    if (!state) return;
+    // Chart.js types plugin options as _DeepPartial; our caller always supplies
+    // the full shape, so narrow back to the declared options interface.
+    const options = chart.options.plugins?.htmlAnnotations as HtmlAnnotationsOptions | undefined;
 
-    if (!container || !options?.annotations) {
+    if (!options?.annotations) {
       // Clear icons if no data
-      container.innerHTML = '';
-      (chart as any)._htmlAnnotationsData = null;
-      (chart as any)._htmlAnnotationsElements.clear();
+      state.container.innerHTML = '';
+      state.dataKey = null;
+      state.elements.clear();
       return;
     }
 
     const currentData = JSON.stringify(options.annotations);
 
     // Only update if data has changed
-    if ((chart as any)._htmlAnnotationsData === currentData) {
+    if (state.dataKey === currentData) {
       // Data hasn't changed, just update positions
       updateIconPositions(chart, options.annotations);
       return;
     }
 
     // Data changed, recreate icons
-    (chart as any)._htmlAnnotationsData = currentData;
-    (chart as any)._htmlAnnotationsElements.clear();
-    container.innerHTML = '';
+    state.dataKey = currentData;
+    state.elements.clear();
+    state.container.innerHTML = '';
 
     // Create and position icons
     options.annotations.forEach((annotation) => {
@@ -206,13 +223,13 @@ const htmlAnnotationsPlugin: Plugin = {
       );
 
       // Store reference for position updates
-      (chart as any)._htmlAnnotationsElements.set(annotation.id, iconElement);
-      container.appendChild(iconElement);
+      state.elements.set(annotation.id, iconElement);
+      state.container.appendChild(iconElement);
     });
   },
 
   beforeDestroy(chart: Chart) {
-    const container = (chart as any)._htmlAnnotationsContainer as HTMLElement;
+    const container = getState(chart)?.container;
     if (container && container.parentElement) {
       container.parentElement.removeChild(container);
     }

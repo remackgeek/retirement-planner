@@ -1756,7 +1756,7 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 50_000, startAge: 65, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 50_000, startAge: 65, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 500_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1809,8 +1809,8 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv',   amount: 30_000, startAge: 60, owner: 'self',   taxStatus: 'before_tax', colaType: 'fixed' } as any,
-        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 20_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv',   amount: 30_000, startAge: 60, owner: 'self',   taxStatus: 'before_tax', colaType: 'fixed' },
+        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 20_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 400_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1848,7 +1848,7 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 100_000, startAge: 60, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 100_000, startAge: 60, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 40_000,  owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1887,8 +1887,8 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv',   amount: 60_000, startAge: 60, owner: 'self',   taxStatus: 'before_tax', colaType: 'fixed' } as any,
-        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 40_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv',   amount: 60_000, startAge: 60, owner: 'self',   taxStatus: 'before_tax', colaType: 'fixed' },
+        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 40_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-self',   name: 'Self Trad',   type: 'traditional', balance: 500_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1921,7 +1921,7 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 50_000, startAge: 60, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcS', type: 'roth_conversion', name: 'Self Conv', amount: 50_000, startAge: 60, owner: 'self', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-self',    name: 'Self Trad',      type: 'traditional', balance: 500_000, owner: 'self',   stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -1977,7 +1977,7 @@ describe('audit.accountFlows (via runSimulation)', () => {
       filingStatus: 'mfj',
       spendingGoals: [],
       incomeEvents: [
-        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 25_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' } as any,
+        { id: 'rcP', type: 'roth_conversion', name: 'Spouse Conv', amount: 25_000, startAge: 60, owner: 'spouse', taxStatus: 'before_tax', colaType: 'fixed' },
       ],
       accounts: [
         { id: 'trad-spouse', name: 'Spouse Trad', type: 'traditional', balance: 300_000, owner: 'spouse', stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -2009,7 +2009,7 @@ describe('audit.accountFlows (via runSimulation)', () => {
           startAge: 60,
           taxStatus: 'after_tax',
           colaType: 'fixed',
-        } as any,
+        },
       ],
       accounts: [
         { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 100_000, stockAllocation: 0, portfolioBalance: '50_50' as const },
@@ -2380,7 +2380,7 @@ describe('cash account', () => {
         id: 'pension-1', type: 'pension_income', name: 'Pension',
         amount: 300_000, startAge: 60, endAge: 60,
         taxStatus: 'before_tax', colaType: 'fixed',
-      } as any],
+      }],
       portfolioAssumptions: {
         stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
         stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
@@ -2442,7 +2442,7 @@ describe('cash account', () => {
         id: 'conv-1', type: 'roth_conversion', name: 'Conv',
         amount: 100_000, startAge: 60, endAge: 60,
         taxStatus: 'before_tax', colaType: 'fixed',
-      } as any],
+      }],
       portfolioAssumptions: {
         stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
         stockBondCorrelationEnabled: false, stockBondCorrelation: 0,

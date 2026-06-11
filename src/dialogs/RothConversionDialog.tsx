@@ -9,7 +9,8 @@ import { Checkbox } from 'primereact/checkbox';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import type { UserData } from '../types/UserData';
 import type { StrategyObjective, PerYearStrategyDecision } from '../services/strategies/types';
-import { DEFAULT_END_AGE_CAP, DEFAULT_TERMINAL_TRAD_TAX_RATE } from '../services/strategies/types';
+import { DEFAULT_TERMINAL_TRAD_TAX_RATE } from '../services/strategies/types';
+import { buildPlanWindowOptions, defaultPlanWindow } from './planWindow';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { spacing, colors, border, fontSize, dialogWidth } from '../styles/theme';
 import { buildAgeOptions, buildEndAgeOptions, incomeEventAgeRanges } from '../utils/ageOptions';
@@ -27,37 +28,13 @@ import { runDeterministicProjection, getRmdStartAge } from '../services/Simulati
 import { buildStrategyConversionEvents, isGeneratorProducedConversion } from '../services/strategies/syntheticEvents';
 import PlanComparisonChart from './PlanComparisonChart';
 import { useUIState } from '../context/UIStateContext';
-
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.md};
-  padding: ${spacing.sm} 0;
-
-  .p-inputtext,
-  .p-dropdown,
-  .p-inputnumber {
-    width: 100%;
-  }
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${spacing.xs};
-`;
-
-const FieldRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: ${spacing.md};
-`;
-
-const CheckboxGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${spacing.sm};
-`;
+import {
+  FormFullWidth as Form,
+  InputGroupPlain as InputGroup,
+  FieldRowGrid as FieldRow,
+  CheckboxGroup,
+  TrashButton,
+} from './SettingsDialogPrimitives';
 
 const HelpText = styled.small`
   color: ${colors.textMuted};
@@ -93,24 +70,6 @@ const WarningList = styled.div`
   flex-direction: column;
   gap: ${spacing.xs};
   margin-top: ${spacing.xs};
-`;
-
-const TrashButton = styled.button`
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: ${spacing.xs};
-  border-radius: ${border.radius};
-  color: ${colors.danger};
-  font-size: ${fontSize.xl};
-  line-height: 1;
-  display: flex;
-  align-items: center;
-
-  &:hover {
-    color: ${colors.dangerHover};
-    background: ${colors.bgMedium};
-  }
 `;
 
 const ImpactPanel = styled.div`
@@ -246,45 +205,6 @@ const OBJECTIVE_OPTIONS: { label: string; value: StrategyObjective }[] = [
   { label: 'Max after-tax wealth (values Roth $ above Traditional $)', value: 'max_after_tax_terminal_wealth' },
   { label: 'Min lifetime tax (real $)', value: 'min_lifetime_tax' },
 ];
-
-// Plan-window options: end-age cap for the conversion schedule. Default 80
-// reflects practitioner consensus — past ~80 the math shifts from
-// owner-lifetime tax arbitrage to estate planning, which is a different
-// objective the wizard doesn't model.
-// Base END_AGE_OPTIONS — the fixed-age choices. The 'through life expectancy
-// (advanced)' option is appended at render time because its value depends on
-// userData.lifeExpectancy. Surfacing it as the last option keeps the default-
-// case UX clean while giving heir-rate-arbitrage users an explicit escape
-// hatch (vs. having to pick 90 as a workaround).
-const BASE_END_AGE_OPTIONS: { label: string; value: number }[] = [
-  { label: 'through age 73 (RMD start)', value: 73 },
-  { label: 'through age 75', value: 75 },
-  { label: 'through age 80 (default)', value: DEFAULT_END_AGE_CAP },
-  { label: 'through age 85', value: 85 },
-  { label: 'through age 90', value: 90 },
-];
-
-export const buildPlanWindowOptions = (lifeExpectancy: number): { label: string; value: number }[] => {
-  // Keep fixed-age options up to AND INCLUDING lifeExpectancy (no point
-  // offering "through age 90" when the plan ends at 85). Append a separate
-  // "through life expectancy" option ONLY when lifeExpectancy doesn't
-  // already equal one of the fixed values — otherwise we'd duplicate the
-  // value (e.g. for lifeExpectancy=80, "through age 80 (default)" and
-  // "through life expectancy (age 80, advanced)" would both have value=80,
-  // and the dropdown would show whichever label rendered last as the
-  // selected state, confusingly relabeling the default as "advanced").
-  const fixed = BASE_END_AGE_OPTIONS.filter((o) => o.value <= lifeExpectancy);
-  const alreadyCovered = BASE_END_AGE_OPTIONS.some((o) => o.value === lifeExpectancy);
-  return alreadyCovered
-    ? fixed
-    : [...fixed, { label: `through life expectancy (age ${lifeExpectancy}, advanced)`, value: lifeExpectancy }];
-};
-
-/** Initial / reset value for `wizEndAgeCap`. Clamps the default (80) to the
- *  scenario's `lifeExpectancy` so users with a short plan don't end up with
- *  a state value that doesn't match any option in the dropdown. */
-export const defaultPlanWindow = (lifeExpectancy: number): number =>
-  Math.min(DEFAULT_END_AGE_CAP, lifeExpectancy);
 
 const makeDefaultFormData = () => ({
   name: '',
