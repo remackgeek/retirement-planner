@@ -7,7 +7,7 @@ import Footer from '../Footer';
 import { breakpoints, colors, mediaQuery, spacing, fontSize, border } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
 import type { Scenario } from '../../types/Scenario';
-import { confirmDialog } from 'primereact/confirmdialog';
+import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 
 const AppContentContainer = styled.div`
   display: flex;
@@ -215,6 +215,11 @@ const AppContent: React.FC = () => {
         />
       </ContentArea>
       <Footer />
+      {/* Single global instance backing PrimeReact's imperative confirmDialog().
+          Mounted here in the always-rendered shell — NOT inside the Sidebar,
+          which unmounts its subtree when collapsed and silently broke every
+          confirm (Discard, scenario delete, dialog confirms) in that state. */}
+      <ConfirmDialog />
     </AppContentContainer>
   );
 };

@@ -2,7 +2,6 @@ import { useState, useContext } from 'react';
 import styled, { css, createGlobalStyle } from 'styled-components';
 import { RetirementContext } from '../../context/RetirementContext';
 import { Button } from 'primereact/button';
-import { ConfirmDialog } from 'primereact/confirmdialog';
 import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import ScenarioDialog from '../../dialogs/ScenarioDialog';
 import CloneScenarioDialog from '../../dialogs/CloneScenarioDialog';
@@ -606,7 +605,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenar
         onHide={() => { setCloneDialogVisible(false); setCloneSourceScenario(null); }}
         onSave={(name) => { if (cloneSourceScenario) cloneScenario(cloneSourceScenario.id, name); }}
       />
-      <ConfirmDialog />
     </SidebarContainer>
   );
 };
