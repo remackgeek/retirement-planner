@@ -22,7 +22,11 @@
       "PowerShell(npm run test --silent -- --run 2>&1)",
       "Bash(Get-ChildItem -Path \"c:\\\\Dev4\\\\retirement-planner\\\\test\\\\scenarios\" -Filter \"*roth*\" -o name)",
       "Bash(grep -vE \"^\\\\s*$\")",
-      "Bash(grep -n \"npm run test.*npm run build\\\\|Run \\\\`npm\" CLAUDE.md)"
+      "Bash(grep -n \"npm run test.*npm run build\\\\|Run \\\\`npm\" CLAUDE.md)",
+      "PowerShell(npm run lint 2>&1)",
+      "PowerShell(npx vitest run src/services/socialSecurityOptimizer.test.ts src/services/SimulationService.test.ts test/simulation.test.ts 2>&1)",
+      "Skill(code-review)",
+      "Skill(code-review:*)"
     ]
   }
 }

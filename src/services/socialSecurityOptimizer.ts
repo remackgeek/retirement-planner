@@ -16,6 +16,7 @@
  */
 import type { UserData } from '../types/UserData';
 import type { IncomeEvent, IncomeEventMeta } from '../types/IncomeEvent';
+import { DEFAULT_SS_HAIRCUT_YEAR, DEFAULT_SS_HAIRCUT_PERCENT } from '../types/IncomeEvent';
 import { runDeterministicProjection } from './SimulationService';
 import { benefitAtAge } from './socialSecurity';
 
@@ -45,12 +46,13 @@ export interface ClaimingSweepResult {
 
 const SWEEP_EVENT_ID = '__ss-sweep__';
 
-/** Options for {@link buildClaimingEvent}. Explicit `haircutEnabled`/`haircutPercent`
- *  override the template/defaults (the wizard exposes them as a control); `meta`
- *  is the provenance stamp applied on Apply. */
+/** Options for {@link buildClaimingEvent}. Explicit `haircutEnabled`/`haircutPercent`/
+ *  `haircutYear` override the template/defaults (the wizard exposes them as controls);
+ *  `meta` is the provenance stamp applied on Apply. */
 export interface BuildClaimingOpts {
   haircutEnabled?: boolean;
   haircutPercent?: number;
+  haircutYear?: number;
   meta?: IncomeEventMeta;
 }
 
@@ -60,10 +62,11 @@ export interface BuildClaimingOpts {
  * (candidate generation) and the dialog's Apply, so the two never drift.
  *
  * Always emits `ssAmountBasis: 'today'` (PIA is a today's-dollar concept) and
- * inherits `colaType` from `template`. The 2034 haircut is a per-event field: an
- * explicit `opts.haircutEnabled`/`haircutPercent` (from the wizard's control)
- * wins over the template, which wins over the defaults (on / 23%). `??` is used
- * so an explicit `false` or `0` is honored.
+ * inherits `colaType` from `template`. The trust-fund haircut is a per-event set
+ * of fields: an explicit `opts.haircutEnabled`/`haircutPercent`/`haircutYear` (from
+ * the wizard's controls) wins over the template, which wins over the defaults (on /
+ * DEFAULT_SS_HAIRCUT_PERCENT / DEFAULT_SS_HAIRCUT_YEAR). `??` is used so an explicit
+ * `false` or `0` is honored.
  */
 export function buildClaimingEvent(
   template: IncomeEvent | undefined,
@@ -82,7 +85,8 @@ export function buildClaimingEvent(
     colaType: template?.colaType ?? 'inflation_adjusted',
     ssAmountBasis: 'today',
     ssHaircutEnabled: opts.haircutEnabled ?? template?.ssHaircutEnabled ?? true,
-    ssHaircutPercent: opts.haircutPercent ?? template?.ssHaircutPercent ?? 23,
+    ssHaircutPercent: opts.haircutPercent ?? template?.ssHaircutPercent ?? DEFAULT_SS_HAIRCUT_PERCENT,
+    ssHaircutYear: opts.haircutYear ?? template?.ssHaircutYear ?? DEFAULT_SS_HAIRCUT_YEAR,
     amountPeriod: template?.amountPeriod ?? 'annual',
     ...(opts.meta ? { meta: opts.meta } : {}),
   };
@@ -108,10 +112,11 @@ export interface SweepParams {
   ageMax: number;
   /** The owner's existing SS event, used to inherit COLA + report current age. */
   template?: IncomeEvent;
-  /** 2034 trust-fund haircut applied to every candidate (from the wizard's
-   *  control). Defaults to on / 23% when omitted. */
+  /** Trust-fund haircut applied to every candidate (from the wizard's controls).
+   *  Defaults to on / DEFAULT_SS_HAIRCUT_PERCENT / DEFAULT_SS_HAIRCUT_YEAR when omitted. */
   haircutEnabled?: boolean;
   haircutPercent?: number;
+  haircutYear?: number;
 }
 
 /**
@@ -119,7 +124,7 @@ export interface SweepParams {
  * plan final value. Also computes the current-plan baseline for comparison.
  */
 export function optimizeClaimingAge(userData: UserData, params: SweepParams): ClaimingSweepResult {
-  const { owner, pia, fraMonths, ageMin, ageMax, template, haircutEnabled, haircutPercent } = params;
+  const { owner, pia, fraMonths, ageMin, ageMax, template, haircutEnabled, haircutPercent, haircutYear } = params;
 
   // Each candidate is its own projection. The comparison reference is the
   // candidate at the current claim age (chosen in the dialog), not a separate
@@ -132,7 +137,7 @@ export function optimizeClaimingAge(userData: UserData, params: SweepParams): Cl
     const candidate = withOwnerSSEvent(
       userData,
       owner,
-      buildClaimingEvent(template, owner, age, annualBenefit, { haircutEnabled, haircutPercent }),
+      buildClaimingEvent(template, owner, age, annualBenefit, { haircutEnabled, haircutPercent, haircutYear }),
     );
     const proj = runDeterministicProjection(candidate);
     if (inflationFactors.length === 0) inflationFactors = proj.inflation; // shared by all candidates

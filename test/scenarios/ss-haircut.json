@@ -1,6 +1,6 @@
 {
-  "_description": "SS with custom haircut percentage (30%). Tests haircut activation at 2034 and custom percentage.",
-  "_rationale": "Single filer, Florida, $30k SS at age 62, custom 30% haircut. Pre-2034 (ages 62-67): full $30k/yr. From 2034 (age 68+): $30k * 0.70 = $21k/yr. Provisional income always below $25k threshold, so 0% taxable. No spending, no growth.",
+  "_description": "SS with custom haircut percentage (30%). Tests haircut activation at the default 2032 trust-fund year and a custom reduction percentage.",
+  "_rationale": "Single filer, Florida, $30k SS at age 62, custom 30% haircut, default haircut year (2032). Pre-2032 (ages 62-65): full $30k/yr. From 2032 (age 66+): $30k * 0.70 = $21k/yr. Provisional income always below $25k threshold, so 0% taxable. No spending, no growth.",
   "_seed": 12345,
   "name": "SS Haircut",
   "currentAge": 60,

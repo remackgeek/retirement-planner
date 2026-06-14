@@ -1,5 +1,6 @@
 import type { UserData } from '../types/UserData';
 import type { IncomeEvent } from '../types/IncomeEvent';
+import { DEFAULT_SS_HAIRCUT_YEAR, DEFAULT_SS_HAIRCUT_PERCENT } from '../types/IncomeEvent';
 import {
   calculateNetFromGross,
   calculateSSTaxableAmount,
@@ -98,7 +99,8 @@ function incrementalTaxOnConversion(
 // Compute per-year baseline ordinary taxable income from the *non-conversion*
 // events only. Matches the same shape as SimulationService.accumulateIncome but
 // intentionally omits conversions (so we can measure their incremental impact).
-function baselineOrdinaryGross(
+// Exported for unit testing (the SS trust-fund haircut year/percent path).
+export function baselineOrdinaryGross(
   userData: UserData,
   year: number,
   inflationRate: number,
@@ -128,8 +130,12 @@ function baselineOrdinaryGross(
       const yearsFromBase = year - baseYear;
       if (yearsFromBase > 0) amount *= Math.pow(1 + inflationRate, yearsFromBase);
     }
-    if (event.type === 'social_security' && event.ssHaircutEnabled !== false && year >= 2034) {
-      const reduction = (event.ssHaircutPercent ?? 23) / 100;
+    if (
+      event.type === 'social_security' &&
+      event.ssHaircutEnabled !== false &&
+      year >= (event.ssHaircutYear ?? DEFAULT_SS_HAIRCUT_YEAR)
+    ) {
+      const reduction = (event.ssHaircutPercent ?? DEFAULT_SS_HAIRCUT_PERCENT) / 100;
       amount *= 1 - reduction;
     }
 

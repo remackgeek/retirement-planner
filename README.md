@@ -9,7 +9,7 @@ A browser-based retirement planning tool positioned between simple calculators (
 - **Monte Carlo simulation** — 1,000 runs by default (configurable up to 10,000) with log-normal or Student's t returns; a deterministic Projected line plus a shaded 10th–90th-percentile "likely range" band
 - **Multi-account modeling** — Traditional (pre-tax), Roth (tax-free), and Taxable accounts with per-account stock/bond allocation
 - **Tax-aware withdrawals** — federal + state income tax, RMDs at 73+, Roth conversions, SS provisional income formula
-- **Income events** — Social Security (with 2034 haircut option), pensions, employment savings, Roth conversions, and more
+- **Income events** — Social Security (with a configurable trust-fund haircut year/percent), pensions, employment savings, Roth conversions, and more
 - **Spending goals** — 11 categories with inflation adjustment, age-based activation, and optional spending decay
 - **State tax timeline** — model future relocations with per-year effective state tax rates
 - **Historical return modes** — Trinity-style rolling sequences or block bootstrap from 1928–2024 S&P 500 / Treasury / CPI data

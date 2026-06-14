@@ -92,13 +92,13 @@ describe('optimizeClaimingAge', () => {
     expect(sweep.results.map((r) => r.age)).toEqual([66, 67, 68, 69, 70]);
   });
 
-  it('propagates the 2034 haircut into the candidate projections', () => {
-    // baseUserData spans 2026–2056, so every candidate has post-2034 benefit
-    // years. Turning the haircut on must lower terminal value (less SS income
-    // → more portfolio drawdown). Anchored on the age-62 candidate.
+  it('propagates the trust-fund haircut into the candidate projections', () => {
+    // baseUserData spans 2026–2056, so every candidate has post-haircut-year benefit
+    // years (default 2032). Turning the haircut on must lower terminal value (less SS
+    // income → more portfolio drawdown). Anchored on the age-62 candidate.
     const params = { owner: 'self' as const, pia: 30000, fraMonths: FRA_1964, ageMin: 62, ageMax: 70 };
     const off = optimizeClaimingAge(baseUserData(), { ...params, haircutEnabled: false });
-    const on = optimizeClaimingAge(baseUserData(), { ...params, haircutEnabled: true, haircutPercent: 23 });
+    const on = optimizeClaimingAge(baseUserData(), { ...params, haircutEnabled: true, haircutPercent: 22 });
     expect(on.results[0].terminalReal).toBeLessThan(off.results[0].terminalReal);
   });
 
@@ -139,10 +139,11 @@ describe('buildClaimingEvent', () => {
     expect(built.name).toBe('My SS');
   });
 
-  it('defaults haircut on/23% and generates a name when no template', () => {
+  it('defaults haircut on / 22% / 2032 and generates a name when no template', () => {
     const built = buildClaimingEvent(undefined, 'spouse', 67, 25000);
     expect(built.ssHaircutEnabled).toBe(true);
-    expect(built.ssHaircutPercent).toBe(23);
+    expect(built.ssHaircutPercent).toBe(22);
+    expect(built.ssHaircutYear).toBe(2032);
     expect(built.colaType).toBe('inflation_adjusted');
     expect(built.name).toBe('Social Security (Spouse)');
   });
@@ -156,9 +157,10 @@ describe('buildClaimingEvent', () => {
     const off = buildClaimingEvent(template, 'self', 70, 37200, { haircutEnabled: false });
     expect(off.ssHaircutEnabled).toBe(false);
 
-    const custom = buildClaimingEvent(template, 'self', 70, 37200, { haircutEnabled: true, haircutPercent: 19 });
+    const custom = buildClaimingEvent(template, 'self', 70, 37200, { haircutEnabled: true, haircutPercent: 19, haircutYear: 2030 });
     expect(custom.ssHaircutEnabled).toBe(true);
     expect(custom.ssHaircutPercent).toBe(19);
+    expect(custom.ssHaircutYear).toBe(2030);
   });
 });
 

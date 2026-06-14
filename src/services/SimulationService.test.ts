@@ -123,15 +123,15 @@ describe('calculateAnnualCashFlow', () => {
   });
 
   describe('SS haircut', () => {
-    it('applies default 23% haircut from 2034', () => {
+    it('applies default 22% haircut from 2032', () => {
       const userData = makeUserData({
         incomeEvents: [
           { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       });
-      const result = calculateAnnualCashFlow(userData, 2034, 0);
-      expect(result.ssGross).toBe(23100);
-      expect(result.netCashFlow).toBe(23100);
+      const result = calculateAnnualCashFlow(userData, 2032, 0);
+      expect(result.ssGross).toBe(23400);
+      expect(result.netCashFlow).toBe(23400);
     });
 
     it('applies custom haircut percentage', () => {
@@ -155,14 +155,25 @@ describe('calculateAnnualCashFlow', () => {
       expect(result.netCashFlow).toBe(30000);
     });
 
-    it('does not apply haircut before 2034', () => {
+    it('does not apply haircut before 2032', () => {
       const userData = makeUserData({
         incomeEvents: [
           { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: true },
         ],
       });
-      const result = calculateAnnualCashFlow(userData, 2033, 0);
+      const result = calculateAnnualCashFlow(userData, 2031, 0);
       expect(result.netCashFlow).toBe(30000);
+    });
+
+    it('honors a custom ssHaircutYear', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: true, ssHaircutYear: 2040 },
+        ],
+      });
+      // Default-year (2032) haircut would apply, but the custom 2040 year defers it.
+      expect(calculateAnnualCashFlow(userData, 2032, 0).netCashFlow).toBe(30000);
+      expect(calculateAnnualCashFlow(userData, 2040, 0).netCashFlow).toBe(23400);
     });
   });
 

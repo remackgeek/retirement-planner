@@ -147,7 +147,7 @@ If you're married and have Traditional accounts in both your names, YARP calcula
 
 Income events cover everything flowing **into** your portfolio. Common ones:
 
-- **Social Security** — has its own dialog. You can model the 2034 trust-fund haircut if you want to be conservative.
+- **Social Security** — has its own dialog. You can model the projected trust-fund haircut if you want to be conservative. Both the **start year** (default 2032, per the 2026 Trustees Report) and the **reduction percent** (default ~22%) are editable in the dialog's Advanced section, so you can update them as projections change or test your own assumption about what Congress might do.
 - **Pension** — usually with no cost-of-living adjustment.
 - **Part-time work / consulting** in retirement
 - **Rental income, annuity payments**
@@ -357,7 +357,7 @@ From that one figure the wizard reconstructs your full benefit formula and compu
 
 **Couples.** With Married-filing-jointly and a spouse age set, an *Optimizing for* selector lets you tune each person separately; the other spouse's benefit is held fixed. A spouse who is already receiving Social Security (or is past 70) is locked — there's no claiming decision left to make — and the wizard points you to the other person.
 
-**Scope.** This models each person's own retirement benefit (early/delayed adjustment + an optional 2034 trust-fund reduction, toggled right in the wizard so you can compare claiming ages with and without it). Spousal (50%) and survivor benefits aren't modeled yet.
+**Scope.** This models each person's own retirement benefit (early/delayed adjustment + an optional trust-fund reduction with an editable start year/percent — defaults 2032 / ~22% from the 2026 Trustees Report — toggled right in the wizard so you can compare claiming ages with and without it). Spousal (50%) and survivor benefits aren't modeled yet.
 
 When you click **Apply**, the chosen claiming age becomes a regular Social Security income event (replacing the previous one for that person), visible on the chart, in the Income panel, and in exports.
 

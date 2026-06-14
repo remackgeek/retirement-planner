@@ -6,6 +6,7 @@ import type { UserData, CashBucketPolicy } from '../types/UserData';
 // `spendingWithdrawalOrder` field is similarly stripped by
 // `stripDeprecatedSpendingWithdrawalOrder`.
 import type { Account, AccountType, AccountKind } from '../types/Account';
+import { DEFAULT_SS_HAIRCUT_YEAR, DEFAULT_SS_HAIRCUT_PERCENT } from '../types/IncomeEvent';
 import {
   calculateNetFromGross,
   calculateNetFromGrossDetailed,
@@ -1212,8 +1213,12 @@ function accumulateIncome(
     }
 
     let effectiveAmount = amount;
-    if (event.type === 'social_security' && event.ssHaircutEnabled !== false && year >= 2034) {
-      const reduction = (event.ssHaircutPercent ?? 23) / 100;
+    if (
+      event.type === 'social_security' &&
+      event.ssHaircutEnabled !== false &&
+      year >= (event.ssHaircutYear ?? DEFAULT_SS_HAIRCUT_YEAR)
+    ) {
+      const reduction = (event.ssHaircutPercent ?? DEFAULT_SS_HAIRCUT_PERCENT) / 100;
       effectiveAmount *= 1 - reduction;
     }
 

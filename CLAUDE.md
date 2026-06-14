@@ -129,8 +129,12 @@ projections, and good tax awareness without overwhelming the user.
   optional employer match via `employerMatchPercent` + `employerMatchCeilingPercent` and
   optional `wageEventId` to compute the match base off a linked salary event), and
   `roth_conversion` for Traditional→Roth transfers. Each has a required `name`
-  (auto-generated defaults like "Pension Income 1"), COLA, before/after-tax, SS 2034 haircut
-  (configurable). All cash flow flows through events/goals — no special-cased fields on UserData.
+  (auto-generated defaults like "Pension Income 1"), COLA, before/after-tax, SS trust-fund
+  haircut (per-event `ssHaircutEnabled` / `ssHaircutPercent` / `ssHaircutYear`; the year and
+  percent are user-editable in the SS dialog + wizard, defaulting to
+  `DEFAULT_SS_HAIRCUT_YEAR` / `DEFAULT_SS_HAIRCUT_PERCENT` = 2032 / 22% from `src/types/IncomeEvent.ts`,
+  tracking the 2026 Trustees Report — so the projection updates without a code push and users can
+  model alternative legislative outcomes). All cash flow flows through events/goals — no special-cased fields on UserData.
   IRS contribution caps are enforced per `(owner, kind)` group, where account "kind" is
   `Account.accountKind` (`'401k' | 'ira' | 'brokerage'`; defaults: traditional/roth → IRA,
   brokerage → brokerage). Within a group, pre_tax + roth contributions pool against the
