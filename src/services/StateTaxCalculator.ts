@@ -215,7 +215,8 @@ export function computeStateTax(
   // LTCG threshold (WA-style) inflation-indexes independently of brackets:
   // WA freezes nothing about the threshold — it's CPI-indexed annually — even
   // though `bracketsInflationIndexed` is false for WA (which has no brackets).
-  // Anchor: 2024 statutory $262k; subsequent values index forward from 2024.
+  // Anchor: 2024 indexed value $270k (RCW 82.87.060, statutory base $250k @
+  // 2021, CPI-indexed); subsequent values index forward from 2024.
   const ltcgBaseYear = 2024;
   const ltcgFactor = input.inflationRate && input.year > ltcgBaseYear
     ? Math.pow(1 + input.inflationRate, input.year - ltcgBaseYear)

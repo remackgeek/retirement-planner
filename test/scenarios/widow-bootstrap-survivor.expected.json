@@ -1,0 +1,5 @@
+{
+  "_rationale": "Zero spending → no run can deplete → probability exactly 100. The real regression value is that the simulation completes at all with a 33-year survivor horizon under historical_bootstrap (the runner's array-length check separately pins result arrays to 33 years via projectionHorizonYears). Median final balance: $500k compounded 33 years at a 60/40 historical real CAGR (~3-7%) spans roughly $1.3M–$4.7M; band widened to $1M–$6M for block-stitching variance across seeds.",
+  "probability": 100,
+  "medianFinalBalance": { "min": 1000000, "max": 6000000 }
+}

@@ -98,6 +98,29 @@ export function stripDeprecatedSpendingWithdrawalOrder(scenario: Scenario): {
  */
 const CASH_BUCKET_DEFAULTS = { minAmount: 20000, targetAmount: 60000, maxAmount: 120000 };
 
+/**
+ * Year-0 annual living expenses active at `currentAge`.
+ *
+ * `goal.amount` is ALWAYS stored annual; `amountPeriod` is a display hint. Pass
+ * `annualizeMonthly: true` ONLY to reproduce the buggy released build's
+ * calculation (it multiplied monthly-period goals by 12 a second time) — that
+ * reproduction is what lets `repairInflatedCashBucketBand` invert the damage
+ * exactly instead of guessing a factor.
+ */
+function activeLivingExpensesAnnual(scenario: Scenario, annualizeMonthly: boolean): number {
+  const age = scenario.currentAge;
+  let annual = 0;
+  for (const goal of scenario.spendingGoals ?? []) {
+    if (goal.type !== 'living_expenses') continue;
+    const active = goal.isOneTime
+      ? age === goal.startAge
+      : age >= goal.startAge && (goal.endAge === undefined || age <= goal.endAge);
+    if (!active) continue;
+    annual += annualizeMonthly && goal.amountPeriod === 'monthly' ? goal.amount * 12 : goal.amount;
+  }
+  return annual;
+}
+
 export function migrateCashBucketMonthsToAmounts(scenario: Scenario): {
   scenario: Scenario;
   changed: boolean;
@@ -113,18 +136,15 @@ export function migrateCashBucketMonthsToAmounts(scenario: Scenario): {
     return { scenario, changed: false };
   }
 
-  // Estimate year-0 annual living expenses active at currentAge (annualizing
-  // monthly-period goals). Matches conversionImpact's living-expenses sum.
-  const age = scenario.currentAge;
-  let annual = 0;
-  for (const goal of scenario.spendingGoals ?? []) {
-    if (goal.type !== 'living_expenses') continue;
-    const active = goal.isOneTime
-      ? age === goal.startAge
-      : age >= goal.startAge && (goal.endAge === undefined || age <= goal.endAge);
-    if (!active) continue;
-    annual += (goal.amountPeriod === 'monthly' ? goal.amount * 12 : goal.amount);
-  }
+  // Estimate year-0 annual living expenses active at currentAge. `goal.amount`
+  // is ALWAYS stored annual — `amountPeriod` is a UI display hint only
+  // (SpendingGoalDialog multiplies by 12 on save; the manager divides by 12
+  // for display). Multiplying by 12 here again would inflate the migrated
+  // dollar thresholds 12× for monthly-period goals (the living-expenses
+  // default), a one-way persisted corruption — see
+  // `repairInflatedCashBucketBand` for the repair of records that shipped
+  // through exactly that bug.
+  const annual = activeLivingExpensesAnnual(scenario, false);
 
   let minAmount: number;
   let targetAmount: number;
@@ -144,6 +164,80 @@ export function migrateCashBucketMonthsToAmounts(scenario: Scenario): {
     scenario: {
       ...scenario,
       cashBucketPolicy: { minAmount, targetAmount, maxAmount, refillTrigger: policy.refillTrigger },
+    },
+    changed: true,
+  };
+}
+
+/**
+ * v1 → v2 repair: undo the 12×-inflated cash-bucket band written by the
+ * released months→dollars migration.
+ *
+ * That build annualized monthly-period living-expenses goals a second time
+ * (`goal.amount × 12` on an amount already stored annual), so it multiplied the
+ * months counts by the ANNUAL spend instead of the monthly one. A `minMonths: 6`
+ * floor became six YEARS of spending. The months fields were deleted in the same
+ * write, so the (now fixed) months migration can never revisit those records —
+ * only an explicit repair can. Left alone, the engine's floor-locked-cash rule
+ * excludes that phantom floor from the spending withdrawal cap and the plan
+ * reports large shortfalls it should never have had.
+ *
+ * Runs EXACTLY ONCE per record via the versioned registry (`MIGRATORS[1]`), so
+ * it needs no self-idempotency guard — that is the whole reason to route it
+ * through the registry rather than the inference-style migrations above.
+ *
+ * The band is only touched when the damage is positively fingerprinted:
+ *   1. an active monthly-period living-expenses goal exists (a necessary
+ *      condition — without one the buggy and correct estimates agree and no
+ *      record could have been inflated);
+ *   2. all three thresholds divide back to near-integers against the buggy
+ *      monthly figure, i.e. they really are `round(months × buggyMonthly)`;
+ *   3. the ceiling exceeds two years of real spending — implausible for a CASH
+ *      bucket, and the actual tell of the inflation.
+ * Repair then divides by the exactly-reconstructed ratio, so a mixed
+ * monthly/annual goal set (ratio between 1 and 12) is inverted correctly too.
+ *
+ * Deliberately NOT repaired: a band whose implied floor is ≤ 1 year, which is
+ * indistinguishable from a deliberately conservative dollar band. Those are
+ * left for the user to adjust rather than risk shrinking a real configuration.
+ */
+export function repairInflatedCashBucketBand(scenario: Scenario): {
+  scenario: Scenario;
+  changed: boolean;
+} {
+  const policy = scenario.cashBucketPolicy;
+  if (!policy) return { scenario, changed: false };
+  const { minAmount, targetAmount, maxAmount } = policy;
+  const amounts = [minAmount, targetAmount, maxAmount];
+  if (!amounts.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0)) {
+    return { scenario, changed: false };
+  }
+
+  const correctAnnual = activeLivingExpensesAnnual(scenario, false);
+  const buggyAnnual = activeLivingExpensesAnnual(scenario, true);
+  // (1) No monthly-period goal → the two agree → this record was never inflated.
+  if (correctAnnual <= 0 || buggyAnnual <= correctAnnual) return { scenario, changed: false };
+
+  // (2) Fingerprint: the buggy build wrote round(months × buggyMonthly).
+  const buggyMonthly = buggyAnnual / 12;
+  const isNearInteger = (v: number) => Math.abs(v - Math.round(v)) < 0.02;
+  if (!amounts.every((amount) => isNearInteger(amount / buggyMonthly))) {
+    return { scenario, changed: false };
+  }
+
+  // (3) A cash ceiling above two years of real spending is the inflation tell.
+  if (maxAmount <= 2 * correctAnnual) return { scenario, changed: false };
+
+  const ratio = buggyAnnual / correctAnnual;
+  return {
+    scenario: {
+      ...scenario,
+      cashBucketPolicy: {
+        ...policy,
+        minAmount: Math.round(minAmount / ratio),
+        targetAmount: Math.round(targetAmount / ratio),
+        maxAmount: Math.round(maxAmount / ratio),
+      },
     },
     changed: true,
   };
@@ -203,20 +297,29 @@ export function migrateLegacyTaxStrategy(scenario: Scenario): { scenario: Scenar
 // ----------------------------------------------------------------------------
 // Ordered content-schema migrators (registry skeleton).
 //
-// Keyed by the version they upgrade FROM (`migrators[v]` turns a v→v+1 record).
-// Currently EMPTY: the shape-inference migrations above (legacy taxStrategy,
+// Keyed by the version they upgrade FROM (`MIGRATORS[v]` turns a v→v+1 record).
+// v0→v1 has no entry: the shape-inference migrations above (legacy taxStrategy,
 // taxable→brokerage, spendingWithdrawalOrder strip) plus `normalizeScenario`
-// still do all v0→v1 work. This is the home for the next content change —
-// when CURRENT_SCHEMA_VERSION is next bumped, add `MIGRATORS[1] = (s) => ...`
-// and the loop below chains them. See CLAUDE.md "Release-readiness roadmap".
+// still do all of that work. A missing entry means "no ordered content change
+// between these two versions" and is skipped, NOT treated as end-of-chain — a
+// v0 record must still reach MIGRATORS[1].
 // ----------------------------------------------------------------------------
-export const MIGRATORS: Record<number, (scenario: Scenario) => Scenario> = {};
+export const MIGRATORS: Record<number, (scenario: Scenario) => Scenario> = {
+  // v1 → v2: undo the 12×-inflated cash-bucket band written by the released
+  // months→dollars migration. One-shot by construction; see the function doc.
+  1: (s) => repairInflatedCashBucketBand(s).scenario,
+};
+// NOTE for future entries: `runMigrationPipeline` reports the v1→v2 repair by
+// comparing `cashBucketPolicy` identity across the whole versioned step. A new
+// migrator that replaces that object for an unrelated reason would trip the
+// "we corrected your cash bucket" toast — give it its own signal instead.
 
 function applyVersionedMigrators(scenario: Scenario): Scenario {
   let v = scenario.schemaVersion ?? 0;
   let working = scenario;
-  while (v < CURRENT_SCHEMA_VERSION && MIGRATORS[v]) {
-    working = MIGRATORS[v](working);
+  while (v < CURRENT_SCHEMA_VERSION) {
+    const migrate = MIGRATORS[v];
+    if (migrate) working = migrate(working);
     v += 1;
   }
   return working;
@@ -332,6 +435,10 @@ export interface MigrationResult {
   /** Cash bucket policy thresholds converted months → dollar amounts. Persist
    *  silently — forced one-way conversion with no user action, no toast. */
   cashBucketConverted: boolean;
+  /** A 12×-inflated cash bucket band was repaired (`MIGRATORS[1]`). Toast-worthy:
+   *  this changes dollar figures the user can see and may have been planning
+   *  against, so it must not happen silently. */
+  cashBucketRepaired: boolean;
   /** A default was backfilled (normalization). Persist silently — no toast. */
   normalized: boolean;
   /** The schemaVersion stamp was set/updated. Persist silently — no toast. */
@@ -350,7 +457,12 @@ export function runMigrationPipeline(scenario: Scenario): MigrationResult {
   const { scenario: normalized, changed: didNormalize } = normalizeScenario(working);
   working = normalized;
 
+  // Ordered registry. Compare the policy object identity across the step to
+  // report the v1→v2 cash-bucket repair without threading a flag through the
+  // registry's plain Scenario→Scenario signature.
+  const policyBeforeVersioned = working.cashBucketPolicy;
   working = applyVersionedMigrators(working);
+  const cashBucketRepaired = working.cashBucketPolicy !== policyBeforeVersioned;
 
   const { scenario: afterTaxStrategy, addedConversions } = migrateLegacyTaxStrategy(working);
   working = afterTaxStrategy;
@@ -379,6 +491,7 @@ export function runMigrationPipeline(scenario: Scenario): MigrationResult {
     brokerageRenamed,
     spendingStripped,
     cashBucketConverted,
+    cashBucketRepaired,
     normalized: didNormalize,
     stamped,
   };
@@ -391,6 +504,24 @@ const VALID_INCOME_TYPES = new Set<string>(Object.keys(eventTypeLabels));
 const VALID_GOAL_TYPES = new Set<string>(Object.keys(goalTypeLabels));
 const VALID_TAX_STATUS = new Set<string>(['before_tax', 'after_tax']);
 const VALID_COLA_TYPES = new Set<string>(['fixed', 'inflation_adjusted']);
+
+/**
+ * Was this record/file written by a build with a NEWER content schema than this
+ * one understands? Such a record must never be migrated, re-stamped, or
+ * re-persisted — an older build would silently downgrade it.
+ *
+ * The single definition of the predicate: the import validator, the load loop,
+ * and the context's write guard all call this, so a `CURRENT_SCHEMA_VERSION`
+ * bump can't leave one site behind. A non-numeric `schemaVersion` counts as
+ * NOT newer — that's a corrupt/legacy record, which the normal validation and
+ * normalization paths handle.
+ */
+export function isFromNewerSchema(scenario: { schemaVersion?: number }): boolean {
+  return (
+    typeof scenario.schemaVersion === 'number' &&
+    scenario.schemaVersion > CURRENT_SCHEMA_VERSION
+  );
+}
 
 /**
  * Validate a parsed scenario before import. THROWS a human-readable Error on
@@ -406,24 +537,28 @@ export function validateImportedScenario(data: Scenario): void {
 
   // Forward-compat guard next, so a file from a newer build gets the right
   // message instead of a confusing field error.
-  if (typeof data.schemaVersion === 'number' && data.schemaVersion > CURRENT_SCHEMA_VERSION) {
+  if (isFromNewerSchema(data)) {
     throw new Error(
       `This file was created by a newer version of YARP (schema v${data.schemaVersion}). ` +
       `Update the app to open it.`
     );
   }
 
-  if (!data.name || typeof data.currentAge !== 'number') {
+  // Number.isFinite (not typeof === 'number') on the core numerics: JSON
+  // "1e400" parses to Infinity and NaN can arrive via a hand-edited file —
+  // either would pass a typeof check and then hang the tab in an unbounded
+  // projection loop (lifeExpectancy: Infinity) or NaN every calculation.
+  if (!data.name || !Number.isFinite(data.currentAge)) {
     throw new Error('Invalid scenario: Missing name or currentAge.');
   }
-  if (typeof data.lifeExpectancy !== 'number' || data.lifeExpectancy < data.currentAge) {
-    throw new Error('Invalid scenario: lifeExpectancy must be a number ≥ currentAge.');
+  if (!Number.isFinite(data.lifeExpectancy) || data.lifeExpectancy < data.currentAge) {
+    throw new Error('Invalid scenario: lifeExpectancy must be a finite number ≥ currentAge.');
   }
-  if (typeof data.referenceYear !== 'number') {
-    throw new Error('Invalid scenario: referenceYear must be a number.');
+  if (!Number.isFinite(data.referenceYear)) {
+    throw new Error('Invalid scenario: referenceYear must be a finite number.');
   }
-  if (typeof data.inflationRate !== 'number') {
-    throw new Error('Invalid scenario: inflationRate must be a number.');
+  if (!Number.isFinite(data.inflationRate)) {
+    throw new Error('Invalid scenario: inflationRate must be a finite number.');
   }
   const validFilings = new Set(['single', 'mfs', 'mfj', 'hoh']);
   if (!validFilings.has(data.filingStatus)) {

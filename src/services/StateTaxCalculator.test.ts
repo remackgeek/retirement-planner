@@ -114,7 +114,7 @@ describe('StateTaxCalculator', () => {
   });
 
   describe('Washington — capital-gains-only', () => {
-    it('charges 7% on LTCG above $262k (2024) indexed threshold; 0 on ordinary', () => {
+    it('charges 7% on LTCG above the $270k (2024 indexed) threshold; 0 on ordinary', () => {
       const p = getStateTaxProfile('Washington', 2026).profile;
       const r = computeStateTax(p, baseInput({
         ordinaryGross: 200000,
@@ -122,14 +122,14 @@ describe('StateTaxCalculator', () => {
         inflationRate: 0,
       }), 'Washington');
       expect(r.stateOrdinaryTax).toBe(0);
-      expect(r.ltcgThresholdApplied).toBe(262000);
-      expect(r.stateCapGainsTax).toBeCloseTo(0.07 * (400000 - 262000), 1);
+      expect(r.ltcgThresholdApplied).toBe(270000);
+      expect(r.stateCapGainsTax).toBeCloseTo(0.07 * (400000 - 270000), 1);
     });
 
     it('threshold inflation-indexes forward independently of bracket indexing', () => {
       const p = getStateTaxProfile('Washington', 2026).profile;
       const r2040 = computeStateTax(p, baseInput({ ltcgFromBrokerage: 400000, year: 2040, inflationRate: 0.03 }), 'Washington');
-      // 2040 threshold = 262000 × 1.03^16 ≈ $420k → $0 state cap-gains tax
+      // 2040 threshold = 270000 × 1.03^16 ≈ $433k → $0 state cap-gains tax
       expect(r2040.ltcgThresholdApplied).toBeGreaterThan(400000);
       expect(r2040.stateCapGainsTax).toBe(0);
     });
@@ -239,14 +239,14 @@ describe('StateTaxCalculator', () => {
     });
   });
 
-  describe('West Virginia — SS phase-out via successor', () => {
-    it('taxes SS through 2026', () => {
-      const p = getStateTaxProfile('West Virginia', 2026).profile;
+  describe('West Virginia — SS phase-out via successor (HB 4880)', () => {
+    it('taxes SS through 2025 (last taxed year of the HB 4880 phase-out)', () => {
+      const p = getStateTaxProfile('West Virginia', 2025).profile;
       expect(p.ssRule.kind).toBe('taxed');
     });
 
-    it('exempts SS in 2027 via successor profile', () => {
-      const p = getStateTaxProfile('West Virginia', 2027).profile;
+    it('exempts SS from 2026 via successor profile (100% exempt from TY2026)', () => {
+      const p = getStateTaxProfile('West Virginia', 2026).profile;
       expect(p.ssRule.kind).toBe('exempt');
     });
   });
@@ -310,8 +310,8 @@ describe('StateTaxCalculator', () => {
     });
 
     it('returns the successor key when crossing the WV SS phase-out', () => {
-      expect(getStateTaxProfile('West Virginia', 2026).resolvedKey).toBe('West Virginia');
-      expect(getStateTaxProfile('West Virginia', 2027).resolvedKey).toBe('West Virginia (2027+)');
+      expect(getStateTaxProfile('West Virginia', 2025).resolvedKey).toBe('West Virginia');
+      expect(getStateTaxProfile('West Virginia', 2026).resolvedKey).toBe('West Virginia (2026+)');
     });
 
     it('falls back to Florida + warns for unknown states', () => {
@@ -397,20 +397,29 @@ describe('StateTaxCalculator', () => {
     });
   });
 
-  describe('Washington MFJ doubled threshold', () => {
-    it('MFJ $400k LTCG: under the $524k threshold → state cap-gains tax = 0', () => {
+  describe('Washington MFJ combined threshold (RCW 82.87.060 — one deduction per couple)', () => {
+    // Regression: the MFJ threshold was wrongly doubled ($524k). RCW 82.87.060
+    // grants spouses/domestic partners ONE combined standard deduction, so MFJ
+    // uses the SAME threshold as single.
+    it('MFJ with large gains uses the SAME threshold as single (not doubled)', () => {
       const p = getStateTaxProfile('Washington', 2026).profile;
-      const r = computeStateTax(p, baseInput({
+      const single = computeStateTax(p, baseInput({
+        ltcgFromBrokerage: 400000,
+        inflationRate: 0,
+      }), 'Washington');
+      const mfj = computeStateTax(p, baseInput({
         ltcgFromBrokerage: 400000,
         filingStatus: 'mfj',
         spouseAge: 60,
         inflationRate: 0,
       }), 'Washington');
-      expect(r.stateCapGainsTax).toBe(0);
-      expect(r.ltcgThresholdApplied).toBe(524000);
+      expect(mfj.ltcgThresholdApplied).toBe(single.ltcgThresholdApplied);
+      expect(mfj.ltcgThresholdApplied).toBe(270000);
+      expect(mfj.stateCapGainsTax).toBeCloseTo(single.stateCapGainsTax, 2);
+      expect(mfj.stateCapGainsTax).toBeCloseTo(0.07 * (400000 - 270000), 1);
     });
 
-    it('MFJ $600k LTCG: above $524k → 7% on $76k = $5,320', () => {
+    it('MFJ $600k LTCG: 7% on $330k above the combined $270k deduction = $23,100', () => {
       const p = getStateTaxProfile('Washington', 2026).profile;
       const r = computeStateTax(p, baseInput({
         ltcgFromBrokerage: 600000,
@@ -418,7 +427,96 @@ describe('StateTaxCalculator', () => {
         spouseAge: 60,
         inflationRate: 0,
       }), 'Washington');
-      expect(r.stateCapGainsTax).toBeCloseTo(0.07 * (600000 - 524000), 1);
+      expect(r.stateCapGainsTax).toBeCloseTo(0.07 * (600000 - 270000), 1);
+    });
+
+    it('MFJ $200k LTCG below the combined threshold → $0', () => {
+      const p = getStateTaxProfile('Washington', 2026).profile;
+      const r = computeStateTax(p, baseInput({
+        ltcgFromBrokerage: 200000,
+        filingStatus: 'mfj',
+        spouseAge: 60,
+        inflationRate: 0,
+      }), 'Washington');
+      expect(r.stateCapGainsTax).toBe(0);
+    });
+  });
+
+  describe('Kansas — SB 1 (2024): SS fully exempt, two-bracket schedule', () => {
+    it('retiree with high AGI pays zero KS state tax on SS (regression: old $75k-AGI cliff)', () => {
+      const p = getStateTaxProfile('Kansas', 2026).profile;
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 150000,
+        ssGross: 40000,
+        ssTaxableFederal: 34000, // 85% × $40k federally taxable
+        age: 67,
+      }), 'Kansas');
+      // Pre-SB-1 data taxed SS above $75k AGI; SB 1 fully exempts from TY2024.
+      expect(r.ssIncludedInState).toBe(0);
+    });
+
+    it('walks the two-bracket schedule: 5.2% up to $23k single, 5.58% above', () => {
+      const p = getStateTaxProfile('Kansas', 2024).profile;
+      // Taxable = 50,000 − 3,500 std ded = 46,500.
+      // 5.2% × 23,000 + 5.58% × 23,500 = 1,196 + 1,311.30 = 2,507.30
+      const r = computeStateTax(p, baseInput({ ordinaryGross: 50000, year: 2024 }), 'Kansas');
+      expect(r.stateOrdinaryTax).toBeCloseTo(2507.30, 1);
+      expect(r.stateMarginalRate).toBe(0.0558);
+    });
+
+    it('MFJ second bracket starts at $46k', () => {
+      const p = getStateTaxProfile('Kansas', 2024).profile;
+      // Taxable = 50,000 − 8,000 std ded = 42,000 → all in the 5.2% bracket.
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 50000,
+        year: 2024,
+        filingStatus: 'mfj',
+        spouseAge: 65,
+      }), 'Kansas');
+      expect(r.stateOrdinaryTax).toBeCloseTo(0.052 * 42000, 1);
+      expect(r.stateMarginalRate).toBe(0.052);
+    });
+  });
+
+  describe('Minnesota — SS phase-out thresholds (2024 phase-out starts)', () => {
+    it('single filer with AGI between $82,190 and $105,380 has SS taxed (regression: single slot held the MFJ figure)', () => {
+      const p = getStateTaxProfile('Minnesota', 2026).profile;
+      // AGI proxy = 70,000 ordinary + 25,500 federal-taxable SS = 95,500 —
+      // above the $82,190 single phase-out start → SS subtraction phased out,
+      // SS included in the state base. The pre-fix single threshold (105,380 —
+      // actually the MFJ figure) wrongly modeled this filer as fully exempt.
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 70000,
+        ssGross: 30000,
+        ssTaxableFederal: 25500,
+        age: 67,
+      }), 'Minnesota');
+      expect(r.ssIncludedInState).toBe(25500);
+    });
+
+    it('MFJ filer with the same $95,500 AGI stays below the $105,380 MFJ start → exempt', () => {
+      const p = getStateTaxProfile('Minnesota', 2026).profile;
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 70000,
+        ssGross: 30000,
+        ssTaxableFederal: 25500,
+        age: 67,
+        spouseAge: 67,
+        filingStatus: 'mfj',
+      }), 'Minnesota');
+      expect(r.ssIncludedInState).toBe(0);
+    });
+
+    it('single filer below the $82,190 start remains exempt', () => {
+      const p = getStateTaxProfile('Minnesota', 2026).profile;
+      // AGI proxy = 50,000 + 25,500 = 75,500 ≤ 82,190 → exempt.
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 50000,
+        ssGross: 30000,
+        ssTaxableFederal: 25500,
+        age: 67,
+      }), 'Minnesota');
+      expect(r.ssIncludedInState).toBe(0);
     });
   });
 
@@ -456,7 +554,22 @@ describe('StateTaxCalculator', () => {
   });
 
   describe('AGI phase-out boundary', () => {
-    it('UT SS exemption at AGI exactly at $45k threshold remains exempt (<=)', () => {
+    it('UT SS exemption at AGI exactly at the $45k threshold remains exempt (<=)', () => {
+      // AGI proxy includes federal-taxable SS: 28,000 ordinary + 17,000 SS
+      // = exactly 45,000 → at (not above) the threshold → SS stays exempt.
+      // (An earlier version of this test used 45k of ordinary income, putting
+      // AGI at 62k — it asserted the TAXED branch under an "exempt" title.)
+      const p = getStateTaxProfile('Utah', 2026).profile;
+      const r = computeStateTax(p, baseInput({
+        ordinaryGross: 28000,
+        ssGross: 20000,
+        ssTaxableFederal: 17000,
+        age: 65,
+      }), 'Utah');
+      expect(r.ssIncludedInState).toBe(0);
+    });
+
+    it('UT SS taxed once AGI (including taxable SS) exceeds the $45k threshold', () => {
       const p = getStateTaxProfile('Utah', 2026).profile;
       const r = computeStateTax(p, baseInput({
         ordinaryGross: 45000,
@@ -464,10 +577,7 @@ describe('StateTaxCalculator', () => {
         ssTaxableFederal: 17000,
         age: 65,
       }), 'Utah');
-      // agi proxy (UT is `taxed`-like — ssRule.kind === 'agi_phaseout', not 'exempt')
-      // includes SS: 45000 + 0 + 17000 = 62000 > 45000 → SS taxed.
-      // Actually checking: profile uses agi_phaseout with thresholds 45000 single.
-      // With SS included, AGI = 62k > 45k → SS taxed.
+      // AGI proxy = 45,000 + 17,000 = 62,000 > 45,000 → SS taxed.
       expect(r.ssIncludedInState).toBe(17000);
     });
   });
@@ -510,7 +620,7 @@ describe('StateTaxCalculator', () => {
 
     it('excludes year-bounded successor variants', () => {
       expect(SELECTABLE_STATES).not.toContain('South Carolina (2027+)');
-      expect(SELECTABLE_STATES).not.toContain('West Virginia (2027+)');
+      expect(SELECTABLE_STATES).not.toContain('West Virginia (2026+)');
     });
 
     it('is sorted alphabetically', () => {

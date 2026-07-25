@@ -74,9 +74,16 @@ const palette = {
   green25:  'rgba(61, 122, 95, 0.08)',
   green10:  'rgba(0, 128, 0, 0.1)',
   orange10: 'rgba(210, 105, 30, 0.1)',
+  black06:  'rgba(0, 0, 0, 0.06)',
   black10:  'rgba(0, 0, 0, 0.1)',
   black20:  'rgba(0, 0, 0, 0.2)',
   white20:  'rgba(255, 255, 255, 0.2)',
+  white70:  'rgba(255, 255, 255, 0.7)',
+  white95:  'rgba(255, 255, 255, 0.95)',
+  white97:  'rgba(255, 255, 255, 0.97)',
+
+  // Pure white (text/icons on solid primary fills)
+  white: '#fff',
 } as const;
 
 // --- Spacing ---
@@ -156,6 +163,17 @@ export const colors = {
   shadowMedium: palette.black20,
   overlayLight: palette.white20,
 
+  // Text/icons rendered on top of a solid primary/danger fill
+  onPrimary: palette.white,
+  // Neutral (non-primary) button hover tint
+  hoverNeutral: palette.black06,
+  // Near-opaque background for the chart hover popup
+  popupBg: palette.white97,
+  // Chart.js dark-tooltip text tiers (label = dimmer, value = brighter;
+  // the separator uses overlayLight)
+  chartTooltipLabel: palette.white70,
+  chartTooltipValue: palette.white95,
+
   // Sidebar
   activeRow: palette.green50,
   hoverRow:  palette.green25,
@@ -207,13 +225,20 @@ export const breakpoints = {
 } as const;
 
 /** Pre-built media query strings for use inside styled-components template literals.
- *  Always use these — never write raw @media strings in components. */
+ *  Always use these — never write raw @media strings in components.
+ *  Derived from `breakpoints.mobile` so the value can't drift from the token. */
 export const mediaQuery = {
   /** Targets screens 767px wide and below (phones) */
-  mobile: '@media (max-width: 767px)',
+  mobile: `@media (max-width: ${breakpoints.mobile - 1}px)`,
   /** Targets screens 768px wide and above (tablet / desktop) */
-  desktop: '@media (min-width: 768px)',
+  desktop: `@media (min-width: ${breakpoints.mobile}px)`,
 } as const;
+
+/** The same mobile breakpoint as a bare `matchMedia` condition (no `@media`
+ *  prefix) for JS-side viewport checks: `window.matchMedia(mobileMatchMedia)`.
+ *  Use this instead of hand-building the string in a component — that's how the
+ *  Chart and AppContent copies drifted apart. */
+export const mobileMatchMedia = `(max-width: ${breakpoints.mobile - 1}px)`;
 
 /**
  * Mobile-safe Dialog width style. PrimeReact's `<Dialog>` honors a fixed

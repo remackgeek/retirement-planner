@@ -397,9 +397,10 @@ export function exceedsSpendingHeuristic(
       ? startAgeUser === goal.startAge
       : startAgeUser >= goal.startAge && (goal.endAge === undefined || startAgeUser <= goal.endAge);
     if (!active) continue;
-    const period = goal.amountPeriod ?? 'annual';
-    const annual = period === 'monthly' ? goal.amount * 12 : goal.amount;
-    livingExpenses += annual;
+    // `goal.amount` is always stored annual — `amountPeriod` is a UI display
+    // hint only. Annualizing again overstated livingExpenses 12× for
+    // monthly-period goals (the default), so this warning never fired.
+    livingExpenses += goal.amount;
   }
   if (livingExpenses <= 0) return false;
   return conversion.amount > 1.5 * livingExpenses;

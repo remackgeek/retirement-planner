@@ -223,16 +223,39 @@ describe('computePercentileBandAndStats', () => {
       path: [final], stockFactors: [], bondFactors: [], breakdowns: [], inflation: [],
       failed: false, failedYear: 0,
     });
-    // 10 runs: 1 early failure (failedYear=2), rest survivors.
+    // 10 runs with TWO failures so the depletion mapping actually fires:
+    // depletion[] sorted ascending = [2, 5, Inf, ...]; p10Idx=1 → failedYear 5
+    // → age 62 + 5 = 67. (The previous version of this test used a single
+    // failure, which lands Infinity at p10Idx and asserts null — an assertion
+    // that passes without the year+age mapping ever executing.)
+    const runs = [
+      mkFail(2), mkFail(5),
+      mkSurvive(200), mkSurvive(300), mkSurvive(400),
+      mkSurvive(500), mkSurvive(600), mkSurvive(700), mkSurvive(800), mkSurvive(900),
+    ];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { mcStats } = computePercentileBandAndStats(runs as any, 1, 62);
+    expect(mcStats!.worstDecileDepletionAge).toBe(67);
+    // medianDepletionAge stays null — the median run (p50) survives.
+    expect(mcStats!.medianDepletionAge).toBeNull();
+  });
+
+  it('a single failure stays outside the worst decile (Infinity at p10 → null)', () => {
+    const mkFail = (failedYear: number) => ({
+      path: [0], stockFactors: [], bondFactors: [], breakdowns: [], inflation: [],
+      failed: true, failedYear,
+    });
+    const mkSurvive = (final: number) => ({
+      path: [final], stockFactors: [], bondFactors: [], breakdowns: [], inflation: [],
+      failed: false, failedYear: 0,
+    });
     const runs = [
       mkFail(2),
       mkSurvive(100), mkSurvive(200), mkSurvive(300), mkSurvive(400),
       mkSurvive(500), mkSurvive(600), mkSurvive(700), mkSurvive(800), mkSurvive(900),
     ];
-    // depletion[] = [2, Inf, Inf, ...]; sorted ascending; p10Idx=1 → Inf (worstDecile null).
-    // To put a depletion in the worst decile, we need >= 1 failure at index 1 too.
-    // With 1 failure, p10Idx=1 lands on Infinity → null. That matches design intent
-    // (only the very worst tail surfaces a depletion age).
+    // depletion[] = [2, Inf, ...]; p10Idx=1 → Infinity → null (design intent:
+    // only the worst tail surfaces a depletion age).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { mcStats } = computePercentileBandAndStats(runs as any, 1, 62);
     expect(mcStats!.worstDecileDepletionAge).toBeNull();

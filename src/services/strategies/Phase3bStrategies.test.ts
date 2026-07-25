@@ -393,20 +393,25 @@ describe('AutoBracketStrategy (Design B)', () => {
   });
 
   it('min_lifetime_tax objective scores differently than max_median_terminal_wealth', () => {
-    // With no income/spending and a fat Trad balance, max_terminal_wealth likely
-    // prefers a non-zero bracket (early conversions = more Roth growth). Min tax
-    // prefers fewer / smaller conversions (less ordinary income). The chosen
-    // brackets should NOT be identical.
-    const udMax = baseUserData({
-    });
-    const udMin = baseUserData({
-    });
-    const rMax = computeAutoBracketSchedule(udMax, { name: 'auto_bracket', objective: 'max_median_terminal_wealth' });
-    const rMin = computeAutoBracketSchedule(udMin, { name: 'auto_bracket', objective: 'min_lifetime_tax' });
     // Min-tax should pick 'none' (zero conversion = zero ordinary income tax in our setup).
+    const rMin = computeAutoBracketSchedule(baseUserData(), { name: 'auto_bracket', objective: 'min_lifetime_tax' });
     expect(rMin.chosenBracket).toBe('none');
-    // Max-terminal-wealth picks a non-zero bracket (or 'none' if no portfolio).
-    expect(['12_percent', '22_percent', '24_percent', 'none']).toContain(rMax.chosenBracket);
+    // Directly verify the two objectives value the SAME projection differently:
+    // terminal wealth is the (positive) deflated final balance; min-lifetime-tax
+    // is the negated deflated tax sum (≤ 0 whenever any tax is paid). Force a
+    // conversion so taxes are non-zero. (The old version of this test asserted
+    // rMax.chosenBracket ∈ {all four possible values} — a tautology.)
+    const udTaxed = baseUserData({
+      incomeEvents: [
+        { id: 'conv', name: 'Roth Conversion 1', type: 'roth_conversion', amount: 100_000, startAge: 60, endAge: 69, taxStatus: 'before_tax', colaType: 'fixed' },
+      ],
+    });
+    const projection = runDeterministicProjection(udTaxed);
+    const wealthScore = scoreProjection(projection, 'max_median_terminal_wealth', udTaxed.inflationRate);
+    const taxScore = scoreProjection(projection, 'min_lifetime_tax', udTaxed.inflationRate);
+    expect(wealthScore).toBeGreaterThan(0);
+    expect(taxScore).toBeLessThan(0);
+    expect(wealthScore).not.toBe(taxScore);
   });
 });
 
@@ -440,14 +445,14 @@ describe('OptimizeStrategy (Design C)', () => {
       ],
     });
     const result = runOptimization(ud, { name: 'optimize', objective: 'max_median_terminal_wealth' });
-    // No Trad → engine caps every conversion attempt at 0 → schedule is all zeros.
+    // No Trad → every candidate scores identically (the engine caps any
+    // requested conversion at $0), so the grid tie resolves to 'none' and the
+    // descent never finds a strict improvement: the emitted schedule must be
+    // literally all zeros. (The old version only asserted >= 0 — vacuous.)
     for (const d of result.perYearDecisions) {
-      expect(d.conversionAmount).toBeGreaterThanOrEqual(0);
-      // Even if the optimizer ASKED for a conversion, the engine would cap it
-      // to 0 (no Trad available). Score-wise, all candidates evaluate identically,
-      // so the optimizer may leave the seed (which is also 0 for this setup) alone.
+      expect(d.conversionAmount).toBe(0);
     }
-    // More importantly: the deterministic projection with this schedule succeeds.
+    // And the deterministic projection with this schedule succeeds.
     const projection = runDeterministicProjection(ud);
     expect(projection.path[0]).toBeCloseTo(500_000, 0);
   });
@@ -663,6 +668,71 @@ describe('endAgeCap', () => {
     // Every year should be zero — self is already past the cap.
     for (const decision of schedule) {
       expect(decision.conversionAmount).toBe(0);
+    }
+  });
+});
+
+describe('one-time income events in the strategy baseline', () => {
+  it('a one-time property sale counts as income only in its start year, not forever', () => {
+    // Regression: eventActiveAtAge ignored isOneTime (one-time events carry
+    // endAge: undefined), so a $500k sale at 66 inflated the baseline for
+    // every later year — the fill emitted ~$0 and the default-on IRMAA cliff
+    // cap zeroed all generated conversions from that age on.
+    const ud = baseUserData({
+      currentAge: 60,
+      lifeExpectancy: 75,
+      incomeEvents: [
+        { id: 'sale-1', name: 'Sale of Property 1', type: 'sale_of_property', amount: 500_000, startAge: 66, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed' },
+      ],
+    });
+    const schedule = computeFillToBracketSchedule(ud, { name: 'fill_to_bracket', bracketTarget: '12_percent' });
+    // Before the sale: normal fill.
+    expect(schedule[5].conversionAmount).toBeGreaterThan(0);
+    // Sale year (age 66, index 6): baseline $500k swamps the 12% ceiling → 0.
+    expect(schedule[6].conversionAmount).toBe(0);
+    // After the sale: the one-time income is gone — fill resumes and matches
+    // the pre-sale years (0% inflation keeps the ceiling constant).
+    expect(schedule[7].conversionAmount).toBeGreaterThan(0);
+    expect(schedule[7].conversionAmount).toBeCloseTo(schedule[5].conversionAmount, 0);
+  });
+});
+
+describe('survivor (widow\'s-penalty) awareness in the strategy baseline', () => {
+  it('post-death years fill to the SINGLE bracket ceiling, not the MFJ one', () => {
+    // Spouse dies at offset 5 (age 70/spouse 70); filing flips to single the
+    // year AFTER. The old static-filing math filled post-death years to the
+    // MFJ ceiling (~2× the survivor's) — overshooting the survivor's bracket.
+    const ud = baseUserData({
+      currentAge: 65,
+      lifeExpectancy: 80,
+      filingStatus: 'mfj',
+      spouseAge: 65,
+      spouseLifeExpectancy: 70,
+    });
+    const schedule = computeFillToBracketSchedule(ud, { name: 'fill_to_bracket', bracketTarget: '12_percent' });
+    const mfjFill = schedule[4].conversionAmount;   // both alive
+    const survivorFill = schedule[7].conversionAmount; // spouse dead, filing single
+    expect(mfjFill).toBeGreaterThan(0);
+    expect(survivorFill).toBeGreaterThan(0);
+    // Single top-of-12% + deduction is roughly half the MFJ figure.
+    expect(survivorFill).toBeLessThan(mfjFill * 0.62);
+  });
+
+  it('emits zero after SELF dies when the spouse survives (self-owned conversions cannot execute)', () => {
+    const ud = baseUserData({
+      currentAge: 65,
+      lifeExpectancy: 70, // self dies at offset 5
+      filingStatus: 'mfj',
+      spouseAge: 60,
+      spouseLifeExpectancy: 95,
+    });
+    const schedule = computeFillToBracketSchedule(ud, { name: 'fill_to_bracket', bracketTarget: '12_percent' });
+    // Through the year of self's death: conversions still emitted.
+    expect(schedule[5].conversionAmount).toBeGreaterThan(0);
+    // After self's death: the wizard's conversions are self-owned events, which
+    // the engine terminates at the owner's death — scheduling them is dishonest.
+    for (let i = 6; i < schedule.length; i++) {
+      expect(schedule[i].conversionAmount).toBe(0);
     }
   });
 });

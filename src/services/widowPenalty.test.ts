@@ -132,7 +132,7 @@ describe('widow penalty in the projection', () => {
     const postYear = ud.referenceYear + postIdx;
     expect(b.audit?.standardDeduction).toBeCloseTo(getStandardDeduction('single', postYear, 0), 0);
     expect(b.rmdRequired).toBeGreaterThan(0);
-    expect(b.audit?.rmdSpouse ?? 0).toBe(0);
+    expect(b.rmdRequiredSpouse).toBe(0);
     expect(b.audit?.rmdDivisorSelf).toBeCloseTo(20.2, 5); // IRS Uniform Lifetime divisor at age 80
   });
 
@@ -154,13 +154,25 @@ describe('widow penalty in the projection', () => {
   });
 
   it('RMD after death is computed on the consolidated (combined) Traditional balance', () => {
-    // First RMD year is self age 73 (idx 8), which is post-death (spouse died idx 10? no:
-    // spouse dies offset 10 = age 75). At idx 8 (age 73) BOTH still alive → both RMD.
-    // Pick idx 12 (age 77, post-death): the survivor's RMD is on all Traditional, and
-    // there is exactly one RMD owner (self) — rmdSpouse should be zero.
+    // Pick idx 12 (self age 77, post-death): the survivor's RMD is on ALL
+    // Traditional, and there is exactly one RMD owner (self) — the spouse
+    // slot is 0.
     const b = det.breakdowns[postIdx];
     expect(b.rmdRequired).toBeGreaterThan(0);
-    expect(b.audit?.rmdSpouse ?? 0).toBe(0);
-    expect(b.audit?.rmdSelf ?? 0).toBeCloseTo(b.rmdRequired, 0);
+    expect(b.rmdRequiredSpouse).toBe(0);
+    expect(b.rmdRequiredSelf).toBeCloseTo(b.rmdRequired, 0);
+    // MAGNITUDE: the implied beginning-of-year balance (RMD × age-77 divisor
+    // 22.9) must reflect BOTH $500k accounts grown at 5% minus modest pulls —
+    // well above what self's own account alone could hold (~$650k). A
+    // self-only RMD would fail this bound.
+    expect(b.audit?.rmdDivisorSelf).toBeCloseTo(22.9, 5);
+    const impliedCombinedBalance = b.rmdRequired * 22.9;
+    expect(impliedCombinedBalance).toBeGreaterThan(800_000);
+    // Consolidation is also visible in sourcing: the deceased spouse's account
+    // contributes a positive share of the survivor's RMD.
+    const byAccount = b.audit?.rmdByAccount ?? [];
+    const spouseShare = byAccount.find((r) => r.accountId === 't-spouse');
+    expect(spouseShare).toBeDefined();
+    expect(spouseShare!.withdrawal).toBeGreaterThan(0);
   });
 });

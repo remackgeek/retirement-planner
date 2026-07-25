@@ -4,7 +4,7 @@ import AppHeader from '../AppHeader/AppHeader';
 import Content from '../Content/Content';
 import Sidebar from '../Sidebar/Sidebar';
 import Footer from '../Footer';
-import { breakpoints, colors, mediaQuery, spacing, fontSize, border } from '../../styles/theme';
+import { colors, mediaQuery, mobileMatchMedia, spacing, fontSize, border } from '../../styles/theme';
 import { RetirementContext } from '../../context/RetirementContext';
 import type { Scenario } from '../../types/Scenario';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
@@ -55,12 +55,10 @@ const BannerDismiss = styled.button`
   padding: 0 ${spacing.xs};
 `;
 
-const mobileMediaQuery = `(max-width: ${breakpoints.mobile - 1}px)`;
-
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
-    return !window.matchMedia(mobileMediaQuery).matches;
+    return !window.matchMedia(mobileMatchMedia).matches;
   });
   const [compareScenarioId, setCompareScenarioId] = useState<string | null>(null);
   const [whatIfSnapshot, setWhatIfSnapshot] = useState<Scenario | null>(null);
@@ -164,7 +162,7 @@ const AppContent: React.FC = () => {
   // Nudge Chart.js on both crossing directions: the sidebar enters/exits the
   // flex layout flow, changing the content area width in ways Chart.js misses.
   useEffect(() => {
-    const mql = window.matchMedia(mobileMediaQuery);
+    const mql = window.matchMedia(mobileMatchMedia);
     const handler = (e: MediaQueryListEvent) => {
       if (e.matches) setIsSidebarOpen(false);
       nudgeChartResize(50);

@@ -7,6 +7,7 @@ import {
   getBracketCeilingTaxableIncome,
   computeFederalLTCGTax,
   getLtcgBreakpoints,
+  clearTaxCalculationCache,
 } from './TaxCalculator';
 
 describe('computeFederalLTCGTax (0/15/20% stacking)', () => {
@@ -131,16 +132,23 @@ describe('calculateSSTaxableAmount', () => {
     });
   });
 
-  describe('MFS (always 85% taxable)', () => {
-    it('returns 85% of SS regardless of income level', () => {
-      expect(calculateSSTaxableAmount(20000, 0, 'mfs')).toBe(17000);
+  describe('MFS (85% with provisional-income cap — IRS Pub 915, thresholds $0)', () => {
+    // MFS living with spouse: taxable = min(0.85 × ssGross, 0.85 × provisionalIncome),
+    // where provisionalIncome = otherGross + 0.5 × ssGross. The old code returned a
+    // flat 0.85 × ssGross, over-taxing low-other-income MFS filers.
+
+    it('caps at 85% of provisional income when other income is zero', () => {
+      // PI = 0 + 0.5 × 20,000 = 10,000 → min(17,000, 8,500) = 8,500
+      expect(calculateSSTaxableAmount(20000, 0, 'mfs')).toBe(8500);
     });
 
-    it('returns 85% even with zero other income', () => {
-      expect(calculateSSTaxableAmount(10000, 0, 'mfs')).toBe(8500);
+    it('caps at 85% of provisional income with small other income', () => {
+      // PI = 2,000 + 0.5 × 10,000 = 7,000 → min(8,500, 5,950) = 5,950
+      expect(calculateSSTaxableAmount(10000, 2000, 'mfs')).toBeCloseTo(5950, 8);
     });
 
-    it('returns 85% with high other income', () => {
+    it('returns 85% of SS gross with high other income (cap not binding)', () => {
+      // PI = 100,000 + 15,000 = 115,000 → min(25,500, 97,750) = 25,500
       expect(calculateSSTaxableAmount(30000, 100000, 'mfs')).toBe(25500);
     });
   });
@@ -167,6 +175,14 @@ describe('calculateSSTaxableAmountDetailed', () => {
     const d5 = calculateSSTaxableAmountDetailed(0, 50000, 'single');
     expect(d5.zone).toBe('none');
     expect(d5.taxable).toBe(0);
+  });
+
+  it('MFS provisional-income cap binds in the detailed variant too', () => {
+    // PI = 0 + 0.5 × 20,000 = 10,000 → taxable = min(17,000, 8,500) = 8,500
+    const d = calculateSSTaxableAmountDetailed(20000, 0, 'mfs');
+    expect(d.zone).toBe('mfs-flat');
+    expect(d.provisionalIncome).toBe(10000);
+    expect(d.taxable).toBe(8500);
   });
 });
 
@@ -295,5 +311,38 @@ describe('getBracketCeilingTaxableIncome', () => {
   it('does not extrapolate behind the source year', () => {
     // Inflation factor stays at 1.0 for years <= the latest source year.
     expect(getBracketCeilingTaxableIncome('single', 1, 2026, 0.03)).toBe(50400);
+  });
+});
+
+describe('memo cache — cents-quantized key + size cap', () => {
+  it('float-noise-different gross values share one entry with sub-cent result error', () => {
+    clearTaxCalculationCache();
+    const base = calculateNetFromGross(123_456.78, 'single', 60, 2026, null, 0);
+    // Same dollar amount modulo float noise → same key → identical cached result.
+    const noisy = calculateNetFromGross(123_456.78 + 1e-9, 'single', 60, 2026, null, 0);
+    expect(noisy).toBe(base);
+    // Behavior safety of key-sharing: a genuinely different amount inside the
+    // same cent bucket returns a result within $0.01 of its true value.
+    clearTaxCalculationCache();
+    const trueValue = calculateNetFromGross(123_456.784, 'single', 60, 2026, null, 0);
+    clearTaxCalculationCache();
+    calculateNetFromGross(123_456.78, 'single', 60, 2026, null, 0); // seed the cent bucket
+    const bucketShared = calculateNetFromGross(123_456.784, 'single', 60, 2026, null, 0);
+    expect(Math.abs(bucketShared - trueValue)).toBeLessThan(0.01);
+    clearTaxCalculationCache();
+  });
+
+  it('the cache never grows past the cap and stays correct after eviction', () => {
+    clearTaxCalculationCache();
+    // Seed more distinct keys than the 50k cap (distinct whole-dollar gross values).
+    for (let i = 0; i < 50_001; i++) {
+      calculateNetFromGross(10_000 + i, 'single', 60, 2026, null, 0);
+    }
+    // Post-eviction calls still return correct values (compare vs a fresh cache).
+    const afterEviction = calculateNetFromGross(42_000, 'single', 60, 2026, null, 0);
+    clearTaxCalculationCache();
+    const fresh = calculateNetFromGross(42_000, 'single', 60, 2026, null, 0);
+    expect(afterEviction).toBe(fresh);
+    clearTaxCalculationCache();
   });
 });

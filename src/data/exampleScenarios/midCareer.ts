@@ -114,7 +114,7 @@ export const midCareer: Omit<Scenario, 'id'> = {
       amount: 30000,
       startAge: 67,
       taxStatus: 'before_tax',
-      colaType: 'fixed',
+      colaType: 'inflation_adjusted',
       ssHaircutEnabled: true,
       ssHaircutPercent: 22,
       ssHaircutYear: 2032,

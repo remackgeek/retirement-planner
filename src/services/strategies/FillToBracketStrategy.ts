@@ -50,6 +50,7 @@ import {
   calculateSSTaxableAmount,
 } from '../TaxCalculator';
 import { nextIrmaaTierCeiling, irmaaTierCeilings } from '../IRMAA';
+import { survivorContextForYearOffset } from '../deathModel';
 
 /** Read `taxStatus` from an event, with a 'before_tax' default for events that
  *  don't declare one (most income types). Centralizes the optional-field
@@ -116,7 +117,15 @@ export function computeFillToBracketSchedule(
   for (let i = 0; i < totalYears; i++) {
     const year = userData.referenceYear + i;
     const age = userData.currentAge + i;
-    const spouseAge = userData.spouseAge !== null ? userData.spouseAge + i : null;
+    // Survivor context (one death-model build per year). `spouseAge` collapses
+    // to null after the spouse's death — the deceased no longer counts as a
+    // qualifying senior or a Medicare enrollee. `filingStatus` is MFJ through
+    // the year of the first death, single after (the widow's penalty): using
+    // the static userData.filingStatus here filled to MFJ ceilings (~2× the
+    // survivor's) and capped against MFJ IRMAA tiers for post-death years, so a
+    // generated schedule could overshoot the survivor's bracket AND cross their
+    // single-filer IRMAA tier despite the cliff toggle being ON.
+    const { deceased, spouseAge, filingStatus } = survivorContextForYearOffset(userData, i);
 
     // End-age cap: past the cap, owner-lifetime conversion arbitrage is
     // essentially exhausted; emit 0 so the vector length stays totalYears
@@ -133,8 +142,17 @@ export function computeFillToBracketSchedule(
       continue;
     }
 
+    // Self dead, spouse survives: the wizard's conversions are self-owned
+    // events, and the engine terminates a deceased owner's conversion events
+    // at their death — emitting a non-zero amount here would schedule
+    // conversions that can never execute.
+    if (deceased === 'self') {
+      decisions.push({ year, conversionAmount: 0 });
+      continue;
+    }
+
     const topOfBracket = getBracketCeilingTaxableIncome(
-      userData.filingStatus, bracketIndex, year, inflationRate
+      filingStatus, bracketIndex, year, inflationRate
     );
     // Top bracket is Infinity — nothing to "fill into". Emit 0.
     if (!isFinite(topOfBracket)) {
@@ -142,14 +160,13 @@ export function computeFillToBracketSchedule(
       continue;
     }
 
-    const baselineOrdinaryGross = computeBaselineOrdinaryGrossForYear(userData, year, i);
-    const stdDed = getStandardDeduction(userData.filingStatus, year, inflationRate);
-    const numQualifying = getNumQualifyingSeniors(userData.filingStatus, age, spouseAge);
-    const seniorExtra = getUsualSeniorExtra(userData.filingStatus, year, numQualifying, inflationRate);
+    const otherOrdinary = computeBaselineOrdinaryGrossForYear(userData, year, i);
+    const stdDed = getStandardDeduction(filingStatus, year, inflationRate);
+    const numQualifying = getNumQualifyingSeniors(filingStatus, age, spouseAge);
+    const seniorExtra = getUsualSeniorExtra(filingStatus, year, numQualifying, inflationRate);
     const totalDed = stdDed + seniorExtra;
 
     const ssGross = sumSSForYear(userData, year, i);
-    const otherOrdinary = baselineOrdinaryGross - ssGross; // strip SS; feed into provisional separately
 
     // SS-feedback fix-point (C2). A conversion lifts ordinary income, which
     // can push provisional income across the 50% / 85% SS-taxable thresholds,
@@ -167,7 +184,7 @@ export function computeFillToBracketSchedule(
       // computed against ordinary-INCLUSIVE of any conversion we're about to
       // emit. calculateSSTaxableAmount uses the IRS formula internally.
       ssTaxable = ssGross > 0
-        ? calculateSSTaxableAmount(ssGross, otherOrdinary + convAmount, userData.filingStatus)
+        ? calculateSSTaxableAmount(ssGross, otherOrdinary + convAmount, filingStatus)
         : 0;
       const baselineTaxable = Math.max(0, otherOrdinary + ssTaxable - totalDed);
       convAmount = Math.max(0, topOfBracket - baselineTaxable);
@@ -222,21 +239,23 @@ export function capConversionForCliffs(
   // Default ON: practitioner consensus treats IRMAA cliffs as hard caps, not
   // soft scoring penalties. Only an explicit `false` opt-out skips the cap.
   if (userData.respectIrmaaNiitCliffs === false || convAmount <= 0) return convAmount;
-  const age = userData.currentAge + yearIndex;
-  const spouseAge = userData.spouseAge !== null ? userData.spouseAge + yearIndex : null;
+  // Survivor-aware: the deceased is not a Medicare enrollee and the survivor
+  // files single (single IRMAA tiers ≈ half the MFJ ones — using the static
+  // MFJ status here let a post-death conversion cross the survivor's tier
+  // despite the cliff toggle being ON). The baseline reflects terminated
+  // income + the SS max-rule via the shared helpers.
+  const { filingStatus } = survivorContextForYearOffset(userData, yearIndex);
   const ssGross = sumSSForYear(userData, year, yearIndex);
-  const otherOrdinary = computeBaselineOrdinaryGrossForYear(userData, year, yearIndex) - ssGross;
+  const otherOrdinary = computeBaselineOrdinaryGrossForYear(userData, year, yearIndex);
   const ssTaxable = ssGross > 0
-    ? calculateSSTaxableAmount(ssGross, otherOrdinary + convAmount, userData.filingStatus)
+    ? calculateSSTaxableAmount(ssGross, otherOrdinary + convAmount, filingStatus)
     : 0;
   const magiBaseline = otherOrdinary + ssTaxable;
   let magiCeiling = Infinity;
-  const selfMedicareSoon = age + 2 >= 65;
-  const spouseMedicareSoon = spouseAge !== null && spouseAge + 2 >= 65;
-  if (userData.enableIRMAA !== false && (selfMedicareSoon || spouseMedicareSoon)) {
+  if (userData.enableIRMAA !== false && hasMedicareEnrolleeInTwoYears(userData, yearIndex)) {
     magiCeiling = Math.min(
       magiCeiling,
-      nextIrmaaTierCeiling(magiBaseline, userData.filingStatus, year + 2, userData.inflationRate),
+      nextIrmaaTierCeiling(magiBaseline, filingStatus, year + 2, userData.inflationRate),
     );
   }
   return isFinite(magiCeiling) ? Math.min(convAmount, Math.max(0, magiCeiling - magiBaseline)) : convAmount;
@@ -265,20 +284,19 @@ export function irmaaTierFillCandidates(
   yearIndex: number,
 ): number[] {
   if (userData.enableIRMAA === false) return [];
-  const age = userData.currentAge + yearIndex;
-  const spouseAge = userData.spouseAge !== null ? userData.spouseAge + yearIndex : null;
-  const selfMedicareSoon = age + 2 >= 65;
-  const spouseMedicareSoon = spouseAge !== null && spouseAge + 2 >= 65;
-  if (!selfMedicareSoon && !spouseMedicareSoon) return [];
+  if (!hasMedicareEnrolleeInTwoYears(userData, yearIndex)) return [];
+  // Survivor-aware, mirroring capConversionForCliffs: single tiers after the
+  // first death (the enrollee count above is survivor-aware too).
+  const { filingStatus } = survivorContextForYearOffset(userData, yearIndex);
   const ssGross = sumSSForYear(userData, year, yearIndex);
-  const otherOrdinary = computeBaselineOrdinaryGrossForYear(userData, year, yearIndex) - ssGross;
+  const otherOrdinary = computeBaselineOrdinaryGrossForYear(userData, year, yearIndex);
   const candidates: number[] = [];
-  for (const ceiling of irmaaTierCeilings(userData.filingStatus, year + 2, userData.inflationRate)) {
+  for (const ceiling of irmaaTierCeilings(filingStatus, year + 2, userData.inflationRate)) {
     let conv = 0;
     for (let iter = 0; iter < 4; iter++) {
       const prev = conv;
       const ssTaxable = ssGross > 0
-        ? calculateSSTaxableAmount(ssGross, otherOrdinary + conv, userData.filingStatus)
+        ? calculateSSTaxableAmount(ssGross, otherOrdinary + conv, filingStatus)
         : 0;
       conv = Math.max(0, ceiling - (otherOrdinary + ssTaxable));
       if (Math.abs(conv - prev) < 1) break;
@@ -288,13 +306,28 @@ export function irmaaTierFillCandidates(
   return candidates;
 }
 
+/** Will ANY household member be a Medicare enrollee in year+2 (the IRMAA
+ *  lookback)? Survivor-aware: a deceased member never enrolls. Shared by the
+ *  cliff cap and the tier-fill probes so the two can't disagree on whether an
+ *  IRMAA surcharge is even reachable. */
+function hasMedicareEnrolleeInTwoYears(userData: UserData, yearIndex: number): boolean {
+  const { deceased, spouseAge } = survivorContextForYearOffset(userData, yearIndex);
+  const age = userData.currentAge + yearIndex;
+  const selfMedicareSoon = deceased !== 'self' && age + 2 >= 65;
+  const spouseMedicareSoon = spouseAge !== null && spouseAge + 2 >= 65;
+  return selfMedicareSoon || spouseMedicareSoon;
+}
+
 /**
- * Year-N ordinary gross income WITHOUT any conversion contribution. Sums
- * wage_income, pension_income, annuity_income, rental_income, other_income,
- * sale_of_property, work_during_retirement, social_security (gross), minus
- * any pre-tax retirement contributions. Mirrors the contribution to
- * `otherTaxableGross + ssGross` that `accumulateIncome` builds, but without
- * the contribution-cap pass or per-event audit overhead.
+ * Year-N ordinary gross income WITHOUT any conversion contribution and WITHOUT
+ * Social Security (SS is handled by `sumSSForYear`, whose survivor max-rule
+ * would otherwise disagree with a summed-SS baseline). Sums wage_income,
+ * pension_income, annuity_income, rental_income, other_income,
+ * sale_of_property, work_during_retirement, minus any pre-tax retirement
+ * contributions. Mirrors the contribution to `otherTaxableGross` that
+ * `accumulateIncome` builds, but without the contribution-cap pass or
+ * per-event audit overhead. Survivor-aware: a deceased owner's non-SS income
+ * terminates at their death (mirrors `eventActiveInYear`).
  */
 function computeBaselineOrdinaryGrossForYear(
   userData: UserData,
@@ -302,10 +335,16 @@ function computeBaselineOrdinaryGrossForYear(
   yearIndex: number,
 ): number {
   const age = userData.currentAge + yearIndex;
+  // RAW spouse age (not the survivor-collapsed one): a surviving spouse's
+  // events still need their own age to resolve start/end. Events owned by the
+  // deceased are removed by the `deceased` filter below instead.
   const spouseAge = userData.spouseAge !== null ? userData.spouseAge + yearIndex : null;
+  const { deceased } = survivorContextForYearOffset(userData, yearIndex);
   let sum = 0;
   for (const e of userData.incomeEvents) {
     if (e.type === 'roth_conversion') continue;
+    if (e.type === 'social_security') continue;
+    if (deceased && (e.owner ?? 'self') === deceased) continue;
     if (!eventActiveAtAge(e, age, spouseAge)) continue;
     const taxStatus = getTaxStatus(e);
     const colaType = getColaType(e);
@@ -326,16 +365,26 @@ function computeBaselineOrdinaryGrossForYear(
   return Math.max(0, sum);
 }
 
+/** Year-N Social Security gross. Survivor-aware: after the first death the
+ *  survivor keeps the LARGER of the two benefits (max, not sum) — mirrors
+ *  `accumulateIncome`'s survivorMode rule in the engine. */
 function sumSSForYear(userData: UserData, year: number, yearIndex: number): number {
   const age = userData.currentAge + yearIndex;
+  // RAW spouse age: SS is exempt from the death cut (the survivor keeps the
+  // larger benefit via the max rule below), so a spouse-owned SS event must
+  // still resolve its start age against the spouse's own age.
   const spouseAge = userData.spouseAge !== null ? userData.spouseAge + yearIndex : null;
+  const { survivorMode } = survivorContextForYearOffset(userData, yearIndex);
   let sum = 0;
+  let max = 0;
   for (const e of userData.incomeEvents) {
     if (e.type !== 'social_security') continue;
     if (!eventActiveAtAge(e, age, spouseAge)) continue;
-    sum += inflateAmount(e.amount, year, userData.referenceYear, userData.inflationRate, getColaType(e));
+    const amt = inflateAmount(e.amount, year, userData.referenceYear, userData.inflationRate, getColaType(e));
+    sum += amt;
+    max = Math.max(max, amt);
   }
-  return sum;
+  return survivorMode ? max : sum;
 }
 
 function eventActiveAtAge(e: IncomeEvent, age: number, spouseAge: number | null): boolean {
@@ -343,8 +392,13 @@ function eventActiveAtAge(e: IncomeEvent, age: number, spouseAge: number | null)
   // events default to self.
   const ownerAge = e.owner === 'spouse' && spouseAge !== null ? spouseAge : age;
   if (e.startAge !== undefined && ownerAge < e.startAge) return false;
+  // isOneTime events fire only at startAge. They carry endAge: undefined, so
+  // without this check a one-time inflow (e.g. a property sale) counts as
+  // recurring income in every later year — inflating the strategy baseline and
+  // letting the default-on IRMAA cliff cap zero out all generated conversions
+  // from that age on. Mirrors eventActiveInYear in SimulationService.ts.
+  if (e.isOneTime) return ownerAge === e.startAge;
   if (e.endAge !== undefined && ownerAge > e.endAge) return false;
-  // isOneTime events fire only at startAge — equivalent to startAge === endAge.
   return true;
 }
 

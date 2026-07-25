@@ -10,7 +10,7 @@
 // percentile band merge, replay protocol) require a browser-environment test
 // runner (Playwright/Cypress) and are out of scope here. Manual verification
 // in the dev server covers them today.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runSimulation } from './SimulationService';
 import { simulationClient } from './SimulationClient';
 import type { UserData } from '../types/UserData';
@@ -79,14 +79,29 @@ describe('SimulationClient', () => {
     await expect(simulationClient.run(broken, { forceInline: true })).rejects.toThrow();
   });
 
-  it('routes small effectiveNumRuns through the inline fast path', async () => {
-    // numSimulations < INLINE_THRESHOLD (200) → inline regardless of forceInline.
-    // The result should resolve quickly without any worker activity.
-    const userData = stripMeta(scenario as Record<string, unknown>);
-    userData.simulationSettings = { ...userData.simulationSettings, numSimulations: 50 };
-    const result = await simulationClient.run(userData);
-    expect(result.probability).toBeGreaterThanOrEqual(0);
-    expect(result.probability).toBeLessThanOrEqual(100);
-    expect(result.median.length).toBeGreaterThan(0);
+  it('routes small effectiveNumRuns through the inline fast path (no Worker constructed)', async () => {
+    // numSimulations < INLINE_THRESHOLD (200) → inline. Verify the routing
+    // explicitly by spying on the Worker constructor — the previous version of
+    // this test asserted only result-shape bounds, which pass regardless of
+    // which path ran.
+    const workerSpy = vi.fn();
+    vi.stubGlobal('Worker', class {
+      constructor(...args: unknown[]) { workerSpy(args); }
+      postMessage() {}
+      terminate() {}
+      addEventListener() {}
+      removeEventListener() {}
+    });
+    try {
+      const userData = stripMeta(scenario as Record<string, unknown>);
+      userData.simulationSettings = { ...userData.simulationSettings, numSimulations: 50 };
+      const result = await simulationClient.run(userData);
+      expect(workerSpy).not.toHaveBeenCalled();
+      expect(result.probability).toBeGreaterThanOrEqual(0);
+      expect(result.probability).toBeLessThanOrEqual(100);
+      expect(result.median.length).toBeGreaterThan(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

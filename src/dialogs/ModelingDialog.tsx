@@ -118,7 +118,14 @@ const ModelingDialog: React.FC<ModelingDialogProps> = ({
 
   useEffect(() => {
     if (visible) setForm(formFromScenario(scenario));
-  }, [visible, scenario]);
+    // Initialize form state only when the dialog opens (false→true).
+    // `scenario` is deliberately NOT a dep: the automatic ~1s
+    // lastSuccessProbability write-back replaces the scenario object identity
+    // while the dialog is open, and re-running this effect then would wipe the
+    // user's in-progress edits. Same pattern as SocialSecurityWizardDialog's
+    // open-gated effects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   // Blended return is computed over NON-cash accounts only. Cash is non-volatile
   // and has its own yield assumption; including it here would mislead users

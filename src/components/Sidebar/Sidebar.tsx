@@ -240,7 +240,7 @@ const CompactFooterButton = styled.button<{ $primary?: boolean }>`
   color: ${props => props.$primary ? colors.primary : colors.textPrimary};
 
   &:hover {
-    background-color: ${props => props.$primary ? 'rgba(61, 122, 95, 0.08)' : 'rgba(0, 0, 0, 0.06)'};
+    background-color: ${props => props.$primary ? colors.hoverRow : colors.hoverNeutral};
     color: ${props => props.$primary ? colors.primary : colors.textPrimary};
   }
 `;
@@ -413,11 +413,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenar
     setEditingScenario(null);
   };
 
+  // Always allow closing — a first-time user with zero scenarios must be able
+  // to cancel back to the empty state (which offers the example buttons).
   const handleDialogHide = () => {
-    if (scenarios.length > 0) {
-      setDialogVisible(false);
-      setEditingScenario(null);
-    }
+    setDialogVisible(false);
+    setEditingScenario(null);
   };
 
   if (!isOpen) {

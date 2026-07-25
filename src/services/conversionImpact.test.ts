@@ -127,6 +127,15 @@ describe('estimateConversionImpact', () => {
     const conversion = makeConversion({ amount: 40000, startAge: 60, endAge: 68, isOneTime: false });
     const result = estimateConversionImpact(userData, conversion);
     expect(Number.isFinite(result.netPlanValueImpact)).toBe(true);
+    // The load-bearing property: a $1 placeholder conversion must have a
+    // near-zero impact. Under the old conversion-presence policy gating, adding
+    // ANY conversion flipped the spending order and the "impact" absorbed a
+    // ~$514k policy bonus that wasn't the conversion's doing. (A bare
+    // isFinite() check — this test's previous only assertion — can't fail
+    // on that regression.)
+    const placeholder = makeConversion({ amount: 1, startAge: 60, isOneTime: true });
+    const placeholderImpact = estimateConversionImpact(userData, placeholder).netPlanValueImpact;
+    expect(Math.abs(placeholderImpact)).toBeLessThan(1000);
   });
 
   it('computes incremental tax for a single-year conversion at age 60, single filer FL', () => {
@@ -531,6 +540,27 @@ describe('warning heuristics', () => {
           amount: 40000,
           startAge: 60,
           inflationAdjusted: false,
+        },
+      ],
+    });
+    expect(exceedsSpendingHeuristic(userData, makeConversion({ amount: 80000 }))).toBe(true);
+    expect(exceedsSpendingHeuristic(userData, makeConversion({ amount: 30000 }))).toBe(false);
+  });
+
+  it('exceedsSpendingHeuristic treats a monthly-period goal identically — amount is stored annual', () => {
+    // Regression: annualizing again for amountPeriod === 'monthly' (the living-
+    // expenses dialog default) overstated livingExpenses 12×, so this warning
+    // effectively never fired for monthly-period goals.
+    const userData = baseUserData({
+      spendingGoals: [
+        {
+          id: 'le-1',
+          type: 'living_expenses',
+          name: 'Living',
+          amount: 40000,
+          startAge: 60,
+          inflationAdjusted: false,
+          amountPeriod: 'monthly',
         },
       ],
     });

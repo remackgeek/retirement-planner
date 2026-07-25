@@ -376,21 +376,25 @@ export const STATE_TAX_PROFILES: Record<string, StateTaxProfile> = {
     summary: 'Flat 3.9% · SS exempt · Retirement income exempt (55+)',
   }),
   'Kansas': graduatedProfile({
+    // KS SB 1 (June 2024 special session), effective TY2024: collapsed the old
+    // 3.1/5.25/5.7% three-bracket schedule to two brackets — 5.2% up to
+    // $23,000 single / $46,000 MFJ, 5.58% above.
     brackets: {
       single: [
-        { threshold: 0, rate: 0.031 },
-        { threshold: 15000, rate: 0.0525 },
-        { threshold: 30000, rate: 0.057 },
+        { threshold: 0, rate: 0.052 },
+        { threshold: 23000, rate: 0.0558 },
       ],
       mfj: [
-        { threshold: 0, rate: 0.031 },
-        { threshold: 30000, rate: 0.0525 },
-        { threshold: 60000, rate: 0.057 },
+        { threshold: 0, rate: 0.052 },
+        { threshold: 46000, rate: 0.0558 },
       ],
     },
     stdDed: { single: 3500, mfj: 8000 },
-    summary: 'Graduated 3.1–5.7% · SS exempt (below $75k AGI; approx as always)',
-    ssRule: { kind: 'agi_phaseout', thresholds: { single: 75000, mfj: 75000 } },
+    summary: 'Two brackets 5.2/5.58% (SB 1, TY2024+) · SS fully exempt · No retirement exclusion',
+    // SB 1 also fully exempted Social Security from TY2024 onward, replacing the
+    // old $75k-AGI cliff.
+    ssRule: { kind: 'exempt' },
+    notes: 'Kansas SB 1 (2024): SS fully exempt regardless of AGI from TY2024; two-bracket schedule 5.2% ≤ $23k/$46k, 5.58% above.',
   }),
   'Kentucky': flatProfile({
     rate: 0.035, // KY trending down: 2026 ~3.5%
@@ -481,8 +485,12 @@ export const STATE_TAX_PROFILES: Record<string, StateTaxProfile> = {
       ],
     },
     stdDed: { single: 14575, mfj: 29150 },
-    ssRule: { kind: 'agi_phaseout', thresholds: { single: 105380, mfj: 134510 } },
-    summary: 'Graduated 5.35–9.85% · SS phased out by AGI · No retirement exclusion',
+    // MN SS subtraction phases out at 10% per $4,000 of AGI above the 2024 starts:
+    // $82,190 single/HoH, $105,380 MFJ. Modeled as a hard cliff at the phase-out
+    // START (SS fully exempt below, fully taxed above) per the SSRule approximation.
+    ssRule: { kind: 'agi_phaseout', thresholds: { single: 82190, mfj: 105380 } },
+    summary: 'Graduated 5.35–9.85% · SS exempt below $82,190/$105,380 AGI (2024 phase-out starts) · No retirement exclusion',
+    notes: 'MN SS subtraction phase-out (10% per $4,000 of AGI above $82,190 single / $105,380 MFJ, 2024) approximated as a hard cliff at the phase-out start.',
   }),
   'Mississippi': flatProfile({
     rate: 0.04, // MS phase-down: 2024 4.7% → 2025 4.4% → 2026 4.0% (scheduled).
@@ -790,33 +798,39 @@ export const STATE_TAX_PROFILES: Record<string, StateTaxProfile> = {
     // field is effectively unused — `none` is clearer than `full` (which would
     // falsely imply Traditional withdrawals are explicitly excluded somewhere).
     retirementExclusion: { kind: 'none' },
-    // 2024 statutory base = $262,000; threshold is CPI-indexed annually from 2024.
-    // 2025 actual value was ~$270k. We anchor at $262k @ 2024 and let
-    // StateTaxCalculator's independent `ltcgFactor` index forward.
-    // WA's $262k threshold is per-filer; MFJ couples filing jointly effectively
-    // get 2 × $262k since each spouse's LTCG is tested against their own threshold.
-    ltcgRule: { kind: 'threshold', rate: 0.07, threshold: { single: 262000, mfj: 524000 }, inflationIndexed: true },
+    // WA "standard deduction" (RCW 82.87.060): $250k statutory base (2018 $),
+    // CPI-indexed annually — $262k for 2023, $270k for 2024. We anchor the 2024
+    // indexed value ($270k) here and let StateTaxCalculator's independent
+    // `ltcgFactor` (which indexes forward from base year 2024) carry it onward.
+    // RCW 82.87.060(3): spouses/domestic partners are entitled to ONE combined
+    // standard deduction — the MFJ threshold is the SAME as single, NOT doubled.
+    ltcgRule: { kind: 'threshold', rate: 0.07, threshold: { single: 270000, mfj: 270000 }, inflationIndexed: true },
     bracketsInflationIndexed: false,
     bracketBaseYear: 2024,
-    summary: 'WA capital gains tax only · 7% on LTCG above $262k single / $524k MFJ (2024, CPI-indexed)',
-    notes: 'WA has no ordinary income tax. 7% Long-Term Capital Gains Tax applies above an inflation-indexed $262k (single, 2024 base) threshold; MFJ couples effectively get 2× that. Only realized state-source LTCG is in scope.',
+    summary: 'WA capital gains tax only · 7% on LTCG above $270k (2024, CPI-indexed; one combined deduction per couple)',
+    notes: 'WA has no ordinary income tax. 7% Long-Term Capital Gains Tax applies above an inflation-indexed standard deduction ($270k 2024 indexed value; RCW 82.87.060). Spouses/domestic partners share one combined deduction — MFJ uses the same threshold as single. Only realized state-source LTCG is in scope.',
   },
   'West Virginia': flatProfile({
     rate: 0.0482,
     stdDed: { single: 2000, mfj: 4000 },
-    ssRule: { kind: 'taxed' }, // 2026 — partial; phase-out completes by 2027
+    // WV HB 4880 (2024) phases out SS taxation: 35% exempt TY2024, 65% TY2025,
+    // 100% exempt from TY2026. The partial 2024/2025 exemptions are approximated
+    // as fully taxed; 2025 is the LAST taxed year (getStateTaxProfile follows the
+    // successor when year > effectiveYears.end, so end: 2025 → exempt from 2026).
+    ssRule: { kind: 'taxed' },
     retirementExclusion: { kind: 'amount', amount: { single: 8000, mfj: 16000 } },
-    summary: 'Flat 4.82% · SS taxed (phase-out 2026) · $8k retirement exclusion',
-    effectiveYears: { end: 2026 },
-    successorProfileKey: 'West Virginia (2027+)',
+    summary: 'Flat 4.82% · SS taxed through 2025 (HB 4880 phase-out) · $8k retirement exclusion',
+    notes: 'WV HB 4880 partial SS exemptions (35% TY2024, 65% TY2025) approximated as fully taxed; SS fully exempt from TY2026 via successor profile.',
+    effectiveYears: { end: 2025 },
+    successorProfileKey: 'West Virginia (2026+)',
   }),
-  'West Virginia (2027+)': flatProfile({
+  'West Virginia (2026+)': flatProfile({
     rate: 0.0482,
     stdDed: { single: 2000, mfj: 4000 },
-    ssRule: { kind: 'exempt' },
+    ssRule: { kind: 'exempt' }, // HB 4880: SS 100% exempt from tax year 2026
     retirementExclusion: { kind: 'amount', amount: { single: 8000, mfj: 16000 } },
-    summary: 'Flat 4.82% · SS exempt (post-2026 successor) · $8k retirement exclusion',
-    bracketBaseYear: 2027,
+    summary: 'Flat 4.82% · SS exempt (2026+, HB 4880) · $8k retirement exclusion',
+    bracketBaseYear: 2026,
   }),
   'Wisconsin': graduatedProfile({
     brackets: {

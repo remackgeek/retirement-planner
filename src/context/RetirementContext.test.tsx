@@ -100,6 +100,23 @@ const TestComponent = () => {
   return <div data-testid='test'>Test</div>;
 };
 
+// Renders the provider and exposes the LATEST context value through a ref —
+// for tests that drive the context API directly (clone/update/export/etc.)
+// instead of auto-firing importScenario like TestComponent does.
+function renderProvider() {
+  const ref: { current: React.ContextType<typeof RetirementContext> } = { current: null };
+  const Grabber = () => {
+    ref.current = React.useContext(RetirementContext);
+    return null;
+  };
+  render(
+    <RetirementProvider>
+      <Grabber />
+    </RetirementProvider>
+  );
+  return ref;
+}
+
 // ---- tests ----
 
 describe('RetirementContext Import Tests', () => {
@@ -596,6 +613,178 @@ describe('RetirementContext Import Tests', () => {
         })
       );
       expect(mockPut).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('state management and persistence guards', () => {
+    it('keeps a freshly-cloned scenario when updateScenario follows cloneScenario in one closure', async () => {
+      // Repro for the stale-closure setter bug: both calls come from ONE
+      // captured context snapshot. The old setters derived next state from the
+      // render-time `scenarios` array, so the second call (updateScenario)
+      // mapped over a snapshot that predated the clone — losing it from React
+      // state (it survived only in IndexedDB).
+      const base = { id: 'base-id', name: 'Base', currentAge: 50 } as Scenario;
+      mockGetAll.mockResolvedValue([base]);
+      vi.mocked(crypto.randomUUID).mockReturnValue('00000000-0000-4000-8000-000000000123');
+
+      const ctx = renderProvider();
+      await waitFor(() => expect(ctx.current?.loading).toBe(false));
+
+      const captured = ctx.current!; // single closure, as in the repro
+      await act(async () => {
+        await captured.cloneScenario('base-id', 'Base (copy)');
+        await captured.updateScenario({ ...base, name: 'Base renamed' } as Scenario);
+      });
+
+      await waitFor(() => {
+        const names = ctx.current!.scenarios.map((s) => s.name).sort();
+        expect(names).toEqual(['Base (copy)', 'Base renamed']);
+      });
+    });
+
+    it('refuses to stamp/persist a newer-schema scenario on write (forward-compat guard)', async () => {
+      const future = {
+        id: 'future-id',
+        name: 'From the future',
+        currentAge: 50,
+        schemaVersion: 999,
+      } as Scenario;
+      mockGetAll.mockResolvedValue([future]);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const ctx = renderProvider();
+      await waitFor(() => expect(ctx.current?.loading).toBe(false));
+      expect(mockPut).not.toHaveBeenCalled(); // load-path guard skipped re-persist
+
+      // The MC probability write-back does exactly this after merely
+      // activating the record — it must be a no-op, not a v999 → v1 downgrade.
+      await act(async () => {
+        await ctx.current!.updateScenario({ ...future, lastSuccessProbability: 55 } as Scenario);
+      });
+      expect(mockPut).not.toHaveBeenCalled();
+      expect(ctx.current!.scenarios).toEqual([future]); // untouched, still v999
+
+      await act(async () => {
+        await ctx.current!.addScenario({ ...future, id: 'future-2' } as Scenario);
+      });
+      expect(mockPut).not.toHaveBeenCalled();
+      expect(ctx.current!.scenarios).toEqual([future]);
+
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it('still loads good records when one malformed record throws during migration', async () => {
+      const good = { id: 'good-id', name: 'Good', currentAge: 50 } as Scenario;
+      const malformed = {
+        id: 'bad-id',
+        name: 'Bad',
+        currentAge: 50,
+        // Legacy taxStrategy present + incomeEvents not an array → the
+        // migration pipeline throws (TypeError on .filter). One bad record
+        // must not brick the whole load.
+        taxStrategy: { name: 'optimize' },
+        incomeEvents: null,
+      } as unknown as Scenario;
+      mockGetAll.mockResolvedValue([malformed, good]);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const ctx = renderProvider();
+      await waitFor(() => expect(ctx.current?.loading).toBe(false));
+
+      const ids = ctx.current!.scenarios.map((s) => s.id);
+      expect(ids).toContain('good-id'); // survived its neighbor's failure
+      expect(ids).toContain('bad-id'); // loaded raw, unmigrated
+      // The malformed record is never re-persisted...
+      expect(mockPut).not.toHaveBeenCalledWith('scenarios', expect.anything(), 'bad-id');
+      // ...while the good record went through the pipeline normally.
+      expect(mockPut).toHaveBeenCalledWith(
+        'scenarios',
+        expect.objectContaining({ id: 'good-id', schemaVersion: CURRENT_SCHEMA_VERSION }),
+        'good-id'
+      );
+      // No global persistence failure was reported.
+      expect(ctx.current!.persistenceError).toBeNull();
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    it('never auto-activates an unmigrated record, even when it sorts first', async () => {
+      // The raw record skipped normalizeScenario, so it can be missing fields
+      // the engine dereferences. Activating it runs the SYNCHRONOUS fast
+      // preview, whose throw would escape to the app-wide ErrorBoundary — a
+      // full-screen crash on every load, with no way to reach the sidebar and
+      // delete it. The healthy neighbour must win instead.
+      const malformed = {
+        id: 'bad-id', name: 'Bad', currentAge: 50,
+        taxStrategy: { name: 'optimize' }, incomeEvents: null,
+      } as unknown as Scenario;
+      const good = { id: 'good-id', name: 'Good', currentAge: 50 } as Scenario;
+      mockGetAll.mockResolvedValue([malformed, good]); // malformed is FIRST
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const ctx = renderProvider();
+      await waitFor(() => expect(ctx.current?.loading).toBe(false));
+
+      expect(ctx.current!.activeScenario?.id).toBe('good-id');
+      errorSpy.mockRestore();
+    });
+
+    it('leaves activeScenario null when EVERY record fails migration', async () => {
+      const malformed = {
+        id: 'bad-id', name: 'Bad', currentAge: 50,
+        taxStrategy: { name: 'optimize' }, incomeEvents: null,
+      } as unknown as Scenario;
+      mockGetAll.mockResolvedValue([malformed]);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const ctx = renderProvider();
+      await waitFor(() => expect(ctx.current?.loading).toBe(false));
+
+      // Listed (so the user can delete it) but not active — empty state beats
+      // a crash loop.
+      expect(ctx.current!.scenarios.map((s) => s.id)).toEqual(['bad-id']);
+      expect(ctx.current!.activeScenario).toBeNull();
+      errorSpy.mockRestore();
+    });
+
+    it('strips lastSuccessProbability from exported scenario JSON', async () => {
+      const scenario = {
+        id: 'exp-id',
+        name: 'Export Me',
+        currentAge: 50,
+        lastSuccessProbability: 87,
+      } as Scenario;
+      mockGetAll.mockResolvedValue([scenario]);
+
+      // Exercise the File System Access API branch and capture what's written.
+      let written = '';
+      const writable = {
+        write: vi.fn(async (data: string) => {
+          written = data;
+        }),
+        close: vi.fn(async () => {}),
+      };
+      window.showSaveFilePicker = vi.fn(async () => ({
+        createWritable: async () => writable,
+      })) as unknown as typeof window.showSaveFilePicker;
+
+      try {
+        const ctx = renderProvider();
+        await waitFor(() => expect(ctx.current?.loading).toBe(false));
+
+        await act(async () => {
+          await ctx.current!.exportScenario('exp-id');
+        });
+
+        expect(written).not.toBe('');
+        const parsed = JSON.parse(written) as Record<string, unknown>;
+        expect(parsed).not.toHaveProperty('lastSuccessProbability');
+        expect(parsed.name).toBe('Export Me');
+        expect(parsed.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+      } finally {
+        delete (window as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+      }
     });
   });
 });

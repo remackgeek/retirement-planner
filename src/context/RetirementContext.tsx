@@ -1,13 +1,14 @@
 /* eslint-disable react-refresh/only-export-components --
    Context object + provider in one file is idiomatic React; splitting them
    across files for HMR-only benefit isn't worth the importer churn. */
-import { createContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import type { Scenario } from '../types/Scenario';
 import { CURRENT_SCHEMA_VERSION } from '../types/Scenario';
 import { openDB } from 'idb';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { Button } from 'primereact/button';
 import {
+  isFromNewerSchema,
   runMigrationPipeline,
   validateImportedScenario,
 } from '../utils/scenarioMigration';
@@ -69,6 +70,19 @@ export const PERSISTENCE_ERROR_MESSAGE =
   "Your browser is blocking local storage (this can happen in private/incognito mode). " +
   "You can still use YARP, but your scenarios won't be saved between visits.";
 
+/**
+ * Drop the fields that are per-session DISPLAY CACHE rather than scenario data.
+ * Today that's `lastSuccessProbability` (the sidebar's stable-% cache — see
+ * CLAUDE.md). Every path that mints a *new* scenario identity (clone, export,
+ * example load) must strip it, or a stale % rides along to a scenario whose
+ * inputs it was never computed from. One helper so a future display-only field
+ * only has to be added here.
+ */
+const stripDisplayCache = <T extends Scenario>(scenario: T): T => {
+  const { lastSuccessProbability: _displayCache, ...rest } = scenario;
+  return rest as T;
+};
+
 export const RetirementContext = createContext<{
   scenarios: Scenario[];
   activeScenario: Scenario | null;
@@ -91,6 +105,23 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   );
   const [loading, setLoading] = useState(true);
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
+
+  // Synchronous mirror of `scenarios`. The setters below are async and often
+  // called sequentially from a single closure (`await cloneScenario(); await
+  // updateScenario();`) or from long-lived closures (the import file-picker's
+  // onchange, the MC probability write-back). Deriving the next state from the
+  // render-time `scenarios` snapshot in those paths loses writes — so every
+  // write goes through `commitScenarios` (which updates the ref first, then
+  // mirrors to React state) and every read inside a setter uses
+  // `scenariosRef.current`.
+  const scenariosRef = useRef<Scenario[]>([]);
+  const commitScenarios = (
+    updater: (prev: Scenario[]) => Scenario[]
+  ): Scenario[] => {
+    scenariosRef.current = updater(scenariosRef.current);
+    setScenarios(scenariosRef.current);
+    return scenariosRef.current;
+  };
 
   // Run a DB operation, swallowing any open/read/write failure. On failure it
   // flips `persistenceError` (surfaced as a banner) and returns false instead of
@@ -122,13 +153,19 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       let migratedCount = 0;
       let totalConversionsAdded = 0;
       let brokerageRenamedCount = 0;
+      let cashBucketRepairedCount = 0;
+      // Keyed by object identity, not id: a record malformed enough to throw
+      // may also be missing its `id`, and `Set<undefined>` would then wrongly
+      // tar every other id-less record. `finalScenarios` holds exactly these
+      // object references, so identity is precise.
+      const unmigrated = new Set<Scenario>();
       const finalScenarios: Scenario[] = [];
       for (const s of savedScenarios) {
         // Forward-compat guard: a record stamped with a newer schema version
         // than this build understands (e.g. after an app downgrade) is loaded
         // as-is and never re-persisted, so the older build can't corrupt it by
         // applying stale defaults. Skip the pipeline entirely for it.
-        if (typeof s.schemaVersion === 'number' && s.schemaVersion > CURRENT_SCHEMA_VERSION) {
+        if (isFromNewerSchema(s)) {
           console.warn(
             `Scenario "${s.name}" has schema v${s.schemaVersion}, newer than this app ` +
             `(v${CURRENT_SCHEMA_VERSION}). Loading without migration; not re-saving.`
@@ -142,15 +179,40 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         // gates the user-facing "Scenarios updated" toast — only content
         // migrations count. Normalization fixes and the schemaVersion stamp
         // persist silently (covered by `needsPersist`, never the toast).
-        const result = runMigrationPipeline(s);
+        //
+        // Per-record guard: a malformed record whose migration throws must not
+        // brick the whole load (it would drop every scenario for the session).
+        // Load it raw instead — no re-persist — and keep going.
+        let result: ReturnType<typeof runMigrationPipeline>;
+        try {
+          result = runMigrationPipeline(s);
+        } catch (err) {
+          // Load it raw so the user can still see/delete it, but remember that
+          // it never got normalized: it may be missing fields the engine and
+          // chart dereference. Auto-ACTIVATING such a record would run the
+          // synchronous fast preview against it and throw straight into the
+          // app-wide ErrorBoundary — a full-screen crash on every load, with no
+          // way to reach the sidebar and remove it.
+          console.error(
+            `Failed to migrate scenario "${s?.name ?? s?.id}"; loading it unmigrated:`,
+            err
+          );
+          unmigrated.add(s);
+          finalScenarios.push(s);
+          continue;
+        }
         const working = result.scenario;
         const migratedThisScenario =
-          result.addedConversions > 0 || result.brokerageRenamed || result.spendingStripped;
+          result.addedConversions > 0 ||
+          result.brokerageRenamed ||
+          result.spendingStripped ||
+          result.cashBucketRepaired;
         const needsPersist =
           migratedThisScenario || result.cashBucketConverted || result.normalized || result.stamped;
 
         if (result.addedConversions > 0) totalConversionsAdded += result.addedConversions;
         if (result.brokerageRenamed) brokerageRenamedCount += 1;
+        if (result.cashBucketRepaired) cashBucketRepairedCount += 1;
 
         if (needsPersist) {
           await db.put(storeName, working, working.id);
@@ -161,8 +223,14 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         finalScenarios.push(working);
       }
       if (finalScenarios.length > 0) {
+        scenariosRef.current = finalScenarios; // keep the sync mirror consistent
         setScenarios(finalScenarios);
-        setActiveScenarioState(finalScenarios[0]); // Set first scenario as active
+        // Activate the first scenario that survived migration. A record that
+        // threw is listed but never auto-selected (see the catch above); if
+        // EVERY record failed, stay on the empty state rather than crashing —
+        // the user can still delete them from the sidebar.
+        const firstHealthy = finalScenarios.find((sc) => !unmigrated.has(sc));
+        setActiveScenarioState(firstHealthy ?? null);
       }
       // If no scenarios exist, leave scenarios empty and activeScenario null
 
@@ -175,11 +243,20 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
             `${totalConversionsAdded} Roth conversion event${totalConversionsAdded === 1 ? '' : 's'} added — ` +
             `find them in the Income panel; chart badges will appear at conversion years.`
           );
-        } else if (brokerageRenamedCount === 0) {
+        } else if (brokerageRenamedCount === 0 && cashBucketRepairedCount === 0) {
           parts.push(
             `Cleared the legacy tax-strategy field from ${migratedCount} ${noun}. ` +
             `No cached schedule was stored, so no Roth conversion events were created. ` +
             `Use the Roth Conversion dialog to plan a multi-year schedule.`
+          );
+        }
+        if (cashBucketRepairedCount > 0) {
+          const cashNoun = cashBucketRepairedCount === 1 ? 'scenario' : 'scenarios';
+          parts.push(
+            `Corrected the cash-bucket minimum / target / maximum in ${cashBucketRepairedCount} ${cashNoun}. ` +
+            `An earlier version converted those thresholds from months to dollars against a spending ` +
+            `figure that was 12× too large, so the amounts were far higher than intended. ` +
+            `Please review them under Settings → Cash Bucket.`
           );
         }
         if (brokerageRenamedCount > 0) {
@@ -204,40 +281,81 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
     initDB();
   }, []);
 
+  // Forward-compat write guard: a scenario stamped with a newer schema version
+  // than this build understands must never be re-stamped/persisted — that would
+  // downgrade its schemaVersion and corrupt it (e.g. the automatic MC
+  // probability write-back after merely activating it). Returns true when the
+  // write must be skipped.
+  //
+  // Refusing SILENTLY is not acceptable: the user can open the scenario dialog,
+  // edit, and hit Save with the dialog closing normally while every change is
+  // dropped (and "Clone" appears to do nothing, since cloneScenario routes
+  // through addScenario). So the first refusal per scenario raises a dialog.
+  // Only the first — the automatic ~1s probability write-back retries
+  // constantly while such a scenario is active, and a dialog per tick would be
+  // unusable.
+  const warnedNewerSchemaIds = useRef(new Set<string>());
+  const isFromNewerBuild = (data: Scenario): boolean => {
+    if (!isFromNewerSchema(data)) return false;
+    console.warn(
+      `Ignoring write to scenario "${data.name}": its schema v${data.schemaVersion} ` +
+      `is newer than this app (v${CURRENT_SCHEMA_VERSION}). Update the app to edit it.`
+    );
+    if (!warnedNewerSchemaIds.current.has(data.id)) {
+      warnedNewerSchemaIds.current.add(data.id);
+      infoDialog(
+        `"${data.name}" was created by a newer version of YARP (schema v${data.schemaVersion}; ` +
+        `this app understands v${CURRENT_SCHEMA_VERSION}). It is read-only here — changes to it, ` +
+        `including copies, will not be saved. Update the app to edit it.`,
+        'Scenario is read-only',
+        'pi pi-exclamation-triangle'
+      );
+    }
+    return true;
+  };
+
   const addScenario = async (data: Scenario) => {
+    if (isFromNewerBuild(data)) return;
     const stamped: Scenario = { ...data, schemaVersion: CURRENT_SCHEMA_VERSION };
     await withDB((db) => db.put(storeName, stamped, stamped.id).then(() => undefined));
-    setScenarios([...scenarios, stamped]);
+    commitScenarios((prev) => [...prev, stamped]);
     setActiveScenarioState(stamped);
   };
 
   const updateScenario = async (data: Scenario) => {
+    if (isFromNewerBuild(data)) return;
     const stamped: Scenario = { ...data, schemaVersion: CURRENT_SCHEMA_VERSION };
     await withDB((db) => db.put(storeName, stamped, stamped.id).then(() => undefined));
-    setScenarios(
-      scenarios.map((scenario) => (scenario.id === stamped.id ? stamped : scenario))
+    commitScenarios((prev) =>
+      prev.map((scenario) => (scenario.id === stamped.id ? stamped : scenario))
     );
-    if (activeScenario?.id === stamped.id) {
-      setActiveScenarioState(stamped);
-    }
+    setActiveScenarioState((prev) => (prev?.id === stamped.id ? stamped : prev));
   };
 
   const deleteScenario = async (id: string) => {
     await withDB((db) => db.delete(storeName, id));
-    const updatedScenarios = scenarios.filter((scenario) => scenario.id !== id);
-    setScenarios(updatedScenarios);
-    if (activeScenario?.id === id) {
-      setActiveScenarioState(
-        updatedScenarios.length > 0 ? updatedScenarios[0] : null
-      );
-    }
+    const updatedScenarios = commitScenarios((prev) =>
+      prev.filter((scenario) => scenario.id !== id)
+    );
+    setActiveScenarioState((prev) =>
+      prev?.id === id
+        ? updatedScenarios.length > 0
+          ? updatedScenarios[0]
+          : null
+        : prev
+    );
   };
 
   const exportScenario = async (id: string) => {
-    const scenario = scenarios.find((s) => s.id === id);
+    const scenario = scenariosRef.current.find((s) => s.id === id);
     if (!scenario) return;
+    // Keep a newer-build schemaVersion intact (never downgrade the stamp on
+    // export); the display cache never belongs in the file.
     const dataStr = JSON.stringify(
-      { ...scenario, schemaVersion: CURRENT_SCHEMA_VERSION },
+      {
+        ...stripDisplayCache(scenario),
+        schemaVersion: Math.max(scenario.schemaVersion ?? 0, CURRENT_SCHEMA_VERSION),
+      },
       null,
       2
     );
@@ -302,7 +420,9 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
           ? ` This scenario used the old tax-strategy feature; ${addedConversions} Roth conversion event${addedConversions === 1 ? '' : 's'} ${addedConversions === 1 ? 'was' : 'were'} migrated into the Income panel.`
           : '';
 
-        const existingIndex = scenarios.findIndex((s) => s.id === importedData.id);
+        // Read through the sync mirror — this onchange closure was created at
+        // render time and may be firing long after `scenarios` went stale.
+        const existingIndex = scenariosRef.current.findIndex((s) => s.id === importedData.id);
 
         if (existingIndex !== -1) {
           confirmDialog({
@@ -338,23 +458,21 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const cloneScenario = async (id: string, name: string) => {
-    const source = scenarios.find((s) => s.id === id);
+    const source = scenariosRef.current.find((s) => s.id === id);
     if (!source) return;
-    const clone: Scenario = {
+    const clone: Scenario = stripDisplayCache({
       ...(JSON.parse(JSON.stringify(source)) as Scenario),
       id: crypto.randomUUID(),
       name,
-      lastSuccessProbability: undefined,
-    };
+    });
     await addScenario(clone);
   };
 
   const loadExampleScenario = async (template: Omit<Scenario, 'id'>) => {
-    const scenario: Scenario = {
+    const scenario: Scenario = stripDisplayCache({
       ...structuredClone(template) as Omit<Scenario, 'id'>,
       id: crypto.randomUUID(),
-      lastSuccessProbability: undefined,
-    };
+    } as Scenario);
     await addScenario(scenario);
   };
 
@@ -366,9 +484,10 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
       }
     });
     // If persistence is unavailable, fall back to the in-memory copy so the
-    // session can still switch scenarios.
+    // session can still switch scenarios (read through the sync mirror — the
+    // render-time `scenarios` snapshot may be stale by the time this runs).
     if (!ok) {
-      const local = scenarios.find((s) => s.id === id);
+      const local = scenariosRef.current.find((s) => s.id === id);
       if (local) setActiveScenarioState(local);
     }
   };

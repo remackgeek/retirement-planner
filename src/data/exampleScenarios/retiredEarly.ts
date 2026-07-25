@@ -65,7 +65,7 @@ export const retiredEarly: Omit<Scenario, 'id'> = {
       amount: 28000,
       startAge: 70,
       taxStatus: 'before_tax',
-      colaType: 'fixed',
+      colaType: 'inflation_adjusted',
       ssHaircutEnabled: true,
       ssHaircutPercent: 22,
       ssHaircutYear: 2032,

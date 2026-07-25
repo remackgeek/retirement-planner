@@ -31,6 +31,8 @@ const makeBd = (overrides: Partial<AnnualCashFlowBreakdown>): AnnualCashFlowBrea
   netCashFlow: 0,
   rmdRequired: 0,
   rmdExcess: 0,
+  rmdRequiredSelf: 0,
+  rmdRequiredSpouse: 0,
   rothConversionGross: 0,
   rothConversionRequested: 0,
   rothConversionTaxFromCash: 0,

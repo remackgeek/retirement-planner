@@ -59,7 +59,7 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
     'none': 'Below first threshold — 0% taxable',
     '50%': 'Between thresholds — up to 50% taxable',
     '85%': 'Above second threshold — up to 85% taxable',
-    'mfs-flat': 'MFS — always 85% taxable',
+    'mfs-flat': 'MFS — 85% taxable (capped at 85% of provisional income)',
   };
 
   return (
@@ -216,20 +216,20 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
           </Section>
         )}
 
-        {(audit.rmdSelf > 0 || audit.rmdSpouse > 0) && (
+        {(breakdown.rmdRequiredSelf > 0 || breakdown.rmdRequiredSpouse > 0) && (
           <Section title="RMD (Required Minimum Distribution)">
-            {audit.rmdSelf > 0 && (
+            {breakdown.rmdRequiredSelf > 0 && (
               <>
                 <Row label="Self — BoY Traditional balance" value={`$${fmtMoney(d(audit.rmdBoyBalanceSelf))}`} muted />
                 <Row label={`Self — IRS uniform table divisor`} value={audit.rmdDivisorSelf.toFixed(1)} muted />
-                <Row label="Self RMD" value={`$${fmtMoney(d(audit.rmdSelf))}`} />
+                <Row label="Self RMD" value={`$${fmtMoney(d(breakdown.rmdRequiredSelf))}`} />
               </>
             )}
-            {audit.rmdSpouse > 0 && (
+            {breakdown.rmdRequiredSpouse > 0 && (
               <>
                 <Row label="Spouse — BoY Traditional balance" value={`$${fmtMoney(d(audit.rmdBoyBalanceSpouse))}`} muted />
                 <Row label="Spouse — IRS uniform table divisor" value={audit.rmdDivisorSpouse.toFixed(1)} muted />
-                <Row label="Spouse RMD" value={`$${fmtMoney(d(audit.rmdSpouse))}`} />
+                <Row label="Spouse RMD" value={`$${fmtMoney(d(breakdown.rmdRequiredSpouse))}`} />
               </>
             )}
             <Row label="Total RMD required" value={`$${fmtMoney(d(breakdown.rmdRequired))}`} />

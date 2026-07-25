@@ -1,0 +1,49 @@
+{
+  "_description": "Historical block bootstrap combined with the widow's-penalty survivor model where the SPOUSE outlives self (self 65→80, spouse 60→92). The projection horizon is the survivor's 33 years, not self's 16 — this scenario crashes (or silently reads cross-run returns) if any return generator sizes itself with the self-only horizon.",
+  "_rationale": "Pure accumulation: $500k Roth, no spending, no income. Probability=100 because zero spending cannot deplete the balance. The load-bearing assertions are structural: the runner's length check pins the horizon to 33 years (spouse 92 − 60 + 1), and the run completing at all proves the bootstrap indexMap covers the survivor years (regression for the self-only-horizon indexMap overrun: HISTORICAL_RETURNS[undefined] → TypeError on the final run's survivor years). Median final balance uses the same broad 60/40 real-CAGR band as the other bootstrap tests, widened for the 33-year horizon.",
+  "_seed": 12345,
+  "name": "Widow bootstrap survivor horizon",
+  "currentAge": 65,
+  "lifeExpectancy": 80,
+  "referenceYear": 2026,
+  "spendingGoals": [],
+  "incomeEvents": [],
+  "portfolioAssumptions": {
+    "stockReturn": 0.07,
+    "stockStdDev": 0.15,
+    "bondReturn": 0.03,
+    "bondStdDev": 0.05,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "historical_bootstrap",
+    "historicalBlockSize": 5
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "filingStatus": "mfj",
+  "spouseAge": 60,
+  "spouseLifeExpectancy": 92,
+  "stateTimeline": [
+    {
+      "state": "Florida"
+    }
+  ],
+  "simulationSettings": {
+    "numSimulations": 1000
+  },
+  "accounts": [
+    {
+      "id": "acct-1",
+      "name": "Roth 1",
+      "type": "roth",
+      "balance": 500000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "longTermCapGainsRate": 0.15,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

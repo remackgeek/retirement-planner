@@ -4,12 +4,14 @@ import type { UserData } from "./UserData";
  * Content-schema version stamped onto every persisted/exported Scenario.
  * Distinct from `DB_VERSION` in RetirementContext (the IndexedDB *structural*
  * version — object stores/indexes). Bump this when the Scenario/UserData
- * *content* shape changes in a way that needs an ordered migration. Version 1 =
- * the current shape (post all existing inference migrations). The value is
- * stamped now but not yet branched on at import — see the migration notes in
- * CLAUDE.md.
+ * *content* shape changes in a way that needs an ordered migration, and add the
+ * matching `MIGRATORS[<old version>]` entry in `utils/scenarioMigration.ts`.
+ *
+ * - v1 — the shape produced by the inference migrations + `normalizeScenario`.
+ * - v2 — repairs the 12×-inflated `cashBucketPolicy` band written by the
+ *   released months→dollars migration (`MIGRATORS[1]`).
  */
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 export interface Scenario extends UserData {
   id: string;

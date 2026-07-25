@@ -122,5 +122,14 @@ export interface ContributionLimits {
   catchUpAge: number;         // age at which catch-up contributions kick in (default 50)
   catchUp401k: number;        // 401(k) catch-up amount (default 7500)
   catchUpIra: number;         // IRA catch-up amount (default 1000)
+  // SECURE 2.0 §109 enhanced 401(k) catch-up for ages 60–63 (the band is
+  // statutory, but still gated by `catchUpAge` like every other catch-up —
+  // set that past 63 and none applies): the greater of $10,000-indexed or 150% of
+  // the regular catch-up. 401(k)-kind groups only — IRAs have no super
+  // catch-up. Optional for persisted-data compatibility; when absent,
+  // getContributionLimits backfills 1.5 × `catchUp401k` if the scenario
+  // customized that, else the year's default. The statutory dollar floor is
+  // NOT applied to a customized catch-up, so `catchUp401k: 0` stays 0.
+  superCatchUp401k?: number;
   inflationAdjusted: boolean; // scale caps by deterministic mean inflation per year
 }

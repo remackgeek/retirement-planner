@@ -30,7 +30,7 @@ import YearTaxAudit from './YearTaxAudit';
 import YearIncomeDetail from './YearIncomeDetail';
 import YearCashFlowSankey from './YearCashFlowSankey';
 import CloneScenarioDialog from '../../dialogs/CloneScenarioDialog';
-import { spacing, colors, border, fontSize, mediaQuery } from '../../styles/theme';
+import { spacing, colors, border, fontSize, mediaQuery, mobileMatchMedia } from '../../styles/theme';
 import { useUIState } from '../../context/UIStateContext';
 import { RetirementContext } from '../../context/RetirementContext';
 import { toDisplay, pathToDisplay } from '../../utils/displayCurrency';
@@ -119,7 +119,7 @@ const CompareWithButton = styled.button`
   color: ${colors.primary};
   cursor: pointer;
   margin-left: auto;
-  &:hover { background: rgba(61, 122, 95, 0.08); }
+  &:hover { background: ${colors.hoverRow}; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
@@ -136,7 +136,7 @@ const WhatIfButton = styled.button`
   border-radius: ${border.radiusRound};
   color: ${colors.primary};
   cursor: pointer;
-  &:hover { background: rgba(61, 122, 95, 0.08); }
+  &:hover { background: ${colors.hoverRow}; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
@@ -201,7 +201,7 @@ const CurrencyPillButton = styled.button<{ $active: boolean }>`
   border: none;
   cursor: pointer;
   background: ${props => props.$active ? colors.primary : 'transparent'};
-  color: ${props => props.$active ? '#fff' : colors.textSecondary};
+  color: ${props => props.$active ? colors.onPrimary : colors.textSecondary};
   &:hover { background: ${props => props.$active ? colors.primary : colors.bgHover}; }
 `;
 
@@ -231,7 +231,7 @@ const DataToggle = styled.button<{ $active: boolean }>`
   font-family: inherit;
   line-height: 1;
   background: ${props => props.$active ? colors.primary : colors.bgMedium};
-  color: ${props => props.$active ? '#fff' : colors.textPrimary};
+  color: ${props => props.$active ? colors.onPrimary : colors.textPrimary};
   border: ${border.standard};
   border-radius: ${border.radius};
   cursor: pointer;
@@ -243,10 +243,9 @@ const DataToggle = styled.button<{ $active: boolean }>`
 `;
 
 function useIsMobile(): boolean {
-  const query = '(max-width: 767px)';
-  const [isMobile, setIsMobile] = useState(() => window.matchMedia(query).matches);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia(mobileMatchMedia).matches);
   useEffect(() => {
-    const mql = window.matchMedia(query);
+    const mql = window.matchMedia(mobileMatchMedia);
     const onChange = () => setIsMobile(mql.matches);
     mql.addEventListener('change', onChange);
     return () => mql.removeEventListener('change', onChange);
@@ -304,12 +303,17 @@ const ProjectionsInner = ({
     probability, median, nominal, nominalBreakdowns, years,
     medianStockFactors, medianBondFactors, medianBreakdowns,
     medianInflation, nominalInflation,
-    percentileBand, mcStats, isPreview,
+    percentileBand, mcStats, isPreview, probabilityPending,
   } = results;
   // During fast preview we have a stable (cached) probability to show while the
   // real MC runs. Treat preview as "not calculating" for tier badge / % display
   // — the "Updating projection…" badge still signals that MC is pending.
-  const probReady = !isCalculating || !!isPreview;
+  // probabilityPending = a never-simulated scenario's preview: its probability
+  // is a placeholder 0, so render '—' and no tier badge instead of flashing
+  // "0%" + a failure badge until the first MC lands.
+  const probReady = (!isCalculating || !!isPreview) && !probabilityPending;
+  // The compared scenario has its own preview/pending lifecycle.
+  const compareProbReady = !!compareResults && !compareResults.probabilityPending;
 
   const { displayCurrency, setDisplayCurrency } = useUIState();
   const context = useContext(RetirementContext);
@@ -701,9 +705,13 @@ const ProjectionsInner = ({
             {isCalculating && <UpdatingBadge style={{ marginLeft: spacing.md }}>Updating projection…</UpdatingBadge>}
             <span style={{ color: colors.textMuted, fontWeight: 400, fontSize: fontSize.sm }}>vs.</span>
             <span>{compareScenario.name}:</span>
-            <span>{compareResults ? `${compareResults.probability}%` : '—'}</span>
-            {compareResults && (() => {
-              const tierInfo = getProbabilityTier(compareResults.probability);
+            {/* Same pending rule as the primary heading above: a compared
+                scenario that has never been simulated carries a placeholder 0
+                with `probabilityPending`, which must render as '—' rather than
+                flashing "0%" plus a failure-tier badge until its MC lands. */}
+            <span>{compareProbReady ? `${compareResults!.probability}%` : '—'}</span>
+            {compareProbReady && (() => {
+              const tierInfo = getProbabilityTier(compareResults!.probability);
               return (
                 <>
                   <PrimeTooltip target=".chance-tier-badge-compare" position="bottom" showDelay={150}>
@@ -738,9 +746,9 @@ const ProjectionsInner = ({
               const fmtMoney = (v: number) => formatCurrencyShort(v, 'compact');
               // Tooltip text colors: default PrimeReact tooltip has a dark background,
               // so we use light grays here (not the dark theme.colors.textPrimary).
-              const tipLabel = 'rgba(255,255,255,0.7)';
-              const tipValue = 'rgba(255,255,255,0.95)';
-              const tipSep = 'rgba(255,255,255,0.2)';
+              const tipLabel = colors.chartTooltipLabel;
+              const tipValue = colors.chartTooltipValue;
+              const tipSep = colors.overlayLight;
               return (
                 <>
                   <PrimeTooltip target=".chance-tier-badge" position="bottom" showDelay={150}>
@@ -883,6 +891,11 @@ const ProjectionsInner = ({
           // (Deterministic when available, else Median) — the same path the
           // data table shows.
           const primaryBd = (chartPrimaryMode === 'nominal' ? nominalBreakdowns : medianBreakdowns)[hoveredIndex];
+          // Bounds guard: hover state can outlive the results it indexed —
+          // switching to a shorter-horizon scenario shrinks the arrays while
+          // hoveredIndex still points past the end. The numeric-array reads
+          // above are `?? 0`-guarded; this object deref is the one that throws.
+          if (!primaryBd) return null;
           const primaryF = getF(chartPrimaryInflation);
           const primaryNet = toDisplay(primaryBd.netCashFlow, primaryF, displayCurrency);
           const primaryShortfall = toDisplay(primaryBd.spendingShortfall ?? 0, primaryF, displayCurrency);
@@ -928,7 +941,7 @@ const ProjectionsInner = ({
               ...(isRight ? { right: chart.width - xPx + 12 } : { left: xPx + 12 }),
               zIndex: 10,
               pointerEvents: 'none',
-              background: 'rgba(255,255,255,0.97)',
+              background: colors.popupBg,
               border: border.standard,
               borderRadius: border.radiusRound,
               padding: `${spacing.xs} ${spacing.sm}`,

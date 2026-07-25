@@ -27,7 +27,18 @@
       "PowerShell(npx vitest run src/services/socialSecurityOptimizer.test.ts src/services/SimulationService.test.ts test/simulation.test.ts 2>&1)",
       "Skill(code-review)",
       "Skill(code-review:*)",
-      "PowerShell(npm run test)"
+      "PowerShell(npm run test)",
+      "PowerShell(npm run lint)",
+      "PowerShell(npm test 2>$null)",
+      "PowerShell(Select-String -Path src\\\\docs\\\\MODEL_DETAILS.md, src\\\\docs\\\\USER_GUIDE.md -Pattern 'stacked|useStackedLtcg|cash bucket|cashBucketPolicy|survivor|widow|spouseLifeExpectancy|haircut|schemaVersion|student|bootstrap' -SimpleMatch:$false | ForEach-Object { \"{0}:{1}: {2}\" -f \\(Split-Path $_.Path -Leaf\\), $_.LineNumber, $_.Line.Substring\\(0, [Math]::Min\\(100, $_.Line.Length\\)\\) } | Select-Object -First 40)",
+      "PowerShell(npx tsc -b --force 2>&1)",
+      "PowerShell(npx vitest run src/context/RetirementContext.test.tsx)",
+      "PowerShell(npx tsc -b --pretty false)",
+      "PowerShell(npx tsc -b --pretty false 2>&1)",
+      "PowerShell(npx vitest run 2>$null)",
+      "PowerShell(npx vitest run src/utils/scenarioMigration.test.ts src/utils/contributionLimits.test.ts 2>&1)",
+      "PowerShell(npx vitest run 2>&1)",
+      "PowerShell(npx vitest run src/context/RetirementContext.test.tsx src/services/IRMAA.test.ts 2>&1)"
     ]
   }
 }
