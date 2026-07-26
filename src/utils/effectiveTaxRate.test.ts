@@ -51,6 +51,10 @@ const makeBd = (overrides: Partial<AnnualCashFlowBreakdown>): AnnualCashFlowBrea
   employerMatch: 0,
   surplusContribution: 0,
   contributionsCappedAmount: 0,
+  boyBalanceTraditional: 0,
+  boyBalanceRoth: 0,
+  boyBalanceBrokerage: 0,
+  boyBalanceCash: 0,
   ...overrides,
 });
 

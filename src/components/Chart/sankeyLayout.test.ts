@@ -55,6 +55,7 @@ const emptyAudit = (overrides: Partial<AnnualAuditBreakdown> = {}): AnnualAuditB
   rmdDivisorSelf: 0, rmdDivisorSpouse: 0,
   rmdBoyBalanceSelf: 0, rmdBoyBalanceSpouse: 0,
   incomeEventTaxBreakdown: [],
+  spendingGoalBreakdown: [],
   ...overrides,
 });
 
@@ -74,6 +75,7 @@ const emptyBreakdown = (overrides: Partial<AnnualCashFlowBreakdown> = {}): Annua
   spendingShortfall: 0, wageIncomeGross: 0,
   preTaxContributions: 0, rothContributions: 0, afterTaxContributions: 0, employerMatch: 0,
   contributionsCappedAmount: 0, surplusContribution: 0,
+  boyBalanceTraditional: 0, boyBalanceRoth: 0, boyBalanceBrokerage: 0, boyBalanceCash: 0,
   audit: emptyAudit(),
   ...overrides,
 });
@@ -741,5 +743,66 @@ describe('buildSankeyModel — display currency', () => {
     const realModel = buildSankeyModel(breakdown, 2, 'real');
     expect(nominalModel.inflowTotal).toBe(30_000);
     expect(realModel.inflowTotal).toBe(15_000);
+  });
+});
+
+describe('per-goal spending sink nodes', () => {
+  const goalBreakdown = () => emptyBreakdown({
+    otherTaxableGross: 110_000,
+    baseSpendingNet: 60_000,
+    otherSpendingGoalsNet: 44_000,
+    totalSpendingNet: 104_000,
+    ordinaryTax: 6_000,
+    totalTax: 6_000,
+    audit: emptyAudit({
+      federalOrdinaryTax: 6_000,
+      spendingGoalBreakdown: [
+        { goalId: 'g-live', goalName: 'Living', goalType: 'living_expenses', amountNet: 60_000 },
+        { goalId: 'g-med', goalName: 'Healthcare', goalType: 'healthcare', amountNet: 14_000 },
+        { goalId: 'g-kid', goalName: 'Mortgage Help', goalType: 'dependent_support', amountNet: 30_000 },
+      ],
+    }),
+  });
+
+  it('emits one sink node per non-living goal and drops the aggregate node', () => {
+    const m = buildSankeyModel(goalBreakdown(), 1, 'nominal');
+    const med = m.nodes.find(n => n.id === 'dst_goal_g-med');
+    const kid = m.nodes.find(n => n.id === 'dst_goal_g-kid');
+    expect(med?.label).toBe('Healthcare');
+    expect(med?.total).toBe(14_000);
+    expect(kid?.total).toBe(30_000);
+    expect(m.nodes.some(n => n.id === 'dst_goals')).toBe(false);
+    // Living expenses stay on the aggregate dst_living node.
+    expect(m.nodes.find(n => n.id === 'dst_living')?.total).toBe(60_000);
+    expect(Math.abs(m.conservationDiff)).toBeLessThan(1);
+  });
+
+  it('scales per-goal nodes by the shortfall factor like the aggregates', () => {
+    const b = goalBreakdown();
+    b.spendingShortfall = 52_000; // half the year's spending unfunded
+    b.otherTaxableGross = 58_000;
+    b.ordinaryTax = 0; b.totalTax = 0;
+    b.audit!.federalOrdinaryTax = 0;
+    const m = buildSankeyModel(b, 1, 'nominal');
+    expect(m.nodes.find(n => n.id === 'dst_goal_g-med')?.total).toBe(7_000);
+    expect(m.nodes.find(n => n.id === 'dst_goal_g-kid')?.total).toBe(15_000);
+  });
+
+  it('falls back to the aggregate node when audit is absent', () => {
+    const b = goalBreakdown();
+    delete b.audit;
+    const m = buildSankeyModel(b, 1, 'nominal');
+    expect(m.nodes.some(n => n.id === 'dst_goals')).toBe(true);
+    expect(m.nodes.some(n => n.id.startsWith('dst_goal_'))).toBe(false);
+  });
+
+  it('falls back when the per-goal sum does not reconcile with the aggregate', () => {
+    const b = goalBreakdown();
+    b.audit!.spendingGoalBreakdown = [
+      { goalId: 'g-med', goalName: 'Healthcare', goalType: 'healthcare', amountNet: 10_000 },
+    ];
+    const m = buildSankeyModel(b, 1, 'nominal');
+    expect(m.nodes.find(n => n.id === 'dst_goals')?.total).toBe(44_000);
+    expect(m.nodes.some(n => n.id.startsWith('dst_goal_'))).toBe(false);
   });
 });

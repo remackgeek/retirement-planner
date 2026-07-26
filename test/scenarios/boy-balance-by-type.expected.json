@@ -1,0 +1,27 @@
+{
+  "_rationale": "All rates zero and Traditional never touched, so balances only move by withdrawals. Yearly trace (BOY trad/brok/cash → withdrawals): age 60: 300k/200k/50k, spend 40k from cash (cash→10k). Age 61: 300k/200k/10k, spend 40k = 10k cash + 30k brokerage (brok→170k). Age 62: 300k/170k/0, spend 40k from brokerage (→130k). Age 63+: spending drops to 30k/yr (healthcare ended at 62): brok 130k→100k→70k→40k→10k. The boyBalance* fields are the per-type decomposition of each year's path value and must sum to it exactly; Roth is 0 throughout (no Roth account).",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 550000, "note": "300k trad + 200k brok + 50k cash" },
+    { "index": 1, "age": 61, "value": 510000, "note": "550k − 40k year-0 spending (all from cash)" },
+    { "index": 2, "age": 62, "value": 470000, "note": "510k − 40k (10k cash + 30k brokerage)" },
+    { "index": 4, "age": 64, "value": 400000, "note": "470k − 40k (age 62) − 30k (age 63)" },
+    { "index": 6, "age": 66, "value": 340000, "note": "400k − 30k − 30k" }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "boyBalanceTraditional", "value": 300000, "tolerance": 1, "_note": "Starting Traditional, never withdrawn" },
+    { "index": 0, "field": "boyBalanceBrokerage", "value": 200000, "tolerance": 1, "_note": "Starting Brokerage" },
+    { "index": 0, "field": "boyBalanceCash", "value": 50000, "tolerance": 1, "_note": "Starting Cash" },
+    { "index": 0, "field": "boyBalanceRoth", "value": 0, "tolerance": 1, "_note": "No Roth account" },
+    { "index": 0, "field": "withdrawalFromCash", "value": 40000, "tolerance": 1, "_note": "Waterfall pulls Cash first" },
+    { "index": 1, "field": "boyBalanceCash", "value": 10000, "tolerance": 1, "_note": "50k − 40k year-0 spending" },
+    { "index": 1, "field": "withdrawalFromCash", "value": 10000, "tolerance": 1, "_note": "Cash exhausted" },
+    { "index": 1, "field": "withdrawalFromBrokerage", "value": 30000, "tolerance": 1, "_note": "Remaining 30k falls through to Brokerage" },
+    { "index": 2, "field": "boyBalanceCash", "value": 0, "tolerance": 1, "_note": "Cash fully drained in year 1" },
+    { "index": 2, "field": "boyBalanceBrokerage", "value": 170000, "tolerance": 1, "_note": "200k − 30k year-1 pull" },
+    { "index": 2, "field": "boyBalanceTraditional", "value": 300000, "tolerance": 1, "_note": "Traditional untouched" },
+    { "index": 6, "field": "boyBalanceBrokerage", "value": 40000, "tolerance": 1, "_note": "170k − 40k − 30k×3" },
+    { "index": 6, "field": "boyBalanceTraditional", "value": 300000, "tolerance": 1, "_note": "Still untouched at horizon end" }
+  ],
+  "tolerance": 1.0
+}

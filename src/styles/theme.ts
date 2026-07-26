@@ -32,6 +32,19 @@ const palette = {
   // Blues (chart only)
   blue600: '#2563eb',
 
+  // Secondary-chart categorical series hues. These eight are a CVD-validated
+  // categorical set (dataviz palette, light mode); the stacking orders used by
+  // the secondary charts were validated pairwise-adjacent with the palette
+  // validator. Don't substitute eyeballed values — re-validate any change.
+  blue500:    '#2a78d6',
+  orange500:  '#eb6834',
+  teal500:    '#1baf7a',
+  yellow500:  '#eda100',
+  magenta400: '#e87ba4',
+  green800:   '#008300',
+  violet700:  '#4a3aa7',
+  red500:     '#e34948',
+
   // Greens (primary action)
   green50:   '#d8e6dd',
   green500:  '#3d7a5f',
@@ -146,6 +159,46 @@ export const colors = {
   // Chart view lines
   chartMedian:   palette.green500,
   chartNominal:  palette.gray400,
+
+  // Secondary-chart categorical series (see src/styles/chartCategoryColors.ts
+  // for the per-view stacking orders — all validated pairwise-adjacent for
+  // CVD safety; re-validate if any hue changes).
+  // Account-type colors are shared across the Income and Balances views so a
+  // type keeps its identity everywhere.
+  chartSocialSecurity: palette.green800,
+  chartOtherIncome:    palette.magenta400,
+  chartRmd:            palette.violet700,
+  chartTraditional:    palette.orange500,
+  chartBrokerage:      palette.blue500,
+  chartRoth:           palette.teal500,
+  chartCash:           palette.yellow500,
+  /** Neutral gray for minor/neutral series (retirement contributions, the
+   *  audit-absent "Goals" fallback). Exempt from the hue adjacency chain. */
+  chartMinorSeries:    palette.gray400,
+  chartLivingExpenses: palette.red500,
+  /** Aggregate taxes segment in the Expenses view — same hue family as the
+   *  Sankey's ordinary-tax bucket so "taxes" reads consistently. */
+  chartTaxes:          palette.amber500,
+  /** Marginal-bracket step strip under the Taxes view. */
+  chartBracketLine:    palette.gray900,
+  // Taxes-view component segments (stack order blue→orange→teal→yellow→magenta,
+  // the validated canonical adjacency order).
+  taxFederalSeries:  palette.blue500,
+  taxStateSeries:    palette.orange500,
+  taxCapGainsSeries: palette.teal500,
+  taxNiitSeries:     palette.yellow500,
+  taxIrmaaSeries:    palette.magenta400,
+  // Generic categorical cycle for unbounded per-item series (spending goals).
+  // Fixed assignment order (never re-ranked); every item gets its own series —
+  // past the 5th the cycle wraps (legend chips + 1px surface gaps + tooltip
+  // carry identity for any wrap collision). Order chosen so the full Expenses
+  // stack chain (livingExpenses red → violet → teal → blue → magenta → green →
+  // taxes amber) validates pairwise-adjacent for CVD + normal vision.
+  seriesCycle1: palette.violet700,
+  seriesCycle2: palette.teal500,
+  seriesCycle3: palette.blue500,
+  seriesCycle4: palette.magenta400,
+  seriesCycle5: palette.green800,
 
   // Black swan event shading (semi-transparent vertical band) + the stock-%
   // multiplier label drawn above each band.

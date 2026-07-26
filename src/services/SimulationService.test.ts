@@ -2933,3 +2933,138 @@ describe('cash bucket floor surfaces the shortfall it creates', () => {
     }
   });
 });
+
+describe('per-goal spending attribution (audit.spendingGoalBreakdown)', () => {
+  const multiGoalUserData = () => makeUserData({
+    currentAge: 60,
+    lifeExpectancy: 70,
+    accounts: [
+      { id: 'brok-1', name: 'Brokerage 1', type: 'brokerage', balance: 2_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+    ],
+    spendingGoals: [
+      { id: 'live-1', name: 'Living Expenses 1', type: 'living_expenses', amount: 60000, startAge: 60, inflationAdjusted: true },
+      { id: 'med-1', name: 'Pre-Medicare Health', type: 'healthcare', amount: 14000, startAge: 60, endAge: 64, inflationAdjusted: true },
+      { id: 'kid-1', name: 'Mortgage Help', type: 'dependent_support', amount: 30000, startAge: 62, endAge: 65, inflationAdjusted: false },
+      { id: 'trip-1', name: 'Big Trip', type: 'vacation', amount: 20000, startAge: 63, isOneTime: true, inflationAdjusted: false },
+    ],
+    inflationRate: 0.03,
+  });
+
+  it('sums to baseSpendingNet / otherSpendingGoalsNet every year and preserves identity', () => {
+    const { breakdowns } = runDeterministicProjection(multiGoalUserData());
+    for (const bd of breakdowns) {
+      const perGoal = bd.audit?.spendingGoalBreakdown ?? [];
+      const living = perGoal.filter(g => g.goalType === 'living_expenses').reduce((s, g) => s + g.amountNet, 0);
+      const other = perGoal.filter(g => g.goalType !== 'living_expenses').reduce((s, g) => s + g.amountNet, 0);
+      expect(living).toBeCloseTo(bd.baseSpendingNet, 6);
+      expect(other).toBeCloseTo(bd.otherSpendingGoalsNet, 6);
+    }
+    // Year 0 (age 60): living + healthcare active; support and trip not yet.
+    const ids0 = (breakdowns[0].audit?.spendingGoalBreakdown ?? []).map(g => g.goalId).sort();
+    expect(ids0).toEqual(['live-1', 'med-1']);
+    // Year 3 (age 63): all four active; the one-time trip appears exactly once.
+    const y3 = breakdowns[3].audit?.spendingGoalBreakdown ?? [];
+    expect(y3.map(g => g.goalId).sort()).toEqual(['kid-1', 'live-1', 'med-1', 'trip-1']);
+    const trip = y3.find(g => g.goalId === 'trip-1');
+    expect(trip?.goalName).toBe('Big Trip');
+    expect(trip?.amountNet).toBeCloseTo(20000, 6);
+    expect(breakdowns[4].audit?.spendingGoalBreakdown?.some(g => g.goalId === 'trip-1')).toBe(false);
+  });
+});
+
+describe('per-type beginning-of-year balances (boyBalance*)', () => {
+  const mixedAccountsUserData = () => makeUserData({
+    currentAge: 60,
+    lifeExpectancy: 75,
+    accounts: [
+      { id: 'trad-1', name: 'Trad', type: 'traditional', balance: 400000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      { id: 'roth-1', name: 'Roth', type: 'roth', balance: 200000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      { id: 'brok-1', name: 'Brokerage', type: 'brokerage', balance: 300000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      { id: 'cash-1', name: 'HYSA', type: 'cash', balance: 50000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+    ],
+    spendingGoals: [baseSpending(60000 / 12, 60)],
+    portfolioAssumptions: {
+      stockReturn: 0.07, stockStdDev: 0, bondReturn: 0.04, bondStdDev: 0,
+      stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2,
+      returnDistribution: 'lognormal' as const, degreesOfFreedom: 4,
+      cashYieldRate: 0.04,
+    },
+    inflationRate: 0.03,
+  });
+
+  it('deterministic projection: the four types sum to path[i] × inflation[i] exactly', () => {
+    const { path, breakdowns, inflation } = runDeterministicProjection(mixedAccountsUserData());
+    expect(breakdowns.length).toBe(path.length);
+    for (let i = 0; i < breakdowns.length; i++) {
+      const bd = breakdowns[i];
+      const sum = bd.boyBalanceTraditional + bd.boyBalanceRoth + bd.boyBalanceBrokerage + bd.boyBalanceCash;
+      expect(sum).toBeCloseTo(path[i] * inflation[i], 6);
+    }
+    // Year 0 is the configured starting balances verbatim.
+    expect(breakdowns[0].boyBalanceTraditional).toBeCloseTo(400000, 6);
+    expect(breakdowns[0].boyBalanceRoth).toBeCloseTo(200000, 6);
+    expect(breakdowns[0].boyBalanceBrokerage).toBeCloseTo(300000, 6);
+    expect(breakdowns[0].boyBalanceCash).toBeCloseTo(50000, 6);
+  });
+
+  it('seeded Monte Carlo: median-path sums hold and cash continuity links years', () => {
+    const ud = mixedAccountsUserData();
+    ud.portfolioAssumptions.stockStdDev = 0.15;
+    ud.portfolioAssumptions.bondStdDev = 0.05;
+    ud.simulationSettings = { numSimulations: 25 };
+    const result = runSimulation(ud, createSeededRandom(11));
+    for (let i = 0; i < result.medianBreakdowns.length; i++) {
+      const bd = result.medianBreakdowns[i];
+      const sum = bd.boyBalanceTraditional + bd.boyBalanceRoth + bd.boyBalanceBrokerage + bd.boyBalanceCash;
+      expect(sum).toBeCloseTo(result.median[i] * result.medianInflation[i], 4);
+      // End-of-year cash equals next year's beginning-of-year cash.
+      if (i < result.medianBreakdowns.length - 1) {
+        expect(result.medianBreakdowns[i + 1].boyBalanceCash).toBeCloseTo(bd.cashEndingBalance, 4);
+      }
+    }
+  });
+});
+
+describe('boyBalance continuity through cash-bucket-policy routing years', () => {
+  // The existing continuity test runs with no policy configured. This one
+  // guards the Balances chart against a discontinuity exactly in refill/sweep
+  // years: cashEndingBalance is recomputed AFTER applyPostConvergenceBucketPolicy
+  // moves dollars, and next year's boyBalanceCash must equal that post-routing
+  // value (and the four types must still sum to the path).
+  it('refill and sweep years keep cashEndingBalance[i] == boyBalanceCash[i+1] and per-type sums exact', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 72,
+      accounts: [
+        { id: 'brok-1', name: 'Brokerage', type: 'brokerage', balance: 800000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'cash-1', name: 'Cash Bucket', type: 'cash', balance: 70000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      incomeEvents: [
+        // Pension surplus keeps netCashFlow positive so the surplus-only
+        // refill has fuel; the sweep leg triggers from cash-interest growth
+        // pushing the bucket above maxAmount.
+        { id: 'pen-1', name: 'Pension Income 1', type: 'pension_income', amount: 60000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+      ],
+      spendingGoals: [baseSpending(30000 / 12, 60)],
+      cashBucketPolicy: { minAmount: 20000, targetAmount: 40000, maxAmount: 60000, refillTrigger: 'always' },
+      portfolioAssumptions: {
+        stockReturn: 0.05, stockStdDev: 0, bondReturn: 0.03, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2,
+        returnDistribution: 'lognormal' as const, degreesOfFreedom: 4,
+        cashYieldRate: 0.04,
+      },
+    });
+    const { path, breakdowns, inflation } = runDeterministicProjection(ud);
+    // The scenario must actually exercise the routing paths, or this test
+    // silently degrades to the no-policy case.
+    expect(breakdowns.some(b => b.cashSweepToBrokerage > 0 || b.cashRefillFromSurplus > 0)).toBe(true);
+    for (let i = 0; i < breakdowns.length; i++) {
+      const bd = breakdowns[i];
+      const sum = bd.boyBalanceTraditional + bd.boyBalanceRoth + bd.boyBalanceBrokerage + bd.boyBalanceCash;
+      expect(sum).toBeCloseTo(path[i] * inflation[i], 4);
+      if (i < breakdowns.length - 1) {
+        expect(breakdowns[i + 1].boyBalanceCash).toBeCloseTo(bd.cashEndingBalance, 4);
+      }
+    }
+  });
+});

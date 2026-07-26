@@ -390,6 +390,10 @@ Each entry's `marginalTax` is the incremental federal+state ordinary-tax delta w
 
 A single account can have both in the same year (e.g., a Brokerage account that paid for spending then received the surplus reinvestment). Growth (return-driven balance change) is not represented here — it's part of the path itself, shown on the Summary tab.
 
+#### Per-goal spending attribution
+
+`audit.spendingGoalBreakdown` is the spending-side sibling of `incomeEventTaxBreakdown`: one `{ goalId, goalName, goalType, amountNet }` row per spending goal active in the year (living-expenses goals included), where `amountNet` is the post-inflation, post-decay amount the goal contributed. Invariants: rows with `goalType === 'living_expenses'` sum to `baseSpendingNet`; the rest sum to `otherSpendingGoalsNet`. Built once per year in the precompute phase (`accumulateSpending`), so it adds no Monte Carlo hot-loop cost. Consumed by the secondary **Expenses** chart and the Sankey's per-goal sink nodes.
+
 #### Cash Flow Sankey (per-year flow diagram)
 
 The **Cash Flow** tab in the yearly data detail row renders a five-column Sankey of each year's flows. The model is built in `src/components/Chart/sankeyLayout.ts` from the `AnnualCashFlowBreakdown` (plus a couple of `audit` fields to split the ordinary-tax lump and to source per-event / per-account detail). The middle is structured by tax treatment so the categorization story is legible: Detailed Sources → Aggregated Sources → Tax Buckets → After-Tax Cash → Uses.
@@ -449,7 +453,8 @@ Detail nodes use `IncomeEventTaxAttribution.eventName` or `AccountFlowRow.accoun
 | State LTCG Tax | `stateCapGainsTax` | Capital Gains |
 | NIIT | `niitTax` | Capital Gains |
 | Living Expenses | `baseSpendingNet × spendScale` *(see shortfall handling below)* | After-Tax Cash |
-| Other Spending Goals | `otherSpendingGoalsNet × spendScale` | After-Tax Cash |
+| Per-goal sinks (`dst_goal_<goalId>`, labeled with the goal's name) | `audit.spendingGoalBreakdown` non-living rows, each `amountNet × spendScale` | After-Tax Cash |
+| Other Spending Goals (`dst_goals` — fallback only) | `otherSpendingGoalsNet × spendScale`, emitted when `spendingGoalBreakdown` is absent or its non-living sum diverges from the aggregate by more than $1 | After-Tax Cash |
 | Pre-Tax → Traditional | `preTaxContributions` | After-Tax Cash |
 | Roth Contribution | `rothContributions` | After-Tax Cash |
 | After-Tax → Brokerage | `afterTaxContributions` | After-Tax Cash |
@@ -502,6 +507,20 @@ Audit data is computed only for the breakdowns the UI actually renders: the repr
 `audit.accountFlows` is the one exception: it's populated by `applyCashFlow` (not by the core cash-flow calc) because it depends on the actual pro-rata distribution over current account balances, which is only known after the withdrawal sinks run. Callers of `calculateAnnualCashFlow` (the public wrapper) that don't subsequently invoke `applyCashFlow` will see `accountFlows` as `undefined`; tests that need it should drive `runSimulation()` instead.
 
 Synthetic stack-step IDs `SYNTHETIC_TRAD_WITHDRAWAL_ID` and `SYNTHETIC_SS_AGGREGATE_ID` are exported from `SimulationService.ts` so UI / tests can match against them without duplicating the literal `__trad_withdrawal__` / `__ss_aggregate__` strings.
+
+---
+
+## Secondary Charts (flow views)
+
+The **Charts** panel below the main chart renders four views of the same primary path the yearly table follows (Projected, or Median in historical rolling/bootstrap modes). Builders live in `src/components/Chart/secondaryChartData.ts`; every monetary series passes through the same `toDisplay` deflation as the table, so the Today's-$/Future-$ toggle applies uniformly.
+
+**Per-type beginning-of-year balances.** Four flat fields on `AnnualCashFlowBreakdown` — `boyBalanceTraditional`, `boyBalanceRoth`, `boyBalanceBrokerage`, `boyBalanceCash` — capture each account type's **nominal, pre-growth (beginning-of-year)** balance at the exact instant the path point is recorded, so their sum equals `path[i] × inflation[i]` in every year and the Balances view's stacked total overlays the main chart line exactly. They're assigned by `simulateOneRun` (the core initializes them to 0, so the public single-year `calculateAnnualCashFlow` wrapper reports zeros). Being flat (not audit-gated) makes them assertable from scenario `breakdownChecks` — see `test/scenarios/boy-balance-by-type.json`.
+
+**Income view decomposition.** `ssGross`; "Other income" = `max(0, otherTaxableGross + preTaxContributions − cashInterest) + afterTaxIncome` — pre-tax deferrals are added back so working years show the full wage gross (the deferral appears as a Retirement-contributions expense instead), with per-event itemization in the hover tooltip via `audit.incomeEventTaxBreakdown`; `rmdRequired`; "Additional 401(k)/IRA" = `max(0, withdrawalFromTraditional − rmdRequired − rothConversionGross)`; the Brokerage/Roth/Cash withdrawal fields. **Cash interest is deliberately not a series** — the engine credits it into the cash balance (it's inside `withdrawalFromCash` when withdrawn), so rendering it as income would double-count spendable dollars. The optional hatched conversion segment is the flat `rothConversionGross` — not the per-event attributions, whose conversion rows are per-owner-cap-scaled approximations.
+
+**Expenses view decomposition.** `baseSpendingNet` (living expenses); one series per non-living row of `audit.spendingGoalBreakdown` — colors assign by the scenario's goal-list order (stable under start-age/horizon edits; the cycle wraps past its length, never folds); a "Goals" aggregate series appears only for audit-less breakdowns (defensive fallback); "Retirement contributions" = `preTaxContributions + rothContributions + afterTaxContributions` (employer match is in NEITHER view — it moves account-to-account without touching spendable cash); `totalTax` as one segment (the Taxes view has the split). **Depleted years:** living + per-goal segments scale by the same funded fraction the Sankey uses (`(totalSpendingNet − spendingShortfall) / totalSpendingNet`; taxes unscaled) and the unmet remainder renders as a hatched "Unfunded shortfall" segment — the stack still totals requested spending + taxes while agreeing with the Income view's actual withdrawals.
+
+**Taxes view decomposition.** `audit.federalOrdinaryTax` + (`audit.stateOrdinaryTax` + `stateLocalitySurcharge`) + (`federalCapGainsTax` + `stateCapGainsTax`) + `niitTax` + `irmaaSurcharge` — additive to `totalTax` (the flat `ordinaryTax` field already contains state + locality and is deliberately not used). The federal marginal bracket (`audit.federalMarginalRate`) renders as a separate slim step strip sharing the x-axis — dollars and percent never share a y-axis.
 
 ---
 

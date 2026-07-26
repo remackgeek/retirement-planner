@@ -16,6 +16,7 @@
 - [Income Events](#income-events)
 - [Spending Goals](#spending-goals)
 - [Reading the Chart](#reading-the-chart)
+- [Secondary Charts](#secondary-charts)
 - [Year-by-Year Detail](#year-by-year-detail)
 - [Today's $ vs Future $](#todays--vs-future-)
 - [Comparing Scenarios](#comparing-scenarios)
@@ -267,6 +268,19 @@ The x-axis is labeled with **your** age (and the calendar year). If you've set a
 
 ---
 
+## Secondary Charts
+
+The **Charts** button on the legend row (next to **Data**) opens a secondary chart panel below the main chart — four flow-level views of the same projection the main chart and yearly table follow. One view shows at a time; pick it with the pill selector:
+
+- **Income** — a stacked bar per year showing where your money comes from: Social Security, other income (pensions, wages, rentals — hover a year to see them itemized; wages show their full gross, before 401(k) deferrals), **RMD (required)** and **Additional 401(k)/IRA** as separate colors — so you can see at a glance whether you're withdrawing more than your RMD forces — plus Brokerage, Roth, and Cash withdrawals. A **Show conversions** toggle adds Roth conversions as a hatched segment; they're off by default and visually distinct because a conversion moves money *into* Roth — it isn't spendable income.
+- **Expenses** — a stacked bar per year: living expenses, **every spending goal as its own named, color-coded segment**, retirement contributions (in working years), and total taxes. Hovering a year lists only the categories actually active that year. In a year where the portfolio can't fully fund spending, the segments shrink to what was actually funded and a hatched **Unfunded shortfall** segment shows the gap.
+- **Balances** — a stacked area of your portfolio by account type (Traditional / Roth / Brokerage / Cash) at the start of each year. This is the clearest picture of a Roth conversion plan: watch Traditional drain into Roth across the conversion window. The stacked total matches the main chart line exactly.
+- **Taxes** — tax components per year (federal income, state & local, capital gains, NIIT, IRMAA), with your **federal marginal bracket** as a slim step-line strip below — the answer to "what bracket am I in that year?"
+
+The panel shares everything with the main chart: the same age/year x-axis (including the Spouse-age toggle), the same Today's-$/Future-$ mode, and a synced hover crosshair — hovering either chart highlights the same year on both. **Click any bar** to open the yearly data table with that year expanded. Like the main table, the panel follows the Projected path (or the Median run in Historical: Rolling / Bootstrap modes). The panel is hidden while What If mode is active.
+
+---
+
 ## Year-by-Year Detail
 
 Below the chart, expand **Yearly Data** for a complete breakdown of each year: balance, income from each source, taxes paid, spending, withdrawals from each account, RMD details, and your effective tax rate.
@@ -282,11 +296,11 @@ When you expand a year, the detail panel has four tabs:
 
   The leftmost **Detailed Sources** column shows individual income events by name (each pension, rental, wage event, Social Security event by recipient, Roth conversion event), per-account withdrawals when multiple Brokerage / Cash / Roth accounts contribute, and per-Traditional-account RMD attribution (Self's RMD pulls only from Self-owned Trad; Spouse's only from Spouse-owned). Each detail node feeds an **Aggregated Source** in the next column. For Social Security, each event splits in two — its taxable share flows into "Social Security (Taxable)" and its tax-free share into "Social Security (Tax-Free)" using the year's overall taxability ratio.
 
-  Three **tax-treatment buckets** sit in the middle: **Ordinary Income** (Social Security taxable, wages, RMD, Traditional withdrawals, Cash Interest, Roth conversion gross), **Capital Gains** (Brokerage account withdrawals only), and **Tax-Exempt** (Roth withdrawals, Cash principal, after-tax income, employer match). Each bucket pays its own taxes directly: Ordinary → Federal Ordinary + State Ordinary + IRMAA; Capital Gains → Federal LTCG + State LTCG + NIIT; Tax-Exempt → no tax. The remainder from each bucket flows into a single **After-Tax Cash** pool, which funds Living Expenses, Other Goals, account contributions, surplus to Brokerage, and the Roth Deposit from any conversion. The conversion pass-through is visible as a chain: Roth Conversion event → Roth Conversion (gross) → Ordinary Income → Roth Deposit.
+  Three **tax-treatment buckets** sit in the middle: **Ordinary Income** (Social Security taxable, wages, RMD, Traditional withdrawals, Cash Interest, Roth conversion gross), **Capital Gains** (Brokerage account withdrawals only), and **Tax-Exempt** (Roth withdrawals, Cash principal, after-tax income, employer match). Each bucket pays its own taxes directly: Ordinary → Federal Ordinary + State Ordinary + IRMAA; Capital Gains → Federal LTCG + State LTCG + NIIT; Tax-Exempt → no tax. The remainder from each bucket flows into a single **After-Tax Cash** pool, which funds Living Expenses, each spending goal as its own named node (a single "Other Spending Goals" node appears only as a fallback when per-goal data isn't available), account contributions, surplus to Brokerage, and the Roth Deposit from any conversion. The conversion pass-through is visible as a chain: Roth Conversion event → Roth Conversion (gross) → Ordinary Income → Roth Deposit.
 
   Hover any node or link for the precise dollar figure and share of the year; bucket hovers also show the inflow/outflow split. Inflows always equal outflows globally, within each bucket, and within each multi-detail aggregator — the diagram is conservation-checked, so if anything looks off it's showing you a real number. Inter-account cash-bucket refill or sweep activity, if any, appears as a separate row below the diagram (balance-sheet moves that don't pass through the buckets). If the portfolio depleted in a year, a red banner notes how much spending went unmet and the spending edges shrink to the funded amount.
 
-You can **export the whole table to CSV** using the button in the header — useful for sharing with an advisor or sanity-checking against another tool. The CSV includes scalar audit columns (AGI, deductions, bracket index, marginal rate, federal vs state split, SS zone, IRMAA tier, NIIT components, per-owner RMD). Per-event and per-account tables are in-app only — they don't fit a flat CSV cleanly.
+You can **export the whole table to CSV** using the button in the header — useful for sharing with an advisor or sanity-checking against another tool. The CSV includes scalar audit columns (AGI, deductions, bracket index, marginal rate, federal vs state split, SS zone, IRMAA tier, NIIT components, per-owner RMD), plus everything the secondary charts show: beginning-of-year balances by account type, one column per spending goal, spending shortfall, and cash withdrawal/interest. Per-event tax attribution and per-account flow tables remain in-app only — they don't fit a flat CSV cleanly.
 
 ---
 

@@ -153,6 +153,33 @@ const ORDINARY_EVENT_TYPES: ReadonlySet<string> = new Set([
   'other_income',
 ] satisfies readonly IncomeEventType[]);
 
+// Per-goal spending sink nodes (column 4). When the audit carries
+// spendingGoalBreakdown and the non-living per-goal sum reconciles with
+// otherSpendingGoalsNet (within $1 nominal), emit one node per goal
+// (`dst_goal_<goalId>`) scaled by the same shortfall factor as the
+// aggregates. Otherwise fall back to the single legacy `dst_goals` node so
+// old fixtures / audit-less breakdowns keep their v2 shape.
+function buildGoalUses(
+  breakdown: AnnualCashFlowBreakdown,
+  otherActual: number,
+  spendScale: number,
+): RawUse[] {
+  const perGoal = (breakdown.audit?.spendingGoalBreakdown ?? []).filter(
+    (g) => g.goalType !== 'living_expenses',
+  );
+  const perGoalSum = perGoal.reduce((s, g) => s + g.amountNet, 0);
+  if (perGoal.length === 0 || Math.abs(perGoalSum - breakdown.otherSpendingGoalsNet) > 1) {
+    return [{ id: 'dst_goals', label: 'Other Spending Goals', kind: 'spending', amount: otherActual, source: CASHPOOL }];
+  }
+  return perGoal.map((g): RawUse => ({
+    id: `dst_goal_${g.goalId}`,
+    label: g.goalName,
+    kind: 'spending',
+    amount: g.amountNet * spendScale,
+    source: CASHPOOL,
+  }));
+}
+
 export function buildSankeyModel(
   breakdown: AnnualCashFlowBreakdown,
   pathFactor: number,
@@ -214,7 +241,11 @@ export function buildSankeyModel(
     { id: 'dst_stateltcg',   label: 'State LTCG Tax',            kind: 'tax',      amount: breakdown.stateCapGainsTax,      source: BUCKET_CG },
     { id: 'dst_niit',        label: 'NIIT',                      kind: 'tax',      amount: breakdown.niitTax,               source: BUCKET_CG },
     { id: 'dst_living',      label: 'Living Expenses',           kind: 'spending', amount: livingActual,                    source: CASHPOOL },
-    { id: 'dst_goals',       label: 'Other Spending Goals',      kind: 'spending', amount: otherActual,                     source: CASHPOOL },
+    // Per-goal sink nodes replace the single "Other Spending Goals" aggregate
+    // when the audit's spendingGoalBreakdown is present and reconciles with
+    // the aggregate; the residual dst_goals node stays as a defensive
+    // fallback (audit absent, or a >$1 reconciliation gap).
+    ...buildGoalUses(breakdown, otherActual, spendScale),
     { id: 'dst_pretax',      label: 'Pre-Tax → Traditional',     kind: 'deposit',  amount: breakdown.preTaxContributions,   source: CASHPOOL },
     { id: 'dst_rothcontrib', label: 'Roth Contribution',         kind: 'deposit',  amount: breakdown.rothContributions,     source: CASHPOOL },
     { id: 'dst_aftercontrib',label: 'After-Tax → Brokerage',     kind: 'deposit',  amount: breakdown.afterTaxContributions, source: CASHPOOL },

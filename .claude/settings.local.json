@@ -38,7 +38,20 @@
       "PowerShell(npx vitest run 2>$null)",
       "PowerShell(npx vitest run src/utils/scenarioMigration.test.ts src/utils/contributionLimits.test.ts 2>&1)",
       "PowerShell(npx vitest run 2>&1)",
-      "PowerShell(npx vitest run src/context/RetirementContext.test.tsx src/services/IRMAA.test.ts 2>&1)"
+      "PowerShell(npx vitest run src/context/RetirementContext.test.tsx src/services/IRMAA.test.ts 2>&1)",
+      "PowerShell(\\(Get-Content src\\\\services\\\\SimulationService.test.ts | Measure-Object -Line\\).Lines)",
+      "PowerShell(npx vitest run src/components/Chart/secondaryChartData.test.ts src/components/Chart/sankeyLayout.test.ts src/utils/effectiveTaxRate.test.ts 2>&1)",
+      "PowerShell(npx vitest run src/services/SimulationService.test.ts -t \"per-goal spending attribution\" 2>&1)",
+      "PowerShell(npx vitest run src/services/SimulationService.test.ts -t \"boyBalance\" 2>&1)",
+      "PowerShell(npx vitest run test/simulation.test.ts -t \"boy-balance\" 2>&1)",
+      "PowerShell(npx vitest run test/simulation.test.ts -t \"BOY Balance\" 2>&1)",
+      "PowerShell(npx vitest run test/simulation.test.ts -t \"Per-type beginning-of-year balance\" 2>&1)",
+      "PowerShell(npm ls playwright 2>&1 | Select-Object -First 4; Test-Path \"$env:USERPROFILE\\\\AppData\\\\Local\\\\Temp\\\\yarp-smoke\\\\node_modules\\\\playwright\")",
+      "PowerShell(npx vitest run src/components/Chart/secondaryChartData.test.ts 2>&1)",
+      "PowerShell(npx vitest run src/components/Chart/secondaryChartData.test.ts src/components/Chart/SecondaryChartPanel.test.tsx src/utils/exportChartCsv.test.ts 2>&1)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\bmack\\AppData\\Local\\Temp\\yarp-smoke"
     ]
   }
 }

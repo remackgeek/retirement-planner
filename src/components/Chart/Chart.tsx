@@ -4,6 +4,10 @@ import {
   LinearScale,
   PointElement,
   LineElement,
+  BarController,
+  BarElement,
+  LineController,
+  Filler,
   Title,
   Tooltip,
   Legend,
@@ -29,6 +33,8 @@ import { TabView, TabPanel } from 'primereact/tabview';
 import YearTaxAudit from './YearTaxAudit';
 import YearIncomeDetail from './YearIncomeDetail';
 import YearCashFlowSankey from './YearCashFlowSankey';
+import SecondaryChartPanel from './SecondaryChartPanel';
+import { type SecondaryView, Y_AXIS_ALIGN_WIDTH } from './secondaryChartData';
 import CloneScenarioDialog from '../../dialogs/CloneScenarioDialog';
 import { spacing, colors, border, fontSize, mediaQuery, mobileMatchMedia } from '../../styles/theme';
 import { useUIState } from '../../context/UIStateContext';
@@ -50,6 +56,13 @@ ChartJS.register(
   LinearScale,
   PointElement,
   LineElement,
+  // Secondary chart panel: stacked bars, mixed bar+line, stacked-area fills.
+  // The generic <Chart type="bar"> component doesn't auto-register controllers
+  // the way <Line> does, so both controllers are registered explicitly.
+  BarController,
+  BarElement,
+  LineController,
+  Filler,
   Title,
   Tooltip,
   Legend,
@@ -328,6 +341,12 @@ const ProjectionsInner = ({
   // Session-only toggle: shaded 10th–90th percentile band on the chart.
   // Defaults on. Not on UserData — this is a view preference, not a modeling knob.
   const [showBand, setShowBand] = useState(true);
+  // Session-only secondary chart panel (Income / Expenses / Balances / Taxes).
+  // Collapsed by default; the view and the conversions toggle survive
+  // close/reopen (both lifted here rather than living in the panel).
+  const [showCharts, setShowCharts] = useState(false);
+  const [secondaryView, setSecondaryView] = useState<SecondaryView>('income');
+  const [showConversions, setShowConversions] = useState(false);
   const [ageAxisMode, setAgeAxisMode] = useState<'self' | 'spouse'>('self');
 
   // Different return models expose a different primary path:
@@ -363,6 +382,7 @@ const ProjectionsInner = ({
       displayCurrency,
       { nominalHidden, medianHidden },
       percentileBand,
+      userData.spendingGoals.map(g => g.id),
     );
   }, [chartPrimaryMode, userData, years, nominal, median, medianInflation, nominalInflation, medianBreakdowns, nominalBreakdowns, displayCurrency, nominalHidden, medianHidden, percentileBand]);
 
@@ -401,6 +421,11 @@ const ProjectionsInner = ({
   // Keyed on scenario id, so editing fields within the active scenario won't reset it.
   useEffect(() => { setAgeAxisMode('self'); }, [userData?.id]);
 
+  // Expanded table rows are indices into the ACTIVE scenario's year array —
+  // carrying them across a scenario switch pre-expands unrelated years (or
+  // dangles past a shorter horizon). Same reset pattern as ageAxisMode.
+  useEffect(() => { setExpandedRows(new Set()); }, [userData?.id]);
+
   // X-axis age frame. Default 'self' (your age), continuing to count past your own
   // death when the spouse outlives you (matches "your age, full range"). The toggle
   // only appears when a spouse age is set.
@@ -413,6 +438,23 @@ const ProjectionsInner = ({
       return `${shown} (${years[index]})`;
     }),
     [years, userData.currentAge, userData.spouseAge, ageAxisMode]
+  );
+
+  // Secondary chart panel inputs. Memoized so hover-tick re-renders (which
+  // change only hoveredIndex) don't force the panel to rebuild its datasets.
+  const secondaryInputs = useMemo(
+    () => ({
+      breakdowns: chartPrimaryMode === 'median' ? medianBreakdowns : nominalBreakdowns,
+      inflation: chartPrimaryInflation,
+      years,
+      labels,
+      displayCurrency,
+      // Scenario goal order keeps per-goal series colors stable when a goal's
+      // start age or the horizon changes.
+      goalIdOrder: userData.spendingGoals.map(g => g.id),
+      compact: isMobile,
+    }),
+    [chartPrimaryMode, medianBreakdowns, nominalBreakdowns, chartPrimaryInflation, years, labels, displayCurrency, userData.spendingGoals, isMobile],
   );
 
   // Widow's-penalty milestone: the calendar year filing flips to single (year AFTER
@@ -596,6 +638,10 @@ const ProjectionsInner = ({
         },
       },
       y: {
+        // Pin the y-axis to the shared minimum width so the secondary chart
+        // panel's canvases column-align with this chart (same year = same
+        // pixel x on every canvas).
+        afterFit: (axis: { width: number }) => { axis.width = Math.max(axis.width, Y_AXIS_ALIGN_WIDTH); },
         ticks: {
           font: { size: isMobile ? 9 : 11 },
         },
@@ -1184,6 +1230,25 @@ const ProjectionsInner = ({
               </BandToggle>
             </>
           )}
+          {!whatIfActive && (
+            <>
+              <PrimeTooltip target=".charts-toggle-btn" position="bottom" showDelay={150}>
+                <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                  {showCharts
+                    ? 'Hide the secondary charts panel.'
+                    : 'Show secondary charts — income by source, expenses by category, balances by account type, and taxes with your marginal bracket.'}
+                </div>
+              </PrimeTooltip>
+              <DataToggle
+                className="charts-toggle-btn"
+                $active={showCharts}
+                onClick={() => setShowCharts(c => !c)}
+              >
+                <i className="pi pi-chart-bar" />
+                Charts
+              </DataToggle>
+            </>
+          )}
           <PrimeTooltip target=".data-toggle-btn" position="bottom" showDelay={150}>
             <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
               {showData
@@ -1201,6 +1266,25 @@ const ProjectionsInner = ({
           </DataToggle>
         </span>
       </LegendRow>
+      {showCharts && !whatIfActive && (
+        <SecondaryChartPanel
+          view={secondaryView}
+          onViewChange={setSecondaryView}
+          inputs={secondaryInputs}
+          showConversions={showConversions}
+          onToggleConversions={() => setShowConversions(s => !s)}
+          hoveredIndex={hoveredIndex}
+          onHoverIndex={setHoveredIndex}
+          onYearClick={(idx) => {
+            setShowData(true);
+            setExpandedRows(prev => {
+              const next = new Set(prev);
+              next.add(idx);
+              return next;
+            });
+          }}
+        />
+      )}
       {showData && (
         <div style={{ marginTop: spacing.xs }}>
           <div style={{ overflowX: 'auto' }}>

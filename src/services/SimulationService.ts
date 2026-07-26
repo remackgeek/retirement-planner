@@ -827,6 +827,18 @@ export interface AnnualCashFlowBreakdown {
   employerMatch: number;            // employer match deposited (routed to same target as employee contribution)
   contributionsCappedAmount: number; // total employee contribution dollars cut by IRS caps this year
   surplusContribution: number;       // positive netCashFlow deposited to taxable as general surplus this year
+  // Beginning-of-year (pre-growth) NOMINAL balance by account type. Assigned by
+  // simulateOneRun after the core returns (same pattern as the Phase-2
+  // cashEndingBalance overwrite); calculateAnnualCashFlowCore initializes them
+  // to 0, so the public single-year wrapper leaves them 0. Sum of the four
+  // equals path[i] × inflation[i] exactly — the same instant/frame as the
+  // chart's path point, so the secondary Balances chart's stacked total
+  // overlays the main line in both currency modes. Flat (not audit-gated) so
+  // scenario breakdownChecks can assert them.
+  boyBalanceTraditional: number;
+  boyBalanceRoth: number;
+  boyBalanceBrokerage: number;
+  boyBalanceCash: number;
   audit?: AnnualAuditBreakdown;      // IRS-audit-level intermediates (always populated; optional for back-compat)
 }
 
@@ -884,6 +896,20 @@ export interface IncomeEventTaxAttribution {
   taxableContribution: number;  // signed: pre-tax contributions are negative
   marginalTax: number;
   marginalRate: number;    // marginalTax / |taxableContribution| (0 when contribution is 0)
+}
+
+// Per-goal spending attribution — the spending-side sibling of
+// IncomeEventTaxAttribution. Built once per year in accumulateSpending
+// (precompute phase) and attached to the audit object, so goal identity
+// survives to the detail views (secondary Expenses chart, Sankey per-goal
+// sinks) instead of being collapsed into the two aggregate buckets.
+// Invariants: Σ amountNet where goalType === 'living_expenses' equals
+// baseSpendingNet; Σ of the rest equals otherSpendingGoalsNet.
+export interface SpendingGoalAttribution {
+  goalId: string;
+  goalName: string;
+  goalType: string;        // SpendingGoal['type']
+  amountNet: number;       // post-inflation, post-decay net amount this year
 }
 
 // IRS-audit-level intermediates surfaced for the Tax Audit detail view. Always
@@ -961,6 +987,13 @@ export interface AnnualAuditBreakdown {
 
   // ----- Per-event tax attribution -----
   incomeEventTaxBreakdown: IncomeEventTaxAttribution[];
+
+  // ----- Per-goal spending attribution -----
+  // Every spending goal active this year (living-expenses included), with the
+  // post-inflation/post-decay net amount. Sums reconcile to baseSpendingNet /
+  // otherSpendingGoalsNet — see SpendingGoalAttribution. Consumed by the
+  // secondary Expenses chart and the Sankey per-goal sink nodes.
+  spendingGoalBreakdown: SpendingGoalAttribution[];
 
   // ----- Per-account flows (populated by applyCashFlow) -----
   accountFlows?: AccountFlowRow[];
@@ -1383,9 +1416,10 @@ function accumulateSpending(
   userData: UserData,
   year: number,
   inflationRate: number
-): { baseSpendingNet: number; otherSpendingGoalsNet: number } {
+): { baseSpendingNet: number; otherSpendingGoalsNet: number; perGoal: SpendingGoalAttribution[] } {
   let baseSpendingNet = 0;
   let otherSpendingGoalsNet = 0;
+  const perGoal: SpendingGoalAttribution[] = [];
 
   // Ongoing (no endAge) goals run to the full projection horizon (extends to the
   // survivor's death when the spouse outlives self — the survivor still spends).
@@ -1426,10 +1460,11 @@ function accumulateSpending(
       } else {
         otherSpendingGoalsNet += amount;
       }
+      perGoal.push({ goalId: goal.id, goalName: goal.name, goalType: goal.type, amountNet: amount });
     }
   });
 
-  return { baseSpendingNet, otherSpendingGoalsNet };
+  return { baseSpendingNet, otherSpendingGoalsNet, perGoal };
 }
 
 // Synthetic event IDs used by the marginal-stack attribution for sources that
@@ -1758,7 +1793,10 @@ function calculateAnnualCashFlowCore(
   userData: UserData,
   year: number,
   income: AccumulatedIncome,
-  spending: { baseSpendingNet: number; otherSpendingGoalsNet: number },
+  // `perGoal` is optional so hand-built test callers can pass just the two
+  // aggregates; both real callers (the public wrapper and simulateOneRun via
+  // precomputes) always supply it.
+  spending: { baseSpendingNet: number; otherSpendingGoalsNet: number; perGoal?: SpendingGoalAttribution[] },
   stateProfile: StateTaxProfile,
   // Resolved profile key (may differ from the timeline's state name when a
   // year-bounded successor profile applied — e.g. "South Carolina (2027+)").
@@ -2350,6 +2388,7 @@ function calculateAnnualCashFlowCore(
       rmdBoyBalanceSpouse: spouseTradBal,
 
       incomeEventTaxBreakdown: eventTaxAttr,
+      spendingGoalBreakdown: spending.perGoal ?? [],
 
       stateOrdinaryBaseGross: stateResultFinal?.stateOrdinaryBaseGross ?? 0,
       stateStdDeduction: stateResultFinal?.stateStdDeduction ?? 0,
@@ -2431,6 +2470,13 @@ function calculateAnnualCashFlowCore(
     employerMatch: income.employerMatch,
     contributionsCappedAmount: income.contributionsCappedAmount,
     surplusContribution,
+    // BOY per-type balances live in the simulation loop, not here — the core
+    // only sees post-growth balances. simulateOneRun assigns them right after
+    // this returns (see the boyByType capture at the path.push instant).
+    boyBalanceTraditional: 0,
+    boyBalanceRoth: 0,
+    boyBalanceBrokerage: 0,
+    boyBalanceCash: 0,
     audit,
   };
 }
@@ -2506,6 +2552,7 @@ interface Precomputes {
   spendingByYear: Array<{
     baseSpendingNet: number;
     otherSpendingGoalsNet: number;
+    perGoal: SpendingGoalAttribution[];
   }>;
   /** Max additional Trad-spending dollars per year that stay within the 12%
    *  federal bracket, **conv-inclusive** (the year's conversion gross is already
@@ -2638,6 +2685,14 @@ function simulateOneRun(
     const startBalance = sumBalances(balances);
     path.push(startBalance / cumulativeInflation);
     inflation.push(cumulativeInflation);
+    // Per-type BOY (pre-growth) nominal balances, captured at the exact same
+    // instant as the path point above so their sum equals path[i] × inflation[i].
+    // Assigned onto the breakdown after the core returns (the core initializes
+    // the boyBalance* fields to 0 — it only sees post-growth balances).
+    const boyTraditional = sumBalancesOfType(userData.accounts, balances, 'traditional');
+    const boyRoth = sumBalancesOfType(userData.accounts, balances, 'roth');
+    const boyBrokerage = sumBalancesOfType(userData.accounts, balances, 'brokerage');
+    const boyCash = sumBalancesOfType(userData.accounts, balances, 'cash');
     if (i === totalYears - 1) {
       // Same instant and deflation frame as the path point above, decomposed
       // by account type for the after-tax terminal-wealth score. Sums to
@@ -2701,6 +2756,10 @@ function simulateOneRun(
       yearFilingStatus, yearSurvivorMode,
       precomputes.rmdStartAgeByYear[i], precomputes.spouseRmdStartAgeByYear[i] ?? 73,
     );
+    effectiveCashFlow.boyBalanceTraditional = boyTraditional;
+    effectiveCashFlow.boyBalanceRoth = boyRoth;
+    effectiveCashFlow.boyBalanceBrokerage = boyBrokerage;
+    effectiveCashFlow.boyBalanceCash = boyCash;
     breakdowns.push(effectiveCashFlow);
 
     if (effectiveCashFlow.spendingShortfall > 0) {

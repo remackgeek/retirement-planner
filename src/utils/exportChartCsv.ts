@@ -1,9 +1,30 @@
 import type { AnnualCashFlowBreakdown } from '../services/SimulationService';
 import { toDisplay, pathToDisplay, type DisplayCurrency } from './displayCurrency';
 
-// Builds and downloads the yearly-data CSV for the chart's primary path.
-// Pure DOM/data helper — no React. Extracted from Chart.tsx.
-export function exportCsv(
+const csvQuote = (s: string) => `"${s.replace(/"/g, '""')}"`;
+
+// Union of non-living spending goals across the horizon, ordered by the
+// scenario's goal list (stable, matches the Expenses chart's series order);
+// ids not in the list append in first-appearance order.
+function collectGoalColumns(
+  annualBreakdowns: AnnualCashFlowBreakdown[],
+  goalIdOrder: string[],
+): { goalId: string; goalName: string }[] {
+  const found = new Map<string, string>();
+  for (const bd of annualBreakdowns) {
+    for (const g of bd.audit?.spendingGoalBreakdown ?? []) {
+      if (g.goalType === 'living_expenses' || found.has(g.goalId)) continue;
+      found.set(g.goalId, g.goalName);
+    }
+  }
+  const ordered = goalIdOrder.filter((id) => found.has(id));
+  const remaining = [...found.keys()].filter((id) => !ordered.includes(id));
+  return [...ordered, ...remaining].map((goalId) => ({ goalId, goalName: found.get(goalId)! }));
+}
+
+// Pure CSV assembly — exported separately from the download trigger so tests
+// can assert columns without a DOM.
+export function buildCsvContent(
   scenarioName: string,
   years: number[],
   nominal: number[],
@@ -16,7 +37,9 @@ export function exportCsv(
   displayCurrency: DisplayCurrency,
   options: { nominalHidden: boolean; medianHidden: boolean },
   band: { p10: number[]; p90: number[] } | null,
-) {
+  // Scenario spending-goal id order for the dynamic per-goal columns.
+  goalIdOrder: string[] = [],
+): string {
   const modeLabel = displayCurrency === 'real' ? "today's dollars" : 'nominal dollars';
   const timestamp = new Date().toISOString();
   const comment = `# scenario: ${scenarioName} | exported: ${timestamp} | values in ${modeLabel}`;
@@ -24,20 +47,29 @@ export function exportCsv(
   if (!options.nominalHidden) pathHeaders.push('Projected Portfolio ($)');
   if (!options.medianHidden) pathHeaders.push('Median Portfolio ($)');
   if (band) pathHeaders.push('Band p10 ($)', 'Band p90 ($)');
+  // One dynamic column per non-living spending goal (from
+  // audit.spendingGoalBreakdown), matching the Expenses chart's series.
+  const goalColumns = collectGoalColumns(annualBreakdowns, goalIdOrder);
   // Scalar audit columns are appended after the core columns. Per-event tax
   // attribution and per-account flows are NOT exported — they don't fit a flat
   // one-row-per-year CSV cleanly. See the Income Detail tab in the app for those.
+  // Note: 'BoY Balance — *' are the per-account-type beginning-of-year balances
+  // (the Balances chart); the audit 'BoY Trad Bal Self/Spouse' columns near the
+  // end are the per-OWNER RMD basis — same instant, different decomposition.
   const header = [
     'Age', 'Year',
     ...pathHeaders,
     'SS Gross', 'Other Taxable Income', 'After-Tax Income', 'Total Gross Income',
-    'Base Spending', 'Goal Spending', 'Total Spending',
+    'Base Spending', 'Goal Spending',
+    ...goalColumns.map((g) => csvQuote(`Goal: ${g.goalName}`)),
+    'Total Spending', 'Spending Shortfall',
     'Total Tax', 'Ordinary Income Tax', 'Federal LTCG Tax', 'State LTCG Tax', 'NIIT (3.8%)', 'IRMAA Surcharge', 'Portfolio Withdrawal',
-    'Withdrawal — Brokerage', 'Withdrawal — Traditional', 'Withdrawal — Roth',
+    'Withdrawal — Brokerage', 'Withdrawal — Traditional', 'Withdrawal — Roth', 'Withdrawal — Cash', 'Cash Interest',
     'RMD Required', 'RMD Reinvested',
     'Roth Conversion',
     'Surplus Contribution',
     'Net Cash Flow',
+    'BoY Balance — Traditional', 'BoY Balance — Roth', 'BoY Balance — Brokerage', 'BoY Balance — Cash',
     // ---- audit columns ----
     'AGI', 'Standard Deduction', 'Senior Add-On', 'OBBB Reduction', 'Total Deductions', 'Taxable Income',
     'Federal Bracket Index', 'Federal Marginal Rate', 'Federal Ordinary Tax', 'State Ordinary Tax', 'Effective State',
@@ -65,6 +97,12 @@ export function exportCsv(
       pathCells.push(Math.round(pathToDisplay(band.p10[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)));
       pathCells.push(Math.round(pathToDisplay(band.p90[i] ?? 0, nominalInflation[i] ?? 1, displayCurrency)));
     }
+    const goalCells = goalColumns.map((col) => {
+      const amount = (bd.audit?.spendingGoalBreakdown ?? [])
+        .filter((g) => g.goalId === col.goalId)
+        .reduce((s, g) => s + g.amountNet, 0);
+      return Math.round(toDisplay(amount, bdF, displayCurrency));
+    });
     return [
       currentAge + i,
       year,
@@ -75,7 +113,9 @@ export function exportCsv(
       Math.round(toDisplay(bd.totalGrossIncome, bdF, displayCurrency)),
       Math.round(toDisplay(bd.baseSpendingNet, bdF, displayCurrency)),
       Math.round(toDisplay(bd.otherSpendingGoalsNet, bdF, displayCurrency)),
+      ...goalCells,
       Math.round(toDisplay(bd.totalSpendingNet, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.spendingShortfall, bdF, displayCurrency)),
       Math.round(toDisplay(bd.totalTax, bdF, displayCurrency)),
       Math.round(toDisplay(bd.ordinaryTax, bdF, displayCurrency)),
       Math.round(toDisplay(bd.federalCapGainsTax, bdF, displayCurrency)),
@@ -86,11 +126,17 @@ export function exportCsv(
       Math.round(toDisplay(bd.withdrawalFromBrokerage, bdF, displayCurrency)),
       Math.round(toDisplay(bd.withdrawalFromTraditional, bdF, displayCurrency)),
       Math.round(toDisplay(bd.withdrawalFromRoth, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.withdrawalFromCash, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.cashInterest, bdF, displayCurrency)),
       Math.round(toDisplay(bd.rmdRequired, bdF, displayCurrency)),
       Math.round(toDisplay(bd.rmdExcess, bdF, displayCurrency)),
       Math.round(toDisplay(bd.rothConversionGross, bdF, displayCurrency)),
       Math.round(toDisplay(bd.surplusContribution, bdF, displayCurrency)),
       Math.round(toDisplay(bd.netCashFlow, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.boyBalanceTraditional, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.boyBalanceRoth, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.boyBalanceBrokerage, bdF, displayCurrency)),
+      Math.round(toDisplay(bd.boyBalanceCash, bdF, displayCurrency)),
       // ---- audit columns ----
       Math.round(toDisplay(bd.audit?.agi ?? 0, bdF, displayCurrency)),
       Math.round(toDisplay(bd.audit?.standardDeduction ?? 0, bdF, displayCurrency)),
@@ -103,7 +149,7 @@ export function exportCsv(
       Math.round(toDisplay(bd.audit?.federalOrdinaryTax ?? 0, bdF, displayCurrency)),
       Math.round(toDisplay(bd.audit?.stateOrdinaryTax ?? 0, bdF, displayCurrency)),
       // Quote the state name in case it contains a comma (e.g., "Washington, DC").
-      `"${(bd.audit?.effectiveStateName ?? '').replace(/"/g, '""')}"`,
+      csvQuote(bd.audit?.effectiveStateName ?? ''),
       Math.round(toDisplay(bd.audit?.stateStdDeduction ?? 0, bdF, displayCurrency)),
       Math.round(toDisplay(bd.audit?.stateRetirementExclusionApplied ?? 0, bdF, displayCurrency)),
       Math.round(toDisplay(bd.audit?.stateSsIncludedInState ?? 0, bdF, displayCurrency)),
@@ -131,7 +177,30 @@ export function exportCsv(
     ].join(',');
   });
 
-  const csv = [comment, header, ...rows].join('\n');
+  return [comment, header, ...rows].join('\n');
+}
+
+// Builds and downloads the yearly-data CSV for the chart's primary path.
+// DOM download wrapper over buildCsvContent. Extracted from Chart.tsx.
+export function exportCsv(
+  scenarioName: string,
+  years: number[],
+  nominal: number[],
+  median: number[],
+  nominalInflation: number[],
+  medianInflation: number[],
+  breakdownInflation: number[],
+  annualBreakdowns: AnnualCashFlowBreakdown[],
+  currentAge: number,
+  displayCurrency: DisplayCurrency,
+  options: { nominalHidden: boolean; medianHidden: boolean },
+  band: { p10: number[]; p90: number[] } | null,
+  goalIdOrder: string[] = [],
+) {
+  const csv = buildCsvContent(
+    scenarioName, years, nominal, median, nominalInflation, medianInflation,
+    breakdownInflation, annualBreakdowns, currentAge, displayCurrency, options, band, goalIdOrder,
+  );
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

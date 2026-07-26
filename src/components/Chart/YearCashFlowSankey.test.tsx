@@ -22,6 +22,7 @@ const audit = (o: Partial<AnnualAuditBreakdown> = {}): AnnualAuditBreakdown => (
   rmdDivisorSelf: 0, rmdDivisorSpouse: 0,
   rmdBoyBalanceSelf: 0, rmdBoyBalanceSpouse: 0,
   incomeEventTaxBreakdown: [],
+  spendingGoalBreakdown: [],
   ...o,
 });
 
@@ -41,6 +42,7 @@ const makeBreakdown = (o: Partial<AnnualCashFlowBreakdown> = {}): AnnualCashFlow
   spendingShortfall: 0, wageIncomeGross: 0,
   preTaxContributions: 0, rothContributions: 0, afterTaxContributions: 0, employerMatch: 0,
   contributionsCappedAmount: 0, surplusContribution: 0,
+  boyBalanceTraditional: 0, boyBalanceRoth: 0, boyBalanceBrokerage: 0, boyBalanceCash: 0,
   audit: audit(),
   ...o,
 });

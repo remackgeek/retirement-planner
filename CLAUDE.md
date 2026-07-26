@@ -224,7 +224,15 @@ projections, and good tax awareness without overwhelming the user.
   `exceedsMostOfTradHeuristic` in `conversionImpact.ts`.
 - **Spending goals** — 11 categories, each with a required `name` (auto-generated defaults
   like "Vacation 1"), inflation adjustment, age-based activation.
-  `living_expenses` goals support optional `yearlyDecreasePercent` for spending decay
+  `living_expenses` goals support optional `yearlyDecreasePercent` for spending decay.
+  **Per-goal attribution:** `audit.spendingGoalBreakdown` (the spending-side sibling of
+  `audit.incomeEventTaxBreakdown`) carries one `{ goalId, goalName, goalType, amountNet }`
+  row per goal active in the year; living rows sum to `baseSpendingNet`, the rest to
+  `otherSpendingGoalsNet`. Built once per year in the precompute phase
+  (`accumulateSpending`) so it adds no MC hot-loop cost; consumed by the secondary
+  Expenses chart, the Sankey's per-goal sink nodes (`dst_goal_<goalId>`, with the single
+  `dst_goals` aggregate only as an audit-absent/reconciliation fallback), and the CSV's
+  dynamic per-goal columns.
 - **Tax** — aggregate income taxation; SS 50%/85% taxable fraction (IRS provisional
   income formula); standard deduction, filing status, state rates with optional
   relocation timeline, senior/OBBB deductions. For years > 2026, federal bracket
@@ -751,12 +759,21 @@ import { spacing, colors, fontSize, border } from '../styles/theme';
   Groups: surfaces (`bgLight`, `bgMedium`, `bgHover`), borders (`border`, `borderLight`,
   `borderMedium`), text (`textPrimary`, `textSecondary`, `textMuted`), actions (`primary`,
   `danger`), accents (`income`/`spending` with `Bg` variants), chart lines
-  (`chartMedian`, `chartNominal`), black-swan shading (`blackSwanShade`,
-  `blackSwanStockLabel`), shadows/overlays (`shadowLight`,
+  (`chartMedian`, `chartNominal`), secondary-chart categorical series
+  (`chartSocialSecurity` … `chartCash`, `chartLivingExpenses`, `chartTaxes`,
+  `taxFederalSeries` …, `seriesCycle1`–`seriesCycle5`), black-swan shading
+  (`blackSwanShade`, `blackSwanStockLabel`), shadows/overlays (`shadowLight`,
   `shadowMedium`, `overlayLight`), sidebar (`activeRow`, `chipBg`).
   **Two-tier rule:** when adding a color, first add the hex to the private `palette`
   object (named by hue + shade, e.g. `blue600`), then add a semantic alias in `colors`
   that references it. Components always import from `colors`; never from `palette`.
+  **Chart series colors** have a third tier: `src/styles/chartCategoryColors.ts` maps
+  flow-category keys → `colors` aliases and is the ONLY place secondary-chart /
+  legend-chip series colors come from. The stacking orders used by the secondary charts
+  were validated pairwise-adjacent for color-vision-deficiency safety (dataviz palette
+  validator) — changing any hue or re-ordering a stack requires re-validating the
+  adjacency chain (the validation notes live as comments in `theme.ts` and
+  `chartCategoryColors.ts`).
 - **`fontSize`** — `xs` (0.65rem) through `xl` (1.1rem). `base` (0.85rem) for body text.
 - **`border`** — `standard` (`1px solid #ddd`), `light`, `medium`, plus `radius` (4px),
   `radiusRound` (8px), `radiusCircle` (50%).
@@ -1053,6 +1070,7 @@ Current plugins:
 - `chartCrosshair` — draws a dashed vertical line at the hovered year index
 - `chartPercentileBand` — fills the 10th–90th percentile region beneath the projected line (year-by-year envelope; toggled via the session-only `showBand` flag in `Projections`). Also installs an `afterDataLimits` hook that extends the y-axis to include the band's full lower edge and the upper edge up to `Y_CAP_MULT × max(line)` (constant `2.0`) — keeps the projected line visually prominent when the band has heavy upside tails.
 - `chartMilestones` — draws a thin dashed vertical line + a small top pill label at a milestone calendar year. Currently used for the survivor "widow's penalty" filing-status transition (pill: "Now filing Single"), with the year derived from `getDeathModel(userData)` in `Chart.tsx` (no persisted field). Lighter than `chartBlackSwanShading` (a line, not a full-height band) so it reads as a neutral plan event.
+- `chartMinYSpread` — `afterDataLimits` hook that floors the y-axis spread at a minimum (`minSpread: 1_000_000` in `Chart.tsx`) so flat portfolio curves don't auto-scale to a deceptively tight range.
 
 **Chart x-axis age frame.** Labels are `${currentAge + index} (${year})` — i.e. **your** age, which naturally keeps counting past your own death when the spouse outlives you (matches the "your age, full range" decision). When `spouseAge` is set, a session-only Self/Spouse toggle in the legend row (`ageAxisMode` state) relabels the points as the spouse's age. The calendar years and the engine horizon are unchanged by the toggle.
 
@@ -1106,8 +1124,30 @@ Items that operate on the active scenario (Modeling, Cash Bucket, Tax & IRS, Exp
   `historical_bootstrap` (which have no deterministic baseline). Its portfolio
   column, income/spending/tax detail rows, and CSV export all follow that one
   path. Depleted years still show a shortfall indicator in the detail row.
+- **Secondary chart panel**: a `Charts` toggle (pi-chart-bar) next to `Data` on the
+  legend row opens a panel below the main chart with four pill-selectable views —
+  **Income** by source (SS / other income at full wage gross / RMD / additional
+  Traditional / Brokerage / Roth / Cash, plus a hatched Roth-conversion segment behind a
+  "Show conversions" toggle), **Expenses** by category (living, one series per spending
+  goal, retirement contributions, taxes, hatched "Unfunded shortfall" in depleted years),
+  **Balances** by account type (stacked area of the flat `boyBalance*` breakdown fields —
+  sums to the main line exactly), and **Taxes** by component with the federal marginal
+  bracket as a separate slim step strip (never a dual axis). Pure dataset builders live
+  in `src/components/Chart/secondaryChartData.ts`, the panel in
+  `SecondaryChartPanel.tsx`; series colors come from the CVD-validated map in
+  `src/styles/chartCategoryColors.ts`. The panel follows the chart's primary path and
+  `toDisplay` deflation, shares the age/year labels and Self/Spouse toggle, syncs the
+  hover crosshair with the main chart (shared `hoveredIndex`; all canvases pin a common
+  y-axis width via `Y_AXIS_ALIGN_WIDTH` so years column-align), and clicking a bar opens
+  the yearly table with that year expanded. `showCharts` / `secondaryView` /
+  `showConversions` are session-only state in `ProjectionsInner` — never on `UserData`.
+  Panel and button are hidden while What If is active; during compare the panel shows the
+  active scenario only.
 - **CSV export**: download button in yearly data header exports the Projected and Median portfolio paths
-  plus the band p10/p90 columns and the full income/spending/tax breakdown per year as a `.csv` file
+  plus the band p10/p90 columns and the full income/spending/tax breakdown per year as a `.csv` file,
+  including per-type `boyBalance*` columns, spending shortfall, cash withdrawal/interest, and one
+  dynamic column per non-living spending goal (from `audit.spendingGoalBreakdown`). The pure
+  assembler `buildCsvContent` is exported separately from the `exportCsv` download wrapper for tests.
 - **Scenario comparison**: "Compare with ▾" button in the chart heading (right-aligned via
   `margin-left: auto`) opens a PrimeReact `Menu` popup listing other scenarios. Selecting
   one overlays the compared scenario's currently-selected path as a dashed line on the
@@ -1192,18 +1232,19 @@ Assertion blocks:
   { "index": 0, "field": "withdrawalFromRoth", "value": 50000, "tolerance": 5, "_note": "..." }
   ```
   Use `value` for exact checks (with optional `tolerance`), or `min`/`max` for range
-  checks. Valid fields: all top-level keys of `AnnualCashFlowBreakdown` —
-  `portfolioWithdrawal`, `withdrawalFromBrokerage`, `withdrawalFromTraditional`,
-  `withdrawalFromRoth`, `totalTax`, `netCashFlow`, `ssGross`, `otherTaxableGross`,
-  `afterTaxIncome`, `ssTaxableAmount`, `totalGrossIncome`, `baseSpendingNet`,
-  `otherSpendingGoalsNet`, `totalSpendingNet`, `rmdRequired`, `rmdExcess`,
-  `rothConversionGross`, `ordinaryTax`, `federalCapGainsTax`, `stateCapGainsTax`,
-  `niitTax`, `irmaaSurcharge`. Audit intermediates (`audit.federalBracketIndex`,
-  `audit.ssZone`, `audit.incomeEventTaxBreakdown`, `audit.accountFlows`, etc.) are
-  nested under `audit` and **not** checkable via `breakdownChecks` — the runner
-  does flat key lookup. Assert these in unit tests against `runSimulation()` /
-  `calculateAnnualCashFlow()` directly, or against the detailed variants in
-  `TaxCalculator` / `IRMAA`.
+  checks. Valid fields: **any non-`audit` top-level key of `AnnualCashFlowBreakdown`**
+  (see the interface in `SimulationService.ts` — don't rely on this doc enumerating
+  them). Examples: `portfolioWithdrawal`, `withdrawalFromTraditional`, `totalTax`,
+  `netCashFlow`, `ssGross`, `rmdRequired`, `rothConversionGross`, `spendingShortfall`,
+  `withdrawalFromCash`, `cashInterest`, and the per-type beginning-of-year balances
+  `boyBalanceTraditional` / `boyBalanceRoth` / `boyBalanceBrokerage` / `boyBalanceCash`
+  (deliberately flat rather than audit-gated precisely so scenario tests can assert
+  them — see `test/scenarios/boy-balance-by-type.json`). Audit intermediates
+  (`audit.federalBracketIndex`, `audit.ssZone`, `audit.incomeEventTaxBreakdown`,
+  `audit.spendingGoalBreakdown`, `audit.accountFlows`, etc.) are nested under `audit`
+  and **not** checkable via `breakdownChecks` — the runner does flat key lookup.
+  Assert these in unit tests against `runSimulation()` / `calculateAnnualCashFlow()`
+  directly, or against the detailed variants in `TaxCalculator` / `IRMAA`.
 
 #### Key rules
 
