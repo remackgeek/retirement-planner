@@ -1,6 +1,6 @@
 {
-  "_rationale": "RMD at 75 = 200000/24.6 ≈ $8,130. Spending is $50k/yr — the waterfall naturally draws more than the RMD from Traditional (spending >> RMD). rmdExcess must be 0. With 0% return, $200k Traditional, $50k/yr spending + tax overhead, the portfolio depletes within 4 years of the 6-year span (age 75–80). Probability is NOT 100%. rmdRequired = 200000/24.6 = 8130.08 in year 0.",
-  "probability": { "min": 0, "max": 50 },
+  "_rationale": "RMD at 75 = 200000/24.6 ≈ $8,130. Spending is $50k/yr — the waterfall naturally draws more than the RMD from Traditional (spending >> RMD). rmdExcess must be 0. With 0% return, $200k Traditional, $50k/yr spending + tax overhead, the portfolio depletes within 4 years of the 6-year span (age 75–80) — a deterministic failure, so probability is exactly 0 (0% stddev makes all runs identical). rmdRequired = 200000/24.6 = 8130.08 in year 0.",
+  "probability": 0,
   "breakdownChecks": [
     { "index": 0, "field": "rmdRequired", "value": 8130.08, "tolerance": 1, "_note": "200000/24.6 = 8130.08..." },
     { "index": 0, "field": "rmdExcess", "value": 0, "tolerance": 1, "_note": "Spending need naturally exceeds RMD; no forced excess" },

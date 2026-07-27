@@ -436,7 +436,11 @@ function calculateFederalTaxDetailed(
 
 // Memoization cache for federal-only tax calculations (state is handled
 // separately via the profile-based StateTaxCalculator and is not cached here).
+// The MC hot loop clears it per simulated year (see clearTaxCalculationCache
+// call sites in SimulationService); the size cap below bounds external callers
+// that never clear (conversion previews, strategy optimizers).
 const taxCalculationCache = new Map<string, number>();
+const TAX_CACHE_MAX_ENTRIES = 50_000;
 
 function getNetCacheKey(
   grossIncome: number,
@@ -446,7 +450,12 @@ function getNetCacheKey(
   spouseAge: number | null,
   inflationRate?: number
 ): string {
-  return `net_${grossIncome}_${filingStatus}_${age}_${taxYear}_${spouseAge}_${inflationRate ?? 0}`;
+  // Quantize gross to cents: the fixed-point loop feeds float-noise-different
+  // gross values (x vs x + 1e-9) that are the same dollar amount — keying on
+  // the raw double made those distinct entries and the hit rate near zero.
+  // Max result perturbation from key-sharing is < $0.005, far below every
+  // consumer's tolerance.
+  return `net_${Math.round(grossIncome * 100)}_${filingStatus}_${age}_${taxYear}_${spouseAge}_${inflationRate ?? 0}`;
 }
 
 /**
@@ -561,6 +570,10 @@ export function calculateNetFromGross(
   const taxable = Math.max(0, grossIncome - deduction);
   const federalTax = calculateFederalTax(taxable, filingStatus, taxYear, inflationRate);
   const result = grossIncome - federalTax;
+  // Belt-and-braces bound for callers that never clear: dump-and-rebuild is
+  // cheaper and simpler than LRU bookkeeping, and one MC year repopulates the
+  // working set immediately.
+  if (taxCalculationCache.size >= TAX_CACHE_MAX_ENTRIES) taxCalculationCache.clear();
   taxCalculationCache.set(cacheKey, result);
   return result;
 }
@@ -652,8 +665,12 @@ export function calculateSSTaxableAmount(
 ): number {
   if (ssGross <= 0) return 0;
 
-  // MFS: always 85% taxable regardless of provisional income
-  if (filingStatus === 'mfs') return 0.85 * ssGross;
+  // MFS (living with spouse): both provisional-income thresholds are $0, so the
+  // IRS Pub 915 worksheet reduces to min(0.85 × ssGross, 0.85 × provisionalIncome).
+  if (filingStatus === 'mfs') {
+    const provisionalIncome = otherGross + 0.5 * ssGross;
+    return Math.max(0, Math.min(0.85 * ssGross, 0.85 * provisionalIncome));
+  }
 
   const { t1, t2, base } = ssThresholds[filingStatus];
   const provisionalIncome = otherGross + 0.5 * ssGross;
@@ -697,9 +714,12 @@ export function calculateSSTaxableAmountDetailed(
     return { taxable: 0, provisionalIncome: 0, threshold1: 0, threshold2: 0, zone: 'none' };
   }
   if (filingStatus === 'mfs') {
+    // MFS (living with spouse): thresholds are $0 — taxable is the lesser of
+    // 85% of benefits and 85% of provisional income (IRS Pub 915 worksheet).
+    const provisionalIncome = otherGross + 0.5 * ssGross;
     return {
-      taxable: 0.85 * ssGross,
-      provisionalIncome: otherGross + 0.5 * ssGross,
+      taxable: Math.max(0, Math.min(0.85 * ssGross, 0.85 * provisionalIncome)),
+      provisionalIncome,
       threshold1: 0,
       threshold2: 0,
       zone: 'mfs-flat',

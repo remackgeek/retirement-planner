@@ -1,6 +1,6 @@
 {
-  "_description": "MFS filer — SS is always 85% taxable regardless of provisional income.",
-  "_rationale": "MFS filer, Florida, SS $20k + pension $30k at age 62, haircut disabled. MFS rule: 85% of SS is always taxable = $17k. Combined taxable gross = $47k. Deduction $16,100 (2026 MFS). Taxable = $30,900. Federal tax = $1,240 (10% on $12,400) + $2,220 (12% on $18,500) = $3,460. Net = $46,540/yr.",
+  "_description": "MFS filer — SS taxable at min(85% of benefits, 85% of provisional income); here the provisional-income cap does not bind, so the full 85% of SS is taxable.",
+  "_rationale": "MFS filer, Florida, SS $20k + pension $30k at age 62, haircut disabled. MFS rule (IRS Pub 915, thresholds $0): taxable SS = min(0.85 × 20000, 0.85 × provisional income). Provisional = 30000 + 0.5 × 20000 = $40k → cap $34k > $17k, so taxable = $17k (cap not binding). Combined taxable gross = $47k. Deduction $16,100 (2026 MFS). Taxable = $30,900. Federal tax = $1,240 (10% on $12,400) + $2,220 (12% on $18,500) = $3,460. Net = $46,540/yr.",
   "_seed": 12345,
   "name": "SS MFS Always 85%",
   "currentAge": 60,

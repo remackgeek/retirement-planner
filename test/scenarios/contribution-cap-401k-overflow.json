@@ -69,6 +69,7 @@
     "iraLimit": 7000,
     "catchUpAge": 50,
     "catchUp401k": 7500,
+    "superCatchUp401k": 11250,
     "catchUpIra": 1000,
     "inflationAdjusted": false
   },

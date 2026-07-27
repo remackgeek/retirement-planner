@@ -75,6 +75,60 @@ describe('calculateIRMAA', () => {
   });
 });
 
+describe('MFS IRMAA — statutory 3-row table (no graduated middle tiers)', () => {
+  // Regression: MFS previously aliased the single 6-tier table. The real 2024
+  // MFS structure: ≤ $103k → none; > $103k and < $397k → the second-highest
+  // surcharge level (Part B total $559.00 → +$384.30 over the $174.70 standard;
+  // Part D +$74.20); ≥ $397k → top tier (Part B $594.00 → +$419.30; Part D +$81.00).
+
+  it('MFS at $100k MAGI pays no surcharge', () => {
+    expect(calculateIRMAA(100_000, 'mfs', 2024, 0, 70, null)).toBe(0);
+  });
+
+  it('MFS at $150k MAGI lands in the $559-level tier, not the single table tier', () => {
+    // (384.30 + 74.20) × 12 = $5,502.00/yr. The old single-table alias would
+    // have put $150k in the (174.70 + 33.30) tier → $2,496/yr.
+    expect(calculateIRMAA(150_000, 'mfs', 2024, 0, 70, null)).toBeCloseTo(5502.0, 1);
+  });
+
+  it('MFS at $400k MAGI pays the top tier', () => {
+    // (419.30 + 81.00) × 12 = $6,003.60/yr.
+    expect(calculateIRMAA(400_000, 'mfs', 2024, 0, 70, null)).toBeCloseTo(6003.6, 1);
+  });
+
+  it('MFS at EXACTLY $397,000 pays the top tier (statute: "$397,000 or above")', () => {
+    // Boundary asymmetry: SSA words the middle MFS row as "less than $397,000",
+    // unlike every single/MFJ row (which are "$X or less"). Treating this bound
+    // as inclusive undercharged the knife-edge dollar by ~$502/yr — and the
+    // dollar is reachable, since the cliff cap fills MAGI right to the ceiling.
+    expect(calculateIRMAA(397_000, 'mfs', 2024, 0, 70, null)).toBeCloseTo(6003.6, 1);
+    expect(calculateIRMAADetailed(397_000, 'mfs', 2024, 0, 70, null).tierIndex).toBe(2);
+    // A cent below stays in the middle tier.
+    expect(calculateIRMAA(396_999.99, 'mfs', 2024, 0, 70, null)).toBeCloseTo(5502.0, 1);
+  });
+
+  it('single/MFJ bounds stay INCLUSIVE — exactly at the bound is the lower tier', () => {
+    expect(calculateIRMAA(103_000, 'single', 2024, 0, 70, null)).toBe(0);
+    expect(calculateIRMAA(206_000, 'mfj', 2024, 0, 70, 70)).toBe(0);
+  });
+
+  it('calculateIRMAADetailed reports tier indices 0/1/2 across the 3-row table', () => {
+    expect(calculateIRMAADetailed(100_000, 'mfs', 2024, 0, 70, null).tierIndex).toBe(0);
+    expect(calculateIRMAADetailed(150_000, 'mfs', 2024, 0, 70, null).tierIndex).toBe(1);
+    expect(calculateIRMAADetailed(400_000, 'mfs', 2024, 0, 70, null).tierIndex).toBe(2);
+  });
+
+  it('nextIrmaaTierCeiling for MFS uses the 3-row boundaries', () => {
+    expect(nextIrmaaTierCeiling(100_000, 'mfs', 2024, 0)).toBe(103_000);
+    // Exclusive bound → the safe fill target is a cent under $397,000, so a
+    // conversion capped at this figure stays out of the top tier.
+    expect(nextIrmaaTierCeiling(150_000, 'mfs', 2024, 0)).toBe(396_999.99);
+    expect(calculateIRMAA(nextIrmaaTierCeiling(150_000, 'mfs', 2024, 0), 'mfs', 2024, 0, 70, null))
+      .toBeCloseTo(5502.0, 1);
+    expect(nextIrmaaTierCeiling(500_000, 'mfs', 2024, 0)).toBe(Infinity);
+  });
+});
+
 describe('calculateNIIT', () => {
   it('returns 0 below the MFJ threshold', () => {
     expect(calculateNIIT(240_000, 50_000, 'mfj')).toBe(0);

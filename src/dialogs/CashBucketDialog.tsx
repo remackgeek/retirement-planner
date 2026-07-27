@@ -108,7 +108,14 @@ const CashBucketDialog: React.FC<CashBucketDialogProps> = ({
       setMaxAmount(DEFAULTS.maxAmount);
       setRefillTrigger(DEFAULTS.refillTrigger);
     }
-  }, [visible, scenario]);
+    // Initialize form state only when the dialog opens (false→true).
+    // `scenario` is deliberately NOT a dep: the automatic ~1s
+    // lastSuccessProbability write-back replaces the scenario object identity
+    // while the dialog is open, and re-running this effect then would reset the
+    // band the user is mid-way through typing. Same pattern as
+    // ModelingDialog / ScenarioDialog / TaxAndIrsDialog.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   const hasCashAccount = scenario.accounts.some((a) => a.type === 'cash');
 

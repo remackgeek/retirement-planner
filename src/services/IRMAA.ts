@@ -14,8 +14,32 @@
 type FilingStatus = 'single' | 'mfs' | 'mfj' | 'hoh';
 
 interface IrmaaTier {
-  magiUpper: number;            // inclusive upper bound of this tier
+  magiUpper: number;            // upper bound of this tier (inclusive by default)
   monthlySurcharge: number;     // Part B + Part D monthly surcharge per enrollee
+  /**
+   * Set when the statutory bound is STRICT (`magi < magiUpper`) rather than
+   * inclusive. Only the MFS middle tier needs it: SSA words the single/MFJ rows
+   * as "$X or less" (inclusive) but the MFS top row as "$397,000 or above",
+   * making the row beneath it exclusive at that dollar.
+   */
+  upperExclusive?: boolean;
+}
+
+// Money is tracked to the cent, so the largest amount strictly below a bound is
+// one cent under it.
+const CENT = 0.01;
+
+/** Does `magi` fall in this tier, honoring the tier's boundary strictness? */
+function inTier(magi: number, tier: IrmaaTier, factor: number): boolean {
+  const upper = tier.magiUpper * factor;
+  return tier.upperExclusive ? magi < upper : magi <= upper;
+}
+
+/** Largest MAGI that still lands INSIDE this tier — what a cliff-avoiding
+ *  conversion may fill up to without tripping the next surcharge level. */
+function tierCeiling(tier: IrmaaTier, factor: number): number {
+  const upper = tier.magiUpper * factor;
+  return tier.upperExclusive ? upper - CENT : upper;
 }
 
 // 2024 official tiers (https://www.medicare.gov / SSA).
@@ -37,9 +61,26 @@ const MFJ_TIERS_2024: IrmaaTier[] = [
   { magiUpper: Infinity, monthlySurcharge: 419.30 + 81.00 },
 ];
 
-// MFS uses a compressed 3-tier table; below we approximate with the single
-// thresholds, documented as a known simplification.
-const MFS_TIERS_2024: IrmaaTier[] = SINGLE_TIERS_2024;
+// MFS (married filing separately, lived with spouse) uses the statutory 3-row
+// table — there are NO graduated middle tiers (SSA/CMS 2024):
+//   MAGI ≤ $103,000                → no surcharge
+//   > $103,000 and < $397,000      → second-highest surcharge level
+//                                    (Part B total $559.00 = $174.70 standard
+//                                    + $384.30 surcharge; Part D +$74.20)
+//   ≥ $397,000                     → top tier (Part B total $594.00 = $174.70
+//                                    + $419.30 surcharge; Part D +$81.00)
+// `monthlySurcharge` is the surcharge DELTA over the standard premium, as in
+// the tables above. NOTE the boundary asymmetry: SSA words the middle MFS row
+// as "above $103,000 and LESS THAN $397,000" and the top row as "$397,000 or
+// above" — so unlike every single/MFJ row, the middle row's upper bound is
+// EXCLUSIVE. At exactly $397,000 the top tier applies. That dollar is
+// reachable in practice: `nextIrmaaTierCeiling` hands it to the conversion
+// cliff cap, which fills MAGI right up to the ceiling.
+const MFS_TIERS_2024: IrmaaTier[] = [
+  { magiUpper: 103_000, monthlySurcharge: 0 },
+  { magiUpper: 397_000, monthlySurcharge: 384.30 + 74.20, upperExclusive: true },
+  { magiUpper: Infinity, monthlySurcharge: 419.30 + 81.00 },
+];
 
 const BASE_YEAR = 2024;
 
@@ -61,7 +102,7 @@ function annualSurchargePerEnrollee(
   const factor = year > BASE_YEAR ? Math.pow(1 + inflationRate, year - BASE_YEAR) : 1;
   const tiers = tiersFor(filingStatus);
   for (const tier of tiers) {
-    if (lookbackMagi <= tier.magiUpper * factor) {
+    if (inTier(lookbackMagi, tier, factor)) {
       return tier.monthlySurcharge * 12;
     }
   }
@@ -98,7 +139,7 @@ export function calculateIRMAADetailed(
   let tierIndex = 0;
   if (lookbackMagi > 0) {
     for (let i = 0; i < tiers.length; i++) {
-      if (lookbackMagi <= tiers[i].magiUpper * factor) {
+      if (inTier(lookbackMagi, tiers[i], factor)) {
         tierIndex = i;
         break;
       }
@@ -155,7 +196,10 @@ export function nextIrmaaTierCeiling(
   const factor = year > BASE_YEAR ? Math.pow(1 + inflationRate, year - BASE_YEAR) : 1;
   const tiers = tiersFor(filingStatus);
   for (const tier of tiers) {
-    if (magiBaseline <= tier.magiUpper * factor) return tier.magiUpper * factor;
+    // The ceiling is the highest MAGI still INSIDE the tier — a cent under the
+    // bound where the statute makes it exclusive (MFS), so a conversion filled
+    // exactly to this figure cannot trip the next surcharge level.
+    if (inTier(magiBaseline, tier, factor)) return tierCeiling(tier, factor);
   }
   return Infinity;
 }
@@ -173,7 +217,7 @@ export function irmaaTierCeilings(
   const factor = year > BASE_YEAR ? Math.pow(1 + inflationRate, year - BASE_YEAR) : 1;
   return tiersFor(filingStatus)
     .filter((t) => isFinite(t.magiUpper))
-    .map((t) => t.magiUpper * factor);
+    .map((t) => tierCeiling(t, factor));
 }
 
 // Statutory NIIT MAGI threshold for a filing status (not inflation-indexed).

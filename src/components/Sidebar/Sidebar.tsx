@@ -2,7 +2,6 @@ import { useState, useContext } from 'react';
 import styled, { css, createGlobalStyle } from 'styled-components';
 import { RetirementContext } from '../../context/RetirementContext';
 import { Button } from 'primereact/button';
-import { ConfirmDialog } from 'primereact/confirmdialog';
 import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import ScenarioDialog from '../../dialogs/ScenarioDialog';
 import CloneScenarioDialog from '../../dialogs/CloneScenarioDialog';
@@ -241,7 +240,7 @@ const CompactFooterButton = styled.button<{ $primary?: boolean }>`
   color: ${props => props.$primary ? colors.primary : colors.textPrimary};
 
   &:hover {
-    background-color: ${props => props.$primary ? 'rgba(61, 122, 95, 0.08)' : 'rgba(0, 0, 0, 0.06)'};
+    background-color: ${props => props.$primary ? colors.hoverRow : colors.hoverNeutral};
     color: ${props => props.$primary ? colors.primary : colors.textPrimary};
   }
 `;
@@ -414,11 +413,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenar
     setEditingScenario(null);
   };
 
+  // Always allow closing — a first-time user with zero scenarios must be able
+  // to cancel back to the empty state (which offers the example buttons).
   const handleDialogHide = () => {
-    if (scenarios.length > 0) {
-      setDialogVisible(false);
-      setEditingScenario(null);
-    }
+    setDialogVisible(false);
+    setEditingScenario(null);
   };
 
   if (!isOpen) {
@@ -606,7 +605,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenar
         onHide={() => { setCloneDialogVisible(false); setCloneSourceScenario(null); }}
         onSave={(name) => { if (cloneSourceScenario) cloneScenario(cloneSourceScenario.id, name); }}
       />
-      <ConfirmDialog />
     </SidebarContainer>
   );
 };

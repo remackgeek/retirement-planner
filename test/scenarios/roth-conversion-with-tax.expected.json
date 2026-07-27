@@ -7,7 +7,7 @@
     { "index": 0, "field": "withdrawalFromTraditional", "min": 100000, "max": 105000, "_note": "Conversion principal plus a small bracket_aware spending pull" },
     { "index": 0, "field": "ordinaryTax", "min": 5000, "max": 25000, "_note": "Federal + CA state tax on ~$67k taxable after MFJ senior deduction" },
     { "index": 0, "field": "withdrawalFromBrokerage", "min": 5000, "max": 25000, "_note": "Taxable absorbs the tax via waterfall" },
-    { "index": 0, "field": "rothConversionTaxFromBrokerage", "min": 1000, "max": 25000, "_note": "Conv tax sourced from Taxable, not withheld" },
+    { "index": 0, "field": "rothConversionTaxFromBrokerage", "value": 8294.32, "tolerance": 10, "_note": "Conv tax sourced from Taxable, not withheld — deterministic marginal federal+CA ordinary tax on the $100k conversion (was a 24x-wide range any regression would pass)" },
     { "index": 1, "field": "rothConversionGross", "value": 0, "tolerance": 0.01, "_note": "One-time: no conversion in year 1" }
   ]
 }

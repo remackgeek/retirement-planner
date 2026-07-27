@@ -8,8 +8,23 @@ import type { AnnualCashFlowBreakdown } from '../services/SimulationService';
 // math would produce.
 // Returns null when there's nothing to base a rate on, so callers can hide the row.
 export function effectiveTaxRate(b: AnnualCashFlowBreakdown): number | null {
-  const denom = b.totalGrossIncome + b.portfolioWithdrawal - b.rothConversionGross;
+  const denom = effectiveTaxDenominator(b);
   const incomeTax = b.totalTax - b.irmaaSurcharge;
   if (denom <= 0 || incomeTax <= 0) return null;
   return incomeTax / denom;
+}
+
+// The cash actually flowing into the household — the shared base for every
+// effective-rate variant (headline, incl-IRMAA, per-jurisdiction splits).
+export function effectiveTaxDenominator(b: AnnualCashFlowBreakdown): number {
+  return b.totalGrossIncome + b.portfolioWithdrawal - b.rothConversionGross;
+}
+
+// Variant that keeps IRMAA in the numerator — the all-in cost of the year's
+// income against the same denominator. Shown alongside the headline rate only
+// when an IRMAA surcharge exists.
+export function effectiveTaxRateInclIrmaa(b: AnnualCashFlowBreakdown): number | null {
+  const denom = effectiveTaxDenominator(b);
+  if (denom <= 0 || b.totalTax <= 0) return null;
+  return b.totalTax / denom;
 }

@@ -8,6 +8,7 @@ import { Checkbox } from 'primereact/checkbox';
 import { confirmDialog } from 'primereact/confirmdialog';
 import type { Scenario } from '../types/Scenario';
 import type { IncomeEvent } from '../types/IncomeEvent';
+import { DEFAULT_SS_HAIRCUT_YEAR, DEFAULT_SS_HAIRCUT_PERCENT } from '../types/IncomeEvent';
 import { spacing, colors, border, fontSize, dialogWidth } from '../styles/theme';
 import { eventTypeIcons } from '../utils/defaultName';
 import { resolveOwnerAge } from '../utils/ownerAge';
@@ -67,6 +68,14 @@ const HaircutRow = styled.div`
   .p-inputnumber {
     width: 7rem;
   }
+`;
+
+const LabeledField = styled.label`
+  display: flex;
+  align-items: center;
+  gap: ${spacing.xs};
+  font-size: ${fontSize.sm};
+  color: ${colors.textSecondary};
 `;
 
 const HelpText = styled.small`
@@ -177,8 +186,10 @@ const SocialSecurityWizardDialog: React.FC<Props> = ({ visible, onHide, scenario
   const [atAge, setAtAge] = useState<AtAge>('fra');
   const [debouncedAnnual, setDebouncedAnnual] = useState(0);
   const [haircutEnabled, setHaircutEnabled] = useState(true);
-  const [haircutPercent, setHaircutPercent] = useState(23);
-  const [debouncedHaircutPercent, setDebouncedHaircutPercent] = useState(23);
+  const [haircutPercent, setHaircutPercent] = useState(DEFAULT_SS_HAIRCUT_PERCENT);
+  const [debouncedHaircutPercent, setDebouncedHaircutPercent] = useState(DEFAULT_SS_HAIRCUT_PERCENT);
+  const [haircutYear, setHaircutYear] = useState(DEFAULT_SS_HAIRCUT_YEAR);
+  const [debouncedHaircutYear, setDebouncedHaircutYear] = useState(DEFAULT_SS_HAIRCUT_YEAR);
   const [applyAge, setApplyAge] = useState<number | null>(null);
 
   const templateFor = (o: 'self' | 'spouse'): IncomeEvent | undefined =>
@@ -231,13 +242,15 @@ const SocialSecurityWizardDialog: React.FC<Props> = ({ visible, onHide, scenario
       setDisplayBenefit(p === 'monthly' ? Math.round(todayAnnual / 12) : Math.round(todayAnnual));
       setAtAge(tmpl.startAge >= MIN_CLAIM_AGE && tmpl.startAge <= MAX_CLAIM_AGE ? tmpl.startAge : 'fra');
       setHaircutEnabled(tmpl.ssHaircutEnabled ?? true);
-      setHaircutPercent(tmpl.ssHaircutPercent ?? 23);
+      setHaircutPercent(tmpl.ssHaircutPercent ?? DEFAULT_SS_HAIRCUT_PERCENT);
+      setHaircutYear(tmpl.ssHaircutYear ?? DEFAULT_SS_HAIRCUT_YEAR);
     } else {
       setPeriod('monthly');
       setDisplayBenefit(0);
       setAtAge('fra');
       setHaircutEnabled(true);
-      setHaircutPercent(23);
+      setHaircutPercent(DEFAULT_SS_HAIRCUT_PERCENT);
+      setHaircutYear(DEFAULT_SS_HAIRCUT_YEAR);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, owner]);
@@ -253,6 +266,10 @@ const SocialSecurityWizardDialog: React.FC<Props> = ({ visible, onHide, scenario
     const t = setTimeout(() => setDebouncedHaircutPercent(haircutPercent), 250);
     return () => clearTimeout(t);
   }, [haircutPercent]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedHaircutYear(haircutYear), 250);
+    return () => clearTimeout(t);
+  }, [haircutYear]);
 
   const elig = eligibilityFor(owner);
   const fraMonths = computeFraMonths(scenario.referenceYear - elig.age);
@@ -270,8 +287,9 @@ const SocialSecurityWizardDialog: React.FC<Props> = ({ visible, onHide, scenario
       template: elig.tmpl,
       haircutEnabled,
       haircutPercent: debouncedHaircutPercent,
+      haircutYear: debouncedHaircutYear,
     });
-  }, [scenario, owner, pia, fraMonths, elig.locked, elig.ageMin, elig.ageMax, elig.tmpl, haircutEnabled, debouncedHaircutPercent]);
+  }, [scenario, owner, pia, fraMonths, elig.locked, elig.ageMin, elig.ageMax, elig.tmpl, haircutEnabled, debouncedHaircutPercent, debouncedHaircutYear]);
 
   // Default the apply-age to the recommended best whenever the sweep changes.
   useEffect(() => {
@@ -333,6 +351,7 @@ const SocialSecurityWizardDialog: React.FC<Props> = ({ visible, onHide, scenario
       ...buildClaimingEvent(elig.tmpl, owner, applyAge, annualBenefit, {
         haircutEnabled,
         haircutPercent,
+        haircutYear,
         meta,
       }),
       id: elig.tmpl?.id ?? crypto.randomUUID(),
@@ -457,21 +476,37 @@ const SocialSecurityWizardDialog: React.FC<Props> = ({ visible, onHide, scenario
                 checked={haircutEnabled}
                 onChange={(e) => setHaircutEnabled(e.checked ?? false)}
               />
-              <label htmlFor="ssHaircut">Apply trust-fund reduction (from 2034)</label>
+              <label htmlFor="ssHaircut">Apply trust-fund reduction</label>
             </CheckboxRow>
             {haircutEnabled && (
-              <InputNumber
-                value={haircutPercent}
-                onValueChange={(e) => setHaircutPercent(e.value ?? 23)}
-                suffix="%"
-                min={0}
-                max={100}
-              />
+              <>
+                <LabeledField>
+                  Starting
+                  <InputNumber
+                    value={haircutYear}
+                    onValueChange={(e) => setHaircutYear(e.value ?? DEFAULT_SS_HAIRCUT_YEAR)}
+                    useGrouping={false}
+                    min={2025}
+                    max={2100}
+                  />
+                </LabeledField>
+                <LabeledField>
+                  Cut
+                  <InputNumber
+                    value={haircutPercent}
+                    onValueChange={(e) => setHaircutPercent(e.value ?? DEFAULT_SS_HAIRCUT_PERCENT)}
+                    suffix="%"
+                    min={0}
+                    max={100}
+                  />
+                </LabeledField>
+              </>
             )}
           </HaircutRow>
           <HelpText>
-            Trustees currently estimate a ~23% benefit cut in 2034 if the trust fund isn't
-            shored up. Toggle to compare claiming ages with and without it.
+            Latest trustees estimate (2026 report): a ~{DEFAULT_SS_HAIRCUT_PERCENT}% benefit cut
+            around {DEFAULT_SS_HAIRCUT_YEAR} if the trust fund isn't shored up. Edit the year/percent
+            to model your own assumption, or toggle to compare claiming ages with and without it.
           </HelpText>
         </InputGroup>
 
@@ -590,10 +625,10 @@ const SocialSecurityWizardDialog: React.FC<Props> = ({ visible, onHide, scenario
                   Click a row to choose which claiming age to apply. ★ = recommended.
                 </HelpText>
                 {haircutEnabled &&
-                  scenario.referenceYear + (scenario.lifeExpectancy - scenario.currentAge) >= 2034 && (
+                  scenario.referenceYear + (scenario.lifeExpectancy - scenario.currentAge) >= haircutYear && (
                     <HelpText>
-                      Annual benefit is the gross check; with the 2034 trust-fund reduction on,
-                      benefits from 2034 onward are ~{haircutPercent}% lower — Plan final value
+                      Annual benefit is the gross check; with the trust-fund reduction on,
+                      benefits from {haircutYear} onward are ~{haircutPercent}% lower — Plan final value
                       already reflects this.
                     </HelpText>
                   )}

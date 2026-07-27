@@ -53,7 +53,13 @@ const TaxAndIrsDialog: React.FC<TaxAndIrsDialogProps> = ({
 
   useEffect(() => {
     if (visible) setForm(formFromScenario(scenario));
-  }, [visible, scenario]);
+    // Initialize form state only when the dialog opens (false→true).
+    // `scenario` is deliberately NOT a dep: the automatic ~1s
+    // lastSuccessProbability write-back replaces the scenario object identity
+    // while the dialog is open, and re-running this effect then would wipe the
+    // user's in-progress edits. Same pattern as ModelingDialog / ScenarioDialog.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   const handleSave = () => {
     onSave({
@@ -238,6 +244,22 @@ const TaxAndIrsDialog: React.FC<TaxAndIrsDialogProps> = ({
               />
             </InputGroup>
             <InputGroup>
+              <label>401(k) Catch-up (60–63)</label>
+              <InputNumber
+                value={form.contributionLimits.superCatchUp401k}
+                onValueChange={(e) =>
+                  setForm({
+                    ...form,
+                    contributionLimits: { ...form.contributionLimits, superCatchUp401k: e.value ?? 0 },
+                  })
+                }
+                mode="currency"
+                currency="USD"
+                min={0}
+                inputStyle={{ width: '8rem' }}
+              />
+            </InputGroup>
+            <InputGroup>
               <label>IRA Catch-up</label>
               <InputNumber
                 value={form.contributionLimits.catchUpIra}
@@ -278,6 +300,10 @@ const TaxAndIrsDialog: React.FC<TaxAndIrsDialogProps> = ({
           <HelpText>
             Caps are enforced per-owner per-kind. Excess contributions are not deposited;
             the dollars remain in spendable cash via the originating wage event.
+            The 60–63 catch-up is the SECURE 2.0 enhanced 401(k) amount; at 64 the regular
+            catch-up resumes. IRAs have no enhanced catch-up. The 60–63 band itself is fixed
+            by statute, but it still starts no earlier than the catch-up age above — set that
+            past 63 and no enhanced catch-up applies.
           </HelpText>
         </Section>
 

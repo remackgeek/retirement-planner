@@ -1,12 +1,12 @@
 {
-  "_rationale": "WA has no ordinary state tax. WA 7% LTCG kicks in only above the indexed threshold ($262k base @ 2024, indexed forward; in this 2026 scenario with 0% inflation it stays at $262k). Federal LTCG 15% applies to full gross. Withdrawal w solves: 0.85w − 0.07(w − 262000) = 400000 → 0.78w = 400000 − 18340 = 381660 → w ≈ $489,308. State LTCG ≈ 0.07·($489,308 − $262k) = $15,912. Federal LTCG = $73,396.",
+  "_rationale": "WA has no ordinary state tax. WA 7% LTCG kicks in only above the standard deduction (RCW 82.87.060) — $270k 2024 indexed value, one combined deduction per couple, indexed forward from 2024; in this 2026 scenario with 0% inflation it stays at $270k. (Earlier data wrongly anchored $262k, the 2023 value.) Federal LTCG 15% applies to full gross. Withdrawal w solves: 0.85w − 0.07(w − 270000) = 400000 → 0.78w = 400000 − 18900 = 381100 → w ≈ $488,590. State LTCG ≈ 0.07·($488,590 − $270k) = $15,301. Federal LTCG ≈ $73,288.",
   "probability": 100,
   "pathValues": [
     { "index": 0, "age": 60, "value": 2000000, "tolerance": 1, "note": "Starting balance" }
   ],
   "breakdownChecks": [
     { "index": 0, "field": "ordinaryTax", "value": 0, "tolerance": 1, "_note": "WA has no ordinary state tax" },
-    { "index": 0, "field": "federalCapGainsTax", "value": 73396, "tolerance": 60, "_note": "0.15 × $489,308" },
-    { "index": 0, "field": "stateCapGainsTax", "value": 15912, "tolerance": 60, "_note": "WA 7% on ($489,308 − $262k indexed threshold)" }
+    { "index": 0, "field": "federalCapGainsTax", "value": 73288, "tolerance": 60, "_note": "0.15 × $488,590" },
+    { "index": 0, "field": "stateCapGainsTax", "value": 15301, "tolerance": 60, "_note": "WA 7% on ($488,590 − $270k indexed threshold)" }
   ]
 }

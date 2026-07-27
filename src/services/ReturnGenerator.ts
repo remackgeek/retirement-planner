@@ -1,5 +1,6 @@
 import type { UserData } from '../types/UserData';
 import type { PortfolioAssumptions } from '../types/IncomeEvent';
+import { projectionHorizonYears } from './deathModel';
 import {
   HISTORICAL_RETURNS,
   HISTORICAL_FIRST_YEAR,
@@ -181,8 +182,15 @@ function createHistoricalSingleGenerator(userData: UserData): ReturnGenerator {
   };
 }
 
+// Projection length in years — the death-model horizon, NOT the self-only
+// `lifeExpectancy − currentAge + 1`. The widow's-penalty feature runs the
+// simulation loop to the SURVIVOR's death (max of self/spouse death), so a
+// self-only horizon under-sizes the rolling run count and — worse — the
+// bootstrap indexMap: survivor years would read the NEXT run's rows and the
+// final run would index past the typed array (HISTORICAL_RETURNS[undefined]
+// → TypeError).
 function retirementHorizon(userData: UserData): number {
-  return userData.lifeExpectancy - userData.currentAge + 1;
+  return projectionHorizonYears(userData);
 }
 
 function createHistoricalRollingGenerator(userData: UserData): ReturnGenerator {

@@ -313,3 +313,38 @@ describe('createNominalGenerator', () => {
     expect(factors.bondFactor).toBeCloseTo(1.03);
   });
 });
+
+describe('survivor (widow\'s-penalty) horizon', () => {
+  // Regression: the generators sized their horizon self-only
+  // (lifeExpectancy − currentAge + 1), but the simulation loop runs to the
+  // SURVIVOR's death. The bootstrap indexMap was under-sized: survivor years
+  // read the next run's rows and the last run indexed past the typed array
+  // (HISTORICAL_RETURNS[undefined] → TypeError).
+  const withSurvivor = (pa: Partial<UserData['portfolioAssumptions']>, numSimulations = 10): UserData => ({
+    ...makeUserData(pa, { currentAge: 65, lifeExpectancy: 80, numSimulations }),
+    filingStatus: 'mfj',
+    spouseAge: 60,
+    spouseLifeExpectancy: 92, // spouse outlives self: horizon = 92 − 60 + 1 = 33
+  });
+
+  it('bootstrap draws stay finite for every run across the full survivor horizon', () => {
+    const ud = withSurvivor({ returnModel: 'historical_bootstrap', historicalBlockSize: 5 });
+    const gen = createReturnGenerator(ud, createSeededRandom(42));
+    const horizon = 92 - 60 + 1;
+    for (let run = 0; run < gen.getNumRuns(); run++) {
+      for (let y = 0; y < horizon; y++) {
+        const f = gen.drawFactors(run, y, Math.random);
+        expect(Number.isFinite(f.stockFactor)).toBe(true);
+        expect(Number.isFinite(f.bondFactor)).toBe(true);
+        expect(Number.isFinite(gen.drawInflation(run, y, Math.random))).toBe(true);
+      }
+    }
+  });
+
+  it('rolling run count uses the survivor horizon, not the self-only horizon', () => {
+    const ud = withSurvivor({ returnModel: 'historical_rolling' });
+    const gen = createReturnGenerator(ud);
+    // 97 − 33 + 1 = 65 valid start years (self-only 16-year horizon would give 82).
+    expect(gen.getNumRuns()).toBe(65);
+  });
+});

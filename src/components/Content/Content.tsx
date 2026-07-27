@@ -159,7 +159,16 @@ const ContentInner: React.FC<ContentProps & {
     const returnModel = activeScenario.portfolioAssumptions?.returnModel ?? 'parametric';
     const supportsFastPreview = returnModel !== 'historical_rolling' && returnModel !== 'historical_bootstrap';
     if (supportsFastPreview) {
-      setResults(runFastPreview(activeScenario, activeScenario.lastSuccessProbability));
+      // Runs synchronously inside the effect, so an exception here escapes to
+      // the app-wide ErrorBoundary and blanks the whole UI. The full MC below
+      // already fails soft via .catch — match that. A malformed scenario (e.g.
+      // one whose migration threw on load) then just shows no preview line
+      // instead of taking the app down.
+      try {
+        setResults(runFastPreview(activeScenario, activeScenario.lastSuccessProbability));
+      } catch (err) {
+        console.error('Fast preview failed for the active scenario:', err);
+      }
     }
     setIsCalculating(true);
     // Phase 2: debounced full Monte Carlo, dispatched to the worker pool via SimulationClient.
@@ -174,13 +183,17 @@ const ContentInner: React.FC<ContentProps & {
         pendingRun.current = null;
         // Guard writeback: only update if the active scenario still matches
         // (read through ref since the closure's activeScenario is stale).
+        // Spread the CURRENT active scenario, not the captured one — the sim
+        // fingerprint deliberately excludes display-only fields (name), so a
+        // rename landing while the run was in flight must not be reverted by
+        // writing the captured snapshot back.
         const currentActive = activeScenarioRef.current;
         if (
-          result.probability !== capturedScenario.lastSuccessProbability &&
-          currentActive && currentActive.id === capturedScenarioId
+          currentActive && currentActive.id === capturedScenarioId &&
+          result.probability !== currentActive.lastSuccessProbability
         ) {
           skipNextSim.current = true;
-          updateScenario({ ...capturedScenario, lastSuccessProbability: result.probability });
+          updateScenario({ ...currentActive, lastSuccessProbability: result.probability });
         }
       }).catch((err) => {
         if (err instanceof SupersededError) return;

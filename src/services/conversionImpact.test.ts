@@ -3,6 +3,7 @@ import type { UserData } from '../types/UserData';
 import type { IncomeEvent } from '../types/IncomeEvent';
 import {
   estimateConversionImpact,
+  baselineOrdinaryGross,
   exceedsSpendingHeuristic,
   crossesMultipleBracketsHeuristic,
   exceedsMostOfTradHeuristic,
@@ -126,6 +127,15 @@ describe('estimateConversionImpact', () => {
     const conversion = makeConversion({ amount: 40000, startAge: 60, endAge: 68, isOneTime: false });
     const result = estimateConversionImpact(userData, conversion);
     expect(Number.isFinite(result.netPlanValueImpact)).toBe(true);
+    // The load-bearing property: a $1 placeholder conversion must have a
+    // near-zero impact. Under the old conversion-presence policy gating, adding
+    // ANY conversion flipped the spending order and the "impact" absorbed a
+    // ~$514k policy bonus that wasn't the conversion's doing. (A bare
+    // isFinite() check — this test's previous only assertion — can't fail
+    // on that regression.)
+    const placeholder = makeConversion({ amount: 1, startAge: 60, isOneTime: true });
+    const placeholderImpact = estimateConversionImpact(userData, placeholder).netPlanValueImpact;
+    expect(Math.abs(placeholderImpact)).toBeLessThan(1000);
   });
 
   it('computes incremental tax for a single-year conversion at age 60, single filer FL', () => {
@@ -473,6 +483,52 @@ describe('estimateConversionImpact', () => {
   });
 });
 
+describe('baselineOrdinaryGross — SS trust-fund haircut', () => {
+  // currentAge 60 @ referenceYear 2026, SS starting age 62 (year 2028), no inflation
+  // so the $30k benefit is flat. The conversion preview's baseline SS gross must apply
+  // the same year/percent haircut as the engine (SimulationService.accumulateIncome).
+  const ssEvent: IncomeEvent = {
+    id: 'ss-1',
+    type: 'social_security',
+    name: 'SS',
+    amount: 30000,
+    startAge: 62,
+    taxStatus: 'before_tax',
+    colaType: 'fixed',
+  };
+
+  it('applies the default 22% haircut from the default 2032 year', () => {
+    const userData = baseUserData({ incomeEvents: [ssEvent] });
+    expect(baselineOrdinaryGross(userData, 2031, 0).ssGross).toBe(30000);
+    // 2032 is DEFAULT_SS_HAIRCUT_YEAR; 30000 * (1 - 0.22) = 23400.
+    expect(baselineOrdinaryGross(userData, 2032, 0).ssGross).toBeCloseTo(23400, 5);
+  });
+
+  it('honors a custom ssHaircutYear (defers the cut)', () => {
+    const userData = baseUserData({
+      incomeEvents: [{ ...ssEvent, ssHaircutYear: 2040 }],
+    });
+    // Default-year haircut would bite at 2032, but the custom 2040 year defers it.
+    expect(baselineOrdinaryGross(userData, 2032, 0).ssGross).toBe(30000);
+    expect(baselineOrdinaryGross(userData, 2040, 0).ssGross).toBeCloseTo(23400, 5);
+  });
+
+  it('honors a custom ssHaircutPercent', () => {
+    const userData = baseUserData({
+      incomeEvents: [{ ...ssEvent, ssHaircutPercent: 30 }],
+    });
+    // 30000 * (1 - 0.30) = 21000 from the default 2032 year.
+    expect(baselineOrdinaryGross(userData, 2032, 0).ssGross).toBeCloseTo(21000, 5);
+  });
+
+  it('skips the haircut when disabled', () => {
+    const userData = baseUserData({
+      incomeEvents: [{ ...ssEvent, ssHaircutEnabled: false }],
+    });
+    expect(baselineOrdinaryGross(userData, 2032, 0).ssGross).toBe(30000);
+  });
+});
+
 describe('warning heuristics', () => {
   it('exceedsSpendingHeuristic fires when conversion >> living expenses and stays silent otherwise', () => {
     const userData = baseUserData({
@@ -484,6 +540,27 @@ describe('warning heuristics', () => {
           amount: 40000,
           startAge: 60,
           inflationAdjusted: false,
+        },
+      ],
+    });
+    expect(exceedsSpendingHeuristic(userData, makeConversion({ amount: 80000 }))).toBe(true);
+    expect(exceedsSpendingHeuristic(userData, makeConversion({ amount: 30000 }))).toBe(false);
+  });
+
+  it('exceedsSpendingHeuristic treats a monthly-period goal identically — amount is stored annual', () => {
+    // Regression: annualizing again for amountPeriod === 'monthly' (the living-
+    // expenses dialog default) overstated livingExpenses 12×, so this warning
+    // effectively never fired for monthly-period goals.
+    const userData = baseUserData({
+      spendingGoals: [
+        {
+          id: 'le-1',
+          type: 'living_expenses',
+          name: 'Living',
+          amount: 40000,
+          startAge: 60,
+          inflationAdjusted: false,
+          amountPeriod: 'monthly',
         },
       ],
     });

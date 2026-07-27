@@ -45,7 +45,7 @@ const PresetBtn = styled.button<{ $active: boolean }>`
   border-radius: ${border.radius};
   cursor: pointer;
   background: ${({ $active }) => ($active ? colors.primary : colors.bgLight)};
-  color: ${({ $active }) => ($active ? '#fff' : colors.textPrimary)};
+  color: ${({ $active }) => ($active ? colors.onPrimary : colors.textPrimary)};
   font-weight: ${({ $active }) => ($active ? 600 : 400)};
 
   &:hover {

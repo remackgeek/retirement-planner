@@ -2,8 +2,9 @@ import React from 'react';
 import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import { spacing, colors, border, fontSize } from '../../styles/theme';
 import { toDisplay, type DisplayCurrency } from '../../utils/displayCurrency';
-import { fmtPctRound } from '../../utils/formatPercent';
+import { fmtPctRound, fmtPct1 } from '../../utils/formatPercent';
 import { fmtMoney } from '../../utils/fmtMoney';
+import { effectiveTaxRate, effectiveTaxDenominator, effectiveTaxRateInclIrmaa } from '../../utils/effectiveTaxRate';
 import type { AnnualCashFlowBreakdown } from '../../services/SimulationService';
 
 interface Props {
@@ -55,11 +56,16 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
     );
   }
   const d = (v: number) => toDisplay(v, pathFactor, displayCurrency);
+  // Rates are ratios of same-year nominal values, so display-currency deflation cancels —
+  // compute them from raw breakdown values, never through d().
+  const rateDenom = effectiveTaxDenominator(breakdown);
+  const effRate = effectiveTaxRate(breakdown);
+  const effRateInclIrmaa = effectiveTaxRateInclIrmaa(breakdown);
   const ssZoneLabel: Record<string, string> = {
     'none': 'Below first threshold — 0% taxable',
     '50%': 'Between thresholds — up to 50% taxable',
     '85%': 'Above second threshold — up to 85% taxable',
-    'mfs-flat': 'MFS — always 85% taxable',
+    'mfs-flat': 'MFS — 85% taxable (capped at 85% of provisional income)',
   };
 
   return (
@@ -216,20 +222,20 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
           </Section>
         )}
 
-        {(audit.rmdSelf > 0 || audit.rmdSpouse > 0) && (
+        {(breakdown.rmdRequiredSelf > 0 || breakdown.rmdRequiredSpouse > 0) && (
           <Section title="RMD (Required Minimum Distribution)">
-            {audit.rmdSelf > 0 && (
+            {breakdown.rmdRequiredSelf > 0 && (
               <>
                 <Row label="Self — BoY Traditional balance" value={`$${fmtMoney(d(audit.rmdBoyBalanceSelf))}`} muted />
                 <Row label={`Self — IRS uniform table divisor`} value={audit.rmdDivisorSelf.toFixed(1)} muted />
-                <Row label="Self RMD" value={`$${fmtMoney(d(audit.rmdSelf))}`} />
+                <Row label="Self RMD" value={`$${fmtMoney(d(breakdown.rmdRequiredSelf))}`} />
               </>
             )}
-            {audit.rmdSpouse > 0 && (
+            {breakdown.rmdRequiredSpouse > 0 && (
               <>
                 <Row label="Spouse — BoY Traditional balance" value={`$${fmtMoney(d(audit.rmdBoyBalanceSpouse))}`} muted />
                 <Row label="Spouse — IRS uniform table divisor" value={audit.rmdDivisorSpouse.toFixed(1)} muted />
-                <Row label="Spouse RMD" value={`$${fmtMoney(d(audit.rmdSpouse))}`} />
+                <Row label="Spouse RMD" value={`$${fmtMoney(d(breakdown.rmdRequiredSpouse))}`} />
               </>
             )}
             <Row label="Total RMD required" value={`$${fmtMoney(d(breakdown.rmdRequired))}`} />
@@ -269,8 +275,8 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
         )}
       </div>
 
-      {/* Totals */}
-      <div style={{ gridColumn: '1 / -1' }}>
+      {/* Totals + rates */}
+      <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(18rem, 1fr))', gap: spacing.lg }}>
         <Section title="Total Tax (this year)">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', columnGap: spacing.md, rowGap: '2px', fontSize: fontSize.xs }}>
             <span>Federal ordinary</span><span style={{ textAlign: 'right' }}>${fmtMoney(d(audit.federalOrdinaryTax))}</span>
@@ -287,6 +293,31 @@ const YearTaxAudit: React.FC<Props> = ({ breakdown, pathFactor, displayCurrency,
             <span style={{ fontWeight: 'bold' as const, borderTop: border.standard, paddingTop: spacing.xs }}>Total</span>
             <span style={{ fontWeight: 'bold' as const, borderTop: border.standard, paddingTop: spacing.xs, textAlign: 'right' }}>${fmtMoney(d(breakdown.totalTax))}</span>
           </div>
+        </Section>
+
+        <Section title="Tax Rates (this year)">
+          <Row label="Marginal federal rate" value={fmtPctRound(audit.federalMarginalRate)} />
+          <Row label="Marginal state rate" value={fmtPctRound(audit.stateMarginalRate)} muted={audit.stateMarginalRate === 0} />
+          {rateDenom > 0 && (
+            <>
+              <Row label="Effective federal" value={fmtPct1((audit.federalOrdinaryTax + breakdown.federalCapGainsTax + breakdown.niitTax) / rateDenom)} muted />
+              <Row label="Effective state" value={fmtPct1((audit.stateOrdinaryTax + audit.stateLocalitySurcharge + breakdown.stateCapGainsTax) / rateDenom)} muted />
+            </>
+          )}
+          <Row label={<>
+            <span className="yt-tip-effrate">Effective rate</span>
+            <PrimeTooltip target=".yt-tip-effrate" position="bottom" showDelay={150}>
+              <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+                All income tax ÷ cash actually flowing into the household
+                (gross income + portfolio withdrawals − Roth conversion gross,
+                since converted dollars aren't spendable). Excludes IRMAA —
+                it's a Medicare premium, not an income tax.
+              </div>
+            </PrimeTooltip>
+          </>} value={effRate !== null ? fmtPct1(effRate) : '—'} />
+          {breakdown.irmaaSurcharge > 0.5 && effRateInclIrmaa !== null && (
+            <Row label="Effective incl. IRMAA" value={fmtPct1(effRateInclIrmaa)} />
+          )}
         </Section>
       </div>
     </div>

@@ -41,8 +41,9 @@ export interface IncomeEvent {
   isOneTime?: boolean; // If true, income occurs only in the start year (endAge unused)
   taxStatus: 'before_tax' | 'after_tax'; // Except Social Security is always before_tax
   colaType: 'fixed' | 'inflation_adjusted';
-  ssHaircutEnabled?: boolean; // SS only — apply trust fund reduction from 2034
-  ssHaircutPercent?: number; // SS only — reduction percentage (default 23)
+  ssHaircutEnabled?: boolean; // SS only — apply the trust-fund reduction from ssHaircutYear
+  ssHaircutPercent?: number; // SS only — reduction percentage (default DEFAULT_SS_HAIRCUT_PERCENT)
+  ssHaircutYear?: number; // SS only — calendar year the trust-fund reduction begins (default DEFAULT_SS_HAIRCUT_YEAR)
   ssAmountBasis?: 'today' | 'future'; // SS only — today's dollars vs already-inflated (default 'today')
   amountPeriod?: 'monthly' | 'annual'; // UI hint for input/display period (default 'annual')
   accountId?: string; // retirement_contribution only — target account for the contribution
@@ -52,6 +53,13 @@ export interface IncomeEvent {
   wageEventId?: string; // retirement_contribution only — optional linked wage event for match-base calc
   meta?: IncomeEventMeta; // provenance — set by the Roth Conversion generator wizard
 }
+
+// Social Security trust-fund "haircut" defaults. The year/percent track the latest
+// Trustees Report projection (2026 report: OASI fund depletion ~2032, ~22% cut), but
+// both are per-event editable so users can update them without a code push or model
+// alternative legislative outcomes. Shared by the engine, dialogs, and SS optimizer.
+export const DEFAULT_SS_HAIRCUT_YEAR = 2032;
+export const DEFAULT_SS_HAIRCUT_PERCENT = 22;
 
 export type PortfolioType = '80_20' | '60_40' | '50_50';
 

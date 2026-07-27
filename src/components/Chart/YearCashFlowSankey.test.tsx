@@ -19,9 +19,10 @@ const audit = (o: Partial<AnnualAuditBreakdown> = {}): AnnualAuditBreakdown => (
   irmaaLookbackMagi: 0, irmaaTierIndex: 0, irmaaTierUpperScaled: 0, irmaaPerEnrolleeAnnual: 0,
   irmaaEnrolleeCount: 0, irmaaMonthlySurcharge: 0,
   niitMagi: 0, niitThreshold: 0, niitMagiExcess: 0, niitInvestmentIncome: 0, niitTaxableBase: 0,
-  rmdSelf: 0, rmdSpouse: 0, rmdDivisorSelf: 0, rmdDivisorSpouse: 0,
+  rmdDivisorSelf: 0, rmdDivisorSpouse: 0,
   rmdBoyBalanceSelf: 0, rmdBoyBalanceSpouse: 0,
   incomeEventTaxBreakdown: [],
+  spendingGoalBreakdown: [],
   ...o,
 });
 
@@ -32,7 +33,7 @@ const makeBreakdown = (o: Partial<AnnualCashFlowBreakdown> = {}): AnnualCashFlow
   cashInterest: 0, cashEndingBalance: 0, cashRefillFromSurplus: 0, cashSweepToBrokerage: 0,
   totalTax: 0, ordinaryTax: 0, federalCapGainsTax: 0, stateCapGainsTax: 0, stateLocalitySurcharge: 0,
   irmaaSurcharge: 0, niitTax: 0, netCashFlow: 0,
-  rmdRequired: 0, rmdExcess: 0,
+  rmdRequired: 0, rmdExcess: 0, rmdRequiredSelf: 0, rmdRequiredSpouse: 0,
   rothConversionGross: 0, rothConversionRequested: 0,
   rothConversionTaxFromCash: 0, rothConversionTaxFromBrokerage: 0,
   rothConversionTaxFromRmdExcess: 0, rothConversionTaxWithheld: 0,
@@ -41,6 +42,7 @@ const makeBreakdown = (o: Partial<AnnualCashFlowBreakdown> = {}): AnnualCashFlow
   spendingShortfall: 0, wageIncomeGross: 0,
   preTaxContributions: 0, rothContributions: 0, afterTaxContributions: 0, employerMatch: 0,
   contributionsCappedAmount: 0, surplusContribution: 0,
+  boyBalanceTraditional: 0, boyBalanceRoth: 0, boyBalanceBrokerage: 0, boyBalanceCash: 0,
   audit: audit(),
   ...o,
 });

@@ -82,7 +82,10 @@ projections, and good tax awareness without overwhelming the user.
   `{ minAmount, targetAmount, maxAmount, refillTrigger }` as **fixed dollar
   amounts** (they do not inflate). Behavior: (a) the spending waterfall
   pulls Cash only down to `minAmount`, then falls through to Brokerage
-  (the conversion-tax sourcing chain respects the same floor); (b) when cash
+  (the conversion-tax sourcing chain respects the same floor; floor-locked
+  dollars are also excluded from the spending withdrawal cap, so a
+  floor-constrained year reports an honest `spendingShortfall` instead of
+  phantom-funding spending from cash it can't touch); (b) when cash
   exceeds `maxAmount`, the excess sweeps to Brokerage as a tax-free
   balance transfer; (c) when cash is below `minAmount` AND the
   trigger fires, this year's surplus reroutes from Brokerage to Cash up to
@@ -124,18 +127,32 @@ projections, and good tax awareness without overwhelming the user.
   for a Traditional account remains the **total** outflow across all sub-purposes.
 - **Income events** — 11 types. `wage_income` (W-2 salary, taxable ordinary income),
   `retirement_contribution` (pre-tax / Roth / after-tax deposit instruction — never adds
-  to spendable cash; `pre_tax` reduces `otherTaxableGross` before tax calc, floored at zero;
+  to spendable cash, and deposited Roth/after-tax employee dollars are SUBTRACTED from
+  spendable cash, floored at the year's modeled cash inflow, so a contribution next to a
+  modeled salary isn't double-counted as surplus while a lone contribution event with no
+  modeled income stays exogenously funded; `pre_tax` reduces `otherTaxableGross` before
+  tax calc, floored at zero;
   routed to a target account by `contributionType` and optional `accountId`; supports
   optional employer match via `employerMatchPercent` + `employerMatchCeilingPercent` and
   optional `wageEventId` to compute the match base off a linked salary event), and
   `roth_conversion` for Traditional→Roth transfers. Each has a required `name`
-  (auto-generated defaults like "Pension Income 1"), COLA, before/after-tax, SS 2034 haircut
-  (configurable). All cash flow flows through events/goals — no special-cased fields on UserData.
+  (auto-generated defaults like "Pension Income 1"), COLA, before/after-tax, SS trust-fund
+  haircut (per-event `ssHaircutEnabled` / `ssHaircutPercent` / `ssHaircutYear`; the year and
+  percent are user-editable in the SS dialog + wizard, defaulting to
+  `DEFAULT_SS_HAIRCUT_YEAR` / `DEFAULT_SS_HAIRCUT_PERCENT` = 2032 / 22% from `src/types/IncomeEvent.ts`,
+  tracking the 2026 Trustees Report — so the projection updates without a code push and users can
+  model alternative legislative outcomes). All cash flow flows through events/goals — no special-cased fields on UserData.
   IRS contribution caps are enforced per `(owner, kind)` group, where account "kind" is
   `Account.accountKind` (`'401k' | 'ira' | 'brokerage'`; defaults: traditional/roth → IRA,
   brokerage → brokerage). Within a group, pre_tax + roth contributions pool against the
   same cap (`elective401k` for 401(k)-kind, `iraLimit` for IRA-kind, plus catch-up at
-  `catchUpAge`). Caps live on `UserData.contributionLimits` (see `getContributionLimits`
+  `catchUpAge`; ages 60–63 use the SECURE 2.0 enhanced 401(k) catch-up
+  `superCatchUp401k` — statutory band, IRAs excluded, and still gated by
+  `catchUpAge` so pushing that past 63 disables it. When `superCatchUp401k` is
+  absent it backfills to `1.5 × catchUp401k` if the scenario customized that,
+  else the year's default — so `catchUp401k: 0` stays 0 rather than silently
+  gaining the statutory floor on upgrade). Caps live on
+  `UserData.contributionLimits` (see `getContributionLimits`
   for defaults) and optionally inflate yearly. Excess deposits are scaled down
   proportionally; the cut is captured in `AnnualCashFlowBreakdown.contributionsCappedAmount`.
   Capped pre-tax dollars stay in `otherTaxableGross` (they were never deducted); employer
@@ -156,8 +173,12 @@ projections, and good tax awareness without overwhelming the user.
   (sum = `rothConversionGross`) and `rothConversionTaxWithheldSelf` / `Spouse` (sum =
   `rothConversionTaxWithheld` — withholding splits proportionally to each owner's gross
   because each owner's 1099-R is independent). RMD is enforced first (IRS rule: RMD is
-  not eligible for conversion); conversion is capped at the per-owner Traditional
-  balance remaining after the forced per-owner RMD. **Conversion ordinary tax sourcing is hybrid**, in priority
+  not eligible for conversion); conversion is capped per owner at the LIVE (post-growth)
+  Traditional balance remaining after the forced per-owner RMD, then JOINTLY at the
+  Traditional dollars remaining after the spending waterfall's pull (both owners scale
+  proportionally when the joint cap binds) — so spending + conversion can never withdraw
+  more than the accounts hold (no phantom Roth deposits in crash years or
+  near-full-conversion years). **Conversion ordinary tax sourcing is hybrid**, in priority
   order (see "Intents and funding sources" below): (1) Cash balance not consumed by
   spending — preferred because principal is tax-free and avoids the LTCG/NIIT
   amplification phantom on Brokerage pulls; (2) RMD-excess cash, (3) Brokerage balance
@@ -203,7 +224,15 @@ projections, and good tax awareness without overwhelming the user.
   `exceedsMostOfTradHeuristic` in `conversionImpact.ts`.
 - **Spending goals** — 11 categories, each with a required `name` (auto-generated defaults
   like "Vacation 1"), inflation adjustment, age-based activation.
-  `living_expenses` goals support optional `yearlyDecreasePercent` for spending decay
+  `living_expenses` goals support optional `yearlyDecreasePercent` for spending decay.
+  **Per-goal attribution:** `audit.spendingGoalBreakdown` (the spending-side sibling of
+  `audit.incomeEventTaxBreakdown`) carries one `{ goalId, goalName, goalType, amountNet }`
+  row per goal active in the year; living rows sum to `baseSpendingNet`, the rest to
+  `otherSpendingGoalsNet`. Built once per year in the precompute phase
+  (`accumulateSpending`) so it adds no MC hot-loop cost; consumed by the secondary
+  Expenses chart, the Sankey's per-goal sink nodes (`dst_goal_<goalId>`, with the single
+  `dst_goals` aggregate only as an audit-absent/reconciliation fallback), and the CSV's
+  dynamic per-goal columns.
 - **Tax** — aggregate income taxation; SS 50%/85% taxable fraction (IRS provisional
   income formula); standard deduction, filing status, state rates with optional
   relocation timeline, senior/OBBB deductions. For years > 2026, federal bracket
@@ -237,7 +266,7 @@ projections, and good tax awareness without overwhelming the user.
   / `exempt` for MO / `threshold` for WA), optional locality surcharge (NYC), and
   inflation-indexing flag (NY/NJ brackets are statutorily frozen). Time-bounded
   profiles chain via `effectiveYears` + `successorProfileKey` (SC top-rate sunset
-  after 2026, WV SS phase-out from 2027). Audit fields under `audit.state*`
+  after 2026, WV SS exempt from 2026 per HB 4880). Audit fields under `audit.state*`
   capture the per-year decomposition (ordinary base, std deduction, retirement
   exclusion applied, SS included, bracket index, marginal rate, locality, LTCG
   threshold, LTCG state-taxable portion, profile key, notes).
@@ -555,7 +584,7 @@ For all content-level changes — adding `meta` to `IncomeEvent`, splitting a go
 
 **Content-schema version stamp (`schemaVersion`).** Every persisted/exported `Scenario`
 carries an optional `schemaVersion?: number` (in [src/types/Scenario.ts](src/types/Scenario.ts)),
-stamped to the exported `CURRENT_SCHEMA_VERSION` constant (currently `1`) on **every write** —
+stamped to the exported `CURRENT_SCHEMA_VERSION` constant (currently `2`) on **every write** —
 `addScenario`, `updateScenario`, `exportScenario`, and the `initDB` load loop. The load-loop
 stamp is **silent**: it persists via `db.put` but must NOT fire the "Scenarios updated" toast,
 so it's gated by a `needsPersist` flag kept separate from `migratedThisScenario` (only the
@@ -563,14 +592,25 @@ pattern-1 content migrations increment the toast counter). `undefined` means a p
 record/file ("legacy"). This is **distinct from `DB_VERSION`** — that versions the IndexedDB
 *structure*; this versions the *content* shape inside a Scenario.
 
-**The value is stamped but the inference migrations still do all the actual transforms.**
-The shape-inference migrations (which detect old shape by field presence/type) plus
-`normalizeScenario` cover all v0→v1 work today. `schemaVersion: 1` asserts "this is the
-current Scenario shape, post all existing inference migrations." The **ordered-registry
-skeleton** (`MIGRATORS` + `applyVersionedMigrators` in
-[src/utils/scenarioMigration.ts](src/utils/scenarioMigration.ts)) is wired into the pipeline
-but currently empty — it's the home for the *next* content change. Do not read `schemaVersion`
-to branch behavior elsewhere; the registry is the one sanctioned place that does.
+**Two migration styles coexist, by design.** The shape-inference migrations (which detect
+old shape by field presence/type) plus `normalizeScenario` still do all v0→v1 work; they're
+self-idempotent, so they don't need a version gate. The **ordered registry** (`MIGRATORS` +
+`applyVersionedMigrators` in
+[src/utils/scenarioMigration.ts](src/utils/scenarioMigration.ts)) handles changes that
+*can't* be inferred from shape — where the old and new values are both valid-looking, so
+running twice would corrupt. `MIGRATORS[v]` upgrades a v→v+1 record and runs **exactly
+once** per record.
+
+- `MIGRATORS[1]` (v1→v2) — `repairInflatedCashBucketBand`: undoes the 12×-inflated
+  `cashBucketPolicy` band written by the released months→dollars migration (it annualized
+  monthly-period goals twice and deleted the source `minMonths`/`targetMonths`/`maxMonths`,
+  so the fixed migration can never revisit those records). One-shot semantics are exactly
+  why it lives here — re-running would divide a healthy band by 12.
+
+A missing `MIGRATORS[v]` entry means "no ordered content change between those versions" and
+is **skipped, not treated as end-of-chain**, so a v0 record still reaches `MIGRATORS[1]`.
+Do not read `schemaVersion` to branch behavior elsewhere; the registry is the one sanctioned
+place that does.
 
 **Release-readiness (mostly done — released-mode rules now apply).** An external user now has
 real data, so the data-stability rules below are live (see "Released-mode data stability" in
@@ -588,9 +628,9 @@ Status of the three roadmap items:
   / `spendingGoals` array elements and the required `portfolioAssumptions` numbers
   (`stockStdDev`/`bondStdDev`, historical-mode requirements), so a malformed file fails loudly
   at import instead of NaN-ing at the first MC tick.
-- ◻ **Remaining for a future content change:** convert to the ordered registry by populating
-  `MIGRATORS[v]` and bumping `CURRENT_SCHEMA_VERSION` once per content change (the
-  `while (v < CURRENT_SCHEMA_VERSION && MIGRATORS[v]) ...` loop already chains them).
+- ✓ **Ordered registry in use** — `MIGRATORS[1]` (the cash-bucket band repair) is the first
+  entry and `CURRENT_SCHEMA_VERSION` is `2`. For each future content change that can't be
+  safely inferred from shape, add `MIGRATORS[<current version>]` and bump the constant by one.
 
 **Deliberate non-goal: multi-year optimizer.** A full optimizer (DP / RL /
 Bellman over the lifetime tax-and-withdrawal joint decision) is a research
@@ -719,12 +759,21 @@ import { spacing, colors, fontSize, border } from '../styles/theme';
   Groups: surfaces (`bgLight`, `bgMedium`, `bgHover`), borders (`border`, `borderLight`,
   `borderMedium`), text (`textPrimary`, `textSecondary`, `textMuted`), actions (`primary`,
   `danger`), accents (`income`/`spending` with `Bg` variants), chart lines
-  (`chartMedian`, `chartNominal`), black-swan shading (`blackSwanShade`,
-  `blackSwanStockLabel`), shadows/overlays (`shadowLight`,
+  (`chartMedian`, `chartNominal`), secondary-chart categorical series
+  (`chartSocialSecurity` … `chartCash`, `chartLivingExpenses`, `chartTaxes`,
+  `taxFederalSeries` …, `seriesCycle1`–`seriesCycle5`), black-swan shading
+  (`blackSwanShade`, `blackSwanStockLabel`), shadows/overlays (`shadowLight`,
   `shadowMedium`, `overlayLight`), sidebar (`activeRow`, `chipBg`).
   **Two-tier rule:** when adding a color, first add the hex to the private `palette`
   object (named by hue + shade, e.g. `blue600`), then add a semantic alias in `colors`
   that references it. Components always import from `colors`; never from `palette`.
+  **Chart series colors** have a third tier: `src/styles/chartCategoryColors.ts` maps
+  flow-category keys → `colors` aliases and is the ONLY place secondary-chart /
+  legend-chip series colors come from. The stacking orders used by the secondary charts
+  were validated pairwise-adjacent for color-vision-deficiency safety (dataviz palette
+  validator) — changing any hue or re-ordering a stack requires re-validating the
+  adjacency chain (the validation notes live as comments in `theme.ts` and
+  `chartCategoryColors.ts`).
 - **`fontSize`** — `xs` (0.65rem) through `xl` (1.1rem). `base` (0.85rem) for body text.
 - **`border`** — `standard` (`1px solid #ddd`), `light`, `medium`, plus `radius` (4px),
   `radiusRound` (8px), `radiusCircle` (50%).
@@ -1021,6 +1070,7 @@ Current plugins:
 - `chartCrosshair` — draws a dashed vertical line at the hovered year index
 - `chartPercentileBand` — fills the 10th–90th percentile region beneath the projected line (year-by-year envelope; toggled via the session-only `showBand` flag in `Projections`). Also installs an `afterDataLimits` hook that extends the y-axis to include the band's full lower edge and the upper edge up to `Y_CAP_MULT × max(line)` (constant `2.0`) — keeps the projected line visually prominent when the band has heavy upside tails.
 - `chartMilestones` — draws a thin dashed vertical line + a small top pill label at a milestone calendar year. Currently used for the survivor "widow's penalty" filing-status transition (pill: "Now filing Single"), with the year derived from `getDeathModel(userData)` in `Chart.tsx` (no persisted field). Lighter than `chartBlackSwanShading` (a line, not a full-height band) so it reads as a neutral plan event.
+- `chartMinYSpread` — `afterDataLimits` hook that floors the y-axis spread at a minimum (`minSpread: 1_000_000` in `Chart.tsx`) so flat portfolio curves don't auto-scale to a deceptively tight range.
 
 **Chart x-axis age frame.** Labels are `${currentAge + index} (${year})` — i.e. **your** age, which naturally keeps counting past your own death when the spouse outlives you (matches the "your age, full range" decision). When `spouseAge` is set, a session-only Self/Spouse toggle in the legend row (`ageAxisMode` state) relabels the points as the spouse's age. The calendar years and the engine horizon are unchanged by the toggle.
 
@@ -1074,8 +1124,30 @@ Items that operate on the active scenario (Modeling, Cash Bucket, Tax & IRS, Exp
   `historical_bootstrap` (which have no deterministic baseline). Its portfolio
   column, income/spending/tax detail rows, and CSV export all follow that one
   path. Depleted years still show a shortfall indicator in the detail row.
+- **Secondary chart panel**: a `Charts` toggle (pi-chart-bar) next to `Data` on the
+  legend row opens a panel below the main chart with four pill-selectable views —
+  **Income** by source (SS / other income at full wage gross / RMD / additional
+  Traditional / Brokerage / Roth / Cash, plus a hatched Roth-conversion segment behind a
+  "Show conversions" toggle), **Expenses** by category (living, one series per spending
+  goal, retirement contributions, taxes, hatched "Unfunded shortfall" in depleted years),
+  **Balances** by account type (stacked area of the flat `boyBalance*` breakdown fields —
+  sums to the main line exactly), and **Taxes** by component with the federal marginal
+  bracket as a separate slim step strip (never a dual axis). Pure dataset builders live
+  in `src/components/Chart/secondaryChartData.ts`, the panel in
+  `SecondaryChartPanel.tsx`; series colors come from the CVD-validated map in
+  `src/styles/chartCategoryColors.ts`. The panel follows the chart's primary path and
+  `toDisplay` deflation, shares the age/year labels and Self/Spouse toggle, syncs the
+  hover crosshair with the main chart (shared `hoveredIndex`; all canvases pin a common
+  y-axis width via `Y_AXIS_ALIGN_WIDTH` so years column-align), and clicking a bar opens
+  the yearly table with that year expanded. `showCharts` / `secondaryView` /
+  `showConversions` are session-only state in `ProjectionsInner` — never on `UserData`.
+  Panel and button are hidden while What If is active; during compare the panel shows the
+  active scenario only.
 - **CSV export**: download button in yearly data header exports the Projected and Median portfolio paths
-  plus the band p10/p90 columns and the full income/spending/tax breakdown per year as a `.csv` file
+  plus the band p10/p90 columns and the full income/spending/tax breakdown per year as a `.csv` file,
+  including per-type `boyBalance*` columns, spending shortfall, cash withdrawal/interest, and one
+  dynamic column per non-living spending goal (from `audit.spendingGoalBreakdown`). The pure
+  assembler `buildCsvContent` is exported separately from the `exportCsv` download wrapper for tests.
 - **Scenario comparison**: "Compare with ▾" button in the chart heading (right-aligned via
   `margin-left: auto`) opens a PrimeReact `Menu` popup listing other scenarios. Selecting
   one overlays the compared scenario's currently-selected path as a dashed line on the
@@ -1138,12 +1210,18 @@ test metadata:
 
 #### Expected output files (`.expected.json`)
 
-Deterministic scenarios (0% stddev) use exact values with `pathValues` spot-checks.
-Stochastic scenarios use range-based assertions (`{ "min": 70, "max": 85 }`).
+Deterministic scenarios (0% stddev) use an exact `probability` number; stochastic
+scenarios use a range (`{ "min": 70, "max": 85 }`). **Every other assertion block
+(`pathValues`, `breakdownChecks`, `medianFinalBalance`) runs regardless of which
+probability form the file uses** — the runner unifies them (an earlier runner
+silently skipped `pathValues`/`breakdownChecks` in range-form files, leaving
+hand-written assertions dead). The runner also **fails on unknown top-level keys**
+(non-`_`-prefixed) so a typo'd assertion key can't silently no-op, and
+cross-checks `pathValues.age` against `currentAge + index`.
 Every expected file **must** include a `_rationale` explaining in plain English why the
 numbers are what they are.
 
-Two assertion types are supported:
+Assertion blocks:
 
 - **`pathValues`** — checks `result.median[index]` (portfolio balance at that year):
   ```json
@@ -1154,18 +1232,19 @@ Two assertion types are supported:
   { "index": 0, "field": "withdrawalFromRoth", "value": 50000, "tolerance": 5, "_note": "..." }
   ```
   Use `value` for exact checks (with optional `tolerance`), or `min`/`max` for range
-  checks. Valid fields: all top-level keys of `AnnualCashFlowBreakdown` —
-  `portfolioWithdrawal`, `withdrawalFromBrokerage`, `withdrawalFromTraditional`,
-  `withdrawalFromRoth`, `totalTax`, `netCashFlow`, `ssGross`, `otherTaxableGross`,
-  `afterTaxIncome`, `ssTaxableAmount`, `totalGrossIncome`, `baseSpendingNet`,
-  `otherSpendingGoalsNet`, `totalSpendingNet`, `rmdRequired`, `rmdExcess`,
-  `rothConversionGross`, `ordinaryTax`, `federalCapGainsTax`, `stateCapGainsTax`,
-  `niitTax`, `irmaaSurcharge`. Audit intermediates (`audit.federalBracketIndex`,
-  `audit.ssZone`, `audit.incomeEventTaxBreakdown`, `audit.accountFlows`, etc.) are
-  nested under `audit` and **not** checkable via `breakdownChecks` — the runner
-  does flat key lookup. Assert these in unit tests against `runSimulation()` /
-  `calculateAnnualCashFlow()` directly, or against the detailed variants in
-  `TaxCalculator` / `IRMAA`.
+  checks. Valid fields: **any non-`audit` top-level key of `AnnualCashFlowBreakdown`**
+  (see the interface in `SimulationService.ts` — don't rely on this doc enumerating
+  them). Examples: `portfolioWithdrawal`, `withdrawalFromTraditional`, `totalTax`,
+  `netCashFlow`, `ssGross`, `rmdRequired`, `rothConversionGross`, `spendingShortfall`,
+  `withdrawalFromCash`, `cashInterest`, and the per-type beginning-of-year balances
+  `boyBalanceTraditional` / `boyBalanceRoth` / `boyBalanceBrokerage` / `boyBalanceCash`
+  (deliberately flat rather than audit-gated precisely so scenario tests can assert
+  them — see `test/scenarios/boy-balance-by-type.json`). Audit intermediates
+  (`audit.federalBracketIndex`, `audit.ssZone`, `audit.incomeEventTaxBreakdown`,
+  `audit.spendingGoalBreakdown`, `audit.accountFlows`, etc.) are nested under `audit`
+  and **not** checkable via `breakdownChecks` — the runner does flat key lookup.
+  Assert these in unit tests against `runSimulation()` / `calculateAnnualCashFlow()`
+  directly, or against the detailed variants in `TaxCalculator` / `IRMAA`.
 
 #### Key rules
 

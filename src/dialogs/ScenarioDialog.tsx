@@ -98,7 +98,7 @@ const filingStatusOptions = [
 
 // State list now sourced from the per-state profile registry (includes "New York City"
 // as a pseudo-state with NYC local tax). Successor variants ("South Carolina (2027+)",
-// "West Virginia (2027+)") are filtered out of the dropdown.
+// "West Virginia (2026+)") are filtered out of the dropdown.
 const stateOptions = SELECTABLE_STATES.map((s) => ({ label: s, value: s }));
 
 const makeDefaults = (): Scenario => ({
@@ -146,8 +146,17 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
   const [tempData, setTempData] = useState<Scenario>(makeDefaults);
 
   useEffect(() => {
-    setTempData(scenario ? { ...scenario } : makeDefaults());
-  }, [scenario]);
+    if (visible) setTempData(scenario ? { ...scenario } : makeDefaults());
+    // Initialize form state only when the dialog opens (false→true). The
+    // Sidebar sets `editingScenario` (this `scenario` prop) in the same
+    // handler that flips `visible`, so the open-time run always sees the
+    // right create-vs-edit target. `scenario` is deliberately NOT a dep: the
+    // automatic ~1s lastSuccessProbability write-back replaces the scenario
+    // object identity while the dialog is open, and re-running this effect
+    // then would wipe the user's in-progress edits. Same pattern as
+    // SocialSecurityWizardDialog's open-gated effects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   // Draft state may transiently hold null for cleared numeric inputs
   // (PrimeReact InputNumber emits null mid-edit), so the value is wider than
@@ -192,8 +201,15 @@ const ScenarioDialog: React.FC<ScenarioDialogProps> = ({
 
   const handleSave = () => {
     if (!isValid) return;
+    // `tempData` is a snapshot taken when the dialog OPENED (the init effect is
+    // gated on `visible` so live scenario churn can't wipe in-progress edits).
+    // That makes it stale for the sidebar's display cache: the ~1s MC
+    // write-back may have stamped a fresh probability while the dialog sat
+    // open. Take that one field from the live `scenario` prop instead, or a
+    // no-op Save would revert the % — and since the sim fingerprint ignores it,
+    // nothing would recompute it until the next real edit.
     const scenarioData = scenario
-      ? { ...tempData, id: scenario.id }
+      ? { ...tempData, id: scenario.id, lastSuccessProbability: scenario.lastSuccessProbability }
       : { ...tempData, id: crypto.randomUUID() };
     onSave(scenarioData);
     onHide();

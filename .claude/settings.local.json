@@ -22,7 +22,36 @@
       "PowerShell(npm run test --silent -- --run 2>&1)",
       "Bash(Get-ChildItem -Path \"c:\\\\Dev4\\\\retirement-planner\\\\test\\\\scenarios\" -Filter \"*roth*\" -o name)",
       "Bash(grep -vE \"^\\\\s*$\")",
-      "Bash(grep -n \"npm run test.*npm run build\\\\|Run \\\\`npm\" CLAUDE.md)"
+      "Bash(grep -n \"npm run test.*npm run build\\\\|Run \\\\`npm\" CLAUDE.md)",
+      "PowerShell(npm run lint 2>&1)",
+      "PowerShell(npx vitest run src/services/socialSecurityOptimizer.test.ts src/services/SimulationService.test.ts test/simulation.test.ts 2>&1)",
+      "Skill(code-review)",
+      "Skill(code-review:*)",
+      "PowerShell(npm run test)",
+      "PowerShell(npm run lint)",
+      "PowerShell(npm test 2>$null)",
+      "PowerShell(Select-String -Path src\\\\docs\\\\MODEL_DETAILS.md, src\\\\docs\\\\USER_GUIDE.md -Pattern 'stacked|useStackedLtcg|cash bucket|cashBucketPolicy|survivor|widow|spouseLifeExpectancy|haircut|schemaVersion|student|bootstrap' -SimpleMatch:$false | ForEach-Object { \"{0}:{1}: {2}\" -f \\(Split-Path $_.Path -Leaf\\), $_.LineNumber, $_.Line.Substring\\(0, [Math]::Min\\(100, $_.Line.Length\\)\\) } | Select-Object -First 40)",
+      "PowerShell(npx tsc -b --force 2>&1)",
+      "PowerShell(npx vitest run src/context/RetirementContext.test.tsx)",
+      "PowerShell(npx tsc -b --pretty false)",
+      "PowerShell(npx tsc -b --pretty false 2>&1)",
+      "PowerShell(npx vitest run 2>$null)",
+      "PowerShell(npx vitest run src/utils/scenarioMigration.test.ts src/utils/contributionLimits.test.ts 2>&1)",
+      "PowerShell(npx vitest run 2>&1)",
+      "PowerShell(npx vitest run src/context/RetirementContext.test.tsx src/services/IRMAA.test.ts 2>&1)",
+      "PowerShell(\\(Get-Content src\\\\services\\\\SimulationService.test.ts | Measure-Object -Line\\).Lines)",
+      "PowerShell(npx vitest run src/components/Chart/secondaryChartData.test.ts src/components/Chart/sankeyLayout.test.ts src/utils/effectiveTaxRate.test.ts 2>&1)",
+      "PowerShell(npx vitest run src/services/SimulationService.test.ts -t \"per-goal spending attribution\" 2>&1)",
+      "PowerShell(npx vitest run src/services/SimulationService.test.ts -t \"boyBalance\" 2>&1)",
+      "PowerShell(npx vitest run test/simulation.test.ts -t \"boy-balance\" 2>&1)",
+      "PowerShell(npx vitest run test/simulation.test.ts -t \"BOY Balance\" 2>&1)",
+      "PowerShell(npx vitest run test/simulation.test.ts -t \"Per-type beginning-of-year balance\" 2>&1)",
+      "PowerShell(npm ls playwright 2>&1 | Select-Object -First 4; Test-Path \"$env:USERPROFILE\\\\AppData\\\\Local\\\\Temp\\\\yarp-smoke\\\\node_modules\\\\playwright\")",
+      "PowerShell(npx vitest run src/components/Chart/secondaryChartData.test.ts 2>&1)",
+      "PowerShell(npx vitest run src/components/Chart/secondaryChartData.test.ts src/components/Chart/SecondaryChartPanel.test.tsx src/utils/exportChartCsv.test.ts 2>&1)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\bmack\\AppData\\Local\\Temp\\yarp-smoke"
     ]
   }
 }

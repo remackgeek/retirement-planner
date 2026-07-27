@@ -16,6 +16,7 @@
 - [Income Events](#income-events)
 - [Spending Goals](#spending-goals)
 - [Reading the Chart](#reading-the-chart)
+- [Secondary Charts](#secondary-charts)
 - [Year-by-Year Detail](#year-by-year-detail)
 - [Today's $ vs Future $](#todays--vs-future-)
 - [Comparing Scenarios](#comparing-scenarios)
@@ -147,7 +148,7 @@ If you're married and have Traditional accounts in both your names, YARP calcula
 
 Income events cover everything flowing **into** your portfolio. Common ones:
 
-- **Social Security** — has its own dialog. You can model the 2034 trust-fund haircut if you want to be conservative.
+- **Social Security** — has its own dialog. You can model the projected trust-fund haircut if you want to be conservative. Both the **start year** (default 2032, per the 2026 Trustees Report) and the **reduction percent** (default ~22%) are editable in the dialog's Advanced section, so you can update them as projections change or test your own assumption about what Congress might do.
 - **Pension** — usually with no cost-of-living adjustment.
 - **Part-time work / consulting** in retirement
 - **Rental income, annuity payments**
@@ -267,6 +268,19 @@ The x-axis is labeled with **your** age (and the calendar year). If you've set a
 
 ---
 
+## Secondary Charts
+
+The **Charts** button on the legend row (next to **Data**) opens a secondary chart panel below the main chart — four flow-level views of the same projection the main chart and yearly table follow. One view shows at a time; pick it with the pill selector:
+
+- **Income** — a stacked bar per year showing where your money comes from: Social Security, other income (pensions, wages, rentals — hover a year to see them itemized; wages show their full gross, before 401(k) deferrals), **RMD (required)** and **Additional 401(k)/IRA** as separate colors — so you can see at a glance whether you're withdrawing more than your RMD forces — plus Brokerage, Roth, and Cash withdrawals. A **Show conversions** toggle adds Roth conversions as a hatched segment; they're off by default and visually distinct because a conversion moves money *into* Roth — it isn't spendable income.
+- **Expenses** — a stacked bar per year: living expenses, **every spending goal as its own named, color-coded segment**, retirement contributions (in working years), and total taxes. Hovering a year lists only the categories actually active that year. In a year where the portfolio can't fully fund spending, the segments shrink to what was actually funded and a hatched **Unfunded shortfall** segment shows the gap.
+- **Balances** — a stacked area of your portfolio by account type (Traditional / Roth / Brokerage / Cash) at the start of each year. This is the clearest picture of a Roth conversion plan: watch Traditional drain into Roth across the conversion window. The stacked total matches the main chart line exactly.
+- **Taxes** — tax components per year (federal income, state & local, capital gains, NIIT, IRMAA), with your **federal marginal bracket** as a slim step-line strip below — the answer to "what bracket am I in that year?"
+
+The panel shares everything with the main chart: the same age/year x-axis (including the Spouse-age toggle), the same Today's-$/Future-$ mode, and a synced hover crosshair — hovering either chart highlights the same year on both. **Click any bar** to open the yearly data table with that year expanded. Like the main table, the panel follows the Projected path (or the Median run in Historical: Rolling / Bootstrap modes). The panel is hidden while What If mode is active.
+
+---
+
 ## Year-by-Year Detail
 
 Below the chart, expand **Yearly Data** for a complete breakdown of each year: balance, income from each source, taxes paid, spending, withdrawals from each account, RMD details, and your effective tax rate.
@@ -276,17 +290,17 @@ This is where you go when something on the chart looks surprising — expand the
 When you expand a year, the detail panel has four tabs:
 
 - **Summary** — the high-level income / spending / tax / cash-flow numbers, plus portfolio withdrawal breakdown and RMD/Roth-conversion notes. Use this for an at-a-glance read.
-- **Tax Audit** — IRS-level intermediates so you can verify the model's arithmetic. Shows AGI, the full federal bracket table with the dollars and tax landing in each rate, your standard deduction broken into the base + senior add-on + temporary OBBB bonus, the Social Security provisional-income calc with which 50%/85% zone you hit, the IRMAA lookback MAGI with the exact tier and per-enrollee surcharge, the NIIT MAGI excess and 3.8% base, and per-owner RMD with the IRS Uniform Lifetime Table divisor and beginning-of-year Traditional balance.
+- **Tax Audit** — IRS-level intermediates so you can verify the model's arithmetic. Shows AGI, the full federal bracket table with the dollars and tax landing in each rate, your standard deduction broken into the base + senior add-on + temporary OBBB bonus, the Social Security provisional-income calc with which 50%/85% zone you hit, the IRMAA lookback MAGI with the exact tier and per-enrollee surcharge, the NIIT MAGI excess and 3.8% base, and per-owner RMD with the IRS Uniform Lifetime Table divisor and beginning-of-year Traditional balance. A consolidated **Tax Rates** section next to the total-tax breakdown shows your marginal federal and state bracket rates alongside effective rates (federal, state, overall, and — when a surcharge applies — an all-in rate including IRMAA).
 - **Income Detail** — per-income-event ordinary tax attribution using marginal stacking (events are layered in IRS order so each event's tax is its incremental delta on top of the prior stack — pre-tax contributions appear as negative reductions). Also shows per-account flows: which account each dollar of withdrawal came from and which account received each deposit (Roth conversion, RMD excess, retirement contribution, surplus reinvestment).
 - **Cash Flow** — a Sankey diagram of the year's flows, organized into five columns so the tax story is legible at a glance.
 
   The leftmost **Detailed Sources** column shows individual income events by name (each pension, rental, wage event, Social Security event by recipient, Roth conversion event), per-account withdrawals when multiple Brokerage / Cash / Roth accounts contribute, and per-Traditional-account RMD attribution (Self's RMD pulls only from Self-owned Trad; Spouse's only from Spouse-owned). Each detail node feeds an **Aggregated Source** in the next column. For Social Security, each event splits in two — its taxable share flows into "Social Security (Taxable)" and its tax-free share into "Social Security (Tax-Free)" using the year's overall taxability ratio.
 
-  Three **tax-treatment buckets** sit in the middle: **Ordinary Income** (Social Security taxable, wages, RMD, Traditional withdrawals, Cash Interest, Roth conversion gross), **Capital Gains** (Brokerage account withdrawals only), and **Tax-Exempt** (Roth withdrawals, Cash principal, after-tax income, employer match). Each bucket pays its own taxes directly: Ordinary → Federal Ordinary + State Ordinary + IRMAA; Capital Gains → Federal LTCG + State LTCG + NIIT; Tax-Exempt → no tax. The remainder from each bucket flows into a single **After-Tax Cash** pool, which funds Living Expenses, Other Goals, account contributions, surplus to Brokerage, and the Roth Deposit from any conversion. The conversion pass-through is visible as a chain: Roth Conversion event → Roth Conversion (gross) → Ordinary Income → Roth Deposit.
+  Three **tax-treatment buckets** sit in the middle: **Ordinary Income** (Social Security taxable, wages, RMD, Traditional withdrawals, Cash Interest, Roth conversion gross), **Capital Gains** (Brokerage account withdrawals only), and **Tax-Exempt** (Roth withdrawals, Cash principal, after-tax income, employer match). Each bucket pays its own taxes directly: Ordinary → Federal Ordinary + State Ordinary + IRMAA; Capital Gains → Federal LTCG + State LTCG + NIIT; Tax-Exempt → no tax. The remainder from each bucket flows into a single **After-Tax Cash** pool, which funds Living Expenses, each spending goal as its own named node (a single "Other Spending Goals" node appears only as a fallback when per-goal data isn't available), account contributions, surplus to Brokerage, and the Roth Deposit from any conversion. The conversion pass-through is visible as a chain: Roth Conversion event → Roth Conversion (gross) → Ordinary Income → Roth Deposit.
 
   Hover any node or link for the precise dollar figure and share of the year; bucket hovers also show the inflow/outflow split. Inflows always equal outflows globally, within each bucket, and within each multi-detail aggregator — the diagram is conservation-checked, so if anything looks off it's showing you a real number. Inter-account cash-bucket refill or sweep activity, if any, appears as a separate row below the diagram (balance-sheet moves that don't pass through the buckets). If the portfolio depleted in a year, a red banner notes how much spending went unmet and the spending edges shrink to the funded amount.
 
-You can **export the whole table to CSV** using the button in the header — useful for sharing with an advisor or sanity-checking against another tool. The CSV includes scalar audit columns (AGI, deductions, bracket index, marginal rate, federal vs state split, SS zone, IRMAA tier, NIIT components, per-owner RMD). Per-event and per-account tables are in-app only — they don't fit a flat CSV cleanly.
+You can **export the whole table to CSV** using the button in the header — useful for sharing with an advisor or sanity-checking against another tool. The CSV includes scalar audit columns (AGI, deductions, bracket index, marginal rate, federal vs state split, SS zone, IRMAA tier, NIIT components, per-owner RMD), plus everything the secondary charts show: beginning-of-year balances by account type, one column per spending goal, spending shortfall, and cash withdrawal/interest. Per-event tax attribution and per-account flow tables remain in-app only — they don't fit a flat CSV cleanly.
 
 ---
 
@@ -357,7 +371,7 @@ From that one figure the wizard reconstructs your full benefit formula and compu
 
 **Couples.** With Married-filing-jointly and a spouse age set, an *Optimizing for* selector lets you tune each person separately; the other spouse's benefit is held fixed. A spouse who is already receiving Social Security (or is past 70) is locked — there's no claiming decision left to make — and the wizard points you to the other person.
 
-**Scope.** This models each person's own retirement benefit (early/delayed adjustment + an optional 2034 trust-fund reduction, toggled right in the wizard so you can compare claiming ages with and without it). Spousal (50%) and survivor benefits aren't modeled yet.
+**Scope.** This models each person's own retirement benefit (early/delayed adjustment + an optional trust-fund reduction with an editable start year/percent — defaults 2032 / ~22% from the 2026 Trustees Report — toggled right in the wizard so you can compare claiming ages with and without it). Spousal (50%) and survivor benefits aren't modeled yet.
 
 When you click **Apply**, the chosen claiming age becomes a regular Social Security income event (replacing the previous one for that person), visible on the chart, in the Income panel, and in exports.
 
@@ -416,7 +430,7 @@ YARP figures federal and state income tax automatically each year. You configure
 - **State** — pick from any of the 50 states + DC, plus **New York City** as a pseudo-state that adds the ~3.876% NYC local income tax on top of NY state brackets. In single-state mode a short profile summary appears beneath the dropdown (e.g., "Graduated 1–13.3% · SS exempt · No retirement exclusion") so you can see at a glance how your state is modeled. When the active state's profile has a retirement-income exclusion, an "Disable state retirement-income exclusion (advanced)" checkbox lets you turn it off if your Traditional withdrawals don't qualify under the actual state rule (e.g., NY's $20k exclusion is for public pensions and IRAs only). In timeline mode (multiple relocations), the per-row chip is omitted to keep the table compact — the active profile still applies in simulation per year.
 - **Long-term capital gains rate** — defaults to 15%, which is the federal middle bracket. Most retirees can leave this alone. State LTCG treatment varies by profile: most states tax LTCG at their ordinary brackets, **Missouri** fully exempts LTCG, and **Washington** applies a 7% rate only above an inflation-indexed $270k threshold (and has no ordinary state tax).
 - **State retirement-income rules** — states with pension/IRA exclusions (NY $20k at 59.5+, PA all retirement income, IL all, MI age 67+, GA $65k at 65+, NJ phased to $150k AGI, …) are honored automatically based on the active state's profile. SS taxability varies too: states like CO exempt SS at age 65+, NM and UT phase out SS by AGI, and CT/MN/RI/VT/MT still tax SS.
-- **State relocation timeline** — if you plan to move to a different state in retirement, add the move year here. YARP will switch profiles at the right time. South Carolina and West Virginia both have **scheduled tax changes** that activate automatically: SC's top 6% rate sunsets after 2026 (drops to ~5.2%) and WV's SS tax phases out by 2027.
+- **State relocation timeline** — if you plan to move to a different state in retirement, add the move year here. YARP will switch profiles at the right time. South Carolina and West Virginia both have **scheduled tax changes** that activate automatically: SC's top 6% rate sunsets after 2026 (drops to ~5.2%) and WV's SS tax is fully phased out from 2026 (HB 4880).
 
 The standard deduction (including the larger amount you get at 65+) is applied automatically. Social Security taxation follows IRS rules — depending on your other income, between 0% and 85% of your benefit will be taxable.
 

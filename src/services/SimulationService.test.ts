@@ -8,6 +8,7 @@ import {
   getEffectiveStateName,
   IRS_UNIFORM_LIFETIME_TABLE,
   runDeterministicProjection,
+  runFastPreview,
   runSimulation,
   selectBestSpendingOrder,
   SYNTHETIC_TRAD_WITHDRAWAL_ID,
@@ -123,15 +124,15 @@ describe('calculateAnnualCashFlow', () => {
   });
 
   describe('SS haircut', () => {
-    it('applies default 23% haircut from 2034', () => {
+    it('applies default 22% haircut from 2032', () => {
       const userData = makeUserData({
         incomeEvents: [
           { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
         ],
       });
-      const result = calculateAnnualCashFlow(userData, 2034, 0);
-      expect(result.ssGross).toBe(23100);
-      expect(result.netCashFlow).toBe(23100);
+      const result = calculateAnnualCashFlow(userData, 2032, 0);
+      expect(result.ssGross).toBe(23400);
+      expect(result.netCashFlow).toBe(23400);
     });
 
     it('applies custom haircut percentage', () => {
@@ -155,14 +156,25 @@ describe('calculateAnnualCashFlow', () => {
       expect(result.netCashFlow).toBe(30000);
     });
 
-    it('does not apply haircut before 2034', () => {
+    it('does not apply haircut before 2032', () => {
       const userData = makeUserData({
         incomeEvents: [
           { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: true },
         ],
       });
-      const result = calculateAnnualCashFlow(userData, 2033, 0);
+      const result = calculateAnnualCashFlow(userData, 2031, 0);
       expect(result.netCashFlow).toBe(30000);
+    });
+
+    it('honors a custom ssHaircutYear', () => {
+      const userData = makeUserData({
+        incomeEvents: [
+          { id: '1', name: 'Social Security 1', type: 'social_security', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed', ssHaircutEnabled: true, ssHaircutYear: 2040 },
+        ],
+      });
+      // Default-year (2032) haircut would apply, but the custom 2040 year defers it.
+      expect(calculateAnnualCashFlow(userData, 2032, 0).netCashFlow).toBe(30000);
+      expect(calculateAnnualCashFlow(userData, 2040, 0).netCashFlow).toBe(23400);
     });
   });
 
@@ -1664,8 +1676,8 @@ describe('audit.accountFlows (via runSimulation)', () => {
     });
     const result = runSimulation(ud, createSeededRandom(1));
     const bd = result.nominalBreakdowns[0];
-    expect(bd.audit!.rmdSelf).toBeGreaterThan(0);
-    expect(bd.audit!.rmdSpouse).toBe(0);
+    expect(bd.rmdRequiredSelf).toBeGreaterThan(0);
+    expect(bd.rmdRequiredSpouse).toBe(0);
     const rmdRows = bd.audit!.rmdByAccount!;
     const selfRow   = rmdRows.find(r => r.accountId === 'trad-self');
     const spouseRow = rmdRows.find(r => r.accountId === 'trad-spouse');
@@ -1790,10 +1802,10 @@ describe('audit.accountFlows (via runSimulation)', () => {
     // Spouse-Trad carries at most the tiny pro-rata discretionary share —
     // orders of magnitude smaller than the Self conversion. Asserting Spouse-Trad
     // is "small" rather than "exactly zero" because the IRS-correct behavior
-    // does pro-rate any discretionary spending pull across all Trad.
-    if (spouseTradFlow) {
-      expect(spouseTradFlow.withdrawal).toBeLessThan(100);
-    }
+    // does pro-rate any discretionary spending pull across all Trad. Absent row
+    // = $0 pull; the `?? 0` keeps the assertion live either way (a bare
+    // `if (flow)` guard would pass vacuously if the row lookup ever broke).
+    expect(spouseTradFlow?.withdrawal ?? 0).toBeLessThan(100);
     // Self-Roth receives the deposit; Spouse-Roth untouched (no Spouse conv).
     const selfRothFlow   = flows.find(f => f.accountId === 'roth-self')!;
     const spouseRothFlow = flows.find(f => f.accountId === 'roth-spouse');
@@ -1870,11 +1882,11 @@ describe('audit.accountFlows (via runSimulation)', () => {
     expect(bd.rothConversionRequested).toBeCloseTo(100_000, 0);
     const flows = bd.audit!.accountFlows!;
     const spouseTradFlow = flows.find(f => f.accountId === 'trad-spouse');
-    if (spouseTradFlow) {
-      // Allow the tiny discretionary cascade pro-rata pull, orders of magnitude
-      // smaller than the Spouse-Trad plenty.
-      expect(spouseTradFlow.withdrawal).toBeLessThan(500);
-    }
+    // Allow the tiny discretionary cascade pro-rata pull, orders of magnitude
+    // smaller than the Spouse-Trad plenty. Absent row = $0 pull; `?? 0` keeps
+    // the assertion live either way (the old `if (flow)` guard passed
+    // vacuously when the row was absent).
+    expect(spouseTradFlow?.withdrawal ?? 0).toBeLessThan(500);
   });
 
   it('Per-owner withholding splits proportionally when external sourcing runs dry', () => {
@@ -2634,6 +2646,425 @@ describe('cash account', () => {
       expect(bd.withdrawalFromCash).toBeGreaterThanOrEqual(0);
       expect(bd.cashRefillFromSurplus).toBeGreaterThanOrEqual(0);
       expect(bd.cashSweepToBrokerage).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+describe('conversion joint cap — spending + conversion cannot exceed the Traditional balance', () => {
+  // Regression: the conversion cap used the beginning-of-year balance minus RMD
+  // only — never the spending pull and never the live balance. fromTrad =
+  // forcedTrad + convCandidate could exceed what the account held; applyCashFlow
+  // silently capped the real subtraction while the Roth deposit and the tax bill
+  // used the full amount, minting phantom dollars into Roth and masking the
+  // spending shortfall.
+  it('caps the conversion so spending pull + conversion never exceed the Trad balance', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 62,
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      spendingGoals: [baseSpending(30000 / 12)],
+      incomeEvents: [
+        { id: 'conv-1', name: 'Roth Conversion 1', type: 'roth_conversion', amount: 90000, startAge: 60, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed' },
+      ],
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd0 = result.nominalBreakdowns[0];
+    // The joint cap: total Trad outflow bounded by what the account holds.
+    expect(bd0.withdrawalFromTraditional).toBeLessThanOrEqual(100000.01);
+    // The conversion got scaled down (spending + its tax claimed part of the 100k).
+    expect(bd0.rothConversionGross).toBeLessThan(90000);
+    expect(bd0.rothConversionGross).toBeGreaterThan(0);
+    // Wealth conservation: next year's portfolio = 100k − spending − total tax.
+    // Pre-fix this came out ~$15–20k HIGHER (phantom dollars minted into Roth).
+    expect(result.nominal[1]).toBeCloseTo(100000 - 30000 - bd0.totalTax, 0);
+  });
+
+  it('caps the conversion at the LIVE (post-crash) balance, not the beginning-of-year balance', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 62,
+      accounts: [{ id: 'trad-1', name: 'Traditional 1', type: 'traditional', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const }],
+      incomeEvents: [
+        { id: 'conv-1', name: 'Roth Conversion 1', type: 'roth_conversion', amount: 95000, startAge: 60, isOneTime: true, taxStatus: 'before_tax', colaType: 'fixed' },
+      ],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        blackSwanEvents: [{ year: 2026, stockMultiplier: 0.5, bondMultiplier: 0.5 }],
+      },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd0 = result.nominalBreakdowns[0];
+    // Live Trad after the −50% year is $50k; the old BOY-based cap allowed $95k.
+    expect(bd0.rothConversionGross).toBeLessThanOrEqual(50000.01);
+    expect(bd0.withdrawalFromTraditional).toBeLessThanOrEqual(50000.01);
+    // Conservation: everything left is 50k minus the conversion's tax (withheld).
+    expect(result.nominal[1]).toBeCloseTo(50000 - bd0.totalTax, 0);
+  });
+});
+
+describe('per-owner RMD sourcing parity between stat-only runs and the audited path', () => {
+  // Regression: applyCashFlow read the per-owner RMD split from breakdown.audit,
+  // which the stat-only MC runs (includeAudit=false) never build — so the 4,997
+  // stat runs pulled RMDs pro-rata across BOTH owners while the audited
+  // replay/nominal path pulled per-owner. Different per-account balances feed
+  // different future per-owner RMDs → the stat paths diverged from the audited
+  // path they were supposed to represent.
+  it('deterministic MFJ per-owner scenario: median (stat) path equals nominal (audited) path', () => {
+    const ud = makeUserData({
+      currentAge: 80,
+      lifeExpectancy: 90,
+      filingStatus: 'mfj',
+      spouseAge: 62,
+      accounts: [
+        { id: 'trad-self', name: 'Self Trad', type: 'traditional', balance: 300000, owner: 'self', stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'trad-spouse', name: 'Spouse Trad', type: 'traditional', balance: 500000, owner: 'spouse', stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [baseSpending(20000 / 12, 80)],
+      simulationSettings: { numSimulations: 50 },
+    });
+    const result = runSimulation(ud, createSeededRandom(7));
+    for (let i = 0; i < result.nominal.length; i++) {
+      expect(Math.abs(result.median[i] - result.nominal[i])).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe('Roth/after-tax contribution cash conservation', () => {
+  it('a Roth contribution next to modeled wage income is not double-counted as surplus', () => {
+    const ud = makeUserData({
+      currentAge: 50,
+      lifeExpectancy: 52,
+      accounts: [
+        { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'brok-1', name: 'Brokerage 1', type: 'brokerage', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+      incomeEvents: [
+        { id: 'wage-1', name: 'Salary 1', type: 'wage_income', amount: 100000, startAge: 50, taxStatus: 'before_tax', colaType: 'fixed' },
+        { id: 'contrib-1', name: 'Retirement Contribution 1', type: 'retirement_contribution', amount: 20000, startAge: 50, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'roth', accountId: 'roth-1' },
+      ],
+      spendingGoals: [baseSpending(50000 / 12, 50)],
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd0 = result.nominalBreakdowns[0];
+    expect(bd0.rothContributions).toBe(20000);
+    // Total wealth change = wage − spending − tax. Pre-fix the $20k contribution
+    // was deposited to Roth AND left inside netCashFlow (re-deposited as
+    // brokerage surplus) — a +$20k/yr overstatement.
+    expect(result.nominal[1] - result.nominal[0]).toBeCloseTo(100000 - 50000 - bd0.totalTax, 0);
+  });
+
+  it('a contribution with NO modeled income stays exogenously funded (savings-without-salary pattern)', () => {
+    const ud = makeUserData({
+      currentAge: 50,
+      lifeExpectancy: 52,
+      accounts: [
+        { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+      incomeEvents: [
+        { id: 'contrib-1', name: 'Retirement Contribution 1', type: 'retirement_contribution', amount: 20000, startAge: 50, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'roth', accountId: 'roth-1' },
+      ],
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    // No wage income modeled — the deposit arrives from outside the model, as
+    // before (the conservation floor only removes contributions from cash the
+    // model actually saw).
+    expect(result.nominal[1] - result.nominal[0]).toBeCloseTo(20000, 0);
+  });
+});
+
+describe('runFastPreview probability-pending state', () => {
+  it('flags probabilityPending when no cached probability exists (never-simulated scenario)', () => {
+    const result = runFastPreview(makeUserData(), undefined);
+    expect(result.isPreview).toBe(true);
+    // The placeholder 0 must be marked as not-displayable — rendering it
+    // flashed "Chance of Success: 0%" + a failure-tier badge until MC landed.
+    expect(result.probabilityPending).toBe(true);
+    expect(result.probability).toBe(0);
+  });
+
+  it('shows the cached probability with no pending flag when one exists', () => {
+    const result = runFastPreview(makeUserData(), 87);
+    expect(result.probability).toBe(87);
+    expect(result.probabilityPending).toBeFalsy();
+  });
+
+  it('full runSimulation output never carries the pending flag', () => {
+    const result = runSimulation(makeUserData({ lifeExpectancy: 62, simulationSettings: { numSimulations: 10 } }), createSeededRandom(1));
+    expect(result.probabilityPending).toBeFalsy();
+    expect(result.isPreview).toBeFalsy();
+  });
+});
+
+describe('SECURE 2.0 super catch-up (ages 60–63)', () => {
+  // One-year scenario per age: wage income + a $40k pre-tax 401(k) contribution
+  // against explicit limits (base $23k, regular catch-up $7.5k, super $11.25k).
+  // The capped amount proves which catch-up applied.
+  const capScenarioAt = (age: number) => makeUserData({
+    currentAge: age,
+    lifeExpectancy: age + 1,
+    accounts: [
+      { id: '401k-1', name: '401k', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: '401k' },
+    ],
+    incomeEvents: [
+      { id: 'wage-1', name: 'Salary 1', type: 'wage_income', amount: 200000, startAge: age, taxStatus: 'before_tax', colaType: 'fixed' },
+      { id: 'contrib-1', name: 'Retirement Contribution 1', type: 'retirement_contribution', amount: 40000, startAge: age, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax', accountId: '401k-1' },
+    ],
+    contributionLimits: {
+      elective401k: 23000,
+      iraLimit: 7000,
+      catchUpAge: 50,
+      catchUp401k: 7500,
+      superCatchUp401k: 11250,
+      catchUpIra: 1000,
+      inflationAdjusted: false,
+    },
+    simulationSettings: { numSimulations: 10 },
+  });
+
+  const cappedAt = (age: number): number => {
+    const result = runSimulation(capScenarioAt(age), createSeededRandom(1));
+    return result.nominalBreakdowns[0].contributionsCappedAmount;
+  };
+
+  it.each([
+    [59, 40000 - (23000 + 7500)],   // regular catch-up
+    [60, 40000 - (23000 + 11250)],  // super catch-up starts
+    [63, 40000 - (23000 + 11250)],  // last super year
+    [64, 40000 - (23000 + 7500)],   // regular catch-up resumes
+  ])('age %i → capped amount %i', (age, expectedCut) => {
+    expect(cappedAt(age)).toBeCloseTo(expectedCut, 0);
+  });
+
+  it('IRA-kind groups get no super catch-up at 61', () => {
+    const ud = makeUserData({
+      currentAge: 61,
+      lifeExpectancy: 62,
+      accounts: [
+        { id: 'ira-1', name: 'IRA', type: 'traditional', balance: 0, stockAllocation: 0.6, portfolioBalance: '60_40' as const, accountKind: 'ira' },
+      ],
+      incomeEvents: [
+        { id: 'wage-1', name: 'Salary 1', type: 'wage_income', amount: 100000, startAge: 61, taxStatus: 'before_tax', colaType: 'fixed' },
+        { id: 'contrib-1', name: 'Retirement Contribution 1', type: 'retirement_contribution', amount: 10000, startAge: 61, taxStatus: 'before_tax', colaType: 'fixed', contributionType: 'pre_tax', accountId: 'ira-1' },
+      ],
+      contributionLimits: {
+        elective401k: 23000,
+        iraLimit: 7000,
+        catchUpAge: 50,
+        catchUp401k: 7500,
+        superCatchUp401k: 11250,
+        catchUpIra: 1000,
+        inflationAdjusted: false,
+      },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    // IRA cap = 7000 + 1000 regular catch-up only → $2,000 of the $10k cut.
+    expect(result.nominalBreakdowns[0].contributionsCappedAmount).toBeCloseTo(2000, 0);
+  });
+});
+
+describe('cash bucket floor surfaces the shortfall it creates', () => {
+  // Regression: the spending cap counted floor-locked cash as withdrawable, so a
+  // floor-constrained year reported capWasBinding=false / spendingShortfall=0
+  // while the waterfall silently under-funded (a phantom Roth withdrawal beyond
+  // the Roth balance). The cap now excludes dollars below the bucket floor.
+  it('floor-locked cash cannot fund spending: shortfall is reported and the run fails', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 61,
+      accounts: [
+        { id: 'cash-1', name: 'Cash 1', type: 'cash', balance: 50000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'roth-1', name: 'Roth 1', type: 'roth', balance: 10000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+      spendingGoals: [baseSpending(55000 / 12)],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0,
+      },
+      cashBucketPolicy: { minAmount: 30000, targetAmount: 40000, maxAmount: 90000, refillTrigger: 'gains_only' },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    const bd0 = result.nominalBreakdowns[0];
+    // Only 20k of cash sits above the floor; Roth adds 10k. 55k of spending
+    // leaves a real 25k gap that must be visible, not silently absorbed.
+    expect(bd0.withdrawalFromCash).toBeCloseTo(20000, 0);
+    expect(bd0.withdrawalFromRoth).toBeLessThanOrEqual(10000.01);
+    expect(bd0.spendingShortfall).toBeCloseTo(25000, 0);
+    expect(result.probability).toBe(0);
+  });
+
+  it('an inverted band (target < min, only reachable via import) never reports a negative refill', () => {
+    // The dialog enforces min ≤ target ≤ max, but a hand-edited imported policy
+    // does not. With cash below min and target below cash, `desired` went
+    // negative and was recorded as a negative cashRefillFromSurplus in detail
+    // rows / CSV (the balance transfer itself was already gated on > 0).
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 63,
+      accounts: [
+        { id: 'cash-1', name: 'Cash 1', type: 'cash', balance: 20000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+        { id: 'brok-1', name: 'Brokerage 1', type: 'brokerage', balance: 100000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      ],
+      incomeEvents: [
+        { id: 'pension-1', name: 'Pension Income 1', type: 'pension_income', amount: 30000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+      ],
+      spendingGoals: [baseSpending(10000 / 12)],
+      portfolioAssumptions: {
+        stockReturn: 0, stockStdDev: 0, bondReturn: 0, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: 0,
+        returnDistribution: 'lognormal', degreesOfFreedom: 4,
+        cashYieldRate: 0,
+      },
+      cashBucketPolicy: { minAmount: 50000, targetAmount: 10000, maxAmount: 60000, refillTrigger: 'always' },
+      simulationSettings: { numSimulations: 10 },
+    });
+    const result = runSimulation(ud, createSeededRandom(1));
+    for (const bd of result.nominalBreakdowns) {
+      expect(bd.cashRefillFromSurplus).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+describe('per-goal spending attribution (audit.spendingGoalBreakdown)', () => {
+  const multiGoalUserData = () => makeUserData({
+    currentAge: 60,
+    lifeExpectancy: 70,
+    accounts: [
+      { id: 'brok-1', name: 'Brokerage 1', type: 'brokerage', balance: 2_000_000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+    ],
+    spendingGoals: [
+      { id: 'live-1', name: 'Living Expenses 1', type: 'living_expenses', amount: 60000, startAge: 60, inflationAdjusted: true },
+      { id: 'med-1', name: 'Pre-Medicare Health', type: 'healthcare', amount: 14000, startAge: 60, endAge: 64, inflationAdjusted: true },
+      { id: 'kid-1', name: 'Mortgage Help', type: 'dependent_support', amount: 30000, startAge: 62, endAge: 65, inflationAdjusted: false },
+      { id: 'trip-1', name: 'Big Trip', type: 'vacation', amount: 20000, startAge: 63, isOneTime: true, inflationAdjusted: false },
+    ],
+    inflationRate: 0.03,
+  });
+
+  it('sums to baseSpendingNet / otherSpendingGoalsNet every year and preserves identity', () => {
+    const { breakdowns } = runDeterministicProjection(multiGoalUserData());
+    for (const bd of breakdowns) {
+      const perGoal = bd.audit?.spendingGoalBreakdown ?? [];
+      const living = perGoal.filter(g => g.goalType === 'living_expenses').reduce((s, g) => s + g.amountNet, 0);
+      const other = perGoal.filter(g => g.goalType !== 'living_expenses').reduce((s, g) => s + g.amountNet, 0);
+      expect(living).toBeCloseTo(bd.baseSpendingNet, 6);
+      expect(other).toBeCloseTo(bd.otherSpendingGoalsNet, 6);
+    }
+    // Year 0 (age 60): living + healthcare active; support and trip not yet.
+    const ids0 = (breakdowns[0].audit?.spendingGoalBreakdown ?? []).map(g => g.goalId).sort();
+    expect(ids0).toEqual(['live-1', 'med-1']);
+    // Year 3 (age 63): all four active; the one-time trip appears exactly once.
+    const y3 = breakdowns[3].audit?.spendingGoalBreakdown ?? [];
+    expect(y3.map(g => g.goalId).sort()).toEqual(['kid-1', 'live-1', 'med-1', 'trip-1']);
+    const trip = y3.find(g => g.goalId === 'trip-1');
+    expect(trip?.goalName).toBe('Big Trip');
+    expect(trip?.amountNet).toBeCloseTo(20000, 6);
+    expect(breakdowns[4].audit?.spendingGoalBreakdown?.some(g => g.goalId === 'trip-1')).toBe(false);
+  });
+});
+
+describe('per-type beginning-of-year balances (boyBalance*)', () => {
+  const mixedAccountsUserData = () => makeUserData({
+    currentAge: 60,
+    lifeExpectancy: 75,
+    accounts: [
+      { id: 'trad-1', name: 'Trad', type: 'traditional', balance: 400000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      { id: 'roth-1', name: 'Roth', type: 'roth', balance: 200000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      { id: 'brok-1', name: 'Brokerage', type: 'brokerage', balance: 300000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+      { id: 'cash-1', name: 'HYSA', type: 'cash', balance: 50000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+    ],
+    spendingGoals: [baseSpending(60000 / 12, 60)],
+    portfolioAssumptions: {
+      stockReturn: 0.07, stockStdDev: 0, bondReturn: 0.04, bondStdDev: 0,
+      stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2,
+      returnDistribution: 'lognormal' as const, degreesOfFreedom: 4,
+      cashYieldRate: 0.04,
+    },
+    inflationRate: 0.03,
+  });
+
+  it('deterministic projection: the four types sum to path[i] × inflation[i] exactly', () => {
+    const { path, breakdowns, inflation } = runDeterministicProjection(mixedAccountsUserData());
+    expect(breakdowns.length).toBe(path.length);
+    for (let i = 0; i < breakdowns.length; i++) {
+      const bd = breakdowns[i];
+      const sum = bd.boyBalanceTraditional + bd.boyBalanceRoth + bd.boyBalanceBrokerage + bd.boyBalanceCash;
+      expect(sum).toBeCloseTo(path[i] * inflation[i], 6);
+    }
+    // Year 0 is the configured starting balances verbatim.
+    expect(breakdowns[0].boyBalanceTraditional).toBeCloseTo(400000, 6);
+    expect(breakdowns[0].boyBalanceRoth).toBeCloseTo(200000, 6);
+    expect(breakdowns[0].boyBalanceBrokerage).toBeCloseTo(300000, 6);
+    expect(breakdowns[0].boyBalanceCash).toBeCloseTo(50000, 6);
+  });
+
+  it('seeded Monte Carlo: median-path sums hold and cash continuity links years', () => {
+    const ud = mixedAccountsUserData();
+    ud.portfolioAssumptions.stockStdDev = 0.15;
+    ud.portfolioAssumptions.bondStdDev = 0.05;
+    ud.simulationSettings = { numSimulations: 25 };
+    const result = runSimulation(ud, createSeededRandom(11));
+    for (let i = 0; i < result.medianBreakdowns.length; i++) {
+      const bd = result.medianBreakdowns[i];
+      const sum = bd.boyBalanceTraditional + bd.boyBalanceRoth + bd.boyBalanceBrokerage + bd.boyBalanceCash;
+      expect(sum).toBeCloseTo(result.median[i] * result.medianInflation[i], 4);
+      // End-of-year cash equals next year's beginning-of-year cash.
+      if (i < result.medianBreakdowns.length - 1) {
+        expect(result.medianBreakdowns[i + 1].boyBalanceCash).toBeCloseTo(bd.cashEndingBalance, 4);
+      }
+    }
+  });
+});
+
+describe('boyBalance continuity through cash-bucket-policy routing years', () => {
+  // The existing continuity test runs with no policy configured. This one
+  // guards the Balances chart against a discontinuity exactly in refill/sweep
+  // years: cashEndingBalance is recomputed AFTER applyPostConvergenceBucketPolicy
+  // moves dollars, and next year's boyBalanceCash must equal that post-routing
+  // value (and the four types must still sum to the path).
+  it('refill and sweep years keep cashEndingBalance[i] == boyBalanceCash[i+1] and per-type sums exact', () => {
+    const ud = makeUserData({
+      currentAge: 60,
+      lifeExpectancy: 72,
+      accounts: [
+        { id: 'brok-1', name: 'Brokerage', type: 'brokerage', balance: 800000, stockAllocation: 0.6, portfolioBalance: '60_40' as const },
+        { id: 'cash-1', name: 'Cash Bucket', type: 'cash', balance: 70000, stockAllocation: 0, portfolioBalance: '60_40' as const },
+      ],
+      incomeEvents: [
+        // Pension surplus keeps netCashFlow positive so the surplus-only
+        // refill has fuel; the sweep leg triggers from cash-interest growth
+        // pushing the bucket above maxAmount.
+        { id: 'pen-1', name: 'Pension Income 1', type: 'pension_income', amount: 60000, startAge: 60, taxStatus: 'before_tax', colaType: 'fixed' },
+      ],
+      spendingGoals: [baseSpending(30000 / 12, 60)],
+      cashBucketPolicy: { minAmount: 20000, targetAmount: 40000, maxAmount: 60000, refillTrigger: 'always' },
+      portfolioAssumptions: {
+        stockReturn: 0.05, stockStdDev: 0, bondReturn: 0.03, bondStdDev: 0,
+        stockBondCorrelationEnabled: false, stockBondCorrelation: -0.2,
+        returnDistribution: 'lognormal' as const, degreesOfFreedom: 4,
+        cashYieldRate: 0.04,
+      },
+    });
+    const { path, breakdowns, inflation } = runDeterministicProjection(ud);
+    // The scenario must actually exercise the routing paths, or this test
+    // silently degrades to the no-policy case.
+    expect(breakdowns.some(b => b.cashSweepToBrokerage > 0 || b.cashRefillFromSurplus > 0)).toBe(true);
+    for (let i = 0; i < breakdowns.length; i++) {
+      const bd = breakdowns[i];
+      const sum = bd.boyBalanceTraditional + bd.boyBalanceRoth + bd.boyBalanceBrokerage + bd.boyBalanceCash;
+      expect(sum).toBeCloseTo(path[i] * inflation[i], 4);
+      if (i < breakdowns.length - 1) {
+        expect(breakdowns[i + 1].boyBalanceCash).toBeCloseTo(bd.cashEndingBalance, 4);
+      }
     }
   });
 });
