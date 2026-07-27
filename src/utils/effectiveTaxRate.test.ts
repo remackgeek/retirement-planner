@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { effectiveTaxRate } from './effectiveTaxRate';
+import { effectiveTaxRate, effectiveTaxDenominator, effectiveTaxRateInclIrmaa } from './effectiveTaxRate';
 import { fmtPct1 } from './formatPercent';
 import type { AnnualCashFlowBreakdown } from '../services/SimulationService';
 
@@ -124,6 +124,44 @@ describe('effectiveTaxRate', () => {
       rothConversionGross: 50_000,
       totalTax: 5_000,
     }))).toBeNull();
+  });
+});
+
+describe('effectiveTaxDenominator', () => {
+  it('sums gross income and withdrawals, net of conversion gross', () => {
+    expect(effectiveTaxDenominator(makeBd({
+      totalGrossIncome: 40_000,
+      portfolioWithdrawal: 90_000,
+      rothConversionGross: 30_000,
+    }))).toBe(100_000);
+  });
+
+  it('is zero on an empty year', () => {
+    expect(effectiveTaxDenominator(makeBd({}))).toBe(0);
+  });
+});
+
+describe('effectiveTaxRateInclIrmaa', () => {
+  it('keeps IRMAA in the numerator', () => {
+    // Same year as the effectiveTaxRate IRMAA-exclusion test: $15k income tax
+    // + $5k IRMAA on $100k income → 20% all-in vs 15% headline.
+    const rate = effectiveTaxRateInclIrmaa(makeBd({
+      totalGrossIncome: 100_000,
+      totalTax: 20_000,
+      irmaaSurcharge: 5_000,
+    }));
+    expect(rate).toBeCloseTo(0.20, 5);
+  });
+
+  it('returns null when totalTax is zero', () => {
+    expect(effectiveTaxRateInclIrmaa(makeBd({
+      totalGrossIncome: 50_000,
+      totalTax: 0,
+    }))).toBeNull();
+  });
+
+  it('returns null when the denominator is zero', () => {
+    expect(effectiveTaxRateInclIrmaa(makeBd({ totalTax: 1_000 }))).toBeNull();
   });
 });
 

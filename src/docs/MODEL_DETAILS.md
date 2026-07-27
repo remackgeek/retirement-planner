@@ -368,6 +368,8 @@ Every `AnnualCashFlowBreakdown` carries an `audit` sub-object capturing the inte
 - **RMD per owner** — `rmdDivisorSelf` / `rmdDivisorSpouse` (IRS Uniform Lifetime Table divisor for the owner's age, 0 when no RMD), `rmdBoyBalanceSelf` / `rmdBoyBalanceSpouse` (beginning-of-year Traditional balance per owner, from before this year's growth). The per-owner RMD **amounts** are not audit fields — they sit on the breakdown itself as `rmdRequiredSelf` / `rmdRequiredSpouse` (sum = `rmdRequired`), because the engine's per-owner sourcing reads them in every run, audited or not.
 - **State** — `effectiveStateName`: which `stateTimeline` entry's flat rate applied this year.
 
+The Tax Audit tab's **Tax Rates** section derives its effective rates from these fields: the denominator is `totalGrossIncome + portfolioWithdrawal − rothConversionGross` (cash actually flowing into the household — converted dollars aren't spendable), and the headline effective rate excludes IRMAA from the numerator (it's a Medicare premium, not an income tax); an "incl. IRMAA" all-in variant appears separately when a surcharge exists. The marginal rows are the statutory bracket rates per jurisdiction — they are deliberately not summed into a combined figure, because the two rates apply to different bases (state exclusions/deductions can absorb the next dollar) and neither reflects the SS-taxability phase-in, so a sum would misstate the true next-dollar rate.
+
 #### Per-event ordinary tax attribution (marginal stack)
 
 `audit.incomeEventTaxBreakdown` is an array of per-event marginal-tax records. Events are walked in IRS stacking order:
