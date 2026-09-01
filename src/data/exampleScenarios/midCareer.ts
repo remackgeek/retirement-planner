@@ -1,6 +1,9 @@
 import type { Scenario } from '../../types/Scenario';
 
-const referenceYear = new Date().getFullYear();
+import { currentCalendarYear } from '../../utils/rollScenarioYear';
+
+// Template default only — loadExampleScenario re-stamps the plan year at load time.
+const referenceYear = currentCalendarYear();
 
 export const midCareer: Omit<Scenario, 'id'> = {
   name: 'Example: Mid-Career',

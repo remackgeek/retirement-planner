@@ -14,6 +14,40 @@ import type { IncomeEvent } from '../../types/IncomeEvent';
 import type { Account } from '../../types/Account';
 import type { Scenario } from '../../types/Scenario';
 import { spacing, colors, border, layout, fontSize } from '../../styles/theme';
+import { currentCalendarYear, isStaleScenario } from '../../utils/rollScenarioYear';
+import { compareYearOffset } from '../../utils/compareAlignment';
+
+// Shown above the chart when the active scenario's plan year is behind the
+// calendar (see utils/rollScenarioYear). Info-toned sibling of AppContent's
+// PersistenceBanner; the scenario itself is untouched until the user acts.
+const StalePlanBanner = styled.div`
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: ${spacing.sm};
+  padding: ${spacing.xs} ${spacing.md};
+  margin-bottom: ${spacing.sm};
+  background-color: ${colors.chipBg};
+  color: ${colors.chipText};
+  font-size: ${fontSize.xs};
+  line-height: 1.4;
+  border: ${border.light};
+  border-radius: ${border.radius};
+`;
+
+const StaleBannerButton = styled.button<{ $primary?: boolean }>`
+  background: ${props => (props.$primary ? colors.primary : 'none')};
+  color: ${props => (props.$primary ? colors.onPrimary : colors.chipText)};
+  border: ${props => (props.$primary ? 'none' : border.medium)};
+  border-radius: ${border.radius};
+  padding: 2px ${spacing.sm};
+  font-size: ${fontSize.xs};
+  cursor: pointer;
+  line-height: 1.4;
+  &:hover {
+    background: ${props => (props.$primary ? colors.primaryHover : colors.hoverNeutral)};
+  }
+`;
 
 const ContentContainer = styled.main`
   flex: 1;
@@ -81,6 +115,12 @@ type ContentProps = {
   onDiscardWhatIf?: () => void;
   onSaveWhatIf?: () => void;
   onSaveWhatIfAsNew?: (name: string) => void;
+  /**
+   * Explicit "Update to current year" — opens the shared confirm for the active
+   * scenario. Undefined while the action is unavailable (What If active), which
+   * also hides the banner.
+   */
+  onRequestUpdatePlanYear?: (scenario: Scenario) => void;
 };
 
 // Thin guard so ContentInner can call hooks unconditionally (rules-of-hooks):
@@ -93,11 +133,28 @@ const Content: React.FC<ContentProps> = (props) => {
 
 const ContentInner: React.FC<ContentProps & {
   context: NonNullable<ContextType<typeof RetirementContext>>;
-}> = ({ context, compareScenarioId, onSetCompare, onRegisterExport, whatIfSnapshot, whatIfActive, compareDisabled, onEnterWhatIf, onDiscardWhatIf, onSaveWhatIf, onSaveWhatIfAsNew }) => {
+}> = ({ context, compareScenarioId, onSetCompare, onRegisterExport, whatIfSnapshot, whatIfActive, compareDisabled, onEnterWhatIf, onDiscardWhatIf, onSaveWhatIf, onSaveWhatIfAsNew, onRequestUpdatePlanYear }) => {
   const { activeScenario, updateScenario, scenarios } = context;
   const compareScenario = compareScenarioId
     ? (scenarios.find(s => s.id === compareScenarioId) ?? null)
     : null;
+  // Calendar-year alignment for the compare overlay: positive when the compared
+  // plan's reference year is older than the active one's. The compared scenario
+  // is never rolled — the chart translates indices at render time.
+  const compareYearOffsetValue =
+    activeScenario && compareScenario ? compareYearOffset(activeScenario, compareScenario) : 0;
+  // Stale-plan banner. Dismissals are session-only (state lives here; Content is
+  // always mounted), keyed by scenario id so the banner returns next visit.
+  const nowYear = currentCalendarYear();
+  const [staleBannerDismissedIds, setStaleBannerDismissedIds] = useState<Set<string>>(() => new Set());
+  const staleBannerScenario: Scenario | null =
+    activeScenario &&
+    !whatIfActive &&
+    onRequestUpdatePlanYear &&
+    isStaleScenario(activeScenario, nowYear) &&
+    !staleBannerDismissedIds.has(activeScenario.id)
+      ? activeScenario
+      : null;
   const [results, setResults] = useState<SimulationResult | null>(null);
   const [compareResults, setCompareResults] = useState<{ scenarioId: string; results: SimulationResult } | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -254,11 +311,14 @@ const ContentInner: React.FC<ContentProps & {
       });
     }, 0);
     return () => clearTimeout(id);
-    // Keyed on the id, not the object: scenarios-array churn (e.g. the
+    // Keyed on the id (not the object): scenarios-array churn (e.g. the
     // probability writeback) must not re-run the compare MC for the same
-    // scenario. The body reads compareScenario fresh from the closure.
+    // scenario. referenceYear IS a key: an in-place "Update to current year"
+    // of the compared scenario keeps its id but re-anchors every index, so the
+    // old results would be overlaid a column off. The body reads
+    // compareScenario fresh from the closure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compareScenario?.id]);
+  }, [compareScenario?.id, compareScenario?.referenceYear]);
 
   // Snapshot sim is computed once per snapshot identity — frozen original baseline.
   // Deferred to a 0ms setTimeout so React can paint the "Setting up…" loading
@@ -421,6 +481,32 @@ const ContentInner: React.FC<ContentProps & {
             <SpinnerLabel>Running Monte Carlo simulation…</SpinnerLabel>
           </SpinnerContainer>
         )}
+        {staleBannerScenario && (
+          <StalePlanBanner role="status">
+            <i className="pi pi-calendar" />
+            <span>
+              This plan is set up for <strong>{staleBannerScenario.referenceYear}</strong> — ages and
+              balances are as entered then. Update it to {nowYear} to move "today"
+              forward; income and spending stay on their calendar years.
+            </span>
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: spacing.xs }}>
+              <StaleBannerButton
+                $primary
+                onClick={() => onRequestUpdatePlanYear?.(staleBannerScenario)}
+              >
+                Update to {nowYear}…
+              </StaleBannerButton>
+              <StaleBannerButton
+                aria-label="Dismiss"
+                onClick={() =>
+                  setStaleBannerDismissedIds(prev => new Set(prev).add(staleBannerScenario.id))
+                }
+              >
+                Not now
+              </StaleBannerButton>
+            </span>
+          </StalePlanBanner>
+        )}
         {results && activeScenario && (
           <Projections
             results={results}
@@ -428,6 +514,7 @@ const ContentInner: React.FC<ContentProps & {
             isCalculating={isCalculating}
             compareResults={currentCompareResults}
             compareScenario={compareScenario}
+            compareYearOffset={compareYearOffsetValue}
             isCompareCalculating={isCompareCalculating}
             onSetCompare={onSetCompare}
             onRegisterExport={onRegisterExport}

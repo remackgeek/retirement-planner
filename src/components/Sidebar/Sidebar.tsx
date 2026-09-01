@@ -11,12 +11,15 @@ import { spacing, colors, border, fontSize, mediaQuery, layout } from '../../sty
 import { formatCurrencyShort } from '../../utils/formatCurrencyShort';
 import { getProbabilityTier } from '../../utils/probabilityTier';
 import { EXAMPLE_SCENARIOS } from '../../data/exampleScenarios';
+import { currentCalendarYear, isStaleScenario } from '../../utils/rollScenarioYear';
 
 interface SidebarProps {
   isOpen: boolean;
   onToggle: () => void;
   requestSwitchScenario?: (id: string) => void;
   onOpenUserGuide: () => void;
+  /** Opens the shared "Update plan to current year" confirm for a stale scenario. */
+  onRequestUpdatePlanYear?: (scenario: Scenario) => void;
 }
 
 const SidebarContainer = styled.aside<{ $isOpen: boolean }>`
@@ -211,6 +214,21 @@ const Probability = styled.span<{ $defined: boolean }>`
   font-weight: 600;
 `;
 
+// Marks a scenario whose plan year is behind the calendar (see
+// utils/rollScenarioYear). Display-only; the scenario itself is untouched until
+// the user explicitly updates it.
+const StaleYearChip = styled.span`
+  font-size: ${fontSize.xs};
+  font-weight: 600;
+  color: ${colors.warning};
+  background: ${colors.warningBg};
+  border: 1px solid ${colors.warningBorder};
+  border-radius: ${border.radius};
+  padding: 0 ${spacing.xs};
+  line-height: 1.3;
+  cursor: help;
+`;
+
 
 const Footer = styled.div`
   display: flex;
@@ -383,12 +401,13 @@ const actionButtonStyle = {
   minWidth: '1.6rem',
 } as const;
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenario, onOpenUserGuide }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenario, onOpenUserGuide, onRequestUpdatePlanYear }) => {
   const [dialogVisible, setDialogVisible] = useState(false);
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [cloneDialogVisible, setCloneDialogVisible] = useState(false);
   const [cloneSourceScenario, setCloneSourceScenario] = useState<Scenario | null>(null);
   const context = useContext(RetirementContext);
+  const nowYear = currentCalendarYear();
   if (!context) return null;
   const {
     scenarios,
@@ -477,10 +496,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenar
             <GuideHint>or open it later from Help → User Guide</GuideHint>
           </EmptyState>
         )}
+        {/* One tooltip instance for every stale-year chip (shared class). */}
+        <PrimeTooltip target=".stale-year-chip" position="right" showDelay={150}>
+          <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
+            Plan year — ages and balances are as entered for that year. Use the
+            calendar button to update the plan to {nowYear}.
+          </div>
+        </PrimeTooltip>
         {scenarios.map((scenario) => {
           const isActive = activeScenario?.id === scenario.id;
           const total = scenario.accounts.reduce((sum, a) => sum + a.balance, 0);
           const prob = scenario.lastSuccessProbability;
+          const stale = isStaleScenario(scenario, nowYear);
           return (
             <ScenarioItem
               key={scenario.id}
@@ -493,6 +520,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenar
               <ScenarioRow>
                 <ScenarioName $isActive={isActive}>{scenario.name}</ScenarioName>
                 <ScenarioActions>
+                {stale && onRequestUpdatePlanYear && (
+                  <Button
+                    icon='pi pi-calendar'
+                    className='p-button-text'
+                    style={actionButtonStyle}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRequestUpdatePlanYear(scenario);
+                    }}
+                    tooltip={`Update to ${nowYear}`}
+                    tooltipOptions={{ position: 'top', className: 'compact-tooltip' }}
+                  />
+                )}
                 <Button
                   icon='pi pi-trash'
                   className='p-button-text p-button-danger'
@@ -550,6 +590,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, requestSwitchScenar
               </ScenarioRow>
               <ScenarioMeta>
                 <Total>{formatCurrencyShort(total)}</Total>
+                {stale && (
+                  <StaleYearChip className="stale-year-chip" aria-label={`Plan year ${scenario.referenceYear}`}>
+                    {scenario.referenceYear}
+                  </StaleYearChip>
+                )}
                 <ProbabilityWrap>
                   {(() => {
                     const tierInfo = prob != null ? getProbabilityTier(prob) : null;

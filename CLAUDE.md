@@ -35,6 +35,29 @@ projections, and good tax awareness without overwhelming the user.
   This is a sidebar display cache — never read it from simulation, chart, CSV
   export, scenario JSON export logic, or tests. Authoritative probability always
   comes from the live `runSimulation()` result for the active scenario.
+- **Plan year (`referenceYear`)** — stamped once at creation, never editable, and the
+  single anchor for year 0, the birth year (RMD start age / SS FRA), and every
+  age→calendar-year mapping (`year = referenceYear + (startAge − ownerAge)`; events and
+  goals are age-based). **Nothing rolls it implicitly** — not load, import, clone, edit,
+  What If, or the probability write-back; a last-year plan displays exactly as saved.
+  The only path that changes it is the explicit `updateScenarioToCurrentYear(id, mode)`
+  context action (stale-plan banner in `Content.tsx`, calendar button on stale sidebar
+  rows, shared confirm `UpdatePlanYearDialog`), built on the pure
+  `rollScenarioToYear` in [src/utils/rollScenarioYear.ts](src/utils/rollScenarioYear.ts):
+  `referenceYear := now`, `currentAge`/`spouseAge += delta`, life expectancies bumped
+  only if the new age would reach them, `historicalStartYear += delta` for
+  `historical_single` only; other absolute-year fields, balances, and amounts untouched;
+  `changes.pastItems` lists the events/goals that fall into the past. In-place mode strips
+  `lastSuccessProbability`; `'clone'` mode keeps the original as a checkpoint. The action
+  is disabled while What If is active. `UserData.referenceYear` is `readonly`.
+  The compare overlay never rolls the compared scenario either — `Chart.tsx` builds one
+  memoized `alignCompareResults(...)` view ([src/utils/compareAlignment.ts](src/utils/compareAlignment.ts))
+  in the active plan's index frame (`compareYearOffset` prop, positive when the compared
+  plan is older; gaps where it has no such year; real dollars rebased by the runs' own
+  cumulative-inflation arrays, never the scalar rate). The compare sim effect is keyed on
+  the compared scenario's `referenceYear` as well as its id.
+  Fixtures: `test/scenarios/stale-plan-2025.json` and its `stale-plan-2026-twin.json`
+  (what the update must produce; asserted in `rollScenarioYear.test.ts`).
 - **Monte Carlo** — median + 10th percentile portfolio paths, success probability
 - **Accounts** — 4 tax-profile types: `traditional` (withdrawals taxed as ordinary income),
   `roth` (withdrawals tax-free), `brokerage` (withdrawals taxed at flat LTCG rate),

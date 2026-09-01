@@ -1,0 +1,125 @@
+{
+  "_description": "The SAME plan as stale-plan-2025.json re-expressed in the 2026 frame: referenceYear 2026, currentAge 61, spouseAge 59, and every other field identical (same ids, same age-based starts, same absolute years). This is exactly what 'Update to current year' must produce from the 2025 file; rollScenarioYear.test.ts asserts that. Note the 2025 one-time vacation (age 60) is now in the past and never fires, and 2025's consulting year is gone too.",
+  "_rationale": "Index 0 = 2026 (age 61, spouse 59); 30 years to age 90. Balances carried as saved: $1.5M at 2026. Flows: 2026 consulting +50k - living 60k = -10k (age-60 vacation is 2025, in the past). 2027: x0.76 then -10k. 2028-2031: -60k. 2032-2033: -30k (self SS 30k at 67 = 2032, unchanged calendar year). 2034+: -10k (spouse SS at spouse 67 = 2034, unchanged). Zero tax throughout for the same reasons as the 2025 file. Birth year 2026-61 = 1965 so the RMD start age is still 75 (2040).",
+  "_seed": 12345,
+  "name": "Stale Plan (2025)",
+  "currentAge": 61,
+  "lifeExpectancy": 90,
+  "referenceYear": 2026,
+  "filingStatus": "mfj",
+  "spouseAge": 59,
+  "spouseLifeExpectancy": null,
+  "accounts": [
+    {
+      "id": "acct-trad",
+      "name": "Traditional IRA",
+      "type": "traditional",
+      "owner": "self",
+      "balance": 400000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "acct-brok",
+      "name": "Brokerage",
+      "type": "brokerage",
+      "balance": 900000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    },
+    {
+      "id": "acct-roth",
+      "name": "Roth IRA",
+      "type": "roth",
+      "owner": "self",
+      "balance": 200000,
+      "stockAllocation": 0.6,
+      "portfolioBalance": "60_40"
+    }
+  ],
+  "incomeEvents": [
+    {
+      "id": "consulting",
+      "type": "other_income",
+      "owner": "self",
+      "name": "Consulting",
+      "amount": 50000,
+      "startAge": 60,
+      "endAge": 62,
+      "taxStatus": "after_tax",
+      "colaType": "fixed",
+      "amountPeriod": "annual"
+    },
+    {
+      "id": "ss-self",
+      "type": "social_security",
+      "owner": "self",
+      "name": "Social Security 1",
+      "amount": 30000,
+      "startAge": 67,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "amountPeriod": "annual",
+      "ssHaircutEnabled": false
+    },
+    {
+      "id": "ss-spouse",
+      "type": "social_security",
+      "owner": "spouse",
+      "name": "Social Security 2",
+      "amount": 20000,
+      "startAge": 67,
+      "taxStatus": "before_tax",
+      "colaType": "fixed",
+      "amountPeriod": "annual",
+      "ssHaircutEnabled": false
+    }
+  ],
+  "spendingGoals": [
+    {
+      "id": "living",
+      "type": "living_expenses",
+      "name": "Living Expenses 1",
+      "amount": 60000,
+      "startAge": 60,
+      "inflationAdjusted": true,
+      "amountPeriod": "annual"
+    },
+    {
+      "id": "vacation-2025",
+      "type": "vacation",
+      "name": "Vacation 1",
+      "amount": 10000,
+      "startAge": 60,
+      "isOneTime": true,
+      "inflationAdjusted": false,
+      "amountPeriod": "annual"
+    }
+  ],
+  "portfolioAssumptions": {
+    "stockReturn": 0,
+    "stockStdDev": 0,
+    "bondReturn": 0,
+    "bondStdDev": 0,
+    "stockBondCorrelationEnabled": false,
+    "stockBondCorrelation": -0.2,
+    "returnDistribution": "lognormal",
+    "degreesOfFreedom": 4,
+    "returnModel": "parametric",
+    "blackSwanEvents": [
+      { "year": 2027, "stockMultiplier": 0.6, "bondMultiplier": 1.0 }
+    ]
+  },
+  "inflationRate": 0,
+  "inflationStdDev": 0,
+  "simulationSettings": {
+    "numSimulations": 100
+  },
+  "stateTimeline": [
+    { "state": "Florida" },
+    { "state": "Texas", "startYear": 2028 }
+  ],
+  "longTermCapGainsRate": 0,
+  "enableIRMAA": false,
+  "enableNIIT": false
+}

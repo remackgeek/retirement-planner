@@ -10,6 +10,7 @@ import { Tooltip as PrimeTooltip } from 'primereact/tooltip';
 import type { Scenario } from '../types/Scenario';
 import { spacing, colors, fontSize, border, dialogWidth } from '../styles/theme';
 import { SELECTABLE_STATES, getStateTaxProfile } from '../data/stateTaxProfiles';
+import { currentCalendarYear } from '../utils/rollScenarioYear';
 
 const SectionGrid = styled.div`
   display: grid;
@@ -120,7 +121,7 @@ const makeDefaults = (): Scenario => ({
     degreesOfFreedom: 4,
     returnModel: 'parametric' as const,
   },
-  referenceYear: new Date().getFullYear(),
+  referenceYear: currentCalendarYear(),
   inflationRate: 0.03,
   inflationStdDev: 0.012,
   simulationSettings: { numSimulations: 1000 },

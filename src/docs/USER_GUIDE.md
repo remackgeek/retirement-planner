@@ -321,6 +321,32 @@ Click **Compare with ▾** above the chart to overlay another scenario as a dash
 
 This is the most useful feature for actually making decisions: rather than asking "is my plan good?" you ask "is plan A better than plan B?"
 
+**Comparing last year's plan with this year's.** If the two scenarios were set up in different years (see *Your plan and the calendar* below), the chart lines up the two lines **by calendar year**, so each column compares the same year — the older plan is not shifted a column to the left. The older plan's ages, balances, and success chance are shown exactly as saved, and its name carries a small *plan year* tag. In **Today's $** its values are restated in the active plan's dollars using the inflation actually experienced in each projection. Where the older plan has no data for a year (before its start or past its horizon) the dashed line simply has a gap.
+
+---
+
+## Your plan and the calendar
+
+Every scenario remembers the year it was set up in (its **plan year**). Your current age, your spouse's age, and account balances are all "as of" that year, and every income event and spending goal is tied to an **age** — that's how YARP knows the calendar year each one starts.
+
+When you open a plan in a later year, **nothing changes on its own**: it displays exactly as you saved it, and edits keep working in that year. A small year chip on the sidebar row and a banner above the chart tell you the plan is behind the calendar.
+
+To move "today" forward, click **Update to (this year)…** in the banner, or the calendar button on the sidebar row. The confirm shows exactly what will change:
+
+- **Plan year** advances to the current year.
+- **Your age** (and your spouse's) advances by the same number of years.
+- Life expectancies stay put unless the new age would reach them (then they're raised to one year above the new age).
+- For a *Historical: Single Sequence* return model, the historical start year moves with the plan year so each calendar year keeps the same historical year underneath it.
+
+Because income and spending are tied to ages, they stay on the **same calendar years** — a pension that started "at 65 (2030)" still starts in 2030. Relocation years, stress-test years, and account balances are left exactly as entered, so afterwards it's worth reviewing balances, any "today's dollars" amounts (they are now read as current-year figures), and the *last working year MAGI* under Settings → Tax & IRS (the first two years' Medicare IRMAA lookback uses it). The confirm lists any income events or spending goals that end before the new plan year — they are in the past and no longer apply.
+
+Two ways to apply it:
+
+- **Update** — rewrites the scenario in place.
+- **Clone & update** — keeps the old plan unchanged as a checkpoint and creates an updated copy (named with the new year) that becomes active. Use this when you want to compare "what I planned last year" against "where I am now" (see *Comparing Scenarios*).
+
+**Not now** hides the banner for this session only; the sidebar chip and calendar button stay until you update.
+
 ---
 
 ## What If? Mode

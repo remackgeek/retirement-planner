@@ -1,0 +1,19 @@
+{
+  "_rationale": "Start $1.5M at 2026 (idx0, age 61). 2026: +50k consulting - 60k living = -10k (the age-60 vacation is 2025, in the past, so it never fires) -> 1,490,000 at idx1 (2027). 2027: x0.76 = 1,132,400 then -10k -> 1,122,400 at idx2 (2028). 2028-2031: -60k/yr -> 882,400 at idx6 (2032). 2032-2033: -30k/yr -> 822,400 at idx8 (2034). 2034+: -10k/yr -> 812,400 at idx9 (2035), then 812,400 - 10k x (idx-9); idx29 (2055, age 90) = 612,400. Compared with stale-plan-2025 at the same calendar year, this path is higher by 20,000 x 0.76 = 15,200 from 2028 on (the 2025 net flow that the un-rolled balances never absorbed) and by 20,000 before the 2027 shock. Zero tax every year.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 61, "value": 1500000, "note": "Starting balance, 2026 (same balances as the 2025 file)" },
+    { "index": 1, "age": 62, "value": 1490000, "note": "2027: after 2026 net flow -10k; no vacation (it was age 60 = 2025)" },
+    { "index": 2, "age": 63, "value": 1122400, "note": "2028: 1,490,000 x 0.76 - 10k (black swan still on calendar 2027)" },
+    { "index": 6, "age": 67, "value": 882400, "note": "2032: 1,122,400 - 4 x 60k; self SS starts (still 2032)" },
+    { "index": 8, "age": 69, "value": 822400, "note": "2034: 882,400 - 2 x 30k; spouse SS starts (still 2034)" },
+    { "index": 9, "age": 70, "value": 812400, "note": "2035: first year of -10k" },
+    { "index": 29, "age": 90, "value": 612400, "note": "2055: 812,400 - 20 x 10k" }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "otherSpendingGoalsNet", "value": 0, "tolerance": 1, "_note": "the one-time vacation at age 60 is in the past (2025) and never fires" },
+    { "index": 0, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "after-tax consulting only" },
+    { "index": 19, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "RMD (from 2040) + SS still under the MFJ std deduction" }
+  ],
+  "tolerance": 1.0
+}

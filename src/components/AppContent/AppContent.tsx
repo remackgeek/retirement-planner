@@ -8,6 +8,7 @@ import { colors, mediaQuery, mobileMatchMedia, spacing, fontSize, border } from 
 import { RetirementContext } from '../../context/RetirementContext';
 import type { Scenario } from '../../types/Scenario';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
+import UpdatePlanYearDialog from '../../dialogs/UpdatePlanYearDialog';
 
 const AppContentContainer = styled.div`
   display: flex;
@@ -64,7 +65,18 @@ const AppContent: React.FC = () => {
   const [whatIfSnapshot, setWhatIfSnapshot] = useState<Scenario | null>(null);
   const [persistenceBannerDismissed, setPersistenceBannerDismissed] = useState(false);
   const [userGuideVisible, setUserGuideVisible] = useState(false);
+  // Explicit "Update to current year" flow (see utils/rollScenarioYear). The
+  // target is whichever stale scenario the user picked — from the chart banner
+  // (active scenario) or a sidebar row (any scenario). Stored by id and
+  // resolved from the live list so the preview and the applied write read the
+  // same record. Disabled while What If is active: an in-place roll would
+  // desync the draft from its snapshot (Discard would silently revert it) and
+  // a clone would switch scenarios past the unsaved-What-If confirm.
+  const [updatePlanYearId, setUpdatePlanYearId] = useState<string | null>(null);
   const ctx = useContext(RetirementContext);
+  const updatePlanYearTarget =
+    updatePlanYearId != null ? (ctx?.scenarios.find(s => s.id === updatePlanYearId) ?? null) : null;
+  const requestUpdatePlanYear = (scenario: Scenario) => setUpdatePlanYearId(scenario.id);
   const exportCsvRef = useRef<(() => void) | null>(null);
   const [canExport, setCanExport] = useState(false);
   const handleRegisterExport = (fn: (() => void) | null) => {
@@ -198,6 +210,7 @@ const AppContent: React.FC = () => {
           onToggle={toggle}
           requestSwitchScenario={requestSwitchScenario}
           onOpenUserGuide={() => setUserGuideVisible(true)}
+          onRequestUpdatePlanYear={whatIfSnapshot ? undefined : requestUpdatePlanYear}
         />
         <Content
           compareScenarioId={whatIfSnapshot ? null : compareScenarioId}
@@ -210,9 +223,18 @@ const AppContent: React.FC = () => {
           onDiscardWhatIf={discardWhatIf}
           onSaveWhatIf={saveWhatIf}
           onSaveWhatIfAsNew={saveWhatIfAsNew}
+          onRequestUpdatePlanYear={whatIfSnapshot ? undefined : requestUpdatePlanYear}
         />
       </ContentArea>
       <Footer />
+      <UpdatePlanYearDialog
+        visible={updatePlanYearTarget != null}
+        scenario={updatePlanYearTarget}
+        onHide={() => setUpdatePlanYearId(null)}
+        onConfirm={(mode, toYear) => {
+          if (updatePlanYearTarget) ctx?.updateScenarioToCurrentYear(updatePlanYearTarget.id, mode, toYear);
+        }}
+      />
       {/* Single global instance backing PrimeReact's imperative confirmDialog().
           Mounted here in the always-rendered shell — NOT inside the Sidebar,
           which unmounts its subtree when collapsed and silently broke every

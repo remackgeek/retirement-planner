@@ -642,6 +642,106 @@ describe('RetirementContext Import Tests', () => {
       });
     });
 
+    describe('updateScenarioToCurrentYear (explicit plan-year update)', () => {
+      const stale = {
+        id: 'stale-id',
+        name: 'Last year',
+        currentAge: 60,
+        spouseAge: 58,
+        lifeExpectancy: 90,
+        referenceYear: 2025,
+        lastSuccessProbability: 81,
+      } as Scenario;
+
+      beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+      });
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('in_place: rewrites referenceYear and ages, drops the stale display cache, keeps the rest', async () => {
+        mockGetAll.mockResolvedValue([stale]);
+        const ctx = renderProvider();
+        await waitFor(() => expect(ctx.current?.loading).toBe(false));
+        mockPut.mockClear();
+
+        await act(async () => {
+          await ctx.current!.updateScenarioToCurrentYear('stale-id', 'in_place');
+        });
+
+        expect(mockPut).toHaveBeenCalledTimes(1);
+        const written = mockPut.mock.calls[0][1] as Scenario;
+        expect(written.id).toBe('stale-id');
+        expect(written.referenceYear).toBe(2026);
+        expect(written.currentAge).toBe(61);
+        expect(written.spouseAge).toBe(59);
+        expect(written.lifeExpectancy).toBe(90);
+        expect(written.name).toBe('Last year');
+        // Sim inputs changed → the sidebar % cache must not survive as if current.
+        expect(written.lastSuccessProbability).toBeUndefined();
+        expect(ctx.current!.scenarios).toHaveLength(1);
+        expect(ctx.current!.scenarios[0].referenceYear).toBe(2026);
+      });
+
+      it('applies the explicit toYear the confirm previewed, not the clock', async () => {
+        mockGetAll.mockResolvedValue([stale]);
+        const ctx = renderProvider();
+        await waitFor(() => expect(ctx.current?.loading).toBe(false));
+        mockPut.mockClear();
+
+        await act(async () => {
+          await ctx.current!.updateScenarioToCurrentYear('stale-id', 'in_place', 2028);
+        });
+
+        const written = mockPut.mock.calls[0][1] as Scenario;
+        expect(written.referenceYear).toBe(2028);
+        expect(written.currentAge).toBe(63);
+      });
+
+      it('clone: leaves the original untouched and adds an updated, active copy', async () => {
+        mockGetAll.mockResolvedValue([stale]);
+        vi.mocked(crypto.randomUUID).mockReturnValue('00000000-0000-4000-8000-00000000abcd');
+        const ctx = renderProvider();
+        await waitFor(() => expect(ctx.current?.loading).toBe(false));
+        mockPut.mockClear();
+
+        await act(async () => {
+          await ctx.current!.updateScenarioToCurrentYear('stale-id', 'clone');
+        });
+
+        expect(mockPut).toHaveBeenCalledTimes(1);
+        const copy = mockPut.mock.calls[0][1] as Scenario;
+        expect(copy.id).toBe('00000000-0000-4000-8000-00000000abcd');
+        expect(copy.name).toBe('Last year (2026)');
+        expect(copy.referenceYear).toBe(2026);
+        expect(copy.currentAge).toBe(61);
+        expect(copy.spouseAge).toBe(59);
+        expect(copy.lastSuccessProbability).toBeUndefined(); // new identity: no display cache
+        const original = ctx.current!.scenarios.find((s) => s.id === 'stale-id')!;
+        expect(original.referenceYear).toBe(2025);
+        expect(original.currentAge).toBe(60);
+        expect(ctx.current!.scenarios).toHaveLength(2);
+        expect(ctx.current!.activeScenario?.id).toBe(copy.id);
+      });
+
+      it('is a no-op for a scenario that is already on the current year', async () => {
+        mockGetAll.mockResolvedValue([{ ...stale, referenceYear: 2026, currentAge: 61 }]);
+        const ctx = renderProvider();
+        await waitFor(() => expect(ctx.current?.loading).toBe(false));
+        mockPut.mockClear();
+
+        await act(async () => {
+          await ctx.current!.updateScenarioToCurrentYear('stale-id', 'in_place');
+          await ctx.current!.updateScenarioToCurrentYear('stale-id', 'clone');
+        });
+
+        expect(mockPut).not.toHaveBeenCalled();
+        expect(ctx.current!.scenarios).toHaveLength(1);
+      });
+    });
+
     it('refuses to stamp/persist a newer-schema scenario on write (forward-compat guard)', async () => {
       const future = {
         id: 'future-id',

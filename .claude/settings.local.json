@@ -48,7 +48,9 @@
       "PowerShell(npx vitest run test/simulation.test.ts -t \"Per-type beginning-of-year balance\" 2>&1)",
       "PowerShell(npm ls playwright 2>&1 | Select-Object -First 4; Test-Path \"$env:USERPROFILE\\\\AppData\\\\Local\\\\Temp\\\\yarp-smoke\\\\node_modules\\\\playwright\")",
       "PowerShell(npx vitest run src/components/Chart/secondaryChartData.test.ts 2>&1)",
-      "PowerShell(npx vitest run src/components/Chart/secondaryChartData.test.ts src/components/Chart/SecondaryChartPanel.test.tsx src/utils/exportChartCsv.test.ts 2>&1)"
+      "PowerShell(npx vitest run src/components/Chart/secondaryChartData.test.ts src/components/Chart/SecondaryChartPanel.test.tsx src/utils/exportChartCsv.test.ts 2>&1)",
+      "Read(//c/Users/bmack/AppData/Local/Temp/yarp-smoke/**)",
+      "Bash(npm install *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\bmack\\AppData\\Local\\Temp\\yarp-smoke"

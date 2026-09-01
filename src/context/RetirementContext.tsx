@@ -12,6 +12,7 @@ import {
   runMigrationPipeline,
   validateImportedScenario,
 } from '../utils/scenarioMigration';
+import { currentCalendarYear, rollScenarioToYear } from '../utils/rollScenarioYear';
 
 /**
  * Single-button acknowledgement dialog. PrimeReact's `confirmDialog` always
@@ -83,6 +84,20 @@ const stripDisplayCache = <T extends Scenario>(scenario: T): T => {
   return rest as T;
 };
 
+/**
+ * Mint a NEW scenario identity from an existing one: deep copy, fresh id, given
+ * name, display cache stripped. The single recipe behind Clone and the
+ * "Clone & update" plan-year flow. structuredClone (not a JSON round-trip)
+ * preserves `undefined`-valued optional fields — see the What If snapshot note
+ * in AppContent for why the JSON pattern is a footgun.
+ */
+const newScenarioFrom = (source: Scenario, name: string): Scenario =>
+  stripDisplayCache({
+    ...structuredClone(source),
+    id: crypto.randomUUID(),
+    name,
+  });
+
 export const RetirementContext = createContext<{
   scenarios: Scenario[];
   activeScenario: Scenario | null;
@@ -96,6 +111,16 @@ export const RetirementContext = createContext<{
   importScenario: () => void;
   loadExampleScenario: (template: Omit<Scenario, 'id'>) => Promise<void>;
   setActiveScenario: (id: string) => Promise<void>;
+  /**
+   * Explicit "Update to current year" (see `utils/rollScenarioYear`). The ONLY
+   * path that changes a scenario's `referenceYear`; nothing rolls implicitly.
+   * `'in_place'` rewrites the scenario; `'clone'` leaves it untouched as a
+   * checkpoint and adds an updated copy (which becomes active). No-op when the
+   * scenario is not behind the calendar. `toYear` is the year the confirm
+   * previewed (defaults to the calendar year) so what was shown is what is
+   * applied.
+   */
+  updateScenarioToCurrentYear: (id: string, mode: 'in_place' | 'clone', toYear?: number) => Promise<void>;
 } | null>(null);
 
 export const RetirementProvider = ({ children }: { children: ReactNode }) => {
@@ -460,18 +485,37 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
   const cloneScenario = async (id: string, name: string) => {
     const source = scenariosRef.current.find((s) => s.id === id);
     if (!source) return;
-    const clone: Scenario = stripDisplayCache({
-      ...(JSON.parse(JSON.stringify(source)) as Scenario),
-      id: crypto.randomUUID(),
-      name,
-    });
-    await addScenario(clone);
+    await addScenario(newScenarioFrom(source, name));
+  };
+
+  const updateScenarioToCurrentYear = async (
+    id: string,
+    mode: 'in_place' | 'clone',
+    toYear: number = currentCalendarYear(),
+  ) => {
+    const source = scenariosRef.current.find((s) => s.id === id);
+    if (!source) return;
+    const { scenario: rolled, changes } = rollScenarioToYear(source, toYear);
+    if (!changes) return;
+    if (mode === 'in_place') {
+      // The sim inputs changed, so the cached sidebar % no longer describes
+      // this configuration — strip it (the row shows '—' until the next MC).
+      // updateScenario carries the newer-schema read-only guard.
+      await updateScenario(stripDisplayCache(rolled));
+      return;
+    }
+    // Checkpoint flow: the original stays exactly as saved; the rolled copy is a
+    // new scenario identity (addScenario makes it active).
+    await addScenario(newScenarioFrom(rolled, `${source.name} (${changes.toYear})`));
   };
 
   const loadExampleScenario = async (template: Omit<Scenario, 'id'>) => {
     const scenario: Scenario = stripDisplayCache({
       ...structuredClone(template) as Omit<Scenario, 'id'>,
       id: crypto.randomUUID(),
+      // Templates are module-level constants; stamp the plan year at LOAD time
+      // so an example opened after a New Year isn't born stale.
+      referenceYear: currentCalendarYear(),
     } as Scenario);
     await addScenario(scenario);
   };
@@ -507,6 +551,7 @@ export const RetirementProvider = ({ children }: { children: ReactNode }) => {
         importScenario,
         loadExampleScenario,
         setActiveScenario,
+        updateScenarioToCurrentYear,
       }}
     >
       {children}

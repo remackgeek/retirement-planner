@@ -1,0 +1,22 @@
+{
+  "_rationale": "Start $1.5M. path[i] = beginning-of-year balance; black swan multiplies first, then the year's net flow. 2025 (idx0): +50k consulting - 60k living - 10k vacation = -20k -> 1,480,000. 2026: -10k -> 1,470,000. 2027: x0.76 (stock 0.6 on 60/40) = 1,117,200, then -10k -> 1,107,200 at idx3 (2028). 2028-2031: -60k/yr -> 867,200 at idx7 (2032). 2032-2033: self SS 30k so -30k/yr -> 807,200 at idx9 (2034). 2034+: both SS (50k) so -10k/yr -> 797,200 at idx10, then 797,200 - 10k x (idx-10); idx30 (2055, age 90) = 597,200. Total tax is zero in every year (after-tax income, 0% LTCG, SS taxable fraction stays under the MFJ standard deduction, FL/TX no income tax, IRMAA/NIIT off). The twin file stale-plan-2026-twin.json is this same plan re-expressed in the 2026 frame; its path for a given calendar year differs from this one by exactly the un-rolled 2025 net flow (-20k x 0.76 after the 2027 shock = -15,200) because balances are carried as saved, not projected forward.",
+  "probability": 100,
+  "pathValues": [
+    { "index": 0, "age": 60, "value": 1500000, "note": "Starting balance, 2025" },
+    { "index": 1, "age": 61, "value": 1480000, "note": "2026: after 2025 net flow -20k (incl. one-time vacation)" },
+    { "index": 2, "age": 62, "value": 1470000, "note": "2027: after 2026 net flow -10k; black swan applies during this year" },
+    { "index": 3, "age": 63, "value": 1107200, "note": "2028: 1,470,000 x 0.76 - 10k" },
+    { "index": 7, "age": 67, "value": 867200, "note": "2032: 1,107,200 - 4 x 60k; self SS starts this year" },
+    { "index": 9, "age": 69, "value": 807200, "note": "2034: 867,200 - 2 x 30k; spouse SS starts this year" },
+    { "index": 10, "age": 70, "value": 797200, "note": "2035: first year of -10k" },
+    { "index": 30, "age": 90, "value": 597200, "note": "2055: 797,200 - 20 x 10k" }
+  ],
+  "breakdownChecks": [
+    { "index": 0, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "after-tax consulting, no withdrawals taxed" },
+    { "index": 0, "field": "otherSpendingGoalsNet", "value": 10000, "tolerance": 1, "_note": "one-time vacation fires in 2025" },
+    { "index": 1, "field": "otherSpendingGoalsNet", "value": 0, "tolerance": 1, "_note": "vacation was one-time" },
+    { "index": 8, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "SS + brokerage proxy stays under the MFJ std deduction" },
+    { "index": 20, "field": "totalTax", "value": 0, "tolerance": 1, "_note": "RMD + SS still under the MFJ std deduction" }
+  ],
+  "tolerance": 1.0
+}

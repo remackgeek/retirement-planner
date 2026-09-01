@@ -41,6 +41,7 @@ import { useUIState } from '../../context/UIStateContext';
 import { RetirementContext } from '../../context/RetirementContext';
 import { toDisplay, pathToDisplay } from '../../utils/displayCurrency';
 import { formatCurrencyShort } from '../../utils/formatCurrencyShort';
+import { alignCompareResults, type AlignedCompare } from '../../utils/compareAlignment';
 import type { Account } from '../../types/Account';
 import type { Scenario } from '../../types/Scenario';
 import type { IncomeEvent } from '../../types/IncomeEvent';
@@ -273,6 +274,13 @@ type ProjectionsProps = {
   isCalculating?: boolean;
   compareResults?: SimulationResult | null;
   compareScenario?: Scenario | null;
+  /**
+   * `active.referenceYear − compared.referenceYear` (see utils/compareAlignment).
+   * Non-zero when the two plans have different plan years; the overlay is then
+   * aligned by calendar year (active index i ↔ compared index i + offset) and
+   * real-dollar values are rebased into the active plan's year-0 dollars.
+   */
+  compareYearOffset?: number;
   isCompareCalculating?: boolean;
   onSetCompare: (id: string | null) => void;
   onRegisterExport?: (fn: (() => void) | null) => void;
@@ -299,6 +307,7 @@ const ProjectionsInner = ({
   isCalculating,
   compareResults,
   compareScenario,
+  compareYearOffset = 0,
   isCompareCalculating,
   onSetCompare,
   onRegisterExport,
@@ -367,6 +376,25 @@ const ProjectionsInner = ({
   const chartPrimaryPath: number[] = chartPrimaryMode === 'median' ? median : nominal;
   const chartPrimaryInflation: number[] = chartPrimaryMode === 'median' ? medianInflation : nominalInflation;
   const bandActive = showBand && !!percentileBand && !whatIfActive;
+
+  // The compared run re-expressed in THIS plan's index frame and year-0 dollars
+  // (see utils/compareAlignment). Identity when the plans share a reference
+  // year; otherwise index-shifted with gaps, and real values rebased by the
+  // runs' own cumulative inflation. Every compare consumer (line, popup) reads
+  // this instead of compareResults directly.
+  const alignedCompare: AlignedCompare | null = useMemo(() => {
+    if (!compareResults || !compareScenario) return null;
+    const cPath = chartPrimaryMode === 'nominal' ? compareResults.nominal : compareResults.median;
+    const cInf = chartPrimaryMode === 'nominal' ? compareResults.nominalInflation : compareResults.medianInflation;
+    const cBds = chartPrimaryMode === 'nominal' ? compareResults.nominalBreakdowns : compareResults.medianBreakdowns;
+    if (!cPath || !cInf) return null;
+    return alignCompareResults(
+      { path: cPath, inflation: cInf, breakdowns: cBds ?? [] },
+      compareYearOffset,
+      years.length,
+      chartPrimaryInflation,
+    );
+  }, [compareResults, compareScenario, chartPrimaryMode, compareYearOffset, years.length, chartPrimaryInflation]);
 
   const buildExportFn = useCallback(() => {
     // The table (and CSV detail columns) follow the chart's primary path:
@@ -473,7 +501,7 @@ const ProjectionsInner = ({
       path.map((v, i) => pathToDisplay(v, infArr[i] ?? 1, displayCurrency));
     // Only called for the compare overlay (dashed). Solid datasets are pushed
     // inline below. Border width is constant.
-    const makeDataset = (label: string, mode: ViewMode, data: number[], dashed = false, dashColor?: string) => {
+    const makeDataset = (label: string, mode: ViewMode, data: (number | null)[], dashed = false, dashColor?: string) => {
       const color = dashed
         ? (dashColor ?? VIEW_COLORS[mode] + '80')
         : VIEW_COLORS[mode];
@@ -530,16 +558,16 @@ const ProjectionsInner = ({
         borderDash: [],
         pointRadius: 0,
       });
-      if (compareResults && compareScenario) {
-        const cPath = chartPrimaryMode === 'nominal' ? compareResults.nominal : compareResults.median;
-        const cInf = chartPrimaryMode === 'nominal' ? compareResults.nominalInflation : compareResults.medianInflation;
-        if (cPath && cInf) {
-          datasets.push(makeDataset(compareScenario.name, chartPrimaryMode, toDisplayPath(cPath, cInf), true));
-        }
+      if (alignedCompare && compareScenario) {
+        // Already in this plan's index frame: gaps (null) where the compared
+        // projection has no such calendar year.
+        const data = alignedCompare.path.map((v, i) =>
+          v == null ? null : pathToDisplay(v, alignedCompare.inflation[i] ?? 1, displayCurrency));
+        datasets.push(makeDataset(compareScenario.name, chartPrimaryMode, data, true));
       }
     }
     return { labels, datasets };
-  }, [labels, displayCurrency, compareResults, compareScenario, whatIfActive, whatIfSnapshotResults, chartPrimaryMode, chartPrimaryPath, chartPrimaryInflation]);
+  }, [labels, displayCurrency, alignedCompare, compareScenario, whatIfActive, whatIfSnapshotResults, chartPrimaryMode, chartPrimaryPath, chartPrimaryInflation]);
 
   // Group income events / spending goals by their start year once, then iterate
   // years to build the annotation list. Avoids N × M filter passes per render.
@@ -751,6 +779,20 @@ const ProjectionsInner = ({
             {isCalculating && <UpdatingBadge style={{ marginLeft: spacing.md }}>Updating projection…</UpdatingBadge>}
             <span style={{ color: colors.textMuted, fontWeight: 400, fontSize: fontSize.sm }}>vs.</span>
             <span>{compareScenario.name}:</span>
+            {compareYearOffset !== 0 && (
+              <span
+                className="compare-plan-year-tag"
+                title={
+                  `Set up for ${compareScenario.referenceYear}; the active plan for ${userData.referenceYear}. ` +
+                  'The lines are aligned by calendar year, so each column compares the same year. ' +
+                  `The ${compareScenario.referenceYear} plan's ages, balances, and success chance are shown as saved; ` +
+                  `in Today's $ its values are restated in ${userData.referenceYear} dollars using its own inflation path.`
+                }
+                style={{ color: colors.textMuted, fontWeight: 400, fontSize: fontSize.xs, cursor: 'help' }}
+              >
+                plan year {compareScenario.referenceYear}
+              </span>
+            )}
             {/* Same pending rule as the primary heading above: a compared
                 scenario that has never been simulated carries a placeholder 0
                 with `probabilityPending`, which must render as '—' rather than
@@ -957,21 +999,21 @@ const ProjectionsInner = ({
           // mode, or from the What If snapshot in What If mode. Both overlays
           // render the chart's primary line (Deterministic when available),
           // so the popup matches.
-          const overlaySource = whatIfActive && whatIfSnapshotResults
-            ? whatIfSnapshotResults
-            : compareResults;
-          const cPath = overlaySource
-            ? (chartPrimaryMode === 'nominal' ? overlaySource.nominal : overlaySource.median)
-            : null;
-          const cInfArr = overlaySource
-            ? (chartPrimaryMode === 'nominal' ? overlaySource.nominalInflation : overlaySource.medianInflation)
-            : null;
-          const cBds = overlaySource
-            ? (chartPrimaryMode === 'nominal' ? overlaySource.nominalBreakdowns : overlaySource.medianBreakdowns)
-            : null;
-          const cVal = cPath && cInfArr ? pathToDisplay(cPath[hoveredIndex] ?? 0, cInfArr[hoveredIndex] ?? 1, displayCurrency) : null;
-          const cBd = cBds?.[hoveredIndex] ?? null;
-          const cBdF = cInfArr?.[hoveredIndex] ?? 1;
+          // The overlay's arrays in THIS chart's index frame. What If's snapshot
+          // shares the scenario's reference year (raw index); the compared
+          // scenario is pre-aligned by calendar year (nulls = no such year).
+          const overlay: Pick<AlignedCompare, 'path' | 'inflation' | 'breakdowns'> | null =
+            whatIfActive && whatIfSnapshotResults
+              ? {
+                  path: chartPrimaryMode === 'nominal' ? whatIfSnapshotResults.nominal : whatIfSnapshotResults.median,
+                  inflation: chartPrimaryMode === 'nominal' ? whatIfSnapshotResults.nominalInflation : whatIfSnapshotResults.medianInflation,
+                  breakdowns: chartPrimaryMode === 'nominal' ? whatIfSnapshotResults.nominalBreakdowns : whatIfSnapshotResults.medianBreakdowns,
+                }
+              : alignedCompare;
+          const cReal = overlay?.path[hoveredIndex] ?? null;
+          const cBdF = overlay?.inflation[hoveredIndex] ?? 1;
+          const cVal = cReal != null ? pathToDisplay(cReal, cBdF, displayCurrency) : null;
+          const cBd = overlay?.breakdowns[hoveredIndex] ?? null;
 
           const isComparing = (compareResults != null && compareScenario != null) || (whatIfActive && whatIfSnapshotResults != null);
           const primaryLabel = whatIfActive ? 'Draft' : userData.name;
@@ -1186,6 +1228,11 @@ const ProjectionsInner = ({
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: spacing.xs, fontSize: fontSize.sm, color: colors.textSecondary, padding: `2px ${spacing.sm}` }}>
             <LegendSwatch $color={VIEW_COLORS[chartPrimaryMode] + '80'} $dashed />
             {compareScenario.name}
+            {compareYearOffset !== 0 && (
+              <span style={{ color: colors.textMuted, fontSize: fontSize.xs }}>
+                (plan year {compareScenario.referenceYear}, aligned by calendar year)
+              </span>
+            )}
           </span>
         )}
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: spacing.md }}>
