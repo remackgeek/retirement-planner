@@ -710,6 +710,26 @@ that affects user-visible behavior or modeling parameters, update the relevant d
 the same pass. This includes: new income/spending types, new `portfolioAssumptions` fields,
 changes to tax logic, new dialogs or UX flows, and any change to simulation defaults.
 
+## App versioning
+
+Product version lives in [CHANGELOG.md](CHANGELOG.md) at the repo root — the latest
+`## x.y.z — YYYY-MM-DD` heading **is** the app version. Vite injects it as
+`__APP_VERSION__` (About dialog). The master deploy workflow tags `vX.Y.Z` and
+opens a GitHub Release with that heading's bullets. Do **not** bump
+`package.json` `"version"` for releases; it is unused.
+
+This is unrelated to `schemaVersion` / `DB_VERSION` (data-shape stamps).
+
+Release checklist (before merging to `master`):
+
+1. Move Unreleased bullets under a new `## x.y.z — YYYY-MM-DD`.
+2. Leave an empty `## Unreleased`.
+3. Merge. Deploy tags, releases, and publishes Pages.
+
+What's New uses `localStorage` key `yarp:lastSeenVersion` (not sessionStorage,
+not IndexedDB, not `UserData`). First visit stamps the current version silently;
+later upgrades pop the dialog. Help → Changelog shows the full shipped history.
+
 ## Conventions
 
 Follow existing project patterns when adding new features (types, dialogs, services,
@@ -1118,7 +1138,7 @@ Current plugins:
     historical mode is active.
   - **Cash Bucket** → `CashBucketDialog` — min/target/max dollar amounts and refill trigger for `UserData.cashBucketPolicy`. Menu item only rendered when the active scenario has ≥1 cash account (or already has a configured policy).
   - **Tax & IRS** → `TaxAndIrsDialog` — long-term capital gains rate, IRMAA / NIIT toggles, `priorWorkingMagi` (last working year MAGI for first-2-years IRMAA lookback), and IRS contribution limits.
-- **Help** — User Guide, Model Details, About YARP.
+- **Help** — User Guide, Model Details; Changelog, About YARP.
 
 Stock/bond allocation per account is configured in `AccountDialog` (80/20, 60/40, or 50/50
 preset buttons). The allocation badge is displayed on each account row in `AccountsManager`.

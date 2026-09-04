@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "deploy": "gh-pages -d dist",
     "test": "vitest",
+    "check-version": "node scripts/check-release-version.mjs",
     "test:watch": "vitest --watch",
     "coverage": "vitest run --coverage",
     "smoosh": "repomix -o temp-repomix.md --style markdown"

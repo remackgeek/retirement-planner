@@ -443,6 +443,7 @@ The **Help** menu in the header has:
 
 - **User Guide** — this document, opened in a side panel.
 - **Model Details** — the full technical reference: simulation engine, tax math, return models, RMD rules, and every modeling parameter. Read this when you want to know exactly how a number is computed.
+- **Changelog** — the full history of shipped versions, in a dialog. After you load a newer build than last time, a **What's New** dialog also lists just the versions you missed; dismiss it with Got it, or open the full changelog from there.
 - **About YARP** — version, build, and license info.
 
 ---

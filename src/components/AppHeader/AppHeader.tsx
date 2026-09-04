@@ -1,4 +1,4 @@
-import { useContext, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { Button } from 'primereact/button';
 import { Menu } from 'primereact/menu';
@@ -13,10 +13,21 @@ import RothConversionDialog from '../../dialogs/RothConversionDialog';
 import { applyGeneratedConversions } from '../../utils/applyGeneratedConversions';
 import ExamplePickerDialog from '../../dialogs/ExamplePickerDialog';
 import AboutDialog from '../../dialogs/AboutDialog';
+import WhatsNewDialog from '../../dialogs/WhatsNewDialog';
+import ChangelogDialog from '../../dialogs/ChangelogDialog';
 import MarkdownViewerSidebar from '../../dialogs/MarkdownViewerSidebar';
 import userGuideContent from '../../docs/USER_GUIDE.md?raw';
 import modelDetailsContent from '../../docs/MODEL_DETAILS.md?raw';
+import {
+  changelogMarkdownForApp,
+  parsedChangelog,
+  unseenReleases,
+  type ChangelogRelease,
+} from '../../utils/changelog';
+import { getLastSeenVersion, setLastSeenVersion } from '../../utils/lastSeenVersion';
 import type { Scenario } from '../../types/Scenario';
+
+const changelogContent = changelogMarkdownForApp(parsedChangelog, __APP_VERSION__);
 
 const HeaderContainer = styled.header`
   display: flex;
@@ -122,6 +133,33 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   const [examplePickerVisible, setExamplePickerVisible] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
   const [modelDetailsVisible, setModelDetailsVisible] = useState(false);
+  const [changelogVisible, setChangelogVisible] = useState(false);
+  const [whatsNewVisible, setWhatsNewVisible] = useState(false);
+  const [whatsNewReleases, setWhatsNewReleases] = useState<ChangelogRelease[]>([]);
+
+  // Mount-only: stamp first visit silently; pop What's New only on a version upgrade.
+  useEffect(() => {
+    const lastSeen = getLastSeenVersion();
+    if (lastSeen == null) {
+      setLastSeenVersion(__APP_VERSION__);
+      return;
+    }
+    const unseen = unseenReleases(parsedChangelog.releases, lastSeen, __APP_VERSION__);
+    if (unseen.length > 0) {
+      setWhatsNewReleases(unseen);
+      setWhatsNewVisible(true);
+    }
+  }, []);
+
+  const acknowledgeVersion = () => {
+    setLastSeenVersion(__APP_VERSION__);
+    setWhatsNewVisible(false);
+  };
+
+  const openFullChangelog = () => {
+    acknowledgeVersion();
+    setChangelogVisible(true);
+  };
 
   const menuItems: MenuItem[] = [
     {
@@ -176,10 +214,11 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   ];
 
   const helpMenuItems: MenuItem[] = [
-    { label: 'User Guide',    icon: 'pi pi-book',       command: () => onUserGuideVisibleChange(true) },
-    { label: 'Model Details', icon: 'pi pi-sliders-h',  command: () => setModelDetailsVisible(true) },
+    { label: 'User Guide',    icon: 'pi pi-book',        command: () => onUserGuideVisibleChange(true) },
+    { label: 'Model Details', icon: 'pi pi-sliders-h',   command: () => setModelDetailsVisible(true) },
     { separator: true },
-    { label: 'About YARP',   icon: 'pi pi-info-circle', command: () => setAboutVisible(true) },
+    { label: 'Changelog',     icon: 'pi pi-list',        command: () => setChangelogVisible(true) },
+    { label: 'About YARP',    icon: 'pi pi-info-circle', command: () => setAboutVisible(true) },
   ];
 
   const handleSave = (updated: Scenario) => {
@@ -301,6 +340,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         }}
       />
       <AboutDialog visible={aboutVisible} onHide={() => setAboutVisible(false)} />
+      <WhatsNewDialog
+        visible={whatsNewVisible}
+        releases={whatsNewReleases}
+        onHide={acknowledgeVersion}
+        onViewFullChangelog={openFullChangelog}
+      />
       <MarkdownViewerSidebar
         title="User Guide"
         icon="pi pi-book"
@@ -315,6 +360,11 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         content={modelDetailsContent}
         visible={modelDetailsVisible}
         onHide={() => setModelDetailsVisible(false)}
+      />
+      <ChangelogDialog
+        visible={changelogVisible}
+        content={changelogContent}
+        onHide={() => setChangelogVisible(false)}
       />
     </>
   );

@@ -2,7 +2,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { execSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { latestReleasedVersion } from './scripts/changelog-version.mjs';
 
 function gitInfo() {
   const run = (cmd: string, fallback: string) => {
@@ -19,17 +19,15 @@ function gitInfo() {
   };
 }
 
-const pkg = JSON.parse(readFileSync('./package.json', 'utf8')) as {
-  version: string;
-};
 const git = gitInfo();
+const appVersion = latestReleasedVersion();
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   base: './',
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(appVersion),
     __GIT_BRANCH__: JSON.stringify(git.branch),
     __GIT_COMMIT__: JSON.stringify(git.commit),
     __GIT_DIRTY__: git.dirty,
