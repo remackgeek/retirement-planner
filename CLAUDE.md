@@ -1168,17 +1168,31 @@ Items that operate on the active scenario (Modeling, Cash Bucket, Tax & IRS, Exp
   column, income/spending/tax detail rows, and CSV export all follow that one
   path. Depleted years still show a shortfall indicator in the detail row.
 - **Secondary chart panel**: a `Charts` toggle (pi-chart-bar) next to `Data` on the
-  legend row opens a panel below the main chart with four pill-selectable views —
+  legend row opens a panel below the main chart with five pill-selectable views —
   **Income** by source (SS / other income at full wage gross / RMD / additional
   Traditional / Brokerage / Roth / Cash, plus a hatched Roth-conversion segment behind a
   "Show conversions" toggle), **Expenses** by category (living, one series per spending
   goal, retirement contributions, taxes, hatched "Unfunded shortfall" in depleted years),
+  **Combined** (diverging/butterfly: the Income specs stacked up from zero, the Expenses
+  specs negated and stacked down, on one canvas),
   **Balances** by account type (stacked area of the flat `boyBalance*` breakdown fields —
   sums to the main line exactly), and **Taxes** by component with the federal marginal
   bracket as a separate slim step strip (never a dual axis). Pure dataset builders live
   in `src/components/Chart/secondaryChartData.ts`, the panel in
   `SecondaryChartPanel.tsx`; series colors come from the CVD-validated map in
-  `src/styles/chartCategoryColors.ts`. The panel follows the chart's primary path and
+  `src/styles/chartCategoryColors.ts`.
+  **Combined view specifics:** `incomeSpecs` / `expenseSpecs` are the shared series
+  source — the Income, Expenses, and Combined builders all consume them, so the sides
+  match their sibling views by construction (asserted in `secondaryChartData.test.ts`).
+  Values are negated before the nonzero filter; dataset keys are prefixed `in_` / `ex_`
+  (never partition tooltip logic by `label` — a goal named "Cash" would collide). The
+  tooltip shows magnitudes with ↑/↓ arrows plus an Income / Spending / Net footer, and
+  the legend carries `group` headings on the first chip of each side. Known accepted
+  visual trade-off: `GOAL_SERIES_COLORS` reuse five income hues, so a multi-goal
+  scenario shows duplicate swatches across the zero line — documented in
+  `chartCategoryColors.ts`; the real fix is widening the categorical palette (needs its
+  own CVD validator pass). The two sides are near-symmetric by construction
+  (withdrawals are sized to cover spending + taxes); that's expected, not a bug. The panel follows the chart's primary path and
   `toDisplay` deflation, shares the age/year labels and Self/Spouse toggle, syncs the
   hover crosshair with the main chart (shared `hoveredIndex`; all canvases pin a common
   y-axis width via `Y_AXIS_ALIGN_WIDTH` so years column-align), and clicking a bar opens

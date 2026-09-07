@@ -350,7 +350,8 @@ const ProjectionsInner = ({
   // Session-only toggle: shaded 10th–90th percentile band on the chart.
   // Defaults on. Not on UserData — this is a view preference, not a modeling knob.
   const [showBand, setShowBand] = useState(true);
-  // Session-only secondary chart panel (Income / Expenses / Balances / Taxes).
+  // Session-only secondary chart panel (Income / Expenses / Combined /
+  // Balances / Taxes).
   // Collapsed by default; the view and the conversions toggle survive
   // close/reopen (both lifted here rather than living in the panel).
   const [showCharts, setShowCharts] = useState(false);
@@ -1310,7 +1311,7 @@ const ProjectionsInner = ({
                 <div style={{ maxWidth: '18rem', fontSize: fontSize.xs, lineHeight: 1.4 }}>
                   {showCharts
                     ? 'Hide the secondary charts panel.'
-                    : 'Show secondary charts — income by source, expenses by category, balances by account type, and taxes with your marginal bracket.'}
+                    : 'Show secondary charts — income by source, expenses by category, both together around a zero line, balances by account type, and taxes with your marginal bracket.'}
                 </div>
               </PrimeTooltip>
               <DataToggle

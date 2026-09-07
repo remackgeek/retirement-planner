@@ -69,6 +69,19 @@ const inputs = (
 const datasetTotal = (built: ReturnType<typeof buildSecondaryChart>, index: number): number =>
   built.data.datasets.reduce((s, ds) => s + (Number(ds.data[index]) || 0), 0);
 
+// Diverging views net to ~0 under datasetTotal, so the combined suite sums each
+// sign separately instead.
+const signedTotals = (built: ReturnType<typeof buildSecondaryChart>, index: number) => {
+  let up = 0;
+  let down = 0;
+  for (const ds of built.data.datasets) {
+    const v = Number(ds.data[index]) || 0;
+    if (v > 0) up += v;
+    else down -= v;
+  }
+  return { up, down, net: up - down };
+};
+
 describe('income view', () => {
   const bd = breakdown({
     ssGross: 30000,
@@ -409,6 +422,161 @@ describe('balances view', () => {
       { dataset: { label: 'Traditional' }, parsed: { y: 400000 } },
       { dataset: { label: 'Brokerage' }, parsed: { y: 300000 } },
     ])).toEqual(['Total balance: $700K']);
+  });
+});
+
+describe('combined view', () => {
+  // Both sides populated: SS + wages + withdrawals up; living + a goal +
+  // contributions + taxes down.
+  const goals = [
+    { goalId: 'g-med', goalName: 'Healthcare', goalType: 'healthcare', amountNet: 14000 },
+    { goalId: 'g-live', goalName: 'Living', goalType: 'living_expenses', amountNet: 60000 },
+  ];
+  const bd = breakdown({
+    ssGross: 30000,
+    otherTaxableGross: 20000,
+    rmdRequired: 15000,
+    withdrawalFromTraditional: 35000, // 15k RMD + 20k conversion
+    rothConversionGross: 20000,
+    withdrawalFromBrokerage: 12000,
+    withdrawalFromCash: 4000,
+    baseSpendingNet: 60000,
+    otherSpendingGoalsNet: 14000,
+    totalSpendingNet: 74000,
+    totalTax: 9000,
+    preTaxContributions: 5000,
+    audit: audit({ spendingGoalBreakdown: goals }),
+  });
+
+  it('stacks income above zero and expenses below, matching the sibling views exactly', () => {
+    const inp = inputs([bd]);
+    const combined = buildSecondaryChart('combined', inp);
+    const income = buildSecondaryChart('income', inp);
+    const expenses = buildSecondaryChart('expenses', inp);
+    const { up, down } = signedTotals(combined, 0);
+    // The regression guard for the shared spec extraction AND the negation.
+    expect(up).toBeCloseTo(datasetTotal(income, 0), 6);
+    expect(down).toBeCloseTo(datasetTotal(expenses, 0), 6);
+  });
+
+  it('gives income datasets non-negative values and expense datasets non-positive ones', () => {
+    const built = buildSecondaryChart('combined', inputs([bd]));
+    built.data.datasets.forEach((ds, i) => {
+      const v = Number(ds.data[0]) || 0;
+      if (built.legend[i].key.startsWith('ex_')) expect(v).toBeLessThanOrEqual(0);
+      else expect(v).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  it('keeps each side in its sibling view order, income first', () => {
+    const inp = inputs([bd]);
+    const combined = buildSecondaryChart('combined', inp);
+    const income = buildSecondaryChart('income', inp);
+    const expenses = buildSecondaryChart('expenses', inp);
+    expect(combined.legend.map(l => l.label)).toEqual([
+      ...income.legend.map(l => l.label),
+      ...expenses.legend.map(l => l.label),
+    ]);
+  });
+
+  it('labels the first chip of each side with its direction', () => {
+    const built = buildSecondaryChart('combined', inputs([bd]));
+    const grouped = built.legend.filter(l => l.group);
+    expect(grouped).toHaveLength(2);
+    expect(grouped[0].group).toBe('Income ↑');
+    expect(grouped[1].group).toBe('Spending ↓');
+    expect(grouped[1].key.startsWith('ex_')).toBe(true);
+  });
+
+  it('survives a one-sided year (income only, no spending)', () => {
+    const built = buildSecondaryChart('combined', inputs([breakdown({ ssGross: 30000 })]));
+    expect(built.legend.map(l => l.group).filter(Boolean)).toEqual(['Income ↑']);
+    expect(signedTotals(built, 0)).toEqual({ up: 30000, down: 0, net: 30000 });
+  });
+
+  it('reads net as a shortfall when spending outruns income', () => {
+    const short = breakdown({
+      ssGross: 30000, baseSpendingNet: 50000, totalSpendingNet: 50000, spendingShortfall: 20000,
+    });
+    const built = buildSecondaryChart('combined', inputs([short]));
+    // Living scales to the funded fraction and the unmet part shows as the
+    // shortfall segment, so the down-stack is the full request.
+    expect(signedTotals(built, 0).net).toBeCloseTo(-20000, 6);
+  });
+
+  it('shows the hatched conversion segment above zero only when toggled on', () => {
+    const off = buildSecondaryChart('combined', inputs([bd], { showConversions: false }));
+    expect(off.legend.some(l => l.key === 'in_conversion')).toBe(false);
+    const on = buildSecondaryChart('combined', inputs([bd], { showConversions: true }));
+    expect(on.legend.find(l => l.key === 'in_conversion')?.hatched).toBe(true);
+    expect(signedTotals(on, 0).up - signedTotals(off, 0).up).toBeCloseTo(20000, 6);
+  });
+
+  it('footers the hover with Income / Spending / Net, excluding conversions', () => {
+    const built = buildSecondaryChart('combined', inputs([bd], { showConversions: true }));
+    const footer = built.options.plugins?.tooltip?.callbacks?.footer as
+      (items: { datasetIndex: number; parsed: { y: number } }[]) => string[];
+    expect(footer([
+      { datasetIndex: 0, parsed: { y: 30000 } },
+      { datasetIndex: built.legend.findIndex(l => l.key === 'in_conversion'), parsed: { y: 20000 } },
+      { datasetIndex: built.legend.findIndex(l => l.key.startsWith('ex_')), parsed: { y: -12000 } },
+    ])).toEqual(['Income: $30K', 'Spending: $12K', 'Net: $18K', '(excludes Roth conversion)']);
+  });
+
+  it('never renders a negative zero in a balanced year', () => {
+    const built = buildSecondaryChart('combined', inputs([bd]));
+    const footer = built.options.plugins?.tooltip?.callbacks?.footer as
+      (items: { datasetIndex: number; parsed: { y: number } }[]) => string[];
+    const lines = footer([
+      { datasetIndex: 0, parsed: { y: 30000 } },
+      { datasetIndex: built.legend.findIndex(l => l.key.startsWith('ex_')), parsed: { y: -30000.001 } },
+    ]);
+    expect(lines[2]).toBe('Net: $0');
+  });
+
+  it('shows tooltip rows as magnitudes with a direction arrow', () => {
+    const built = buildSecondaryChart('combined', inputs([bd]));
+    const label = built.options.plugins?.tooltip?.callbacks?.label as
+      (ctx: { dataset: { label?: string }; parsed: { y: number } }) => string;
+    expect(label({ dataset: { label: 'Taxes' }, parsed: { y: -1200 } })).toBe(' ↓ Taxes: $1.2K');
+    expect(label({ dataset: { label: 'Social Security' }, parsed: { y: 30000 } }))
+      .toBe(' ↑ Social Security: $30K');
+  });
+
+  it('emphasizes the zero gridline only', () => {
+    const built = buildSecondaryChart('combined', inputs([bd]));
+    const grid = built.options.scales?.y?.grid as {
+      color: (ctx: { tick: { value: number } }) => string;
+      lineWidth: (ctx: { tick: { value: number } }) => number;
+    };
+    expect(grid.color({ tick: { value: 0 } })).not.toBe(grid.color({ tick: { value: 100000 } }));
+    expect(grid.lineWidth({ tick: { value: 0 } })).toBe(2);
+    expect(grid.lineWidth({ tick: { value: -100000 } })).toBe(1);
+  });
+
+  it('asks for a taller canvas than the single-sided views', () => {
+    expect(buildSecondaryChart('combined', inputs([bd])).height).toBeGreaterThan(220);
+    expect(buildSecondaryChart('income', inputs([bd])).height).toBeUndefined();
+  });
+
+  it('caps the itemized other-income lines that the income view lists in full', () => {
+    const many = breakdown({
+      ...bd,
+      audit: audit({
+        incomeEventTaxBreakdown: ['A', 'B', 'C', 'D', 'E', 'F'].map((n, i) => ({
+          eventId: `e-${i}`, eventName: `Rental ${n}`, eventType: 'rental_income',
+          gross: 1000, taxableContribution: 1000, marginalTax: 0, marginalRate: 0,
+        })),
+      }),
+    });
+    const call = (view: 'combined' | 'income') => (
+      buildSecondaryChart(view, inputs([many])).options.plugins?.tooltip?.callbacks?.afterBody as
+        (items: { dataIndex: number }[]) => string[]
+    ).call({}, [{ dataIndex: 0 }]);
+    // Header + 4 events + "+2 more".
+    expect(call('combined')).toHaveLength(6);
+    expect(call('combined')[5]).toBe('  +2 more');
+    expect(call('income')).toHaveLength(7); // uncapped
   });
 });
 
