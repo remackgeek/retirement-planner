@@ -12,6 +12,10 @@ Before merging to `master`:
 
 ## Unreleased
 
+## 0.3.0 — 2026-09-07
+
+- Stacked Income/Expenses Chart
+
 ## 0.2.0 — 2026-09-03
 
 - What's New dialog after an upgrade, with notes for every version you missed
