@@ -1022,6 +1022,13 @@ const ProjectionsInner = ({
           const fmtM = (v: number) =>
             formatCurrencyShort(v, isComparing ? 'precise' : 'compact');
 
+          // Portfolio-balance delta: primary (active plan / Draft) minus overlay
+          // (compared scenario / Original). Both have already been deflated to the
+          // selected display currency with their own cumulative-inflation factors,
+          // so they are directly subtractable. `cVal === null` means the compared
+          // plan has no such calendar year — no delta to show.
+          const delta = isComparing && cVal !== null ? primaryVal - cVal : null;
+
           return (
             <div style={{
               position: 'absolute',
@@ -1035,11 +1042,31 @@ const ProjectionsInner = ({
               padding: `${spacing.xs} ${spacing.sm}`,
               fontSize: fontSize.xs,
               boxShadow: `0 2px 8px ${colors.shadowLight}`,
-              minWidth: isComparing ? '16rem' : '11rem',
+              minWidth: isComparing ? '17rem' : '11rem',
               lineHeight: '1.5',
             }}>
-              <div style={{ fontWeight: 'bold', marginBottom: spacing.xs, color: colors.textPrimary, fontSize: fontSize.sm }}>
-                Age {age} · {year}
+              <div style={{
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: spacing.sm,
+                fontWeight: 'bold',
+                marginBottom: spacing.xs,
+                color: colors.textPrimary,
+                fontSize: fontSize.sm,
+              }}>
+                <span>Age {age} · {year}</span>
+                {delta !== null && (
+                  <span style={{
+                    marginLeft: 'auto',
+                    color: Math.abs(delta) < 0.5
+                      ? colors.textMuted
+                      : delta > 0 ? colors.income : colors.danger,
+                  }}>
+                    {Math.abs(delta) < 0.5
+                      ? fmtM(0)
+                      : `${delta > 0 ? '+' : '−'}${fmtM(Math.abs(delta))}`}
+                  </span>
+                )}
               </div>
               {isComparing ? (
                 <>
