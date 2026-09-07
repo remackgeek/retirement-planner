@@ -35,6 +35,29 @@ projections, and good tax awareness without overwhelming the user.
   This is a sidebar display cache — never read it from simulation, chart, CSV
   export, scenario JSON export logic, or tests. Authoritative probability always
   comes from the live `runSimulation()` result for the active scenario.
+- **Plan year (`referenceYear`)** — stamped once at creation, never editable, and the
+  single anchor for year 0, the birth year (RMD start age / SS FRA), and every
+  age→calendar-year mapping (`year = referenceYear + (startAge − ownerAge)`; events and
+  goals are age-based). **Nothing rolls it implicitly** — not load, import, clone, edit,
+  What If, or the probability write-back; a last-year plan displays exactly as saved.
+  The only path that changes it is the explicit `updateScenarioToCurrentYear(id, mode)`
+  context action (stale-plan banner in `Content.tsx`, calendar button on stale sidebar
+  rows, shared confirm `UpdatePlanYearDialog`), built on the pure
+  `rollScenarioToYear` in [src/utils/rollScenarioYear.ts](src/utils/rollScenarioYear.ts):
+  `referenceYear := now`, `currentAge`/`spouseAge += delta`, life expectancies bumped
+  only if the new age would reach them, `historicalStartYear += delta` for
+  `historical_single` only; other absolute-year fields, balances, and amounts untouched;
+  `changes.pastItems` lists the events/goals that fall into the past. In-place mode strips
+  `lastSuccessProbability`; `'clone'` mode keeps the original as a checkpoint. The action
+  is disabled while What If is active. `UserData.referenceYear` is `readonly`.
+  The compare overlay never rolls the compared scenario either — `Chart.tsx` builds one
+  memoized `alignCompareResults(...)` view ([src/utils/compareAlignment.ts](src/utils/compareAlignment.ts))
+  in the active plan's index frame (`compareYearOffset` prop, positive when the compared
+  plan is older; gaps where it has no such year; real dollars rebased by the runs' own
+  cumulative-inflation arrays, never the scalar rate). The compare sim effect is keyed on
+  the compared scenario's `referenceYear` as well as its id.
+  Fixtures: `test/scenarios/stale-plan-2025.json` and its `stale-plan-2026-twin.json`
+  (what the update must produce; asserted in `rollScenarioYear.test.ts`).
 - **Monte Carlo** — median + 10th percentile portfolio paths, success probability
 - **Accounts** — 4 tax-profile types: `traditional` (withdrawals taxed as ordinary income),
   `roth` (withdrawals tax-free), `brokerage` (withdrawals taxed at flat LTCG rate),
@@ -687,6 +710,26 @@ that affects user-visible behavior or modeling parameters, update the relevant d
 the same pass. This includes: new income/spending types, new `portfolioAssumptions` fields,
 changes to tax logic, new dialogs or UX flows, and any change to simulation defaults.
 
+## App versioning
+
+Product version lives in [CHANGELOG.md](CHANGELOG.md) at the repo root — the latest
+`## x.y.z — YYYY-MM-DD` heading **is** the app version. Vite injects it as
+`__APP_VERSION__` (About dialog). The master deploy workflow tags `vX.Y.Z` and
+opens a GitHub Release with that heading's bullets. Do **not** bump
+`package.json` `"version"` for releases; it is unused.
+
+This is unrelated to `schemaVersion` / `DB_VERSION` (data-shape stamps).
+
+Release checklist (before merging to `master`):
+
+1. Move Unreleased bullets under a new `## x.y.z — YYYY-MM-DD`.
+2. Leave an empty `## Unreleased`.
+3. Merge. Deploy tags, releases, and publishes Pages.
+
+What's New uses `localStorage` key `yarp:lastSeenVersion` (not sessionStorage,
+not IndexedDB, not `UserData`). First visit stamps the current version silently;
+later upgrades pop the dialog. Help → Changelog shows the full shipped history.
+
 ## Conventions
 
 Follow existing project patterns when adding new features (types, dialogs, services,
@@ -1095,7 +1138,7 @@ Current plugins:
     historical mode is active.
   - **Cash Bucket** → `CashBucketDialog` — min/target/max dollar amounts and refill trigger for `UserData.cashBucketPolicy`. Menu item only rendered when the active scenario has ≥1 cash account (or already has a configured policy).
   - **Tax & IRS** → `TaxAndIrsDialog` — long-term capital gains rate, IRMAA / NIIT toggles, `priorWorkingMagi` (last working year MAGI for first-2-years IRMAA lookback), and IRS contribution limits.
-- **Help** — User Guide, Model Details, About YARP.
+- **Help** — User Guide, Model Details; Changelog, About YARP.
 
 Stock/bond allocation per account is configured in `AccountDialog` (80/20, 60/40, or 50/50
 preset buttons). The allocation badge is displayed on each account row in `AccountsManager`.
@@ -1125,17 +1168,31 @@ Items that operate on the active scenario (Modeling, Cash Bucket, Tax & IRS, Exp
   column, income/spending/tax detail rows, and CSV export all follow that one
   path. Depleted years still show a shortfall indicator in the detail row.
 - **Secondary chart panel**: a `Charts` toggle (pi-chart-bar) next to `Data` on the
-  legend row opens a panel below the main chart with four pill-selectable views —
+  legend row opens a panel below the main chart with five pill-selectable views —
   **Income** by source (SS / other income at full wage gross / RMD / additional
   Traditional / Brokerage / Roth / Cash, plus a hatched Roth-conversion segment behind a
   "Show conversions" toggle), **Expenses** by category (living, one series per spending
   goal, retirement contributions, taxes, hatched "Unfunded shortfall" in depleted years),
+  **Combined** (diverging/butterfly: the Income specs stacked up from zero, the Expenses
+  specs negated and stacked down, on one canvas),
   **Balances** by account type (stacked area of the flat `boyBalance*` breakdown fields —
   sums to the main line exactly), and **Taxes** by component with the federal marginal
   bracket as a separate slim step strip (never a dual axis). Pure dataset builders live
   in `src/components/Chart/secondaryChartData.ts`, the panel in
   `SecondaryChartPanel.tsx`; series colors come from the CVD-validated map in
-  `src/styles/chartCategoryColors.ts`. The panel follows the chart's primary path and
+  `src/styles/chartCategoryColors.ts`.
+  **Combined view specifics:** `incomeSpecs` / `expenseSpecs` are the shared series
+  source — the Income, Expenses, and Combined builders all consume them, so the sides
+  match their sibling views by construction (asserted in `secondaryChartData.test.ts`).
+  Values are negated before the nonzero filter; dataset keys are prefixed `in_` / `ex_`
+  (never partition tooltip logic by `label` — a goal named "Cash" would collide). The
+  tooltip shows magnitudes with ↑/↓ arrows plus an Income / Spending / Net footer, and
+  the legend carries `group` headings on the first chip of each side. Known accepted
+  visual trade-off: `GOAL_SERIES_COLORS` reuse five income hues, so a multi-goal
+  scenario shows duplicate swatches across the zero line — documented in
+  `chartCategoryColors.ts`; the real fix is widening the categorical palette (needs its
+  own CVD validator pass). The two sides are near-symmetric by construction
+  (withdrawals are sized to cover spending + taxes); that's expected, not a bug. The panel follows the chart's primary path and
   `toDisplay` deflation, shares the age/year labels and Self/Spouse toggle, syncs the
   hover crosshair with the main chart (shared `hoveredIndex`; all canvases pin a common
   y-axis width via `Y_AXIS_ALIGN_WIDTH` so years column-align), and clicking a bar opens

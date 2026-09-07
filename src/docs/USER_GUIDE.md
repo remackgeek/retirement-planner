@@ -270,10 +270,11 @@ The x-axis is labeled with **your** age (and the calendar year). If you've set a
 
 ## Secondary Charts
 
-The **Charts** button on the legend row (next to **Data**) opens a secondary chart panel below the main chart — four flow-level views of the same projection the main chart and yearly table follow. One view shows at a time; pick it with the pill selector:
+The **Charts** button on the legend row (next to **Data**) opens a secondary chart panel below the main chart — five flow-level views of the same projection the main chart and yearly table follow. One view shows at a time; pick it with the pill selector:
 
 - **Income** — a stacked bar per year showing where your money comes from: Social Security, other income (pensions, wages, rentals — hover a year to see them itemized; wages show their full gross, before 401(k) deferrals), **RMD (required)** and **Additional 401(k)/IRA** as separate colors — so you can see at a glance whether you're withdrawing more than your RMD forces — plus Brokerage, Roth, and Cash withdrawals. A **Show conversions** toggle adds Roth conversions as a hatched segment; they're off by default and visually distinct because a conversion moves money *into* Roth — it isn't spendable income.
 - **Expenses** — a stacked bar per year: living expenses, **every spending goal as its own named, color-coded segment**, retirement contributions (in working years), and total taxes. Hovering a year lists only the categories actually active that year. In a year where the portfolio can't fully fund spending, the segments shrink to what was actually funded and a hatched **Unfunded shortfall** segment shows the gap.
+- **Combined** — both of the above on one canvas: income stacks **up** from a zero line, spending stacks **down**, using the same segments and colors as the Income and Expenses views. Hovering a year shows each row with an ↑/↓ direction arrow plus an **Income / Spending / Net** total — the Net line is the year's surplus or shortfall. Because portfolio withdrawals are sized to cover spending and taxes, the two sides track each other closely in retirement years; the mix on each side is where the story is — how much of your spending Social Security and pensions cover versus what's drawn from savings, and which account that draw comes from as the years go by.
 - **Balances** — a stacked area of your portfolio by account type (Traditional / Roth / Brokerage / Cash) at the start of each year. This is the clearest picture of a Roth conversion plan: watch Traditional drain into Roth across the conversion window. The stacked total matches the main chart line exactly.
 - **Taxes** — tax components per year (federal income, state & local, capital gains, NIIT, IRMAA), with your **federal marginal bracket** as a slim step-line strip below — the answer to "what bracket am I in that year?"
 
@@ -320,6 +321,32 @@ Most retirement planning is done in today's dollars.
 Click **Compare with ▾** above the chart to overlay another scenario as a dashed line. You'll see both probabilities and tier badges side by side. Click **End comparison** to clear it.
 
 This is the most useful feature for actually making decisions: rather than asking "is my plan good?" you ask "is plan A better than plan B?"
+
+**Comparing last year's plan with this year's.** If the two scenarios were set up in different years (see *Your plan and the calendar* below), the chart lines up the two lines **by calendar year**, so each column compares the same year — the older plan is not shifted a column to the left. The older plan's ages, balances, and success chance are shown exactly as saved, and its name carries a small *plan year* tag. In **Today's $** its values are restated in the active plan's dollars using the inflation actually experienced in each projection. Where the older plan has no data for a year (before its start or past its horizon) the dashed line simply has a gap.
+
+---
+
+## Your plan and the calendar
+
+Every scenario remembers the year it was set up in (its **plan year**). Your current age, your spouse's age, and account balances are all "as of" that year, and every income event and spending goal is tied to an **age** — that's how YARP knows the calendar year each one starts.
+
+When you open a plan in a later year, **nothing changes on its own**: it displays exactly as you saved it, and edits keep working in that year. A small year chip on the sidebar row and a banner above the chart tell you the plan is behind the calendar.
+
+To move "today" forward, click **Update to (this year)…** in the banner, or the calendar button on the sidebar row. The confirm shows exactly what will change:
+
+- **Plan year** advances to the current year.
+- **Your age** (and your spouse's) advances by the same number of years.
+- Life expectancies stay put unless the new age would reach them (then they're raised to one year above the new age).
+- For a *Historical: Single Sequence* return model, the historical start year moves with the plan year so each calendar year keeps the same historical year underneath it.
+
+Because income and spending are tied to ages, they stay on the **same calendar years** — a pension that started "at 65 (2030)" still starts in 2030. Relocation years, stress-test years, and account balances are left exactly as entered, so afterwards it's worth reviewing balances, any "today's dollars" amounts (they are now read as current-year figures), and the *last working year MAGI* under Settings → Tax & IRS (the first two years' Medicare IRMAA lookback uses it). The confirm lists any income events or spending goals that end before the new plan year — they are in the past and no longer apply.
+
+Two ways to apply it:
+
+- **Update** — rewrites the scenario in place.
+- **Clone & update** — keeps the old plan unchanged as a checkpoint and creates an updated copy (named with the new year) that becomes active. Use this when you want to compare "what I planned last year" against "where I am now" (see *Comparing Scenarios*).
+
+**Not now** hides the banner for this session only; the sidebar chip and calendar button stay until you update.
 
 ---
 
@@ -417,6 +444,7 @@ The **Help** menu in the header has:
 
 - **User Guide** — this document, opened in a side panel.
 - **Model Details** — the full technical reference: simulation engine, tax math, return models, RMD rules, and every modeling parameter. Read this when you want to know exactly how a number is computed.
+- **Changelog** — the full history of shipped versions, in a dialog. After you load a newer build than last time, a **What's New** dialog also lists just the versions you missed; dismiss it with Got it, or open the full changelog from there.
 - **About YARP** — version, build, and license info.
 
 ---

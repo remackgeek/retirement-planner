@@ -240,6 +240,7 @@ export const colors = {
   successMutedBg:  palette.lime100,
   warning:         palette.amber700,
   warningBg:       palette.amber100,
+  warningBorder:   palette.amber500,
   dangerBg:        palette.red100,
   dangerStrong:    palette.red700,
   dangerStrongBg:  palette.red100,

@@ -66,6 +66,15 @@ export const categoryColors: Record<FlowCategoryKey, string> = {
  * keeps its color when amounts change). Every goal gets its own named series;
  * past the cycle length the colors wrap (rare — goals are user-created, and
  * the 1px surface gaps + legend chips + tooltip carry identity on a wrap).
+ *
+ * Accepted collision: these five are the SAME hues as chartRmd / chartRoth /
+ * chartBrokerage / chartOtherIncome / chartSocialSecurity, so the Combined
+ * view renders duplicate swatches on one canvas. They always sit on opposite
+ * sides of the zero line (never in one stack, never touching), and the
+ * alternatives are worse — a per-view offset breaks "a goal keeps its color
+ * everywhere", and re-pointing the cycle invalidates the CVD-validated
+ * Expenses adjacency chain. Widening the categorical palette is the real fix
+ * and needs its own validator pass.
  */
 export const GOAL_SERIES_COLORS: readonly string[] = [
   colors.seriesCycle1,

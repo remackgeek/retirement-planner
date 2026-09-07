@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { Fragment, useEffect, useMemo, useRef } from 'react';
 import type { Chart as ChartJS, ChartData } from 'chart.js';
 import { Chart as ReactChart } from 'react-chartjs-2';
 import styled from 'styled-components';
@@ -12,7 +12,10 @@ import {
   type SecondaryView,
 } from './secondaryChartData';
 
-const VIEWS: SecondaryView[] = ['income', 'expenses', 'balances', 'taxes'];
+const VIEWS: SecondaryView[] = ['income', 'expenses', 'combined', 'balances', 'taxes'];
+
+/** Main-canvas height when the builder doesn't ask for a specific one. */
+const DEFAULT_MAIN_HEIGHT = 220;
 
 const PanelWrap = styled.div`
   margin-top: ${spacing.xs};
@@ -83,6 +86,15 @@ const Swatch = styled.span<{ $color: string; $hatched?: boolean }>`
   ${props => props.$hatched
     ? `background: repeating-linear-gradient(45deg, ${props.$color}, ${props.$color} 2px, transparent 2px, transparent 5px); border: 1px solid ${props.$color};`
     : `background: ${props.$color};`}
+`;
+
+// Direction heading before the first chip of a legend group (Combined view).
+// The row's existing gap does the separating — no extra spacing needed.
+const LegendGroup = styled.span`
+  font-size: ${fontSize.xs};
+  font-weight: 600;
+  color: ${colors.textMuted};
+  white-space: nowrap;
 `;
 
 const ChipLabel = styled.span`
@@ -219,7 +231,7 @@ const SecondaryChartPanel = ({
             </PillButton>
           ))}
         </PillGroup>
-        {view === 'income' && anyConversions && (
+        {(view === 'income' || view === 'combined') && anyConversions && (
           <ConversionToggle
             $active={showConversions}
             onClick={onToggleConversions}
@@ -231,14 +243,28 @@ const SecondaryChartPanel = ({
       </SelectorRow>
       <LegendChips>
         {built.legend.map((l: SecondaryLegendEntry) => (
-          <ChipLabel key={l.key}>
-            <Swatch $color={l.color} $hatched={l.hatched} />
-            {l.label}
-          </ChipLabel>
+          <Fragment key={l.key}>
+            {l.group && <LegendGroup>{l.group}</LegendGroup>}
+            <ChipLabel>
+              <Swatch $color={l.color} $hatched={l.hatched} />
+              {l.label}
+            </ChipLabel>
+          </Fragment>
         ))}
       </LegendChips>
-      <div style={{ position: 'relative', height: 220 }} {...makeHoverHandlers(mainRef)}>
-        <ReactChart type="bar" ref={mainRef} data={asBarData(built.data)} options={optionsWithCrosshair} />
+      <div
+        style={{ position: 'relative', height: built.height ?? DEFAULT_MAIN_HEIGHT }}
+        {...makeHoverHandlers(mainRef)}
+      >
+        {/* `key={view}` forces a fresh chart per view. react-chartjs-2 mutates
+            chart.data.datasets in place, matching datasets by `label` — and the
+            Balances view emits line datasets while the others emit bars, sharing
+            labels ("Roth", "Brokerage", "Cash"). Reusing one instance sends
+            chart.js down its `meta.type !== type` path, which deletes metaset
+            slots without refilling them and leaves `undefined` holes in
+            _sortedMetasets (crash: "Cannot read properties of undefined
+            (reading 'visible')"). Remounting sidesteps it entirely. */}
+        <ReactChart key={view} type="bar" ref={mainRef} data={asBarData(built.data)} options={optionsWithCrosshair} />
       </div>
       {built.strip && stripOptionsWithCrosshair && (
         <>

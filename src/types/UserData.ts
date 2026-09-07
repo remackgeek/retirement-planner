@@ -22,7 +22,13 @@ export interface UserData {
   spendingGoals: SpendingGoal[];
   incomeEvents: IncomeEvent[];
   portfolioAssumptions: PortfolioAssumptions;
-  referenceYear: number;
+  // Plan year: the calendar year that index 0 of the projection, the current
+  // ages, and the account balances describe. Stamped once at creation. It is
+  // `readonly` because changing it WITHOUT shifting every age by the same delta
+  // breaks every age→year mapping and the birth-year-derived RMD start / FRA;
+  // the only sanctioned change is the explicit `rollScenarioToYear` transform
+  // (utils/rollScenarioYear.ts), which builds a new object.
+  readonly referenceYear: number;
   inflationRate: number;
   inflationStdDev: number;
   simulationSettings: SimulationSettings;

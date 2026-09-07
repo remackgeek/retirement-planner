@@ -17,17 +17,20 @@ import { getHatchPattern } from './canvasPattern';
  *
  * Stacking orders are FIXED — they were validated pairwise-adjacent for CVD
  * safety (see chartCategoryColors.ts). Don't re-order datasets without
- * re-validating the adjacency chain.
+ * re-validating the adjacency chain. The Combined view stacks the Income and
+ * Expenses series on opposite sides of zero without re-ordering either group,
+ * so both validated chains carry over intact.
  *
  * All monetary values pass through `toDisplay(v, inflation[i], mode)` so the
  * charts follow the Today's-$/Future-$ toggle exactly like the data table.
  */
 
-export type SecondaryView = 'income' | 'expenses' | 'balances' | 'taxes';
+export type SecondaryView = 'income' | 'expenses' | 'combined' | 'balances' | 'taxes';
 
 export const SECONDARY_VIEW_LABELS: Record<SecondaryView, string> = {
   income: 'Income',
   expenses: 'Expenses',
+  combined: 'Combined',
   balances: 'Balances',
   taxes: 'Taxes',
 };
@@ -69,6 +72,10 @@ export interface SecondaryLegendEntry {
   label: string;
   color: string;
   hatched?: boolean;
+  /** Section heading rendered as a muted separator BEFORE this chip. Set on
+   *  the first chip of a group only (Combined view: 'Income ↑' / 'Spending ↓');
+   *  the other views never set it. */
+  group?: string;
 }
 
 type MixedData = ChartData<'bar' | 'line', (number | null)[], string>;
@@ -90,11 +97,19 @@ export interface BuiltSecondaryChart {
   } | null;
   /** Muted footnote under the chart (e.g. conversion-segment explainer). */
   note?: string | null;
+  /** Main-canvas height in px; the panel falls back to 220 when unset. The
+   *  Combined view asks for more — two stacks share the canvas around zero. */
+  height?: number;
 }
 
 /** True when any projection year converts — drives the panel's toggle visibility. */
 export const hasConversions = (breakdowns: AnnualCashFlowBreakdown[]): boolean =>
   breakdowns.some((b) => b.rothConversionGross > 0.005);
+
+/** Combined view: cap on the itemized "Other income" tooltip lines. Its body
+ *  already carries both sides' series, and Chart.js repositions but never
+ *  scrolls an oversized tooltip. */
+const COMBINED_MAX_ITEMIZED_EVENTS = 4;
 
 const NONZERO = (values: (number | null)[]): boolean =>
   values.some((v) => v != null && Math.abs(v) > 0.005);
@@ -211,8 +226,8 @@ function buildBarChart(
 // cash balance (it's inside withdrawalFromCash when withdrawn) — rendering it
 // as income would double-count spendable dollars. Its only standalone effect
 // is tax, which the Taxes view shows.
-function buildIncomeChart(inp: SecondaryChartInputs): BuiltSecondaryChart {
-  const { breakdowns, inflation, displayCurrency: mode, labels } = inp;
+function incomeSpecs(inp: SecondaryChartInputs): BarSeriesSpec[] {
+  const { breakdowns, inflation, displayCurrency: mode } = inp;
   const disp = (f: (b: AnnualCashFlowBreakdown) => number) =>
     breakdowns.map((b, i) => toDisplay(f(b), inflation[i] ?? 1, mode));
 
@@ -242,30 +257,44 @@ function buildIncomeChart(inp: SecondaryChartInputs): BuiltSecondaryChart {
       values: disp((b) => b.rothConversionGross),
     });
   }
+  return specs;
+}
 
-  const built = buildBarChart(specs, labels, inp.compact, (o) => {
+// Itemizes the folded "Other income" segment per event when hovering a year.
+// Built as a factory so the Combined view can reuse it with a truncation cap
+// (its tooltip already carries ~15 rows before any itemization); the Income
+// view passes no cap and gets byte-identical output.
+function otherIncomeItemization(inp: SecondaryChartInputs, maxEvents?: number) {
+  const { breakdowns, inflation, displayCurrency: mode } = inp;
+  return (items: TooltipItem<'bar' | 'line'>[]): string[] => {
+    const idx = items[0]?.dataIndex;
+    if (idx == null) return [];
+    const events = (breakdowns[idx]?.audit?.incomeEventTaxBreakdown ?? []).filter(
+      (e) =>
+        e.gross > 0.005 &&
+        e.eventId !== SYNTHETIC_TRAD_WITHDRAWAL_ID &&
+        e.eventId !== SYNTHETIC_SS_AGGREGATE_ID &&
+        e.eventType !== 'roth_conversion' &&
+        e.eventType !== 'social_security' &&
+        e.eventType !== 'retirement_contribution',
+    );
+    if (events.length === 0) return [];
+    const f = inflation[idx] ?? 1;
+    const shown = maxEvents != null ? events.slice(0, maxEvents) : events;
+    const lines = [
+      'Other income detail:',
+      ...shown.map((e) => `  ${e.eventName}: ${fmtShort(toDisplay(e.gross, f, mode))}`),
+    ];
+    if (shown.length < events.length) lines.push(`  +${events.length - shown.length} more`);
+    return lines;
+  };
+}
+
+function buildIncomeChart(inp: SecondaryChartInputs): BuiltSecondaryChart {
+  const built = buildBarChart(incomeSpecs(inp), inp.labels, inp.compact, (o) => {
     const callbacks = o.plugins!.tooltip!.callbacks!;
     callbacks.footer = totalFooter('Total income', ['Roth conversion']);
-    // Itemize the folded "Other income" segment per event when hovering a year.
-    callbacks.afterBody = (items: TooltipItem<'bar' | 'line'>[]) => {
-      const idx = items[0]?.dataIndex;
-      if (idx == null) return [];
-      const events = (breakdowns[idx]?.audit?.incomeEventTaxBreakdown ?? []).filter(
-        (e) =>
-          e.gross > 0.005 &&
-          e.eventId !== SYNTHETIC_TRAD_WITHDRAWAL_ID &&
-          e.eventId !== SYNTHETIC_SS_AGGREGATE_ID &&
-          e.eventType !== 'roth_conversion' &&
-          e.eventType !== 'social_security' &&
-          e.eventType !== 'retirement_contribution',
-      );
-      if (events.length === 0) return [];
-      const f = inflation[idx] ?? 1;
-      return [
-        'Other income detail:',
-        ...events.map((e) => `  ${e.eventName}: ${fmtShort(toDisplay(e.gross, f, mode))}`),
-      ];
-    };
+    callbacks.afterBody = otherIncomeItemization(inp);
   });
   if (inp.showConversions && built.legend.some((l) => l.key === 'conversion')) {
     built.note = 'Roth conversions are shown hatched: converted dollars move into Roth and are not spendable income.';
@@ -285,8 +314,8 @@ function buildIncomeChart(inp: SecondaryChartInputs): BuiltSecondaryChart {
 // funded-fraction the Sankey uses, and the unmet remainder renders as its own
 // "Unfunded shortfall" segment — so the stack still totals requested
 // spending + taxes while agreeing with the Income view's actual withdrawals.
-function buildExpensesChart(inp: SecondaryChartInputs): BuiltSecondaryChart {
-  const { breakdowns, inflation, displayCurrency: mode, labels } = inp;
+function expenseSpecs(inp: SecondaryChartInputs): BarSeriesSpec[] {
+  const { breakdowns, inflation, displayCurrency: mode } = inp;
   const disp = (f: (b: AnnualCashFlowBreakdown) => number) =>
     breakdowns.map((b, i) => toDisplay(f(b), inflation[i] ?? 1, mode));
 
@@ -345,9 +374,96 @@ function buildExpensesChart(inp: SecondaryChartInputs): BuiltSecondaryChart {
       values: disp((b) => b.spendingShortfall),
     },
   ];
-  return buildBarChart(specs, labels, inp.compact, (o) => {
+  return specs;
+}
+
+function buildExpensesChart(inp: SecondaryChartInputs): BuiltSecondaryChart {
+  return buildBarChart(expenseSpecs(inp), inp.labels, inp.compact, (o) => {
     o.plugins!.tooltip!.callbacks!.footer = totalFooter('Total');
   });
+}
+
+// ---------------- Combined (diverging income / expenses) ----------------
+// Single canvas. Income specs stack UP from zero in the Income view's order;
+// expense specs are negated and stack DOWN in the Expenses view's order
+// (Chart.js stacks each sign independently, in dataset order). Relative order
+// WITHIN each sign group is untouched, so both CVD-validated adjacency chains
+// carry over. The one new adjacency is across the zero line: Social Security
+// (green) at the bottom of the up-stack meets Living expenses (red) at the top
+// of the down-stack — separated by the emphasized zero gridline.
+//
+// Known, accepted collision: GOAL_SERIES_COLORS reuse the exact hues of five
+// income series (RMD violet, Roth teal, Brokerage blue, Other income magenta,
+// SS green), so a multi-goal scenario shows duplicate swatches here. The pairs
+// can never share a stack or touch — they sit on opposite sides of zero — and
+// every alternative breaks a harder invariant (a goal keeping one color
+// everywhere, or the validated Expenses chain). See chartCategoryColors.ts.
+function buildCombinedChart(inp: SecondaryChartInputs): BuiltSecondaryChart {
+  const up = incomeSpecs(inp).map((s) => ({ ...s, key: `in_${s.key}` }));
+  // Negate BEFORE the nonzero filter so exactly one value pipeline reaches the
+  // canvas (both NONZERO and ZERO_ROW_FILTER are already abs-based).
+  const down = expenseSpecs(inp).map((s) => ({
+    ...s,
+    key: `ex_${s.key}`,
+    values: s.values.map((v) => (v == null ? v : -v)),
+  }));
+
+  const built = buildBarChart([...up, ...down], inp.labels, inp.compact, (o) => {
+    // Emphasize the zero line. Chart.js draws gridlines under the datasets, so
+    // this reads in the inter-category gaps and axis margins; don't raise it
+    // with grid.z (that lifts EVERY gridline over the bars).
+    o.scales!.y!.grid = {
+      color: (ctx) => (Math.abs(ctx.tick?.value ?? 1) < 1e-9 ? colors.border : colors.borderLight),
+      lineWidth: (ctx) => (Math.abs(ctx.tick?.value ?? 1) < 1e-9 ? 2 : 1),
+    };
+  });
+
+  // Dataset identity is only known after buildBarChart drops all-zero series;
+  // `legend` is index-aligned with `data.datasets` by construction. Partition
+  // by these keys, never by label — a goal named "Cash" would collide.
+  const keys = built.legend.map((l) => l.key);
+  const callbacks = built.options.plugins!.tooltip!.callbacks!;
+
+  // Magnitude + direction arrow: "↓ Taxes: $40K" reads as money going out,
+  // where "Taxes: -$40K" reads as a negative tax bill.
+  callbacks.label = (ctx: TooltipItem<'bar' | 'line'>) => {
+    const v = ctx.parsed.y ?? 0;
+    return ` ${v < 0 ? '↓' : '↑'} ${ctx.dataset.label}: ${fmtShort(Math.abs(v))}`;
+  };
+  callbacks.afterBody = otherIncomeItemization(inp, COMBINED_MAX_ITEMIZED_EVENTS);
+  // Hand-rolled rather than totalFooter: that one excludes by label, and it
+  // can't express the two-sided Income / Spending / Net readout.
+  callbacks.footer = (items: TooltipItem<'bar' | 'line'>[]): string[] => {
+    let income = 0;
+    let spending = 0;
+    let conversion = 0;
+    for (const it of items) {
+      const v = it.parsed.y ?? 0;
+      if (keys[it.datasetIndex] === 'in_conversion') conversion += v;
+      else if (v >= 0) income += v;
+      else spending -= v;
+    }
+    const rawNet = income - spending;
+    // Float residue in a balanced year would otherwise render "-$0".
+    const net = Math.abs(rawNet) < 0.005 ? 0 : rawNet;
+    const lines = [
+      `Income: ${fmtShort(income)}`,
+      `Spending: ${fmtShort(spending)}`,
+      `Net: ${fmtShort(net)}`,
+    ];
+    if (conversion > 0.005) lines.push('(excludes Roth conversion)');
+    return lines;
+  };
+
+  // Group headings ride on the first surviving chip of each side; either side
+  // can be entirely absent (a pre-retirement year with no modeled spending).
+  const firstUp = built.legend.find((l) => l.key.startsWith('in_'));
+  const firstDown = built.legend.find((l) => l.key.startsWith('ex_'));
+  if (firstUp) firstUp.group = 'Income ↑';
+  if (firstDown) firstDown.group = 'Spending ↓';
+
+  built.height = inp.compact ? 260 : 320;
+  return built;
 }
 
 // ---------------- Balances by account type ----------------
@@ -478,6 +594,7 @@ export function buildSecondaryChart(view: SecondaryView, inp: SecondaryChartInpu
   switch (view) {
     case 'income': return buildIncomeChart(inp);
     case 'expenses': return buildExpensesChart(inp);
+    case 'combined': return buildCombinedChart(inp);
     case 'balances': return buildBalancesChart(inp);
     case 'taxes': return buildTaxesChart(inp);
   }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import SecondaryChartPanel from './SecondaryChartPanel';
+import type { SecondaryView } from './secondaryChartData';
 import type {
   AnnualAuditBreakdown,
   AnnualCashFlowBreakdown,
@@ -53,7 +54,7 @@ const breakdown = (o: Partial<AnnualCashFlowBreakdown> = {}): AnnualCashFlowBrea
 });
 
 const renderPanel = (opts: {
-  view?: 'income' | 'expenses' | 'balances' | 'taxes';
+  view?: SecondaryView;
   breakdowns?: AnnualCashFlowBreakdown[];
   showConversions?: boolean;
 } = {}) => {
@@ -79,28 +80,40 @@ const renderPanel = (opts: {
 };
 
 describe('SecondaryChartPanel', () => {
-  it('renders the four view pills and legend chips for the active view', () => {
+  it('renders the five view pills and legend chips for the active view', () => {
     renderPanel();
-    for (const label of ['Income', 'Expenses', 'Balances', 'Taxes']) {
+    for (const label of ['Income', 'Expenses', 'Combined', 'Balances', 'Taxes']) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
     expect(screen.getByText('Social Security')).toBeTruthy();
   });
 
-  it('shows the conversions toggle only on the income view when conversions exist', () => {
+  it('shows the conversions toggle only on the conversion-bearing views', () => {
     const conv = [breakdown({ ssGross: 30000, rothConversionGross: 20000, withdrawalFromTraditional: 20000 })];
     const { unmount } = renderPanel({ breakdowns: conv });
     expect(screen.getByRole('button', { name: /Show conversions/ })).toBeTruthy();
     unmount();
 
-    // No conversions anywhere → no toggle.
-    const { unmount: u2 } = renderPanel();
-    expect(screen.queryByRole('button', { name: /conversions/ })).toBeNull();
+    // Combined stacks the same income series, so it carries the toggle too.
+    const { unmount: u2 } = renderPanel({ breakdowns: conv, view: 'combined' });
+    expect(screen.getByRole('button', { name: /Show conversions/ })).toBeTruthy();
     u2();
+
+    // No conversions anywhere → no toggle.
+    const { unmount: u3 } = renderPanel();
+    expect(screen.queryByRole('button', { name: /conversions/ })).toBeNull();
+    u3();
 
     // Conversions exist but a different view is active → no toggle.
     renderPanel({ breakdowns: conv, view: 'expenses' });
     expect(screen.queryByRole('button', { name: /conversions/ })).toBeNull();
+  });
+
+  it('renders both direction headings on the combined view', () => {
+    const bd = [breakdown({ ssGross: 30000, baseSpendingNet: 40000, totalSpendingNet: 40000 })];
+    renderPanel({ breakdowns: bd, view: 'combined' });
+    expect(screen.getByText('Income ↑')).toBeTruthy();
+    expect(screen.getByText('Spending ↓')).toBeTruthy();
   });
 
   it('renders the bracket strip block only for the taxes view', () => {

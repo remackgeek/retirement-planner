@@ -730,6 +730,41 @@ This is a prescriptive overlay, not a stochastic shock: it shifts the entire dis
 
 ---
 
+## Reference year and updating the plan year
+
+`referenceYear` is the single time anchor of a scenario. It is stamped once when the scenario is created (the calendar year at that moment) and is never re-derived. Three things hang off it:
+
+- **Year 0 of the projection** — `years[i] = referenceYear + i`; inflation compounding for `inflation_adjusted` amounts starts here.
+- **Birth year** — `referenceYear − currentAge` (and `− spouseAge`), which drives the SECURE 2.0 RMD start age and the Social Security full retirement age.
+- **Age → calendar year for every event and goal** — `startYear = referenceYear + (startAge − ownerAge)`. Income events and spending goals carry ages, not years.
+
+Because nothing re-derives it, a plan saved in 2025 and opened in 2026 still simulates from 2025 with 2025 ages. **This is deliberate**: the saved plan is a record. The engine, chart, CSV export, and sidebar never roll a scenario forward on load, import, clone, edit, or the automatic probability write-back.
+
+### Explicit "Update to current year"
+
+The user can advance a stale scenario from the chart banner or the sidebar's calendar action (`rollScenarioToYear` in `src/utils/rollScenarioYear.ts`). With `delta = currentYear − referenceYear` (never negative):
+
+| Field | Change |
+|---|---|
+| `referenceYear` | `:= currentYear` |
+| `currentAge`, `spouseAge` | `+= delta` |
+| `lifeExpectancy`, `spouseLifeExpectancy` | unchanged, unless the new age would reach them — then raised to `age + 1` so the horizon stays ≥ 1 year (never nulled, which would silently disable the survivor model) |
+| `portfolioAssumptions.historicalStartYear` | `+= delta`, **only** when `returnModel === 'historical_single'` — that mode pins historical index 0 to projection year 0, so leaving it fixed would slide the whole series one row per year under the calendar (and under the black-swan / relocation years). Rolling and bootstrap modes don't read it. |
+| `lastSuccessProbability` | dropped on an in-place update (the sim inputs changed; the sidebar shows `—` until the next Monte Carlo) |
+| everything else | unchanged |
+
+Adding the same `delta` to `referenceYear` and to every age leaves `referenceYear + (startAge − ownerAge)` — and the birth year — invariant, so every event and goal stays on its original calendar year and the RMD start age / FRA don't move. The remaining absolute-year fields (`stateTimeline[].startYear`, `blackSwanEvents[].year`, `ssHaircutYear`) are left alone and keep meaning the same calendar years. Balances and dollar amounts are carried as entered, which now means "as of the new year" — the UI tells the user to review them. One-time events/goals whose start year is now before `referenceYear` never fire (`eventActiveInYear` and `accumulateSpending` test `year === startYear`), and recurring ones whose end year is now in the past never fire either; the confirm lists exactly these (`changes.pastItems`). Recurring items still in range run from year 0.
+
+**Known second-order effect:** the projection loses its first `delta` years, so the IRMAA 2-year lookback for the first two projected years now falls back to `priorWorkingMagi` where it previously used a modeled year's MAGI. The confirm and the user guide tell the user to review that field.
+
+"Clone & update" applies the same transform to a copy (new id, no display cache) and leaves the original untouched as a checkpoint. The update actions are unavailable while What If is active (an in-place roll would desync the draft from its snapshot; a clone would switch scenarios past the unsaved-What-If confirm).
+
+### Comparing plans with different reference years
+
+The compare overlay never rolls the compared scenario. Instead the chart re-expresses the compared run in the active plan's index frame once (`alignCompareResults` in `src/utils/compareAlignment.ts`): with `offset = active.referenceYear − compared.referenceYear`, active column `i` shows the compared plan's index `i + offset`, or a gap when that index is outside the compared projection. Nominal values line up directly (same calendar year). Real ("today's") values are deflated to each plan's own year 0, so the compared run's real values are multiplied by a rebase factor taken from the runs' **own cumulative-inflation arrays** — `compared.inflation[offset]` when the compared plan is older, `1 / active.inflation[−offset]` when it is newer. That is exact for every return model (historical modes deflate by the CPI row, the MC median by its stochastic path; the scalar `inflationRate` is never consulted). The compared plan's probability, ages, and breakdown figures are shown as saved. Updating the compared scenario in place re-runs its comparison (the compare effect is keyed on its `referenceYear` as well as its id).
+
+---
+
 ## Horizon and Mortality
 
 The simulation runs from your current age through your `lifeExpectancy` — exactly `lifeExpectancy − currentAge + 1` years. Life expectancy is treated as a **hard endpoint**, not a stochastic event:
