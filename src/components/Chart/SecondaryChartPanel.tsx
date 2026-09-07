@@ -238,7 +238,15 @@ const SecondaryChartPanel = ({
         ))}
       </LegendChips>
       <div style={{ position: 'relative', height: 220 }} {...makeHoverHandlers(mainRef)}>
-        <ReactChart type="bar" ref={mainRef} data={asBarData(built.data)} options={optionsWithCrosshair} />
+        {/* `key={view}` forces a fresh chart per view. react-chartjs-2 mutates
+            chart.data.datasets in place, matching datasets by `label` — and the
+            Balances view emits line datasets while the others emit bars, sharing
+            labels ("Roth", "Brokerage", "Cash"). Reusing one instance sends
+            chart.js down its `meta.type !== type` path, which deletes metaset
+            slots without refilling them and leaves `undefined` holes in
+            _sortedMetasets (crash: "Cannot read properties of undefined
+            (reading 'visible')"). Remounting sidesteps it entirely. */}
+        <ReactChart key={view} type="bar" ref={mainRef} data={asBarData(built.data)} options={optionsWithCrosshair} />
       </div>
       {built.strip && stripOptionsWithCrosshair && (
         <>
