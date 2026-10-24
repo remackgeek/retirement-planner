@@ -101,7 +101,7 @@ YARP recognizes four kinds of accounts based on how they're taxed:
 | **Brokerage** | Brokerage account (with cost basis, stock/bond holdings) | Taxed as long-term capital gains |
 | **Cash** | Money-market fund, HYSA, short-term Treasury | Principal is tax-free; yield is taxed as ordinary income |
 
-For each non-cash account, enter the current balance and pick a stock/bond mix (80/20, 60/40, or 50/50). You can mix and match — for example, a more aggressive 80/20 in your Roth and a conservative 50/50 in your Traditional. Cash accounts don't have a stock/bond mix; they use a deterministic yield rate (default 4%, matching typical MMF / HYSA rates). You can edit that rate right in the cash account dialog or under **Modeling** — it's scenario-wide, so it applies to every cash account.
+For each non-cash account, enter the current balance and set the stock allocation from 0% to 100% using the slider (in 1% steps). The 80/20, 60/40, and 50/50 buttons are convenient shortcuts. You can mix and match — for example, a more aggressive 80/20 in your Roth and a conservative 50/50 in your Traditional. Cash accounts don't have a stock/bond mix; they use a deterministic yield rate (default 4%, matching typical MMF / HYSA rates). You can edit that rate right in the cash account dialog or under **Modeling** — it's scenario-wide, so it applies to every cash account.
 
 ### When to use Cash vs Brokerage
 

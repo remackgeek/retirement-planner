@@ -5,7 +5,6 @@ import AccountDialog from '../dialogs/AccountDialog';
 import type { Account, AccountType } from '../types/Account';
 import { colors, fontSize } from '../styles/theme';
 import { accountTypeShortLabels, accountTypeIcons } from '../utils/defaultName';
-import { PORTFOLIO_PRESETS } from '../utils/portfolioPresets';
 import { ManagerRow, RightAmount, SlatList, PlusButton, Header, HeaderLeft, HeaderRight } from './ManagerRow';
 
 const Container = styled.div``;
@@ -99,7 +98,7 @@ export const AccountsManager: React.FC<AccountsManagerProps> = ({
                 <AllocationText>
                   {account.type === 'cash'
                     ? `${(cashYieldRate * 100).toFixed(2)}% yield`
-                    : PORTFOLIO_PRESETS[account.portfolioBalance].label.split(' ')[0]}
+                    : `${Math.round(account.stockAllocation * 100)}/${100 - Math.round(account.stockAllocation * 100)}`}
                 </AllocationText>
               </>
             }
