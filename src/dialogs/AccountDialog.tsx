@@ -53,6 +53,12 @@ const PresetBtn = styled.button<{ $active: boolean }>`
   }
 `;
 
+const AllocationSlider = styled.input`
+  width: 100%;
+  accent-color: ${colors.primary};
+  cursor: pointer;
+`;
+
 interface AccountDialogProps {
   visible: boolean;
   onHide: () => void;
@@ -96,6 +102,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
   const [balance, setBalance] = useState<number>(0);
   const [owner, setOwner] = useState<'self' | 'spouse'>('self');
   const [portfolioBalance, setPortfolioBalance] = useState<PortfolioType>('60_40');
+  const [stockAllocation, setStockAllocation] = useState(0.6);
   const [accountKind, setAccountKind] = useState<AccountKind>('ira');
 
   const isCash = accountType === 'cash';
@@ -115,6 +122,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         setBalance(editAccount.balance);
         setOwner(editAccount.owner ?? 'self');
         setPortfolioBalance(editAccount.portfolioBalance ?? '60_40');
+        setStockAllocation(editAccount.stockAllocation);
         setAccountKind(
           editAccount.accountKind ?? (editAccount.type === 'brokerage' ? 'brokerage' : 'ira')
         );
@@ -123,6 +131,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         setBalance(0);
         setOwner('self');
         setPortfolioBalance('60_40');
+        setStockAllocation(PORTFOLIO_PRESETS['60_40'].stockAllocation);
         setAccountKind(accountType === 'brokerage' ? 'brokerage' : 'ira');
       }
     }
@@ -142,7 +151,7 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
       name: name.trim(),
       balance,
       portfolioBalance: isCash ? '60_40' : portfolioBalance,
-      stockAllocation: isCash ? 0 : PORTFOLIO_PRESETS[portfolioBalance].stockAllocation,
+      stockAllocation: isCash ? 0 : stockAllocation,
       ...(showOwnerField ? { owner } : {}),
       ...(showAccountKindField ? { accountKind } : {}),
     };
@@ -245,20 +254,36 @@ const AccountDialog: React.FC<AccountDialogProps> = ({
         {showAllocationField && (
           <InputGroup style={{ marginTop: spacing.md }}>
             <label>Stocks / Bonds Mix</label>
+            <AllocationSlider
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round(stockAllocation * 100)}
+              aria-label="Stock allocation percentage"
+              onChange={(e) => setStockAllocation(Number(e.target.value) / 100)}
+            />
+            <small style={{ color: colors.textSecondary, fontSize: fontSize.xs }}>
+              {Math.round(stockAllocation * 100)}% stocks / {100 - Math.round(stockAllocation * 100)}% bonds
+            </small>
             <AllocationRow>
               {(Object.keys(PORTFOLIO_PRESETS) as PortfolioType[]).map((key) => (
                 <PresetBtn
                   key={key}
                   type="button"
-                  $active={portfolioBalance === key}
-                  onClick={() => setPortfolioBalance(key)}
+                  $active={stockAllocation === PORTFOLIO_PRESETS[key].stockAllocation}
+                  aria-pressed={stockAllocation === PORTFOLIO_PRESETS[key].stockAllocation}
+                  onClick={() => {
+                    setPortfolioBalance(key);
+                    setStockAllocation(PORTFOLIO_PRESETS[key].stockAllocation);
+                  }}
                 >
                   {PORTFOLIO_PRESETS[key].label.split(' ')[0]}
                 </PresetBtn>
               ))}
             </AllocationRow>
             <small style={{ color: colors.textMuted, fontSize: fontSize.xs, marginTop: spacing.xs }}>
-              Sets how this account is split between stocks and bonds. Return and volatility assumptions apply to all accounts and are configured in Modeling.
+              Set any mix from 0% to 100% stocks, or use a preset shortcut. Return and volatility assumptions apply to all accounts and are configured in Modeling.
             </small>
           </InputGroup>
         )}
